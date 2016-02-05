@@ -106,7 +106,11 @@ class SockDiag(netlink.NetlinkSocket):
   def _Decode(self, command, msg, nla_type, nla_data):
     """Decodes netlink attributes to Python types."""
     if msg.family == AF_INET or msg.family == AF_INET6:
-      name = self._GetConstantName(__name__, nla_type, "INET_DIAG")
+      if isinstance(msg, InetDiagReqV2):
+        prefix = "INET_DIAG_REQ"
+      else:
+        prefix = "INET_DIAG"
+      name = self._GetConstantName(__name__, nla_type, prefix)
     else:
       # Don't know what this is. Leave it as an integer.
       name = nla_type
@@ -122,6 +126,8 @@ class SockDiag(netlink.NetlinkSocket):
       data = TcpInfo(nla_data)
     elif name == "INET_DIAG_SKMEMINFO":
       data = SkMeminfo(nla_data)
+    elif name == "INET_DIAG_REQ_BYTECODE":
+      data = nla_data.encode("hex")
     else:
       data = nla_data
 
