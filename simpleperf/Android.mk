@@ -40,14 +40,36 @@ simpleperf_shared_libraries_target := \
 
 simpleperf_static_libraries_target := \
   libziparchive \
+  libz \
+
+static_simpleperf_static_libraries_target := \
+  libbacktrace_offline \
+  libbacktrace \
+  libziparchive \
+  libz \
+  libbase \
+  libcutils \
+  liblog \
+  libutils \
+  libunwind \
+  liblzma \
+  libLLVMObject \
+  libLLVMBitReader \
+  libLLVMMC \
+  libLLVMMCParser \
+  libLLVMCore \
+  libLLVMSupport \
+  libc \
 
 simpleperf_shared_libraries_host_linux := \
-  libbacktrace \
   libbacktrace_offline \
+  libbacktrace \
 
-simpleperf_shared_libraries_host_darwin := libLLVM
+simpleperf_shared_libraries_host_darwin := \
+  libLLVM \
 
-simpleperf_shared_libraries_host_windows := libLLVM
+simpleperf_shared_libraries_host_windows := \
+  libLLVM \
 
 simpleperf_static_libraries_host := \
   libziparchive-host \
@@ -112,6 +134,20 @@ LOCAL_MULTILIB := first
 include $(LLVM_DEVICE_BUILD_MK)
 include $(BUILD_STATIC_LIBRARY)
 
+# libsimpleperf_static target
+include $(CLEAR_VARS)
+LOCAL_CLANG := true
+LOCAL_MODULE := libsimpleperf_static
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
+LOCAL_SRC_FILES := \
+  $(libsimpleperf_src_files) \
+  $(libsimpleperf_src_files_linux) \
+
+LOCAL_STATIC_LIBRARIES := $(static_simpleperf_static_libraries_target)
+LOCAL_MULTILIB := first
+include $(LLVM_DEVICE_BUILD_MK)
+include $(BUILD_STATIC_LIBRARY)
+
 # libsimpleperf host
 include $(CLEAR_VARS)
 #LOCAL_CLANG := true  # Comment it to build on windows.
@@ -126,7 +162,6 @@ LOCAL_SRC_FILES_darwin := $(libsimpleperf_src_files_darwin)
 LOCAL_SRC_FILES_linux := $(libsimpleperf_src_files_linux)
 LOCAL_SRC_FILES_windows := $(libsimpleperf_src_files_windows)
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host)
 LOCAL_SHARED_LIBRARIES_darwin := $(simpleperf_shared_libraries_host_darwin)
 LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
 LOCAL_SHARED_LIBRARIES_windows := $(simpleperf_shared_libraries_host_windows)
@@ -153,6 +188,19 @@ LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
 LOCAL_MULTILIB := first
 include $(BUILD_EXECUTABLE)
 
+# simpleperf_static target
+include $(CLEAR_VARS)
+LOCAL_CLANG := true
+LOCAL_MODULE := simpleperf_static
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
+LOCAL_SRC_FILES := main.cpp
+LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf_static
+LOCAL_STATIC_LIBRARIES := $(static_simpleperf_static_libraries_target)
+LOCAL_MULTILIB := first
+LOCAL_FORCE_STATIC_EXECUTABLE := true
+include $(LLVM_DEVICE_BUILD_MK)
+include $(BUILD_EXECUTABLE)
+
 # simpleperf host
 include $(CLEAR_VARS)
 LOCAL_MODULE := simpleperf
@@ -164,7 +212,6 @@ LOCAL_CPPFLAGS_windows := $(simpleperf_cppflags_host_windows)
 LOCAL_SRC_FILES := main.cpp
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host)
 LOCAL_SHARED_LIBRARIES_darwin := $(simpleperf_shared_libraries_host_darwin)
 LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
 LOCAL_SHARED_LIBRARIES_windows := $(simpleperf_shared_libraries_host_windows)
@@ -220,7 +267,6 @@ LOCAL_SRC_FILES := $(simpleperf_unit_test_src_files)
 LOCAL_SRC_FILES_linux := $(simpleperf_unit_test_src_files_linux)
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host)
 LOCAL_SHARED_LIBRARIES_darwin := $(simpleperf_shared_libraries_host_darwin)
 LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
 LOCAL_SHARED_LIBRARIES_windows := $(simpleperf_shared_libraries_host_windows)
@@ -256,7 +302,6 @@ LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
 LOCAL_SRC_FILES := $(simpleperf_cpu_hotplug_test_src_files)
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host)
 LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := first
