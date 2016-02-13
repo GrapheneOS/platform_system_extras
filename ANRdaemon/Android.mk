@@ -10,6 +10,7 @@ LOCAL_MODULE:= anrdaemon
 LOCAL_MODULE_TAGS:= optional
 
 LOCAL_SHARED_LIBRARIES := \
+    liblog \
     libbinder \
     libcutils \
     libutils \
