@@ -98,7 +98,7 @@ class TcpBaseTest(multinetwork_base.MultiNetworkBaseTest):
       return
 
     self.accepted, _ = self.s.accept()
-    net_test.DisableLinger(self.accepted)
+    net_test.DisableFinWait(self.accepted)
 
     if end_state == TCP_ESTABLISHED:
       return
