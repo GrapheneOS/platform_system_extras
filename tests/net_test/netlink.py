@@ -80,7 +80,7 @@ class NetlinkSocket(object):
     thismodule = sys.modules[module]
     for name in dir(thismodule):
       if name.startswith("INET_DIAG_BC"):
-        break
+        continue
       if (name.startswith(prefix) and
           not name.startswith(prefix + "F_") and
           name.isupper() and getattr(thismodule, name) == value):
@@ -237,7 +237,9 @@ class NetlinkSocket(object):
     nlmsghdr = NLMsgHdr((length, command, flags, self.seq, self.pid))
 
     # Send the request.
-    self._Send(nlmsghdr.Pack() + msg.Pack() + attrs)
+    request = nlmsghdr.Pack() + msg.Pack() + attrs
+    self.MaybeDebugCommand(command, request)
+    self._Send(request)
 
     # Keep reading netlink messages until we get a NLMSG_DONE.
     out = []
