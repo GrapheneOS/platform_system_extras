@@ -227,7 +227,7 @@ class SockDiag(netlink.NetlinkSocket):
 
     return packed
 
-  def Dump(self, diag_req, bytecode=""):
+  def Dump(self, diag_req, bytecode):
     out = self._Dump(SOCK_DIAG_BY_FAMILY, diag_req, InetDiagMsg, bytecode)
     return out
 
@@ -305,7 +305,7 @@ class SockDiag(netlink.NetlinkSocket):
     return InetDiagReqV2((family, protocol, 0, 0xffffffff, sock_id))
 
   def FindSockDiagFromReq(self, req):
-    for diag_msg, attrs in self.Dump(req):
+    for diag_msg, attrs in self.Dump(req, ""):
       return diag_msg
     raise ValueError("Dump of %s returned no sockets" % req)
 
