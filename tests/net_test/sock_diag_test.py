@@ -426,6 +426,31 @@ class SockDestroyTcpTest(tcp_test.TcpBaseTest, SockDiagBaseTest):
     self.CheckTcpReset(tcp_test.TCP_ESTABLISHED, "TCP_ESTABLISHED")
     self.CheckTcpReset(tcp_test.TCP_CLOSE_WAIT, "TCP_CLOSE_WAIT")
 
+  def testFinWait1Socket(self):
+    for version in [4, 5, 6]:
+      self.IncomingConnection(version, tcp_test.TCP_ESTABLISHED, self.netid)
+
+      # Get the cookie so we can find this socket after we close it.
+      diag_msg = self.sock_diag.FindSockDiagFromFd(self.accepted)
+      diag_req = self.sock_diag.DiagReqFromDiagMsg(diag_msg, IPPROTO_TCP)
+
+      # Close the socket and check that it goes into FIN_WAIT1 and sends a FIN.
+      net_test.EnableFinWait(self.accepted)
+      self.accepted.close()
+      diag_req.states = 1 << tcp_test.TCP_FIN_WAIT1
+      diag_msg = self.sock_diag.GetSockDiag(diag_req)
+      self.assertEquals(tcp_test.TCP_FIN_WAIT1, diag_msg.state)
+      desc, fin = self.FinPacket()
+      self.ExpectPacketOn(self.netid, "Closing FIN_WAIT1 socket", fin)
+
+      # Destroy the socket and expect no RST.
+      self.CheckRstOnClose(None, diag_req, False, "Closing FIN_WAIT1 socket")
+      self.sock_diag.GetSockDiag(diag_req)
+
+      # The socket is still in FIN_WAIT1: SOCK_DESTROY did nothing because
+      # userspace had already closed it.
+      diag_msg = self.assertEquals(tcp_test.TCP_FIN_WAIT1, diag_msg.state)
+
   def FindChildSockets(self, s):
     """Finds the SYN_RECV child sockets of a given listening socket."""
     d = self.sock_diag.FindSockDiagFromFd(self.s)
