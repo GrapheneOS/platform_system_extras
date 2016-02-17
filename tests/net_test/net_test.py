@@ -153,7 +153,12 @@ def RawGRESocket(family):
   return s
 
 
-def DisableLinger(sock):
+def EnableFinWait(sock):
+  # Disabling SO_LINGER causes sockets to go into FIN_WAIT on close().
+  sock.setsockopt(SOL_SOCKET, SO_LINGER, struct.pack("ii", 0, 0))
+
+def DisableFinWait(sock):
+  # Enabling SO_LINGER with a timeout of zero causes close() to send RST.
   sock.setsockopt(SOL_SOCKET, SO_LINGER, struct.pack("ii", 1, 0))
 
 
@@ -165,8 +170,8 @@ def CreateSocketPair(family, socktype, addr):
   listensock.listen(1)
   clientsock.connect(addr)
   acceptedsock, _ = listensock.accept()
-  DisableLinger(clientsock)
-  DisableLinger(acceptedsock)
+  DisableFinWait(clientsock)
+  DisableFinWait(acceptedsock)
   listensock.close()
   return clientsock, acceptedsock
 

@@ -174,11 +174,14 @@ class SockDiagTest(SockDiagBaseTest):
         "0508100000006566"
         "00040400"
     )
+    states = 1 << tcp_test.TCP_ESTABLISHED
     self.assertMultiLineEqual(expected, bytecode.encode("hex"))
     self.assertEquals(76, len(bytecode))
     self.socketpairs = self._CreateLotsOfSockets()
-    filteredsockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, bytecode)
-    allsockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, NO_BYTECODE)
+    filteredsockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, bytecode,
+                                                        states=states)
+    allsockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, NO_BYTECODE,
+                                                   states=states)
     self.assertItemsEqual(allsockets, filteredsockets)
 
     # Pick a few sockets in hash table order, and check that the bytecode we
@@ -210,7 +213,9 @@ class SockDiagTest(SockDiagBaseTest):
     # TODO: this is only here because the test fails if there are any open
     # sockets other than the ones it creates itself. Make the bytecode more
     # specific and remove it.
-    self.assertFalse(self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, ""))
+    states = 1 << tcp_test.TCP_ESTABLISHED
+    self.assertFalse(self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, "",
+                                                       states=states))
 
     unused_pair4 = net_test.CreateSocketPair(AF_INET, SOCK_STREAM, "127.0.0.1")
     unused_pair6 = net_test.CreateSocketPair(AF_INET6, SOCK_STREAM, "::1")
@@ -221,24 +226,28 @@ class SockDiagTest(SockDiagBaseTest):
         (sock_diag.INET_DIAG_BC_S_COND, 1, 2, ("::", 0, -1))])
 
     # IPv4/v6 filters must never match IPv6/IPv4 sockets...
-    v4sockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, bytecode4)
-    self.assertTrue(v4sockets)
-    self.assertTrue(all(d.family == AF_INET for d, _ in v4sockets))
+    v4socks = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, bytecode4,
+                                                  states=states)
+    self.assertTrue(v4socks)
+    self.assertTrue(all(d.family == AF_INET for d, _ in v4socks))
 
-    v6sockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, bytecode6)
-    self.assertTrue(v6sockets)
-    self.assertTrue(all(d.family == AF_INET6 for d, _ in v6sockets))
+    v6socks = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, bytecode6,
+                                                  states=states)
+    self.assertTrue(v6socks)
+    self.assertTrue(all(d.family == AF_INET6 for d, _ in v6socks))
 
     # Except for mapped addresses, which match both IPv4 and IPv6.
     pair5 = net_test.CreateSocketPair(AF_INET6, SOCK_STREAM,
                                       "::ffff:127.0.0.1")
     diag_msgs = [self.sock_diag.FindSockDiagFromFd(s) for s in pair5]
-    v4sockets = [d for d, _ in self.sock_diag.DumpAllInetSockets(IPPROTO_TCP,
-                                                                 bytecode4)]
-    v6sockets = [d for d, _ in self.sock_diag.DumpAllInetSockets(IPPROTO_TCP,
-                                                                 bytecode6)]
-    self.assertTrue(all(d in v4sockets for d in diag_msgs))
-    self.assertTrue(all(d in v6sockets for d in diag_msgs))
+    v4socks = [d for d, _ in self.sock_diag.DumpAllInetSockets(IPPROTO_TCP,
+                                                               bytecode4,
+                                                               states=states)]
+    v6socks = [d for d, _ in self.sock_diag.DumpAllInetSockets(IPPROTO_TCP,
+                                                               bytecode6,
+                                                               states=states)]
+    self.assertTrue(all(d in v4socks for d in diag_msgs))
+    self.assertTrue(all(d in v6socks for d in diag_msgs))
 
   def testPortComparisonValidation(self):
     """Checks for a bug in validating port comparison bytecode.
@@ -416,6 +425,31 @@ class SockDestroyTcpTest(tcp_test.TcpBaseTest, SockDiagBaseTest):
     self.CheckTcpReset(tcp_test.TCP_LISTEN, "TCP_LISTEN")
     self.CheckTcpReset(tcp_test.TCP_ESTABLISHED, "TCP_ESTABLISHED")
     self.CheckTcpReset(tcp_test.TCP_CLOSE_WAIT, "TCP_CLOSE_WAIT")
+
+  def testFinWait1Socket(self):
+    for version in [4, 5, 6]:
+      self.IncomingConnection(version, tcp_test.TCP_ESTABLISHED, self.netid)
+
+      # Get the cookie so we can find this socket after we close it.
+      diag_msg = self.sock_diag.FindSockDiagFromFd(self.accepted)
+      diag_req = self.sock_diag.DiagReqFromDiagMsg(diag_msg, IPPROTO_TCP)
+
+      # Close the socket and check that it goes into FIN_WAIT1 and sends a FIN.
+      net_test.EnableFinWait(self.accepted)
+      self.accepted.close()
+      diag_req.states = 1 << tcp_test.TCP_FIN_WAIT1
+      diag_msg = self.sock_diag.GetSockDiag(diag_req)
+      self.assertEquals(tcp_test.TCP_FIN_WAIT1, diag_msg.state)
+      desc, fin = self.FinPacket()
+      self.ExpectPacketOn(self.netid, "Closing FIN_WAIT1 socket", fin)
+
+      # Destroy the socket and expect no RST.
+      self.CheckRstOnClose(None, diag_req, False, "Closing FIN_WAIT1 socket")
+      self.sock_diag.GetSockDiag(diag_req)
+
+      # The socket is still in FIN_WAIT1: SOCK_DESTROY did nothing because
+      # userspace had already closed it.
+      diag_msg = self.assertEquals(tcp_test.TCP_FIN_WAIT1, diag_msg.state)
 
   def FindChildSockets(self, s):
     """Finds the SYN_RECV child sockets of a given listening socket."""
