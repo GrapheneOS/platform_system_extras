@@ -71,6 +71,11 @@ class TcpBaseTest(multinetwork_base.MultiNetworkBaseTest):
     return packets.RST(self.version, self.myaddr, self.remoteaddr,
                        self.last_packet)
 
+  def FinPacket(self):
+    return packets.FIN(self.version, self.myaddr, self.remoteaddr,
+                       self.last_packet)
+
+
   def IncomingConnection(self, version, end_state, netid):
     self.s = self.OpenListenSocket(version, netid)
     self.end_state = end_state
@@ -98,7 +103,7 @@ class TcpBaseTest(multinetwork_base.MultiNetworkBaseTest):
       return
 
     self.accepted, _ = self.s.accept()
-    net_test.DisableLinger(self.accepted)
+    net_test.DisableFinWait(self.accepted)
 
     if end_state == TCP_ESTABLISHED:
       return
