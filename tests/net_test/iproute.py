@@ -118,6 +118,7 @@ RTACacheinfo = cstruct.Struct(
 # Interface address attributes.
 IFA_ADDRESS = 1
 IFA_LOCAL = 2
+IFA_LABEL = 3
 IFA_CACHEINFO = 6
 
 # Address flags.
@@ -280,7 +281,8 @@ class IPRoute(netlink.NetlinkSocket):
                   "RTA_GATEWAY", "RTA_PREFSRC", "RTA_UID",
                   "NDA_DST"]:
       data = socket.inet_ntop(msg.family, nla_data)
-    elif name in ["FRA_IIFNAME", "FRA_OIFNAME", "IFLA_IFNAME", "IFLA_QDISC"]:
+    elif name in ["FRA_IIFNAME", "FRA_OIFNAME", "IFLA_IFNAME", "IFLA_QDISC",
+                  "IFA_LABEL"]:
       data = nla_data.strip("\x00")
     elif name == "RTA_METRICS":
       data = self._ParseAttributes(-RTA_METRICS, msg.family, None, nla_data)
@@ -423,6 +425,11 @@ class IPRoute(netlink.NetlinkSocket):
   def DumpLinks(self):
     ifinfomsg = IfinfoMsg((0, 0, 0, 0, 0, 0))
     return self._Dump(RTM_GETLINK, ifinfomsg, IfinfoMsg, "")
+
+  def DumpAddresses(self, version):
+    family = self._AddressFamily(version)
+    ifaddrmsg = IfAddrMsg((family, 0, 0, 0, 0))
+    return self._Dump(RTM_GETADDR, ifaddrmsg, IfAddrMsg, "")
 
   def _Address(self, version, command, addr, prefixlen, flags, scope, ifindex):
     """Adds or deletes an IP address."""
