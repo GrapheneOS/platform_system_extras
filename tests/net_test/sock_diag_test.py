@@ -36,7 +36,23 @@ NO_BYTECODE = ""
 
 
 class SockDiagBaseTest(multinetwork_base.MultiNetworkBaseTest):
+  """Basic tests for SOCK_DIAG functionality.
 
+    Relevant kernel commits:
+      android-3.4:
+        ab4a727 net: inet_diag: zero out uninitialized idiag_{src,dst} fields
+        99ee451 net: diag: support v4mapped sockets in inet_diag_find_one_icsk()
+
+      android-3.10:
+        3eb409b net: inet_diag: zero out uninitialized idiag_{src,dst} fields
+        f77e059 net: diag: support v4mapped sockets in inet_diag_find_one_icsk()
+
+      android-3.18:
+        e603010 net: diag: support v4mapped sockets in inet_diag_find_one_icsk()
+
+      android-4.4:
+        525ee59 net: diag: support v4mapped sockets in inet_diag_find_one_icsk()
+  """
   @staticmethod
   def _CreateLotsOfSockets():
     # Dict mapping (addr, sport, dport) tuples to socketpairs.
@@ -92,12 +108,7 @@ class SockDiagTest(SockDiagBaseTest):
       self.assertRaisesErrno(ENOTCONN, s.getpeername)
 
   def testFindsMappedSockets(self):
-    """Tests that inet_diag_find_one_icsk can find mapped sockets.
-
-    Relevant kernel commits:
-      android-3.10:
-        f77e059 net: diag: support v4mapped sockets in inet_diag_find_one_icsk()
-    """
+    """Tests that inet_diag_find_one_icsk can find mapped sockets."""
     socketpair = net_test.CreateSocketPair(AF_INET6, SOCK_STREAM,
                                            "::ffff:127.0.0.1")
     for sock in socketpair:
@@ -107,14 +118,7 @@ class SockDiagTest(SockDiagBaseTest):
       # No errors? Good.
 
   def testFindsAllMySockets(self):
-    """Tests that basic socket dumping works.
-
-    Relevant commits:
-      android-3.4:
-        ab4a727 net: inet_diag: zero out uninitialized idiag_{src,dst} fields
-      android-3.10
-        3eb409b net: inet_diag: zero out uninitialized idiag_{src,dst} fields
-    """
+    """Tests that basic socket dumping works."""
     self.socketpairs = self._CreateLotsOfSockets()
     sockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, NO_BYTECODE)
     self.assertGreaterEqual(len(sockets), NUM_SOCKETS)
@@ -304,6 +308,22 @@ class SockDestroyTest(SockDiagBaseTest):
       8387ea2 net: diag: Support SOCK_DESTROY for inet sockets.
       b80585a net: diag: Support destroying TCP sockets.
       476c6ce net: tcp: deal with listen sockets properly in tcp_abort.
+
+    android-4.1:
+      56eebf8 net: diag: split inet_diag_dump_one_icsk into two
+      fb486c9 net: diag: Add the ability to destroy a socket.
+      0c02b7e net: diag: Support SOCK_DESTROY for inet sockets.
+      67c71d8 net: diag: Support destroying TCP sockets.
+      a76e0ec net: tcp: deal with listen sockets properly in tcp_abort.
+      e6e277b net: diag: support v4mapped sockets in inet_diag_find_one_icsk()
+
+    android-4.4:
+      76c83a9 net: diag: split inet_diag_dump_one_icsk into two
+      f7cf791 net: diag: Add the ability to destroy a socket.
+      1c42248 net: diag: Support SOCK_DESTROY for inet sockets.
+      c9e8440d net: diag: Support destroying TCP sockets.
+      3d9502c tcp: diag: add support for request sockets to tcp_abort()
+      001cf75 net: tcp: deal with listen sockets properly in tcp_abort.
   """
 
   def testClosesSockets(self):
