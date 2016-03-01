@@ -135,7 +135,7 @@ struct mapping_info *get_mapping(struct library_info *library, struct process_in
 
     if (library->mappings_count >= library->mappings_size) {
         library->mappings = realloc(library->mappings,
-            2 * library->mappings_size * sizeof(struct mapping*));
+            2 * library->mappings_size * sizeof(struct mapping_info*));
         if (!library->mappings) {
             fprintf(stderr, "Couldn't resize mappings array: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
