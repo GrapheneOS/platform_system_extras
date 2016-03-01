@@ -257,7 +257,7 @@ class ReportCommand : public Command {
             "    -n            Print the sample count for each item.\n"
             "    --no-demangle        Don't demangle symbol names.\n"
             "    -o report_file_name  Set report file name, default is stdout.\n"
-            "    --pid pid1,pid2,...\n"
+            "    --pids pid1,pid2,...\n"
             "                  Report only for selected pids.\n"
             "    --sort key1,key2,...\n"
             "                  Select the keys to sort and print the report. Possible keys\n"
