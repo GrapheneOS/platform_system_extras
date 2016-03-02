@@ -549,7 +549,6 @@ std::vector<char> BuildIdRecord::BinaryFormat() const {
   memcpy(p, build_id.Data(), build_id.Size());
   p += ALIGN(build_id.Size(), 8);
   strcpy(p, filename.c_str());
-  p += ALIGN(filename.size() + 1, 64);
   return buf;
 }
 
