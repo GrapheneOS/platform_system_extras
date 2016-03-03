@@ -18,6 +18,7 @@
 
 #include <functional>
 #include <android-base/file.h>
+#include <android-base/test_utils.h>
 
 #include "environment.h"
 
@@ -50,25 +51,24 @@ TEST(environment, ProcessKernelSymbols) {
       "ffffffffa005c4e4 d __warned.41698   [libsas]\n"
       "aaaaaaaaaaaaaaaa T _text\n"
       "cccccccccccccccc c ccccc\n";
-  const char* tempfile = "tempfile_process_kernel_symbols";
-  ASSERT_TRUE(android::base::WriteStringToFile(data, tempfile));
+  TemporaryFile tempfile;
+  ASSERT_TRUE(android::base::WriteStringToFile(data, tempfile.path));
   KernelSymbol expected_symbol;
   expected_symbol.addr = 0xffffffffa005c4e4ULL;
   expected_symbol.type = 'd';
   expected_symbol.name = "__warned.41698";
   expected_symbol.module = "libsas";
   ASSERT_TRUE(ProcessKernelSymbols(
-      tempfile, std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
+      tempfile.path, std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
 
   expected_symbol.addr = 0xaaaaaaaaaaaaaaaaULL;
   expected_symbol.type = 'T';
   expected_symbol.name = "_text";
   expected_symbol.module = nullptr;
   ASSERT_TRUE(ProcessKernelSymbols(
-      tempfile, std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
+      tempfile.path, std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
 
   expected_symbol.name = "non_existent_symbol";
   ASSERT_FALSE(ProcessKernelSymbols(
-      tempfile, std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
-  ASSERT_EQ(0, unlink(tempfile));
+      tempfile.path, std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
 }
