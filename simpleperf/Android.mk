@@ -39,6 +39,7 @@ simpleperf_shared_libraries_target := \
   libLLVM \
 
 simpleperf_static_libraries_target := \
+  liblzma \
   libziparchive \
   libz \
 
@@ -75,6 +76,7 @@ simpleperf_static_libraries_host := \
   libziparchive-host \
   libbase \
   liblog \
+  liblzma \
   libz \
   libutils \
 

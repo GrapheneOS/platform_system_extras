@@ -30,6 +30,10 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 
+#include <7zCrc.h>
+#include <Xz.h>
+#include <XzCrc64.h>
+
 void OneTimeFreeAllocator::Clear() {
   for (auto& p : v_) {
     delete[] p;
@@ -178,5 +182,51 @@ bool MkdirWithParents(const std::string& path) {
     }
     prev_end = next_end;
   }
+  return true;
+}
+
+static void* xz_alloc(void*, size_t size) {
+  return malloc(size);
+}
+
+static void xz_free(void*, void* address) {
+  free(address);
+}
+
+bool XzDecompress(const std::string& compressed_data, std::string* decompressed_data) {
+  ISzAlloc alloc;
+  CXzUnpacker state;
+  alloc.Alloc = xz_alloc;
+  alloc.Free = xz_free;
+  XzUnpacker_Construct(&state, &alloc);
+  CrcGenerateTable();
+  Crc64GenerateTable();
+  size_t src_offset = 0;
+  size_t dst_offset = 0;
+  std::string dst(compressed_data.size(), ' ');
+
+  ECoderStatus status = CODER_STATUS_NOT_FINISHED;
+  while (status == CODER_STATUS_NOT_FINISHED) {
+    dst.resize(dst.size() * 2);
+    size_t src_remaining = compressed_data.size() - src_offset;
+    size_t dst_remaining = dst.size() - dst_offset;
+    int res = XzUnpacker_Code(&state, reinterpret_cast<Byte*>(&dst[dst_offset]), &dst_remaining,
+                              reinterpret_cast<const Byte*>(&compressed_data[src_offset]),
+                              &src_remaining, CODER_FINISH_ANY, &status);
+    if (res != SZ_OK) {
+      LOG(ERROR) << "LZMA decompression failed with error " << res;
+      XzUnpacker_Free(&state);
+      return false;
+    }
+    src_offset += src_remaining;
+    dst_offset += dst_remaining;
+  }
+  XzUnpacker_Free(&state);
+  if (!XzUnpacker_IsStreamWasFinished(&state)) {
+    LOG(ERROR) << "LZMA decompresstion failed due to incomplete stream";
+    return false;
+  }
+  dst.resize(dst_offset);
+  *decompressed_data = std::move(dst);
   return true;
 }

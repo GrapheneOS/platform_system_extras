@@ -119,4 +119,6 @@ bool IsRegularFile(const std::string& filename);
 uint64_t GetFileSize(const std::string& filename);
 bool MkdirWithParents(const std::string& path);
 
+bool XzDecompress(const std::string& compressed_data, std::string* decompressed_data);
+
 #endif  // SIMPLE_PERF_UTILS_H_

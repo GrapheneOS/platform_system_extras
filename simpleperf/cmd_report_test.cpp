@@ -73,6 +73,12 @@ TEST_F(ReportCommandTest, no_option) {
   ASSERT_NE(content.find("GlobalFunc"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, report_symbol_from_elf_file_with_mini_debug_info) {
+  Report(PERF_DATA_WITH_MINI_DEBUG_INFO);
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("GlobalFunc"), std::string::npos);
+}
+
 TEST_F(ReportCommandTest, sort_option_pid) {
   Report(PERF_DATA, {"--sort", "pid"});
   ASSERT_TRUE(success);
