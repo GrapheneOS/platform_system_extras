@@ -248,6 +248,12 @@ LOCAL_SRC_FILES := \
 
 LOCAL_STATIC_LIBRARIES += libsimpleperf $(simpleperf_static_libraries_target)
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
+LOCAL_POST_LINK_CMD = \
+  TMP_FILE=`mktemp $(OUT_DIR)/simpleperf-post-link-XXXXXXXXXX` && \
+  (cd $(LOCAL_PATH)/testdata && zip - -0 -r .) > $$TMP_FILE && \
+  $($(LOCAL_2ND_ARCH_VAR_PREFIX)TARGET_OBJCOPY) --add-section .testzipdata=$$TMP_FILE $(linked_module) && \
+  rm -f $$TMP_FILE
+
 LOCAL_MULTILIB := first
 include $(BUILD_NATIVE_TEST)
 
@@ -313,7 +319,7 @@ libsimpleperf_cts_test_src_files := \
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
 LOCAL_MODULE := libsimpleperf_cts_test
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_target) -DIN_CTS_TEST
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := $(libsimpleperf_cts_test_src_files)
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_target)
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
@@ -326,7 +332,7 @@ include $(CLEAR_VARS)
 LOCAL_CLANG := true
 LOCAL_MODULE := libsimpleperf_cts_test
 LOCAL_MODULE_HOST_OS := linux
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host) -DIN_CTS_TEST
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
 LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
 LOCAL_SRC_FILES := $(libsimpleperf_cts_test_src_files)
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
