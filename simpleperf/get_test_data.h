@@ -29,8 +29,10 @@ bool IsRoot();
 static const std::string PERF_DATA = "perf.data";
 static const std::string CALLGRAPH_FP_PERF_DATA = "perf_g_fp.data";
 static const std::string BRANCH_PERF_DATA = "perf_b.data";
+static const std::string PERF_DATA_WITH_MINI_DEBUG_INFO = "perf_with_mini_debug_info.data";
 
 static const std::string ELF_FILE = "elf";
+static const std::string ELF_FILE_WITH_MINI_DEBUG_INFO = "elf_with_mini_debug_info";
 
 static const std::string APK_FILE = "data/app/com.example.hellojni-1/base.apk";
 static const std::string NATIVELIB_IN_APK = "lib/arm64-v8a/libhello-jni.so";
