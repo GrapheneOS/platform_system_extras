@@ -15,7 +15,9 @@
  */
 
 #include <map>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "read_elf.h"
 #include "workload.h"
