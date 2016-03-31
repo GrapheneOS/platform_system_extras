@@ -568,8 +568,9 @@ void ReportCommand::ProcessSampleRecord(const SampleRecord& r) {
         RegSet regs = CreateRegSet(r.regs_user_data.reg_mask, r.regs_user_data.regs);
         std::vector<char> stack(r.stack_user_data.data.begin(),
                                 r.stack_user_data.data.begin() + r.stack_user_data.data.size());
+        ArchType arch = GetArchForAbi(ScopedCurrentArch::GetCurrentArch(), r.regs_user_data.abi);
         std::vector<uint64_t> unwind_ips =
-            UnwindCallChain(ScopedCurrentArch::GetCurrentArch(), *sample->thread, regs, stack);
+            UnwindCallChain(arch, *sample->thread, regs, stack);
         if (!unwind_ips.empty()) {
           ips.push_back(PERF_CONTEXT_USER);
           ips.insert(ips.end(), unwind_ips.begin(), unwind_ips.end());
