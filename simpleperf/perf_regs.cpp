@@ -21,6 +21,8 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
+#include "perf_event.h"
+
 ArchType ScopedCurrentArch::current_arch = GetBuildArch();
 
 ArchType GetArchType(const std::string& arch) {
@@ -35,6 +37,34 @@ ArchType GetArchType(const std::string& arch) {
   }
   LOG(ERROR) << "unsupported arch: " << arch;
   return ARCH_UNSUPPORTED;
+}
+
+ArchType GetArchForAbi(ArchType machine_arch, int abi) {
+  if (abi == PERF_SAMPLE_REGS_ABI_32) {
+    if (machine_arch == ARCH_X86_64) {
+      return ARCH_X86_32;
+    }
+    if (machine_arch == ARCH_ARM64) {
+      return ARCH_ARM;
+    }
+  }
+  return machine_arch;
+}
+
+std::string GetArchString(ArchType arch) {
+  switch (arch) {
+    case ARCH_X86_32:
+      return "x86";
+    case ARCH_X86_64:
+      return "x86_64";
+    case ARCH_ARM64:
+      return "arm64";
+    case ARCH_ARM:
+      return "arm";
+    default:
+      break;
+  }
+  return "unknown";
 }
 
 uint64_t GetSupportedRegMask(ArchType arch) {

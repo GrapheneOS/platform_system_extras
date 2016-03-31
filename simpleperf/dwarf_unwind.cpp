@@ -98,7 +98,8 @@ std::vector<uint64_t> UnwindCallChain(ArchType arch, const ThreadEntry& thread,
                                       const RegSet& regs, const std::vector<char>& stack) {
   std::vector<uint64_t> result;
   if (arch != GetBuildArch()) {
-    LOG(ERROR) << "can't unwind data recorded on a different architecture";
+    LOG(FATAL) << "simpleperf is built in arch " << GetArchString(GetBuildArch())
+        << ", and can't do stack unwinding for arch " << GetArchString(arch);
     return result;
   }
   uint64_t sp_reg_value;
