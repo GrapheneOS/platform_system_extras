@@ -21,7 +21,7 @@
 #include "environment.h"
 
 std::vector<uint64_t> UnwindCallChain(ArchType, const ThreadEntry&, const RegSet&,
-                                      const std::vector<char>&) {
+                                      const std::vector<char>&, bool) {
   return std::vector<uint64_t>();
 }
 

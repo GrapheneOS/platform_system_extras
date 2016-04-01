@@ -35,9 +35,7 @@ TEST(stat_cmd, event_option) {
 }
 
 TEST(stat_cmd, system_wide_option) {
-  if (IsRoot()) {
-    ASSERT_TRUE(StatCmd()->Run({"-a", "sleep", "1"}));
-  }
+  TEST_IN_ROOT(ASSERT_TRUE(StatCmd()->Run({"-a", "sleep", "1"})));
 }
 
 TEST(stat_cmd, verbose_option) {
@@ -45,9 +43,7 @@ TEST(stat_cmd, verbose_option) {
 }
 
 TEST(stat_cmd, tracepoint_event) {
-  if (IsRoot()) {
-    ASSERT_TRUE(StatCmd()->Run({"-a", "-e", "sched:sched_switch", "sleep", "1"}));
-  }
+  TEST_IN_ROOT(ASSERT_TRUE(StatCmd()->Run({"-a", "-e", "sched:sched_switch", "sleep", "1"})));
 }
 
 TEST(stat_cmd, event_modifier) {
@@ -87,7 +83,5 @@ TEST(stat_cmd, no_monitored_threads) {
 
 TEST(stat_cmd, cpu_option) {
   ASSERT_TRUE(StatCmd()->Run({"--cpu", "0", "sleep", "1"}));
-  if (IsRoot()) {
-    ASSERT_TRUE(StatCmd()->Run({"--cpu", "0", "-a", "sleep", "1"}));
-  }
+  TEST_IN_ROOT(ASSERT_TRUE(StatCmd()->Run({"--cpu", "0", "-a", "sleep", "1"})));
 }
