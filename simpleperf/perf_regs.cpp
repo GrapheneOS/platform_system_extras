@@ -67,6 +67,25 @@ std::string GetArchString(ArchType arch) {
   return "unknown";
 }
 
+// If strict_check, must have arch1 == arch2.
+// Otherwise, allow X86_32 with X86_64, ARM with ARM64.
+bool IsArchTheSame(ArchType arch1, ArchType arch2, bool strict_check) {
+  if (strict_check) {
+    return arch1 == arch2;
+  }
+  switch (arch1) {
+    case ARCH_X86_32:
+    case ARCH_X86_64:
+      return arch2 == ARCH_X86_32 || arch2 == ARCH_X86_64;
+    case ARCH_ARM64:
+    case ARCH_ARM:
+      return arch2 == ARCH_ARM64 || arch2 == ARCH_ARM;
+    default:
+      break;
+  }
+  return arch1 == arch2;
+}
+
 uint64_t GetSupportedRegMask(ArchType arch) {
   switch (arch) {
     case ARCH_X86_32:
