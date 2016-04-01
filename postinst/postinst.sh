@@ -40,10 +40,31 @@
 # wrapper script to use the new ldso to run your program (see the
 # --generate-wrappers option in lddtree.py for an example).
 
+# We get called with two parameters: <target_slot> <status_fd>
+# * <target_slot> is the slot where the new system was just copied. This is
+#   normally either 0 or 1. You can get the target suffix running
+#   `bootctl get-suffix ${target_slot}`
+# * <status_fd> is a file descriptor number where this script can write to to
+#   report the progress of the process. See examples below.
+
+target_slot="$1"
+status_fd="$2"
+
 my_dir=$(dirname "$0")
 
+# We can notify the updater of the progress of our program by writing to the
+# status file descriptor "set_progress <frac>\n".
+print -u${status_fd} "global_progress 0"
+
 echo "The output of this program will show up in the logs." >&2
+
+# We are half way done, so we set 0.5.
+print -u${status_fd} "global_progress 0.5"
+
 echo "Note that this program runs from ${my_dir}"
+
+# Actually, we were done.
+print -u${status_fd} "global_progress 1.0"
 
 # If the exit code of this program is an error code (different from 0), the
 # update will fail and the new slot will not be marked as active.
