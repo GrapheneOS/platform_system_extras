@@ -272,6 +272,7 @@ class ReportCommand : public Command {
         record_filename_("perf.data"),
         record_file_arch_(GetBuildArch()),
         use_branch_address_(false),
+        system_wide_collection_(false),
         accumulate_callchain_(false),
         print_callgraph_(false),
         callgraph_show_callee_(true),
@@ -312,6 +313,7 @@ class ReportCommand : public Command {
   std::unique_ptr<SampleTree> sample_tree_;
   bool use_branch_address_;
   std::string record_cmdline_;
+  bool system_wide_collection_;
   bool accumulate_callchain_;
   bool print_callgraph_;
   bool callgraph_show_callee_;
@@ -569,8 +571,11 @@ void ReportCommand::ProcessSampleRecord(const SampleRecord& r) {
         std::vector<char> stack(r.stack_user_data.data.begin(),
                                 r.stack_user_data.data.begin() + r.stack_user_data.data.size());
         ArchType arch = GetArchForAbi(ScopedCurrentArch::GetCurrentArch(), r.regs_user_data.abi);
+        // Normally do strict arch check when unwinding stack. But allow unwinding 32-bit processes
+        // on 64-bit devices for system wide profiling.
+        bool strict_arch_check = !system_wide_collection_;
         std::vector<uint64_t> unwind_ips =
-            UnwindCallChain(arch, *sample->thread, regs, stack);
+            UnwindCallChain(arch, *sample->thread, regs, stack, strict_arch_check);
         if (!unwind_ips.empty()) {
           ips.push_back(PERF_CONTEXT_USER);
           ips.insert(ips.end(), unwind_ips.begin(), unwind_ips.end());
@@ -647,6 +652,20 @@ bool ReportCommand::ReadFeaturesFromRecordFile() {
   std::vector<std::string> cmdline = record_file_reader_->ReadCmdlineFeature();
   if (!cmdline.empty()) {
     record_cmdline_ = android::base::Join(cmdline, ' ');
+    // TODO: the code to detect system wide collection option is fragile, remove it once we can
+    // do cross unwinding.
+    for (size_t i = 0; i < cmdline.size(); i++) {
+      std::string& s = cmdline[i];
+      if (s == "-a") {
+        system_wide_collection_ = true;
+        break;
+      } else if (s == "--call-graph" || s == "--cpu" || s == "-e" || s == "-f" || s == "-F" ||
+                 s == "-j" || s == "-m" || s == "-o" || s == "-p" || s == "-t") {
+        i++;
+      } else if (!s.empty() && s[0] != '-') {
+        break;
+      }
+    }
   }
   return true;
 }
