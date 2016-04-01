@@ -53,9 +53,7 @@ TEST(record_cmd, no_options) {
 }
 
 TEST(record_cmd, system_wide_option) {
-  if (IsRoot()) {
-    ASSERT_TRUE(RunRecordCmd({"-a"}));
-  }
+  TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-a"})));
 }
 
 TEST(record_cmd, sample_period_option) {
@@ -107,9 +105,7 @@ TEST(record_cmd, dump_build_id_feature) {
 }
 
 TEST(record_cmd, tracepoint_event) {
-  if (IsRoot()) {
-    ASSERT_TRUE(RunRecordCmd({"-a", "-e", "sched:sched_switch"}));
-  }
+  TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-a", "-e", "sched:sched_switch"})));
 }
 
 TEST(record_cmd, branch_sampling) {
@@ -133,11 +129,24 @@ TEST(record_cmd, fp_callchain_sampling) {
   ASSERT_TRUE(RunRecordCmd({"--call-graph", "fp"}));
 }
 
+TEST(record_cmd, system_wide_fp_callchain_sampling) {
+  TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-a", "--call-graph", "fp"})));
+}
+
 TEST(record_cmd, dwarf_callchain_sampling) {
   if (IsDwarfCallChainSamplingSupported()) {
     ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf"}));
     ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf,16384"}));
     ASSERT_TRUE(RunRecordCmd({"-g"}));
+  } else {
+    GTEST_LOG_(INFO)
+        << "This test does nothing as dwarf callchain sampling is not supported on this device.";
+  }
+}
+
+TEST(record_cmd, system_wide_dwarf_callchain_sampling) {
+  if (IsDwarfCallChainSamplingSupported()) {
+    TEST_IN_ROOT(RunRecordCmd({"-a", "--call-graph", "dwarf"}));
   } else {
     GTEST_LOG_(INFO)
         << "This test does nothing as dwarf callchain sampling is not supported on this device.";
@@ -196,9 +205,7 @@ TEST(record_cmd, more_than_one_event_types) {
 
 TEST(record_cmd, cpu_option) {
   ASSERT_TRUE(RunRecordCmd({"--cpu", "0"}));
-  if (IsRoot()) {
-    ASSERT_TRUE(RunRecordCmd({"--cpu", "0", "-a"}));
-  }
+  TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"--cpu", "0", "-a"})));
 }
 
 TEST(record_cmd, mmap_page_option) {

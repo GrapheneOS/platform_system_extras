@@ -58,6 +58,7 @@ constexpr ArchType GetBuildArch() {
 ArchType GetArchType(const std::string& arch);
 ArchType GetArchForAbi(ArchType machine_arch, int abi);
 std::string GetArchString(ArchType arch);
+bool IsArchTheSame(ArchType arch1, ArchType arch2, bool strict_check);
 uint64_t GetSupportedRegMask(ArchType arch);
 std::string GetRegName(size_t regno, ArchType arch);
 

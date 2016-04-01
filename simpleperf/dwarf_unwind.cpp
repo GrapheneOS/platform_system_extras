@@ -95,11 +95,12 @@ static ucontext_t BuildUContextFromRegs(const RegSet& regs __attribute__((unused
 }
 
 std::vector<uint64_t> UnwindCallChain(ArchType arch, const ThreadEntry& thread,
-                                      const RegSet& regs, const std::vector<char>& stack) {
+                                      const RegSet& regs, const std::vector<char>& stack,
+                                      bool strict_arch_check) {
   std::vector<uint64_t> result;
-  if (arch != GetBuildArch()) {
+  if (!IsArchTheSame(arch, GetBuildArch(), strict_arch_check)) {
     LOG(FATAL) << "simpleperf is built in arch " << GetArchString(GetBuildArch())
-        << ", and can't do stack unwinding for arch " << GetArchString(arch);
+            << ", and can't do stack unwinding for arch " << GetArchString(arch);
     return result;
   }
   uint64_t sp_reg_value;

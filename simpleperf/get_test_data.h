@@ -24,8 +24,6 @@
 std::string GetTestData(const std::string& filename);
 const std::string& GetTestDataDir();
 
-bool IsRoot();
-
 // The source code of elf and elf_with_mini_debug_info is testdata/elf_file_source.cpp.
 static const std::string ELF_FILE = "elf";
 static const std::string ELF_FILE_WITH_MINI_DEBUG_INFO = "elf_with_mini_debug_info";
