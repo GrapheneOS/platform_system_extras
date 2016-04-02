@@ -19,6 +19,7 @@
 
 #include <functional>
 #include <map>
+#include <unordered_map>
 #include <vector>
 
 #include <android-base/macros.h>
@@ -26,6 +27,7 @@
 #include "event_fd.h"
 #include "event_type.h"
 #include "perf_event.h"
+#include "record.h"
 
 struct CountersInfo {
   const EventTypeAndModifier* event_type;
@@ -72,9 +74,11 @@ class EventSelectionSet {
   bool OpenEventFilesForCpus(const std::vector<int>& cpus);
   bool OpenEventFilesForThreadsOnCpus(const std::vector<pid_t>& threads, std::vector<int> cpus);
   bool ReadCounters(std::vector<CountersInfo>* counters);
-  void PreparePollForEventFiles(std::vector<pollfd>* pollfds);
+  void PrepareToPollForEventFiles(std::vector<pollfd>* pollfds);
   bool MmapEventFiles(size_t mmap_pages);
-  bool ReadMmapEventData(std::function<bool(const char*, size_t)> callback);
+  void PrepareToReadMmapEventData(std::function<bool (Record*)> callback);
+  bool ReadMmapEventData();
+  bool FinishReadMmapEventData();
 
   const perf_event_attr* FindEventAttrByType(const EventTypeAndModifier& event_type_modifier);
   const std::vector<std::unique_ptr<EventFd>>* FindEventFdsByType(
@@ -83,6 +87,8 @@ class EventSelectionSet {
  private:
   void UnionSampleType();
   bool OpenEventFiles(const std::vector<pid_t>& threads, const std::vector<int>& cpus);
+  bool ReadMmapEventDataForFd(std::unique_ptr<EventFd>& event_fd, const perf_event_attr& attr,
+                              bool* has_data);
 
   struct EventSelection {
     EventTypeAndModifier event_type_modifier;
@@ -92,6 +98,10 @@ class EventSelectionSet {
   EventSelection* FindSelectionByType(const EventTypeAndModifier& event_type_modifier);
 
   std::vector<EventSelection> selections_;
+
+  std::function<bool (Record*)> record_callback_;
+  std::unique_ptr<RecordCache> record_cache_;
+  std::unordered_map<uint64_t, const perf_event_attr*> event_id_to_attr_map_;
 
   DISALLOW_COPY_AND_ASSIGN(EventSelectionSet);
 };

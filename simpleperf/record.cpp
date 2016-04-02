@@ -69,9 +69,10 @@ SampleId::SampleId() {
 }
 
 // Return sample_id size in binary format.
-size_t SampleId::CreateContent(const perf_event_attr& attr) {
+size_t SampleId::CreateContent(const perf_event_attr& attr, uint64_t event_id) {
   sample_id_all = attr.sample_id_all;
   sample_type = attr.sample_type;
+  id_data.id = event_id;
   // Other data are not necessary. TODO: Set missing SampleId data.
   return Size();
 }
@@ -132,7 +133,7 @@ void SampleId::Dump(size_t indent) const {
       PrintIndented(indent, "sample_id: time %" PRId64 "\n", time_data.time);
     }
     if (sample_type & PERF_SAMPLE_ID) {
-      PrintIndented(indent, "sample_id: stream_id %" PRId64 "\n", id_data.id);
+      PrintIndented(indent, "sample_id: id %" PRId64 "\n", id_data.id);
     }
     if (sample_type & PERF_SAMPLE_STREAM_ID) {
       PrintIndented(indent, "sample_id: stream_id %" PRId64 "\n", stream_id_data.stream_id);
@@ -576,8 +577,8 @@ std::vector<char> UnknownRecord::BinaryFormat() const {
 void UnknownRecord::DumpData(size_t) const {
 }
 
-static std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
-                                                    const perf_event_header* pheader) {
+std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
+                                             const perf_event_header* pheader) {
   switch (pheader->type) {
     case PERF_RECORD_MMAP:
       return std::unique_ptr<Record>(new MmapRecord(attr, pheader));
@@ -611,25 +612,9 @@ std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(const perf_event_attr
   return result;
 }
 
-std::unique_ptr<Record> ReadRecordFromFile(const perf_event_attr& attr, FILE* fp) {
-  std::vector<char> buf(sizeof(perf_event_header));
-  perf_event_header* header = reinterpret_cast<perf_event_header*>(&buf[0]);
-  if (fread(header, sizeof(perf_event_header), 1, fp) != 1) {
-    PLOG(ERROR) << "Failed to read record file";
-    return nullptr;
-  }
-  buf.resize(header->size);
-  header = reinterpret_cast<perf_event_header*>(&buf[0]);
-  if (fread(&buf[sizeof(perf_event_header)], buf.size() - sizeof(perf_event_header), 1, fp) != 1) {
-    PLOG(ERROR) << "Failed to read record file";
-    return nullptr;
-  }
-  return ReadRecordFromBuffer(attr, header);
-}
-
 MmapRecord CreateMmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_t pid, uint32_t tid,
                             uint64_t addr, uint64_t len, uint64_t pgoff,
-                            const std::string& filename) {
+                            const std::string& filename, uint64_t event_id) {
   MmapRecord record;
   record.header.type = PERF_RECORD_MMAP;
   record.header.misc = (in_kernel ? PERF_RECORD_MISC_KERNEL : PERF_RECORD_MISC_USER);
@@ -639,28 +624,28 @@ MmapRecord CreateMmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_
   record.data.len = len;
   record.data.pgoff = pgoff;
   record.filename = filename;
-  size_t sample_id_size = record.sample_id.CreateContent(attr);
+  size_t sample_id_size = record.sample_id.CreateContent(attr, event_id);
   record.header.size = sizeof(record.header) + sizeof(record.data) +
                        ALIGN(record.filename.size() + 1, 8) + sample_id_size;
   return record;
 }
 
 CommRecord CreateCommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
-                            const std::string& comm) {
+                            const std::string& comm, uint64_t event_id) {
   CommRecord record;
   record.header.type = PERF_RECORD_COMM;
   record.header.misc = 0;
   record.data.pid = pid;
   record.data.tid = tid;
   record.comm = comm;
-  size_t sample_id_size = record.sample_id.CreateContent(attr);
+  size_t sample_id_size = record.sample_id.CreateContent(attr, event_id);
   record.header.size = sizeof(record.header) + sizeof(record.data) +
                        ALIGN(record.comm.size() + 1, 8) + sample_id_size;
   return record;
 }
 
 ForkRecord CreateForkRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid, uint32_t ppid,
-                            uint32_t ptid) {
+                            uint32_t ptid, uint64_t event_id) {
   ForkRecord record;
   record.header.type = PERF_RECORD_FORK;
   record.header.misc = 0;
@@ -669,7 +654,7 @@ ForkRecord CreateForkRecord(const perf_event_attr& attr, uint32_t pid, uint32_t 
   record.data.tid = tid;
   record.data.ptid = ptid;
   record.data.time = 0;
-  size_t sample_id_size = record.sample_id.CreateContent(attr);
+  size_t sample_id_size = record.sample_id.CreateContent(attr, event_id);
   record.header.size = sizeof(record.header) + sizeof(record.data) + sample_id_size;
   return record;
 }
@@ -710,10 +695,8 @@ bool RecordCache::RecordComparator::operator()(const RecordWithSeq& r1,
   return r2.IsHappensBefore(r1);
 }
 
-RecordCache::RecordCache(const perf_event_attr& attr, size_t min_cache_size,
-                         uint64_t min_time_diff_in_ns)
-    : attr_(attr),
-      has_timestamp_(attr.sample_id_all && (attr.sample_type & PERF_SAMPLE_TIME)),
+RecordCache::RecordCache(bool has_timestamp, size_t min_cache_size, uint64_t min_time_diff_in_ns)
+    : has_timestamp_(has_timestamp),
       min_cache_size_(min_cache_size),
       min_time_diff_in_ns_(min_time_diff_in_ns),
       last_time_(0),
@@ -725,20 +708,17 @@ RecordCache::~RecordCache() {
   PopAll();
 }
 
-void RecordCache::Push(const char* data, size_t size) {
-  std::vector<std::unique_ptr<Record>> records = ReadRecordsFromBuffer(attr_, data, size);
+void RecordCache::Push(std::unique_ptr<Record> record) {
   if (has_timestamp_) {
-    for (const auto& r : records) {
-      last_time_ = std::max(last_time_, r->Timestamp());
-    }
+    last_time_ = std::max(last_time_, record->Timestamp());
   }
+  queue_.push(CreateRecordWithSeq(record.release()));
+}
+
+void RecordCache::Push(std::vector<std::unique_ptr<Record>> records) {
   for (auto& r : records) {
     queue_.push(CreateRecordWithSeq(r.release()));
   }
-}
-
-void RecordCache::Push(std::unique_ptr<Record> record) {
-  queue_.push(CreateRecordWithSeq(record.release()));
 }
 
 std::unique_ptr<Record> RecordCache::Pop() {
