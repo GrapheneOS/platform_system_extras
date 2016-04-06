@@ -135,17 +135,15 @@ class RecordCommand : public Command {
 
   bool Run(const std::vector<std::string>& args);
 
-  static bool ReadMmapDataCallback(const char* data, size_t size);
-
  private:
   bool ParseOptions(const std::vector<std::string>& args, std::vector<std::string>* non_option_args);
   bool AddMeasuredEventType(const std::string& event_type_name);
   bool SetEventSelection();
   bool CreateAndInitRecordFile();
   std::unique_ptr<RecordFileWriter> CreateRecordFile(const std::string& filename);
-  bool DumpKernelAndModuleMmaps();
-  bool DumpThreadCommAndMmaps(bool all_threads, const std::vector<pid_t>& selected_threads);
-  bool CollectRecordsFromKernel(const char* data, size_t size);
+  bool DumpKernelAndModuleMmaps(const perf_event_attr* attr, uint64_t event_id);
+  bool DumpThreadCommAndMmaps(const perf_event_attr* attr, uint64_t event_id,
+                              bool all_threads, const std::vector<pid_t>& selected_threads);
   bool ProcessRecord(Record* record);
   void UpdateRecordForEmbeddedElfPath(Record* record);
   void UnwindRecord(Record* record);
@@ -175,7 +173,6 @@ class RecordCommand : public Command {
   // mmap pages used by each perf event file, should be a power of 2.
   size_t perf_mmap_pages_;
 
-  std::unique_ptr<RecordCache> record_cache_;
   ThreadTree thread_tree_;
   std::string record_filename_;
   std::unique_ptr<RecordFileWriter> record_file_writer_;
@@ -236,7 +233,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     return false;
   }
   std::vector<pollfd> pollfds;
-  event_selection_set_.PreparePollForEventFiles(&pollfds);
+  event_selection_set_.PrepareToPollForEventFiles(&pollfds);
 
   // 4. Create perf.data.
   if (!CreateAndInitRecordFile()) {
@@ -247,12 +244,10 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   if (workload != nullptr && !workload->Start()) {
     return false;
   }
-  record_cache_.reset(
-      new RecordCache(*event_selection_set_.FindEventAttrByType(measured_event_types_[0])));
-  auto callback = std::bind(&RecordCommand::CollectRecordsFromKernel, this, std::placeholders::_1,
-                            std::placeholders::_2);
+  auto callback = std::bind(&RecordCommand::ProcessRecord, this, std::placeholders::_1);
+  event_selection_set_.PrepareToReadMmapEventData(callback);
   while (true) {
-    if (!event_selection_set_.ReadMmapEventData(callback)) {
+    if (!event_selection_set_.ReadMmapEventData()) {
       return false;
     }
     if (signaled) {
@@ -260,12 +255,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     }
     poll(&pollfds[0], pollfds.size(), -1);
   }
-  std::vector<std::unique_ptr<Record>> records = record_cache_->PopAll();
-  for (auto& r : records) {
-    if (!ProcessRecord(r.get())) {
-      return false;
-    }
-  }
+  event_selection_set_.FinishReadMmapEventData();
 
   // 6. Dump additional features, and close record file.
   if (!DumpAdditionalFeatures(args)) {
@@ -491,10 +481,15 @@ bool RecordCommand::CreateAndInitRecordFile() {
   if (record_file_writer_ == nullptr) {
     return false;
   }
-  if (!DumpKernelAndModuleMmaps()) {
+  // Use first perf_event_attr and first event id to dump mmap and comm records.
+  const perf_event_attr* attr = event_selection_set_.FindEventAttrByType(measured_event_types_[0]);
+  const std::vector<std::unique_ptr<EventFd>>* fds =
+      event_selection_set_.FindEventFdsByType(measured_event_types_[0]);
+  uint64_t event_id = (*fds)[0]->Id();
+  if (!DumpKernelAndModuleMmaps(attr, event_id)) {
     return false;
   }
-  if (!DumpThreadCommAndMmaps(system_wide_collection_, monitored_threads_)) {
+  if (!DumpThreadCommAndMmaps(attr, event_id, system_wide_collection_, monitored_threads_)) {
     return false;
   }
   return true;
@@ -525,21 +520,19 @@ std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(const std::str
   return writer;
 }
 
-bool RecordCommand::DumpKernelAndModuleMmaps() {
+bool RecordCommand::DumpKernelAndModuleMmaps(const perf_event_attr* attr, uint64_t event_id) {
   KernelMmap kernel_mmap;
   std::vector<KernelMmap> module_mmaps;
   GetKernelAndModuleMmaps(&kernel_mmap, &module_mmaps);
 
-  const perf_event_attr* attr = event_selection_set_.FindEventAttrByType(measured_event_types_[0]);
-  CHECK(attr != nullptr);
   MmapRecord mmap_record = CreateMmapRecord(*attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
-                                            kernel_mmap.len, 0, kernel_mmap.filepath);
+                                            kernel_mmap.len, 0, kernel_mmap.filepath, event_id);
   if (!ProcessRecord(&mmap_record)) {
     return false;
   }
   for (auto& module_mmap : module_mmaps) {
     MmapRecord mmap_record = CreateMmapRecord(*attr, true, UINT_MAX, 0, module_mmap.start_addr,
-                                              module_mmap.len, 0, module_mmap.filepath);
+                                              module_mmap.len, 0, module_mmap.filepath, event_id);
     if (!ProcessRecord(&mmap_record)) {
       return false;
     }
@@ -547,7 +540,8 @@ bool RecordCommand::DumpKernelAndModuleMmaps() {
   return true;
 }
 
-bool RecordCommand::DumpThreadCommAndMmaps(bool all_threads,
+bool RecordCommand::DumpThreadCommAndMmaps(const perf_event_attr* attr, uint64_t event_id,
+                                           bool all_threads,
                                            const std::vector<pid_t>& selected_threads) {
   std::vector<ThreadComm> thread_comms;
   if (!GetThreadComms(&thread_comms)) {
@@ -565,9 +559,6 @@ bool RecordCommand::DumpThreadCommAndMmaps(bool all_threads,
     }
   }
 
-  const perf_event_attr* attr = event_selection_set_.FindEventAttrByType(measured_event_types_[0]);
-  CHECK(attr != nullptr);
-
   // Dump processes.
   for (auto& thread : thread_comms) {
     if (thread.pid != thread.tid) {
@@ -576,7 +567,7 @@ bool RecordCommand::DumpThreadCommAndMmaps(bool all_threads,
     if (!all_threads && dump_processes.find(thread.pid) == dump_processes.end()) {
       continue;
     }
-    CommRecord record = CreateCommRecord(*attr, thread.pid, thread.tid, thread.comm);
+    CommRecord record = CreateCommRecord(*attr, thread.pid, thread.tid, thread.comm, event_id);
     if (!ProcessRecord(&record)) {
       return false;
     }
@@ -591,7 +582,7 @@ bool RecordCommand::DumpThreadCommAndMmaps(bool all_threads,
       }
       MmapRecord record =
           CreateMmapRecord(*attr, false, thread.pid, thread.tid, thread_mmap.start_addr,
-                           thread_mmap.len, thread_mmap.pgoff, thread_mmap.name);
+                           thread_mmap.len, thread_mmap.pgoff, thread_mmap.name, event_id);
       if (!ProcessRecord(&record)) {
         return false;
       }
@@ -606,26 +597,14 @@ bool RecordCommand::DumpThreadCommAndMmaps(bool all_threads,
     if (!all_threads && dump_threads.find(thread.tid) == dump_threads.end()) {
       continue;
     }
-    ForkRecord fork_record = CreateForkRecord(*attr, thread.pid, thread.tid, thread.pid, thread.pid);
+    ForkRecord fork_record = CreateForkRecord(*attr, thread.pid, thread.tid, thread.pid,
+                                              thread.pid, event_id);
     if (!ProcessRecord(&fork_record)) {
       return false;
     }
-    CommRecord comm_record = CreateCommRecord(*attr, thread.pid, thread.tid, thread.comm);
+    CommRecord comm_record = CreateCommRecord(*attr, thread.pid, thread.tid, thread.comm,
+                                              event_id);
     if (!ProcessRecord(&comm_record)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool RecordCommand::CollectRecordsFromKernel(const char* data, size_t size) {
-  record_cache_->Push(data, size);
-  while (true) {
-    std::unique_ptr<Record> r = record_cache_->Pop();
-    if (r == nullptr) {
-      break;
-    }
-    if (!ProcessRecord(r.get())) {
       return false;
     }
   }

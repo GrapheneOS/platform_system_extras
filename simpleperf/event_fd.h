@@ -65,7 +65,7 @@ class EventFd {
   size_t GetAvailableMmapData(char** pdata);
 
   // Prepare pollfd for poll() to wait on available mmap_data.
-  void PreparePollForMmapData(pollfd* poll_fd);
+  void PrepareToPollForMmapData(pollfd* poll_fd);
 
  private:
   EventFd(int perf_event_fd, const std::string& event_name, pid_t tid, int cpu)

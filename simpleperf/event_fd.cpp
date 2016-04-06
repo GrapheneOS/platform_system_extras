@@ -177,7 +177,7 @@ void EventFd::DiscardMmapData(size_t discard_size) {
   mmap_metadata_page_->data_tail += discard_size;
 }
 
-void EventFd::PreparePollForMmapData(pollfd* poll_fd) {
+void EventFd::PrepareToPollForMmapData(pollfd* poll_fd) {
   memset(poll_fd, 0, sizeof(pollfd));
   poll_fd->fd = perf_event_fd_;
   poll_fd->events = POLLIN;

@@ -306,7 +306,7 @@ class ReportCommand : public Command {
   std::string record_filename_;
   ArchType record_file_arch_;
   std::unique_ptr<RecordFileReader> record_file_reader_;
-  perf_event_attr event_attr_;
+  std::vector<perf_event_attr> event_attrs_;
   std::vector<std::unique_ptr<Displayable>> displayable_items_;
   std::vector<Comparable*> comparable_items_;
   ThreadTree thread_tree_;
@@ -515,15 +515,22 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
 }
 
 bool ReportCommand::ReadEventAttrFromRecordFile() {
-  const std::vector<PerfFileFormat::FileAttr>& attrs = record_file_reader_->AttrSection();
-  if (attrs.size() != 1) {
-    LOG(ERROR) << "record file contains " << attrs.size() << " attrs";
-    return false;
+  const std::vector<PerfFileFormat::FileAttr>& file_attrs = record_file_reader_->AttrSection();
+  for (const auto& attr : file_attrs) {
+    event_attrs_.push_back(attr.attr);
   }
-  event_attr_ = attrs[0].attr;
-  if (use_branch_address_ && (event_attr_.sample_type & PERF_SAMPLE_BRANCH_STACK) == 0) {
-    LOG(ERROR) << record_filename_ << " is not recorded with branch stack sampling option.";
-    return false;
+  if (use_branch_address_) {
+    bool has_branch_stack = true;
+    for (const auto& attr : event_attrs_) {
+      if ((attr.sample_type & PERF_SAMPLE_BRANCH_STACK) == 0) {
+        has_branch_stack = false;
+        break;
+      }
+    }
+    if (!has_branch_stack) {
+      LOG(ERROR) << record_filename_ << " is not recorded with branch stack sampling option.";
+      return false;
+    }
   }
   return true;
 }
@@ -706,19 +713,18 @@ bool ReportCommand::PrintReport() {
 }
 
 void ReportCommand::PrintReportContext() {
-  const EventType* event_type = FindEventTypeByConfig(event_attr_.type, event_attr_.config);
-  std::string event_type_name;
-  if (event_type != nullptr) {
-    event_type_name = event_type->name;
-  } else {
-    event_type_name =
-        android::base::StringPrintf("(type %u, config %llu)", event_attr_.type, event_attr_.config);
-  }
   if (!record_cmdline_.empty()) {
     fprintf(report_fp_, "Cmdline: %s\n", record_cmdline_.c_str());
   }
-  fprintf(report_fp_, "Samples: %" PRIu64 " of event '%s'\n", sample_tree_->TotalSamples(),
-          event_type_name.c_str());
+  for (const auto& attr : event_attrs_) {
+    const EventType* event_type = FindEventTypeByConfig(attr.type, attr.config);
+    std::string name;
+    if (event_type != nullptr) {
+      name = event_type->name;
+    }
+    fprintf(report_fp_, "Event: %s (type %u, config %llu)\n", name.c_str(), attr.type, attr.config);
+  }
+  fprintf(report_fp_, "Samples: %" PRIu64 "\n", sample_tree_->TotalSamples());
   fprintf(report_fp_, "Event count: %" PRIu64 "\n\n", sample_tree_->TotalPeriod());
 }
 
