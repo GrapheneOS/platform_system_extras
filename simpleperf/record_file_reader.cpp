@@ -23,7 +23,7 @@
 
 #include <android-base/logging.h>
 
-#include "perf_event.h"
+#include "event_attr.h"
 #include "record.h"
 #include "utils.h"
 
@@ -45,7 +45,8 @@ std::unique_ptr<RecordFileReader> RecordFileReader::CreateInstance(const std::st
 }
 
 RecordFileReader::RecordFileReader(const std::string& filename, FILE* fp)
-    : filename_(filename), record_fp_(fp) {
+    : filename_(filename), record_fp_(fp), event_id_pos_in_sample_records_(0),
+      event_id_reverse_pos_in_non_sample_records_(0) {
 }
 
 RecordFileReader::~RecordFileReader() {
@@ -102,6 +103,25 @@ bool RecordFileReader::ReadAttrSection() {
     memcpy(&attr.ids, &buf[perf_event_attr_size], section_desc_size);
     file_attrs_.push_back(attr);
   }
+  if (file_attrs_.size() > 1) {
+    std::vector<perf_event_attr> attrs;
+    for (const auto& file_attr : file_attrs_) {
+      attrs.push_back(file_attr.attr);
+    }
+    if (!GetCommonEventIdPositionsForAttrs(attrs, &event_id_pos_in_sample_records_,
+                                               &event_id_reverse_pos_in_non_sample_records_)) {
+      return false;
+    }
+  }
+  for (size_t i = 0; i < file_attrs_.size(); ++i) {
+    std::vector<uint64_t> ids;
+    if (!ReadIdsForAttr(file_attrs_[i], &ids)) {
+      return false;
+    }
+    for (auto id : ids) {
+      event_id_to_attr_map_[id] = &file_attrs_[i].attr;
+    }
+  }
   return true;
 }
 
@@ -150,9 +170,16 @@ bool RecordFileReader::ReadDataSection(std::function<bool(std::unique_ptr<Record
     PLOG(ERROR) << "failed to fseek()";
     return false;
   }
-  RecordCache cache(file_attrs_[0].attr);
+  bool has_timestamp = true;
+  for (const auto& attr : file_attrs_) {
+    if (!IsTimestampSupported(attr.attr)) {
+      has_timestamp = false;
+      break;
+    }
+  }
+  RecordCache cache(has_timestamp);
   for (size_t nbytes_read = 0; nbytes_read < header_.data.size;) {
-    std::unique_ptr<Record> record = ReadRecordFromFile(file_attrs_[0].attr, record_fp_);
+    std::unique_ptr<Record> record = ReadRecord();
     if (record == nullptr) {
       return false;
     }
@@ -178,6 +205,37 @@ bool RecordFileReader::ReadDataSection(std::function<bool(std::unique_ptr<Record
     }
   }
   return true;
+}
+
+std::unique_ptr<Record> RecordFileReader::ReadRecord() {
+  std::vector<char> buf(sizeof(perf_event_header));
+  if (fread(buf.data(), sizeof(perf_event_header), 1, record_fp_) != 1) {
+    PLOG(ERROR) << "failed to read file " << filename_;
+    return nullptr;
+  }
+  perf_event_header* header = reinterpret_cast<perf_event_header*>(&buf[0]);
+  if (buf.size() < header->size) {
+    buf.resize(header->size);
+    header = reinterpret_cast<perf_event_header*>(&buf[0]);
+  }
+  if (fread(&buf[sizeof(perf_event_header)], buf.size() - sizeof(perf_event_header), 1, record_fp_) != 1) {
+    PLOG(ERROR) << "failed to read file " << filename_;
+    return nullptr;
+  }
+  const perf_event_attr* attr = &file_attrs_[0].attr;
+  if (file_attrs_.size() > 1) {
+    uint64_t event_id;
+    if (header->type == PERF_RECORD_SAMPLE) {
+      event_id = *reinterpret_cast<uint64_t*>(&buf[event_id_pos_in_sample_records_]);
+    } else {
+      event_id = *reinterpret_cast<uint64_t*>(
+          &buf[header->size - event_id_reverse_pos_in_non_sample_records_]);
+    }
+    auto it = event_id_to_attr_map_.find(event_id);
+    CHECK(it != event_id_to_attr_map_.end());
+    attr = it->second;
+  }
+  return ReadRecordFromBuffer(*attr, header);
 }
 
 bool RecordFileReader::ReadFeatureSection(int feature, std::vector<char>* data) {
