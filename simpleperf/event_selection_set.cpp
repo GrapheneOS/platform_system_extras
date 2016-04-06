@@ -250,11 +250,11 @@ bool EventSelectionSet::ReadCounters(std::vector<CountersInfo>* counters) {
   return true;
 }
 
-void EventSelectionSet::PreparePollForEventFiles(std::vector<pollfd>* pollfds) {
+void EventSelectionSet::PrepareToPollForEventFiles(std::vector<pollfd>* pollfds) {
   for (auto& selection : selections_) {
     for (auto& event_fd : selection.event_fds) {
       pollfd poll_fd;
-      event_fd->PreparePollForMmapData(&poll_fd);
+      event_fd->PrepareToPollForMmapData(&poll_fd);
       pollfds->push_back(poll_fd);
     }
   }
@@ -271,36 +271,68 @@ bool EventSelectionSet::MmapEventFiles(size_t mmap_pages) {
   return true;
 }
 
-static bool ReadMmapEventDataForFd(std::unique_ptr<EventFd>& event_fd,
-                                   std::function<bool(const char*, size_t)> callback,
-                                   bool* have_data) {
-  *have_data = false;
+void EventSelectionSet::PrepareToReadMmapEventData(std::function<bool (Record*)> callback) {
+  record_callback_ = callback;
+  bool has_timestamp = true;
+  for (const auto& selection : selections_) {
+    if (!IsTimestampSupported(selection.event_attr)) {
+      has_timestamp = false;
+      break;
+    }
+  }
+  record_cache_.reset(new RecordCache(has_timestamp));
+
+  for (const auto& selection : selections_) {
+    for (const auto& event_fd : selection.event_fds) {
+      int event_id = event_fd->Id();
+      event_id_to_attr_map_[event_id] = &selection.event_attr;
+    }
+  }
+}
+
+bool EventSelectionSet::ReadMmapEventData() {
+  for (auto& selection : selections_) {
+    for (auto& event_fd : selection.event_fds) {
+      bool has_data = true;
+      while (has_data) {
+        if (!ReadMmapEventDataForFd(event_fd, selection.event_attr, &has_data)) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+bool EventSelectionSet::ReadMmapEventDataForFd(std::unique_ptr<EventFd>& event_fd,
+                                               const perf_event_attr& attr,
+                                               bool* has_data) {
+  *has_data = false;
   while (true) {
     char* data;
     size_t size = event_fd->GetAvailableMmapData(&data);
     if (size == 0) {
       break;
     }
-    if (!callback(data, size)) {
-      return false;
+    std::vector<std::unique_ptr<Record>> records = ReadRecordsFromBuffer(attr, data, size);
+    record_cache_->Push(std::move(records));
+    std::unique_ptr<Record> r = record_cache_->Pop();
+    while (r != nullptr) {
+      if (!record_callback_(r.get())) {
+        return false;
+      }
+      r = record_cache_->Pop();
     }
-    *have_data = true;
+    *has_data = true;
   }
   return true;
 }
 
-bool EventSelectionSet::ReadMmapEventData(std::function<bool(const char*, size_t)> callback) {
-  for (auto& selection : selections_) {
-    for (auto& event_fd : selection.event_fds) {
-      while (true) {
-        bool have_data;
-        if (!ReadMmapEventDataForFd(event_fd, callback, &have_data)) {
-          return false;
-        }
-        if (!have_data) {
-          break;
-        }
-      }
+bool EventSelectionSet::FinishReadMmapEventData() {
+  std::vector<std::unique_ptr<Record>> records = record_cache_->PopAll();
+  for (auto& r : records) {
+    if (!record_callback_(r.get())) {
+      return false;
     }
   }
   return true;

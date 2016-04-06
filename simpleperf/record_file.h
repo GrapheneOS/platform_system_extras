@@ -23,6 +23,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <android-base/macros.h>
@@ -124,13 +125,18 @@ class RecordFileReader {
   bool ReadAttrSection();
   bool ReadFeatureSectionDescriptors();
   bool ReadFeatureSection(int feature, std::vector<char>* data);
+  std::unique_ptr<Record> ReadRecord();
 
   const std::string filename_;
   FILE* record_fp_;
 
   PerfFileFormat::FileHeader header_;
   std::vector<PerfFileFormat::FileAttr> file_attrs_;
+  std::unordered_map<uint64_t, perf_event_attr*> event_id_to_attr_map_;
   std::map<int, PerfFileFormat::SectionDesc> feature_section_descriptors_;
+
+  size_t event_id_pos_in_sample_records_;
+  size_t event_id_reverse_pos_in_non_sample_records_;
 
   DISALLOW_COPY_AND_ASSIGN(RecordFileReader);
 };
