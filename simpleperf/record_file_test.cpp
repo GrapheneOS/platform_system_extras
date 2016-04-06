@@ -38,6 +38,7 @@ class RecordFileTest : public ::testing::Test {
     std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType(event_type_str);
     ASSERT_TRUE(event_type_modifier != nullptr);
     perf_event_attr attr = CreateDefaultPerfEventAttr(event_type_modifier->event_type);
+    attr.sample_id_all = 1;
     attrs_.push_back(std::unique_ptr<perf_event_attr>(new perf_event_attr(attr)));
     AttrWithId attr_id;
     attr_id.attr = attrs_.back().get();
@@ -61,7 +62,7 @@ TEST_F(RecordFileTest, smoke) {
 
   // Write data section.
   MmapRecord mmap_record = CreateMmapRecord(*(attr_ids_[0].attr), true, 1, 1, 0x1000, 0x2000,
-                                            0x3000, "mmap_record_example");
+                                            0x3000, "mmap_record_example", attr_ids_[0].ids[0]);
   ASSERT_TRUE(writer->WriteData(mmap_record.BinaryFormat()));
 
   // Write feature section.
@@ -111,7 +112,8 @@ TEST_F(RecordFileTest, records_sorted_by_time) {
 
   // Write data section.
   MmapRecord r1 =
-      CreateMmapRecord(*(attr_ids_[0].attr), true, 1, 1, 0x100, 0x2000, 0x3000, "mmap_record1");
+      CreateMmapRecord(*(attr_ids_[0].attr), true, 1, 1, 0x100, 0x2000, 0x3000, "mmap_record1",
+                       attr_ids_[0].ids[0]);
   MmapRecord r2 = r1;
   MmapRecord r3 = r1;
   r1.sample_id.time_data.time = 2;

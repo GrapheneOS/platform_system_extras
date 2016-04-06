@@ -117,7 +117,7 @@ struct SampleId {
   SampleId();
 
   // Create the content of sample_id. It depends on the attr we use.
-  size_t CreateContent(const perf_event_attr& attr);
+  size_t CreateContent(const perf_event_attr& attr, uint64_t event_id);
 
   // Parse sample_id from binary format in the buffer pointed by p.
   void ReadFromBinaryFormat(const perf_event_attr& attr, const char* p, const char* end);
@@ -322,11 +322,11 @@ struct UnknownRecord : public Record {
 // we are not likely to receive a record for time (t - min_time_diff) or earlier.
 class RecordCache {
  public:
-  RecordCache(const perf_event_attr& attr, size_t min_cache_size = 1000u,
+  RecordCache(bool has_timestamp, size_t min_cache_size = 1000u,
               uint64_t min_time_diff_in_ns = 1000000u);
   ~RecordCache();
-  void Push(const char* data, size_t size);
   void Push(std::unique_ptr<Record> record);
+  void Push(std::vector<std::unique_ptr<Record>> records);
   std::unique_ptr<Record> Pop();
   std::vector<std::unique_ptr<Record>> PopAll();
 
@@ -344,7 +344,6 @@ class RecordCache {
 
   RecordWithSeq CreateRecordWithSeq(Record *r);
 
-  const perf_event_attr attr_;
   bool has_timestamp_;
   size_t min_cache_size_;
   uint64_t min_time_diff_in_ns_;
@@ -354,16 +353,17 @@ class RecordCache {
       RecordComparator> queue_;
 };
 
+std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
+                                                    const perf_event_header* pheader);
 std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(const perf_event_attr& attr,
                                                            const char* buf, size_t buf_size);
-std::unique_ptr<Record> ReadRecordFromFile(const perf_event_attr& attr, FILE* fp);
 MmapRecord CreateMmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_t pid, uint32_t tid,
                             uint64_t addr, uint64_t len, uint64_t pgoff,
-                            const std::string& filename);
+                            const std::string& filename, uint64_t event_id);
 CommRecord CreateCommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
-                            const std::string& comm);
+                            const std::string& comm, uint64_t event_id);
 ForkRecord CreateForkRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid, uint32_t ppid,
-                            uint32_t ptid);
+                            uint32_t ptid, uint64_t event_id);
 BuildIdRecord CreateBuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id,
                                   const std::string& filename);
 

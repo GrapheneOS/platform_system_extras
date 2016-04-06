@@ -267,6 +267,13 @@ TEST_F(ReportCommandTest, report_symbols_of_nativelib_in_apk) {
   ASSERT_NE(content.find("Func2"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, report_more_than_one_event_types) {
+  Report(PERF_DATA_WITH_TWO_EVENT_TYPES);
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("cpu-cycles"), std::string::npos);
+  ASSERT_NE(content.find("cpu-clock"), std::string::npos);
+}
+
 #if defined(__linux__)
 
 static std::unique_ptr<Command> RecordCmd() {
