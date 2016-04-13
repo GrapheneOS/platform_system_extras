@@ -46,14 +46,6 @@ LOCAL_STATIC_JAVA_LIBRARIES := bouncycastle-host
 include $(BUILD_HOST_JAVA_LIBRARY)
 
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := BootSignature.java KeystoreSigner.java Utils.java
-LOCAL_MODULE := BootKeystoreSigner
-LOCAL_JAR_MANIFEST := KeystoreSigner.mf
-LOCAL_MODULE_TAGS := optional
-LOCAL_STATIC_JAVA_LIBRARIES := bouncycastle-host
-include $(BUILD_HOST_JAVA_LIBRARY)
-
-include $(CLEAR_VARS)
 LOCAL_SRC_FILES := verity_verifier
 LOCAL_MODULE := verity_verifier
 LOCAL_MODULE_CLASS := EXECUTABLES
@@ -78,15 +70,6 @@ LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_IS_HOST_MODULE := true
 LOCAL_MODULE_TAGS := optional
 LOCAL_REQUIRED_MODULES := BootSignature
-include $(BUILD_PREBUILT)
-
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := keystore_signer
-LOCAL_MODULE := keystore_signer
-LOCAL_MODULE_CLASS := EXECUTABLES
-LOCAL_IS_HOST_MODULE := true
-LOCAL_MODULE_TAGS := optional
-LOCAL_REQUIRED_MODULES := KeystoreSigner
 include $(BUILD_PREBUILT)
 
 include $(CLEAR_VARS)
