@@ -32,13 +32,14 @@ include $(LLVM_ROOT_PATH)/llvm.mk
 
 simpleperf_shared_libraries_target := \
   libbacktrace \
-  libbacktrace_offline \
+  libunwind \
   libbase \
   liblog \
   libutils \
   libLLVM \
 
 simpleperf_static_libraries_target := \
+  libbacktrace_offline \
   liblzma \
   libziparchive \
   libz \
@@ -46,13 +47,13 @@ simpleperf_static_libraries_target := \
 static_simpleperf_static_libraries_target := \
   libbacktrace_offline \
   libbacktrace \
+  libunwind \
   libziparchive \
   libz \
   libbase \
   libcutils \
   liblog \
   libutils \
-  libunwind \
   liblzma \
   libLLVMObject \
   libLLVMBitReader \
@@ -62,16 +63,6 @@ static_simpleperf_static_libraries_target := \
   libLLVMSupport \
   libc \
 
-simpleperf_shared_libraries_host_linux := \
-  libbacktrace_offline \
-  libbacktrace \
-
-simpleperf_shared_libraries_host_darwin := \
-  libLLVM \
-
-simpleperf_shared_libraries_host_windows := \
-  libLLVM \
-
 simpleperf_static_libraries_host := \
   libziparchive-host \
   libbase \
@@ -79,6 +70,18 @@ simpleperf_static_libraries_host := \
   liblzma \
   libz \
   libutils \
+  libLLVMObject \
+  libLLVMBitReader \
+  libLLVMMC \
+  libLLVMMCParser \
+  libLLVMCore \
+  libLLVMSupport \
+
+simpleperf_static_libraries_host_linux := \
+  libbacktrace_offline \
+  libbacktrace \
+  libunwind \
+  libcutils \
 
 simpleperf_ldlibs_host_linux := -lrt
 
@@ -164,9 +167,7 @@ LOCAL_SRC_FILES_darwin := $(libsimpleperf_src_files_darwin)
 LOCAL_SRC_FILES_linux := $(libsimpleperf_src_files_linux)
 LOCAL_SRC_FILES_windows := $(libsimpleperf_src_files_windows)
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
-LOCAL_SHARED_LIBRARIES_darwin := $(simpleperf_shared_libraries_host_darwin)
-LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
-LOCAL_SHARED_LIBRARIES_windows := $(simpleperf_shared_libraries_host_windows)
+LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := first
 include $(LLVM_HOST_BUILD_MK)
@@ -217,11 +218,10 @@ LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
 LOCAL_CPPFLAGS_windows := $(simpleperf_cppflags_host_windows)
 LOCAL_SRC_FILES := main.cpp
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
-LOCAL_SHARED_LIBRARIES_darwin := $(simpleperf_shared_libraries_host_darwin)
-LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
-LOCAL_SHARED_LIBRARIES_windows := $(simpleperf_shared_libraries_host_windows)
+LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := first
+include $(LLVM_HOST_BUILD_MK)
 include $(BUILD_HOST_EXECUTABLE)
 
 
@@ -276,11 +276,10 @@ LOCAL_CPPFLAGS_windows := $(simpleperf_cppflags_host_windows)
 LOCAL_SRC_FILES := $(simpleperf_unit_test_src_files)
 LOCAL_SRC_FILES_linux := $(simpleperf_unit_test_src_files_linux)
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
-LOCAL_SHARED_LIBRARIES_darwin := $(simpleperf_shared_libraries_host_darwin)
-LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
-LOCAL_SHARED_LIBRARIES_windows := $(simpleperf_shared_libraries_host_windows)
+LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := first
+include $(LLVM_HOST_BUILD_MK)
 include $(BUILD_HOST_NATIVE_TEST)
 
 
@@ -309,9 +308,10 @@ LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
 LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
 LOCAL_SRC_FILES := $(simpleperf_cpu_hotplug_test_src_files)
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
-LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
+LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := first
+include $(LLVM_HOST_BUILD_MK)
 include $(BUILD_HOST_NATIVE_TEST)
 
 
@@ -344,7 +344,7 @@ LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
 LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
 LOCAL_SRC_FILES := $(libsimpleperf_cts_test_src_files)
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
-LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
+LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := both
 include $(LLVM_HOST_BUILD_MK)
