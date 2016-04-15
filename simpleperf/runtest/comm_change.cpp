@@ -8,9 +8,9 @@ void Function1() {
 }
 
 int main() {
-  prctl(PR_SET_NAME, reinterpret_cast<unsigned long>("RUN_COMM1"), 0, 0, 0);
+  prctl(PR_SET_NAME, reinterpret_cast<unsigned long>("RUN_COMM1"), 0, 0, 0); // NOLINT
   Function1();
-  prctl(PR_SET_NAME, reinterpret_cast<unsigned long>("RUN_COMM2"), 0, 0, 0);
+  prctl(PR_SET_NAME, reinterpret_cast<unsigned long>("RUN_COMM2"), 0, 0, 0); // NOLINT
   Function1();
   return 0;
 }
