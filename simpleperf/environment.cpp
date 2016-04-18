@@ -84,9 +84,9 @@ std::vector<int> GetCpusFromString(const std::string& s) {
   const char* p = s.c_str();
   char* endp;
   int last_cpu;
-  long cpu;
+  int cpu;
   // Parse line like: 0,1-3, 5, 7-8
-  while ((cpu = strtol(p, &endp, 10)) != 0 || endp != p) {
+  while ((cpu = static_cast<int>(strtol(p, &endp, 10))) != 0 || endp != p) {
     if (have_dash && !cpu_set.empty()) {
       for (int t = last_cpu + 1; t < cpu; ++t) {
         cpu_set.insert(t);
@@ -222,7 +222,7 @@ void GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<KernelMmap>* m
   }
 
   if (module_mmaps->size() == 0) {
-    kernel_mmap->len = std::numeric_limits<unsigned long long>::max() - kernel_mmap->start_addr;
+    kernel_mmap->len = std::numeric_limits<uint64_t>::max() - kernel_mmap->start_addr;
   } else {
     std::sort(
         module_mmaps->begin(), module_mmaps->end(),
@@ -242,7 +242,7 @@ void GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<KernelMmap>* m
       }
     }
     module_mmaps->back().len =
-        std::numeric_limits<unsigned long long>::max() - module_mmaps->back().start_addr;
+        std::numeric_limits<uint64_t>::max() - module_mmaps->back().start_addr;
   }
 }
 
