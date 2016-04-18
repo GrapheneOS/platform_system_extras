@@ -123,4 +123,6 @@ bool XzDecompress(const std::string& compressed_data, std::string* decompressed_
 
 bool GetLogSeverity(const std::string& name, android::base::LogSeverity* severity);
 
+bool IsRoot();
+
 #endif  // SIMPLE_PERF_UTILS_H_
