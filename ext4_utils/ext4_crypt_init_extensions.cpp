@@ -45,7 +45,7 @@ static std::string vold_command(std::string const& command)
     {
         int sock_;
     public:
-        CloseSocket(int sock) : sock_(sock) {}
+        explicit CloseSocket(int sock) : sock_(sock) {}
         ~CloseSocket() { close(sock_); }
     };
 
