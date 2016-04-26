@@ -24,7 +24,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <thread>
 #include <unordered_map>
 
@@ -32,14 +31,10 @@
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 
-#include "command.h"
 #include "event_attr.h"
 #include "event_fd.h"
 #include "event_type.h"
-
-static std::unique_ptr<Command> RecordCmd() {
-  return CreateCommandInstance("record");
-}
+#include "utils.h"
 
 #if defined(__BIONIC__)
 class ScopedMpdecisionKiller {
@@ -92,23 +87,61 @@ class ScopedMpdecisionKiller {
 };
 #endif
 
-static bool IsCpuOnline(int cpu) {
+static bool IsCpuOnline(int cpu, bool* has_error) {
   std::string filename = android::base::StringPrintf("/sys/devices/system/cpu/cpu%d/online", cpu);
   std::string content;
-  CHECK(android::base::ReadFileToString(filename, &content)) << "failed to read file " << filename;
+  bool ret = android::base::ReadFileToString(filename, &content);
+  if (!ret) {
+    PLOG(ERROR) << "failed to read file " << filename;
+    *has_error = true;
+    return false;
+  }
+  *has_error = false;
   return (content.find('1') != std::string::npos);
 }
 
-static void SetCpuOnline(int cpu, bool online) {
-  if (IsCpuOnline(cpu) == online) {
-    return;
+static bool SetCpuOnline(int cpu, bool online) {
+  bool has_error;
+  bool ret = IsCpuOnline(cpu, &has_error);
+  if (has_error) {
+    return false;
+  }
+  if (ret == online) {
+    return true;
   }
   std::string filename = android::base::StringPrintf("/sys/devices/system/cpu/cpu%d/online", cpu);
   std::string content = online ? "1" : "0";
-  CHECK(android::base::WriteStringToFile(content, filename)) << "Write " << content << " to "
-                                                             << filename << " failed";
-  CHECK_EQ(online, IsCpuOnline(cpu)) << "set cpu " << cpu << (online ? " online" : " offline")
-                                     << " failed";
+  ret = android::base::WriteStringToFile(content, filename);
+  if (!ret) {
+    ret = IsCpuOnline(cpu, &has_error);
+    if (has_error) {
+      return false;
+    }
+    if (online == ret) {
+      return true;
+    }
+    PLOG(ERROR) << "failed to write " << content << " to " << filename;
+    return false;
+  }
+  // Kernel needs time to offline/online cpus, so use a loop to wait here.
+  size_t retry_count = 0;
+  while (true) {
+    ret = IsCpuOnline(cpu, &has_error);
+    if (has_error) {
+      return false;
+    }
+    if (ret == online) {
+      break;
+    }
+    LOG(ERROR) << "reading cpu retry count = " << retry_count << ", requested = " << online
+        << ", real = " << ret;
+    if (++retry_count == 10000) {
+      LOG(ERROR) << "setting cpu " << cpu << (online ? " online" : " offline") << " seems not to take effect";
+      return false;
+    }
+    usleep(1000);
+  }
+  return true;
 }
 
 static int GetCpuCount() {
@@ -119,7 +152,12 @@ class CpuOnlineRestorer {
  public:
   CpuOnlineRestorer() {
     for (int cpu = 1; cpu < GetCpuCount(); ++cpu) {
-      online_map_[cpu] = IsCpuOnline(cpu);
+      bool has_error;
+      bool ret = IsCpuOnline(cpu, &has_error);
+      if (has_error) {
+        continue;
+      }
+      online_map_[cpu] = ret;
     }
   }
 
@@ -133,6 +171,26 @@ class CpuOnlineRestorer {
   std::unordered_map<int, bool> online_map_;
 };
 
+bool FindAHotpluggableCpu(int* hotpluggable_cpu) {
+  if (!IsRoot()) {
+    GTEST_LOG_(INFO) << "This test needs root privilege to hotplug cpu.";
+    return false;
+  }
+  for (int cpu = 1; cpu < GetCpuCount(); ++cpu) {
+    bool has_error;
+    bool online = IsCpuOnline(cpu, &has_error);
+    if (has_error) {
+      continue;
+    }
+    if (SetCpuOnline(cpu, !online)) {
+      *hotpluggable_cpu = cpu;
+      return true;
+    }
+  }
+  GTEST_LOG_(INFO) << "There is no hotpluggable cpu.";
+  return false;
+}
+
 struct CpuToggleThreadArg {
   int toggle_cpu;
   std::atomic<bool> end_flag;
@@ -140,93 +198,94 @@ struct CpuToggleThreadArg {
 
 static void CpuToggleThread(CpuToggleThreadArg* arg) {
   while (!arg->end_flag) {
-    SetCpuOnline(arg->toggle_cpu, true);
-    sleep(1);
-    SetCpuOnline(arg->toggle_cpu, false);
-    sleep(1);
+    CHECK(SetCpuOnline(arg->toggle_cpu, true));
+    CHECK(SetCpuOnline(arg->toggle_cpu, false));
   }
-}
-
-static bool RecordInChildProcess(int record_cpu, int record_duration_in_second) {
-  pid_t pid = fork();
-  CHECK(pid != -1);
-  if (pid == 0) {
-    std::string cpu_str = android::base::StringPrintf("%d", record_cpu);
-    std::string record_duration_str = android::base::StringPrintf("%d", record_duration_in_second);
-    bool ret = RecordCmd()->Run({"-a", "--cpu", cpu_str, "sleep", record_duration_str});
-    extern bool system_wide_perf_event_open_failed;
-    // It is not an error if perf_event_open failed because of cpu-hotplug.
-    if (!ret && !system_wide_perf_event_open_failed) {
-      exit(1);
-    }
-    exit(0);
-  }
-  int timeout = record_duration_in_second + 10;
-  auto end_time = std::chrono::steady_clock::now() + std::chrono::seconds(timeout);
-  bool child_success = false;
-  while (std::chrono::steady_clock::now() < end_time) {
-    int exit_state;
-    pid_t ret = waitpid(pid, &exit_state, WNOHANG);
-    if (ret == pid) {
-      if (WIFSIGNALED(exit_state) || (WIFEXITED(exit_state) && WEXITSTATUS(exit_state) != 0)) {
-        child_success = false;
-      } else {
-        child_success = true;
-      }
-      break;
-    } else if (ret == -1) {
-      child_success = false;
-      break;
-    }
-    sleep(1);
-  }
-  return child_success;
 }
 
 // http://b/25193162.
 TEST(cpu_offline, offline_while_recording) {
   ScopedMpdecisionKiller scoped_mpdecision_killer;
   CpuOnlineRestorer cpuonline_restorer;
-
   if (GetCpuCount() == 1) {
     GTEST_LOG_(INFO) << "This test does nothing, because there is only one cpu in the system.";
     return;
   }
-  for (int i = 1; i < GetCpuCount(); ++i) {
-    if (!IsCpuOnline(i)) {
-      SetCpuOnline(i, true);
-    }
+  // Start cpu hotpluger.
+  int test_cpu;
+  if (!FindAHotpluggableCpu(&test_cpu)) {
+    return;
   }
-  // Start cpu hotplugger.
-  int test_cpu = GetCpuCount() - 1;
   CpuToggleThreadArg cpu_toggle_arg;
   cpu_toggle_arg.toggle_cpu = test_cpu;
   cpu_toggle_arg.end_flag = false;
   std::thread cpu_toggle_thread(CpuToggleThread, &cpu_toggle_arg);
 
-  const std::chrono::hours test_duration(10);  // Test for 10 hours.
-  const double RECORD_DURATION_IN_SEC = 2.9;
-  const double SLEEP_DURATION_IN_SEC = 1.3;
+  std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType("cpu-cycles");
+  ASSERT_TRUE(event_type_modifier != nullptr);
+  perf_event_attr attr = CreateDefaultPerfEventAttr(event_type_modifier->event_type);
+  attr.disabled = 0;
+  attr.enable_on_exec = 0;
 
+  const std::chrono::minutes test_duration(2);  // Test for 2 minutes.
   auto end_time = std::chrono::steady_clock::now() + test_duration;
   size_t iterations = 0;
+
   while (std::chrono::steady_clock::now() < end_time) {
+    std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, -1, test_cpu, false);
+    if (event_fd == nullptr) {
+      // Failed to open because the test_cpu is offline.
+      continue;
+    }
     iterations++;
-    GTEST_LOG_(INFO) << "Test for " << iterations << " times.";
-    ASSERT_TRUE(RecordInChildProcess(test_cpu, RECORD_DURATION_IN_SEC));
-    usleep(static_cast<useconds_t>(SLEEP_DURATION_IN_SEC * 1e6));
+    GTEST_LOG_(INFO) << "Test offline while recording for " << iterations << " times.";
   }
   cpu_toggle_arg.end_flag = true;
   cpu_toggle_thread.join();
 }
 
-static std::unique_ptr<EventFd> OpenHardwareEventOnCpu(int cpu) {
-  std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType("cpu-cycles");
-  if (event_type_modifier == nullptr) {
-    return nullptr;
+// http://b/25193162.
+TEST(cpu_offline, offline_while_ioctl_enable) {
+  ScopedMpdecisionKiller scoped_mpdecision_killer;
+  CpuOnlineRestorer cpuonline_restorer;
+  if (GetCpuCount() == 1) {
+    GTEST_LOG_(INFO) << "This test does nothing, because there is only one cpu in the system.";
+    return;
   }
+  // Start cpu hotpluger.
+  int test_cpu;
+  if (!FindAHotpluggableCpu(&test_cpu)) {
+    return;
+  }
+  CpuToggleThreadArg cpu_toggle_arg;
+  cpu_toggle_arg.toggle_cpu = test_cpu;
+  cpu_toggle_arg.end_flag = false;
+  std::thread cpu_toggle_thread(CpuToggleThread, &cpu_toggle_arg);
+
+  std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType("cpu-cycles");
+  ASSERT_TRUE(event_type_modifier != nullptr);
   perf_event_attr attr = CreateDefaultPerfEventAttr(event_type_modifier->event_type);
-  return EventFd::OpenEventFile(attr, getpid(), cpu);
+  attr.disabled = 1;
+  attr.enable_on_exec = 0;
+
+  const std::chrono::minutes test_duration(2);  // Test for 2 minutes.
+  auto end_time = std::chrono::steady_clock::now() + test_duration;
+  size_t iterations = 0;
+
+  while (std::chrono::steady_clock::now() < end_time) {
+    std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, -1, test_cpu, false);
+    if (event_fd == nullptr) {
+      // Failed to open because the test_cpu is offline.
+      continue;
+    }
+    // Wait a little for the event to be installed on test_cpu's perf context.
+    usleep(1000);
+    ASSERT_TRUE(event_fd->EnableEvent());
+    iterations++;
+    GTEST_LOG_(INFO) << "Test offline while ioctl(PERF_EVENT_IOC_ENABLE) for " << iterations << " times.";
+  }
+  cpu_toggle_arg.end_flag = true;
+  cpu_toggle_thread.join();
 }
 
 // http://b/19863147.
@@ -238,17 +297,24 @@ TEST(cpu_offline, offline_while_recording_on_another_cpu) {
     GTEST_LOG_(INFO) << "This test does nothing, because there is only one cpu in the system.";
     return;
   }
+  int test_cpu;
+  if (!FindAHotpluggableCpu(&test_cpu)) {
+    return;
+  }
+  std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType("cpu-cycles");
+  perf_event_attr attr = CreateDefaultPerfEventAttr(event_type_modifier->event_type);
+  attr.disabled = 0;
+  attr.enable_on_exec = 0;
 
   const size_t TEST_ITERATION_COUNT = 10u;
   for (size_t i = 0; i < TEST_ITERATION_COUNT; ++i) {
     int record_cpu = 0;
-    int toggle_cpu = GetCpuCount() - 1;
-    SetCpuOnline(toggle_cpu, true);
-    std::unique_ptr<EventFd> event_fd = OpenHardwareEventOnCpu(record_cpu);
+    ASSERT_TRUE(SetCpuOnline(test_cpu, true));
+    std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, getpid(), record_cpu);
     ASSERT_TRUE(event_fd != nullptr);
-    SetCpuOnline(toggle_cpu, false);
+    ASSERT_TRUE(SetCpuOnline(test_cpu, false));
     event_fd = nullptr;
-    event_fd = OpenHardwareEventOnCpu(record_cpu);
+    event_fd = EventFd::OpenEventFile(attr, getpid(), record_cpu);
     ASSERT_TRUE(event_fd != nullptr);
   }
 }
