@@ -96,6 +96,15 @@ uint64_t EventFd::Id() const {
   return id_;
 }
 
+bool EventFd::EnableEvent() {
+  int result = ioctl(perf_event_fd_, PERF_EVENT_IOC_ENABLE, 0);
+  if (result < 0) {
+    PLOG(ERROR) << "ioctl(enable) " << Name() << " failed";
+    return false;
+  }
+  return true;
+}
+
 bool EventFd::ReadCounter(PerfCounter* counter) const {
   CHECK(counter != nullptr);
   if (!android::base::ReadFully(perf_event_fd_, counter, sizeof(*counter))) {
