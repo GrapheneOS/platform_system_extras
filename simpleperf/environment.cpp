@@ -36,7 +36,7 @@
 
 class LineReader {
  public:
-  LineReader(FILE* fp) : fp_(fp), buf_(nullptr), bufsize_(0) {
+  explicit LineReader(FILE* fp) : fp_(fp), buf_(nullptr), bufsize_(0) {
   }
 
   ~LineReader() {
