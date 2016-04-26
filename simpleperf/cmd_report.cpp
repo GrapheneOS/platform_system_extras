@@ -43,7 +43,7 @@
 
 class Displayable {
  public:
-  Displayable(const std::string& name) : name_(name), width_(name.size()) {
+  explicit Displayable(const std::string& name) : name_(name), width_(name.size()) {
   }
 
   virtual ~Displayable() {
@@ -69,7 +69,7 @@ class Displayable {
 
 class AccumulatedOverheadItem : public Displayable {
  public:
-  AccumulatedOverheadItem(const SampleTree& sample_tree)
+  explicit AccumulatedOverheadItem(const SampleTree& sample_tree)
       : Displayable("Children"), sample_tree_(sample_tree) {
   }
 
@@ -86,7 +86,7 @@ class AccumulatedOverheadItem : public Displayable {
 
 class SelfOverheadItem : public Displayable {
  public:
-  SelfOverheadItem(const SampleTree& sample_tree, const std::string& name = "Self")
+  explicit SelfOverheadItem(const SampleTree& sample_tree, const std::string& name = "Self")
       : Displayable(name), sample_tree_(sample_tree) {
   }
 
@@ -163,7 +163,7 @@ class CommItem : public Displayable, public Comparable {
 
 class DsoItem : public Displayable, public Comparable {
  public:
-  DsoItem(const std::string& name = "Shared Object") : Displayable(name) {
+  explicit DsoItem(const std::string& name = "Shared Object") : Displayable(name) {
   }
 
   int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
@@ -177,7 +177,7 @@ class DsoItem : public Displayable, public Comparable {
 
 class SymbolItem : public Displayable, public Comparable {
  public:
-  SymbolItem(const std::string& name = "Symbol") : Displayable(name) {
+  explicit SymbolItem(const std::string& name = "Symbol") : Displayable(name) {
   }
 
   int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
