@@ -257,7 +257,7 @@ LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := $(simpleperf_cpu_hotplug_test_src_files)
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_target)
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
-LOCAL_MULTILIB := first
+LOCAL_MULTILIB := both
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 include $(LLVM_DEVICE_BUILD_MK)
 include $(BUILD_NATIVE_TEST)
