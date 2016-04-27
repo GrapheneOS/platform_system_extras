@@ -48,7 +48,7 @@ namespace android {
 
 class DataFileVerifier {
  public:
-  DataFileVerifier(const char* file_name) {
+  explicit DataFileVerifier(const char* file_name) {
     strncpy(test_file_, file_name, FILENAME_MAX);
   }
 
