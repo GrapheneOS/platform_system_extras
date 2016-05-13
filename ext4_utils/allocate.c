@@ -351,7 +351,8 @@ u32 allocate_block()
 
 static struct region *ext4_allocate_best_fit_partial(u32 len)
 {
-	unsigned int i, j;
+	unsigned int i;
+	int j;
 	unsigned int found_bg = 0, found_prev_chunk = 0, found_block = 0;
 	u32 found_allocate_len = 0;
 	bool minimize = false;
