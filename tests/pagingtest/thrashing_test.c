@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,7 +11,7 @@
 
 #define LINESIZE 32
 
-int thrashing_test(int test_runs) {
+int thrashing_test(int test_runs, bool cache) {
     int fds[4] = {-1, -1, -1, -1};
     char tmpnames[4][17] = { "thrashing1XXXXXX", "thrashing2XXXXXX", "thrashing3XXXXXX", "thrashing4XXXXXX" };
     volatile char *bufs[4] = {0};
@@ -45,11 +46,13 @@ int thrashing_test(int test_runs) {
             fprintf(stderr, "Failed to mmap file: %s\n", strerror(errno));
             goto err;
         }
-        //madvise and fadvise as random to prevent prefetching
-        ret = madvise((void *)bufs[i], filesize, MADV_RANDOM) ||
-               posix_fadvise(fds[i], 0, filesize, POSIX_FADV_RANDOM);
-        if (ret) {
-            goto err;
+        if (!cache) {
+            //madvise and fadvise as random to prevent prefetching
+            ret = madvise((void *)bufs[i], filesize, MADV_RANDOM) ||
+                    posix_fadvise(fds[i], 0, filesize, POSIX_FADV_RANDOM);
+            if (ret) {
+                goto err;
+            }
         }
     }
 
@@ -66,7 +69,8 @@ int thrashing_test(int test_runs) {
         }
     }
 
-    printf("thrashing: %llu MB/s\n", (filesize * ARRAY_SIZE(fds) * test_runs * USEC_PER_SEC) /
+    printf("%scached thrashing: %llu MB/s\n", cache ? "" : "un",
+             (filesize * ARRAY_SIZE(fds) * test_runs * USEC_PER_SEC) /
              (1024 * 1024 * (total_time.tv_sec * USEC_PER_SEC + total_time.tv_usec)));
 
     ret = 0;
