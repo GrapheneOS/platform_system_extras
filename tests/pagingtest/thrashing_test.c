@@ -14,7 +14,7 @@ int thrashing_test(int test_runs) {
     int fds[4] = {-1, -1, -1, -1};
     char tmpnames[4][17] = { "thrashing1XXXXXX", "thrashing2XXXXXX", "thrashing3XXXXXX", "thrashing4XXXXXX" };
     volatile char *bufs[4] = {0};
-    long long k;
+    unsigned long long k;
     int ret = -1;
     struct timeval begin_time, end_time, elapsed_time, total_time;
     unsigned long long filesize;
@@ -45,14 +45,18 @@ int thrashing_test(int test_runs) {
             fprintf(stderr, "Failed to mmap file: %s\n", strerror(errno));
             goto err;
         }
+        //madvise and fadvise as random to prevent prefetching
+        ret = madvise((void *)bufs[i], filesize, MADV_RANDOM) ||
+               posix_fadvise(fds[i], 0, filesize, POSIX_FADV_RANDOM);
+        if (ret) {
+            goto err;
+        }
     }
 
     for (int i = 0; i < test_runs; i++) {
         for (size_t j = 0; j < ARRAY_SIZE(fds); j++) {
             gettimeofday(&begin_time, NULL);
-            //Unfortunately when under memory pressure, fadvise and madvise stop working...
-            //Read backwards to prevent mmap prefetching
-            for (k = ((filesize - 1) & ~(pagesize - 1)); k >= 0; k -= pagesize) {
+            for (k = 0; k < filesize; k += pagesize) {
                 bufs[j][k];
             }
             gettimeofday(&end_time, NULL);
