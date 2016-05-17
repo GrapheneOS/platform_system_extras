@@ -139,6 +139,9 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   } else {
+    if (cpus_.empty()) {
+      cpus_ = {-1};
+    }
     if (!event_selection_set_.OpenEventFilesForThreadsOnCpus(monitored_threads_, cpus_)) {
       return false;
     }
@@ -365,23 +368,21 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters, double
     uint64_t time_enabled_sum = 0;
     uint64_t time_running_sum = 0;
     for (auto& counter_info : counters_info.counters) {
-      value_sum += counter_info.counter.value;
-      time_enabled_sum += counter_info.counter.time_enabled;
-      time_running_sum += counter_info.counter.time_running;
+      // If time_running is 0, the program has never run on this event and we shouldn't
+      // summarize it.
+      if (counter_info.counter.time_running != 0) {
+        value_sum += counter_info.counter.value;
+        time_enabled_sum += counter_info.counter.time_enabled;
+        time_running_sum += counter_info.counter.time_running;
+      }
     }
     double scale = 1.0;
-    uint64_t scaled_count = value_sum;
-    if (time_running_sum < time_enabled_sum) {
-      if (time_running_sum == 0) {
-        scaled_count = 0;
-      } else {
-        scale = static_cast<double>(time_enabled_sum) / time_running_sum;
-        scaled_count = static_cast<uint64_t>(scale * value_sum);
-      }
+    if (time_running_sum < time_enabled_sum && time_running_sum != 0) {
+      scale = static_cast<double>(time_enabled_sum) / time_running_sum;
     }
     CounterSummary summary;
     summary.event_type = counters_info.event_type;
-    summary.count = scaled_count;
+    summary.count = value_sum;
     summary.scale = scale;
     summary.readable_count_str = ReadableCountValue(summary.count, *summary.event_type);
     summaries.push_back(summary);

@@ -196,7 +196,8 @@ bool EventSelectionSet::OpenEventFilesForCpus(const std::vector<int>& cpus) {
 bool EventSelectionSet::OpenEventFilesForThreadsOnCpus(const std::vector<pid_t>& threads,
                                                        std::vector<int> cpus) {
   if (!cpus.empty()) {
-    if (!CheckIfCpusOnline(cpus)) {
+    // cpus = {-1} means open an event file for all cpus.
+    if (!(cpus.size() == 1 && cpus[0] == -1) && !CheckIfCpusOnline(cpus)) {
       return false;
     }
   } else {
