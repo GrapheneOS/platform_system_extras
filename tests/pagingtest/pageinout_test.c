@@ -13,7 +13,7 @@ int pageinout_test(int test_runs, unsigned long long file_size) {
     char tmpname[] = "pageinoutXXXXXX";
     unsigned char *vec;
     int i;
-    long long j;
+    unsigned long long j;
     volatile char *buf;
     int ret = -1;
     int rc;
@@ -43,10 +43,17 @@ int pageinout_test(int test_runs, unsigned long long file_size) {
         goto err;
     }
 
+    //madvise and fadvise as random to prevent prefetching
+    rc = madvise((void *)buf, file_size, MADV_RANDOM) ||
+           posix_fadvise(fd, 0, file_size, POSIX_FADV_RANDOM);
+    if (rc) {
+        goto err;
+    }
+
     for (i = 0; i < test_runs; i++) {
         gettimeofday(&begin_time, NULL);
-        //Read backwards to prevent mmap prefetching
-        for (j = ((file_size - 1) & ~(pagesize - 1)); j >= 0; j -= pagesize) {
+        //read every page into the page cache
+        for (j = 0; j < file_size; j += pagesize) {
             buf[j];
         }
         gettimeofday(&end_time, NULL);
