@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,7 +9,7 @@
 
 #include "pagingtest.h"
 
-int pageinout_test(int test_runs, unsigned long long file_size) {
+int pageinout_test(int test_runs, bool cache, unsigned long long file_size) {
     int fd;
     char tmpname[] = "pageinoutXXXXXX";
     unsigned char *vec;
@@ -43,11 +44,13 @@ int pageinout_test(int test_runs, unsigned long long file_size) {
         goto err;
     }
 
-    //madvise and fadvise as random to prevent prefetching
-    rc = madvise((void *)buf, file_size, MADV_RANDOM) ||
-           posix_fadvise(fd, 0, file_size, POSIX_FADV_RANDOM);
-    if (rc) {
-        goto err;
+    if (!cache) {
+        //madvise and fadvise as random to prevent prefetching
+        rc = madvise((void *)buf, file_size, MADV_RANDOM) ||
+               posix_fadvise(fd, 0, file_size, POSIX_FADV_RANDOM);
+        if (rc) {
+            goto err;
+        }
     }
 
     for (i = 0; i < test_runs; i++) {
@@ -82,9 +85,11 @@ int pageinout_test(int test_runs, unsigned long long file_size) {
         }
     }
 
-    printf("page-in: %llu MB/s\n", (file_size * test_runs * USEC_PER_SEC) /
+    printf("%scached page-in: %llu MB/s\n", cache ? "" : "un",
+             (file_size * test_runs * USEC_PER_SEC) /
              (1024 * 1024 * (total_time_in.tv_sec * USEC_PER_SEC + total_time_in.tv_usec)));
-    printf("page-out (clean): %llu MB/s\n", (file_size * test_runs * USEC_PER_SEC) /
+    printf("%scached page-out (clean): %llu MB/s\n", cache ? "" : "un",
+             (file_size * test_runs * USEC_PER_SEC) /
              (1024 * 1024 * (total_time_out.tv_sec * USEC_PER_SEC + total_time_out.tv_usec)));
 
     ret = 0;

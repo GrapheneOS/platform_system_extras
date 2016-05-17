@@ -2,6 +2,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,7 +57,7 @@ int create_tmp_file(char *filename, off_t size) {
     }
 
     if (rc != size) {
-        fprintf(stderr, "write random data incomplete\n");
+        fprintf(stderr, "write random data incomplete: received %zd, expected %jd\n", rc, (intmax_t)size);
         goto err;
     }
 
@@ -161,11 +162,19 @@ int main(int argc, char **argv) {
     if (rc) {
         return rc;
     }
-    rc = pageinout_test(test_runs, file_size);
+    rc = pageinout_test(test_runs, true, file_size);
     if (rc) {
         return rc;
     }
-    rc = thrashing_test(test_runs);
+    rc = pageinout_test(test_runs, false, file_size);
+    if (rc) {
+        return rc;
+    }
+    rc = thrashing_test(test_runs, true);
+    if (rc) {
+        return rc;
+    }
+    rc = thrashing_test(test_runs, false);
 
     return rc;
 }
