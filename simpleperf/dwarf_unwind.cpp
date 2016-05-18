@@ -27,7 +27,7 @@
   do {                                           \
     uint64_t value;                              \
     if (GetRegValue(regs, perf_regno, &value)) { \
-      dst = value;                               \
+      (dst) = value;                             \
     }                                            \
   } while (0)
 
