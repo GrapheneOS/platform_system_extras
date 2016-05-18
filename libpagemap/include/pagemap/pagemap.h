@@ -186,7 +186,7 @@ int pm_process_pagemap_range(pm_process_t *proc,
                              uint64_t low, uint64_t hi,
                              uint64_t **range_out, size_t *len);
 
-#define _BITS(x, offset, bits) (((x) >> offset) & ((1LL << (bits)) - 1))
+#define _BITS(x, offset, bits) (((x) >> (offset)) & ((1LL << (bits)) - 1))
 
 #define PM_PAGEMAP_PRESENT(x)     (_BITS(x, 63, 1))
 #define PM_PAGEMAP_SWAPPED(x)     (_BITS(x, 62, 1))
