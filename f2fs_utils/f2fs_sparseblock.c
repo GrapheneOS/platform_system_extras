@@ -26,9 +26,9 @@
       #member, le64_to_cpu((ptr)->member), le64_to_cpu((ptr)->member) );  \
   } while (0);
 
-#define segno_in_journal(sum, i)    (sum->sit_j.entries[i].segno)
+#define segno_in_journal(sum, i)    ((sum)->sit_j.entries[i].segno)
 
-#define sit_in_journal(sum, i)      (sum->sit_j.entries[i].se)
+#define sit_in_journal(sum, i)      ((sum)->sit_j.entries[i].se)
 
 static void dbg_print_raw_sb_info(struct f2fs_super_block *sb)
 {
