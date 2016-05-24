@@ -1,18 +1,18 @@
-/*
- * Copyright (C) 2008 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+//
+// Copyright (C) 2008 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
 
 #include <dirent.h>
 #include <errno.h>
@@ -24,16 +24,24 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <vector>
+
+#include <android-base/file.h>
+#include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <pagemap/pagemap.h>
 
 struct proc_info {
     pid_t pid;
     pm_memusage_t usage;
     uint64_t wss;
+    int oomadj;
 };
 
 static void usage(char *myname);
-static int getprocname(pid_t pid, char *buf, int len);
+static std::string getprocname(pid_t pid);
+static int getoomadj(pid_t pid);
+static bool getminfree(std::vector<uint64_t>* minfree, std::vector<int>* adj);
 static int numcmp(uint64_t a, uint64_t b);
 
 #define declare_sort(field) \
@@ -44,6 +52,7 @@ declare_sort(rss);
 declare_sort(pss);
 declare_sort(uss);
 declare_sort(swap);
+declare_sort(oomadj);
 
 int (*compfn)(const void *a, const void *b);
 static int order;
@@ -94,7 +103,7 @@ void get_mem_info(uint64_t mem[]) {
             "Slab:",
             "SwapTotal:",
             "SwapFree:",
-            "ZRam:",            /* not read from meminfo but from /sys/block/zram0 */
+            "ZRam:",            // not read from meminfo but from /sys/block/zram0
             "Mapped:",
             "VmallocUsed:",
             "PageTables:",
@@ -148,7 +157,6 @@ int main(int argc, char *argv[]) {
     pm_kernel_t *ker;
     pm_process_t *proc;
     pid_t *pids;
-    struct proc_info **procs;
     size_t num_procs;
     uint64_t total_pss;
     uint64_t total_uss;
@@ -156,19 +164,19 @@ int main(int argc, char *argv[]) {
     uint64_t total_pswap;
     uint64_t total_uswap;
     uint64_t total_zswap;
-    char cmdline[256]; // this must be within the range of int
     int error;
     bool has_swap = false, has_zram = false;
     uint64_t required_flags = 0;
     uint64_t flags_mask = 0;
 
-    #define WS_OFF   0
-    #define WS_ONLY  1
-    #define WS_RESET 2
-    int ws;
-
     int arg;
-    size_t i, j;
+    size_t i;
+
+    enum {
+        WS_OFF,
+        WS_ONLY,
+        WS_RESET,
+    } ws;
 
     uint64_t mem[MEMINFO_COUNT] = { };
     pm_proportional_swap_t *p_swap;
@@ -180,6 +188,7 @@ int main(int argc, char *argv[]) {
     compfn = &sort_by_pss;
     order = -1;
     ws = WS_OFF;
+    bool oomadj = false;
 
     for (arg = 1; arg < argc; arg++) {
         if (!strcmp(argv[arg], "-v")) { compfn = &sort_by_vss; continue; }
@@ -187,6 +196,7 @@ int main(int argc, char *argv[]) {
         if (!strcmp(argv[arg], "-p")) { compfn = &sort_by_pss; continue; }
         if (!strcmp(argv[arg], "-u")) { compfn = &sort_by_uss; continue; }
         if (!strcmp(argv[arg], "-s")) { compfn = &sort_by_swap; continue; }
+        if (!strcmp(argv[arg], "-o")) { compfn = &sort_by_oomadj; oomadj = true; continue; }
         if (!strcmp(argv[arg], "-c")) { required_flags = 0; flags_mask = PM_PAGE_SWAPBACKED; continue; }
         if (!strcmp(argv[arg], "-C")) { required_flags = flags_mask = PM_PAGE_SWAPBACKED; continue; }
         if (!strcmp(argv[arg], "-k")) { required_flags = flags_mask = PM_PAGE_KSM; continue; }
@@ -215,21 +225,12 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    procs = calloc(num_procs, sizeof(struct proc_info*));
-    if (procs == NULL) {
-        fprintf(stderr, "calloc: %s", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
+    std::vector<proc_info> procs(num_procs);
     for (i = 0; i < num_procs; i++) {
-        procs[i] = malloc(sizeof(struct proc_info));
-        if (procs[i] == NULL) {
-            fprintf(stderr, "malloc: %s\n", strerror(errno));
-            exit(EXIT_FAILURE);
-        }
-        procs[i]->pid = pids[i];
-        pm_memusage_zero(&procs[i]->usage);
-        pm_memusage_pswap_init_handle(&procs[i]->usage, p_swap);
+        procs[i].pid = pids[i];
+        procs[i].oomadj = getoomadj(pids[i]);
+        pm_memusage_zero(&procs[i].usage);
+        pm_memusage_pswap_init_handle(&procs[i].usage, p_swap);
         error = pm_process_create(ker, pids[i], &proc);
         if (error) {
             fprintf(stderr, "warning: could not create process interface for %d\n", pids[i]);
@@ -238,11 +239,11 @@ int main(int argc, char *argv[]) {
 
         switch (ws) {
         case WS_OFF:
-            error = pm_process_usage_flags(proc, &procs[i]->usage, flags_mask,
+            error = pm_process_usage_flags(proc, &procs[i].usage, flags_mask,
                                            required_flags);
             break;
         case WS_ONLY:
-            error = pm_process_workingset(proc, &procs[i]->usage, 0);
+            error = pm_process_workingset(proc, &procs[i].usage, 0);
             break;
         case WS_RESET:
             error = pm_process_workingset(proc, NULL, 1);
@@ -253,7 +254,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "warning: could not read usage for %d\n", pids[i]);
         }
 
-        if (ws != WS_RESET && procs[i]->usage.swap) {
+        if (ws != WS_RESET && procs[i].usage.swap) {
             has_swap = true;
         }
 
@@ -264,17 +265,14 @@ int main(int argc, char *argv[]) {
 
     if (ws == WS_RESET) exit(0);
 
-    j = 0;
-    for (i = 0; i < num_procs; i++) {
-        if (procs[i]->usage.vss) {
-            procs[j++] = procs[i];
-        } else {
-            free(procs[i]);
-        }
-    }
-    num_procs = j;
+    procs.erase(std::remove_if(procs.begin(),
+                               procs.end(),
+                               [](auto proc){
+                                   return proc.usage.vss == 0;
+                               }),
+                procs.end());
 
-    qsort(procs, num_procs, sizeof(procs[0]), compfn);
+    qsort(procs.data(), procs.size(), sizeof(procs[0]), compfn);
 
     if (has_swap) {
         fd = open("/sys/block/zram0/mem_used_total", O_RDONLY);
@@ -292,6 +290,9 @@ int main(int argc, char *argv[]) {
     }
 
     printf("%5s  ", "PID");
+    if (oomadj) {
+        printf("%5s  ", "oom");
+    }
     if (ws) {
         printf("%7s  %7s  %7s  ", "WRss", "WPss", "WUss");
         if (has_swap) {
@@ -319,47 +320,85 @@ int main(int argc, char *argv[]) {
     total_uswap = 0;
     total_zswap = 0;
 
-    for (i = 0; i < num_procs; i++) {
-        if (getprocname(procs[i]->pid, cmdline, (int)sizeof(cmdline)) < 0) {
-            /*
-             * Something is probably seriously wrong if writing to the stack
-             * failed.
-             */
-            free(procs[i]);
-            continue;
+    std::vector<uint64_t> lmk_minfree;
+    std::vector<int> lmk_adj;
+    if (oomadj) {
+        getminfree(&lmk_minfree, &lmk_adj);
+    }
+    auto lmk_minfree_it = lmk_minfree.cbegin();
+    auto lmk_adj_it = lmk_adj.cbegin();
+
+    auto print_oomadj_totals = [&](int adj){
+        for (; lmk_adj_it != lmk_adj.cend() && lmk_minfree_it != lmk_minfree.cend() &&
+                 adj > *lmk_adj_it; lmk_adj_it++, lmk_minfree_it++) {
+            // Print the cumulative total line
+            printf("%5s  ", ""); // pid
+
+            printf("%5s  ", ""); // oomadj
+
+            if (ws) {
+                printf("%7s  %6" PRIu64 "K  %6" PRIu64 "K  ",
+                       "", total_pss / 1024, total_uss / 1024);
+            } else {
+                printf("%8s  %7s  %6" PRIu64 "K  %6" PRIu64 "K  ",
+                       "", "", total_pss / 1024, total_uss / 1024);
+            }
+
+            if (has_swap) {
+                printf("%6" PRIu64 "K  ", total_swap / 1024);
+                printf("%6" PRIu64 "K  ", total_pswap / 1024);
+                printf("%6" PRIu64 "K  ", total_uswap / 1024);
+                if (has_zram) {
+                    printf("%6" PRIu64 "K  ", total_zswap / 1024);
+                }
+            }
+
+            printf("TOTAL for oomadj < %d (%6" PRIu64 "K)\n", *lmk_adj_it, *lmk_minfree_it / 1024);
+        }
+    };
+
+    for (auto& proc: procs) {
+        if (oomadj) {
+            print_oomadj_totals(proc.oomadj);
         }
 
-        total_pss += procs[i]->usage.pss;
-        total_uss += procs[i]->usage.uss;
-        total_swap += procs[i]->usage.swap;
+        std::string cmdline = getprocname(proc.pid);
 
-        printf("%5d  ", procs[i]->pid);
+        total_pss += proc.usage.pss;
+        total_uss += proc.usage.uss;
+        total_swap += proc.usage.swap;
+
+        printf("%5d  ", proc.pid);
+
+        if (oomadj) {
+            printf("%5d  ", proc.oomadj);
+        }
 
         if (ws) {
             printf("%6zuK  %6zuK  %6zuK  ",
-                procs[i]->usage.rss / 1024,
-                procs[i]->usage.pss / 1024,
-                procs[i]->usage.uss / 1024
+                proc.usage.rss / 1024,
+                proc.usage.pss / 1024,
+                proc.usage.uss / 1024
             );
         } else {
             printf("%7zuK  %6zuK  %6zuK  %6zuK  ",
-                procs[i]->usage.vss / 1024,
-                procs[i]->usage.rss / 1024,
-                procs[i]->usage.pss / 1024,
-                procs[i]->usage.uss / 1024
+                proc.usage.vss / 1024,
+                proc.usage.rss / 1024,
+                proc.usage.pss / 1024,
+                proc.usage.uss / 1024
             );
         }
 
         if (has_swap) {
             pm_swapusage_t su;
 
-            pm_memusage_pswap_get_usage(&procs[i]->usage, &su);
-            printf("%6zuK  ", procs[i]->usage.swap / 1024);
+            pm_memusage_pswap_get_usage(&proc.usage, &su);
+            printf("%6zuK  ", proc.usage.swap / 1024);
             printf("%6zuK  ", su.proportional / 1024);
             printf("%6zuK  ", su.unique / 1024);
             total_pswap += su.proportional;
             total_uswap += su.unique;
-            pm_memusage_pswap_free(&procs[i]->usage);
+            pm_memusage_pswap_free(&proc.usage);
             if (has_zram) {
                 size_t zpswap = su.proportional * zram_cr;
                 printf("%6zuK  ", zpswap / 1024);
@@ -367,16 +406,21 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        printf("%s\n", cmdline);
-
-        free(procs[i]);
+        printf("%s\n", cmdline.c_str());
     }
 
-    free(procs);
     pm_memusage_pswap_destroy(p_swap);
 
-    /* Print the separator line */
+    if (oomadj) {
+        print_oomadj_totals(INT_MAX);
+    }
+
+    // Print the separator line
     printf("%5s  ", "");
+
+    if (oomadj) {
+        printf("%5s  ", "");
+    }
 
     if (ws) {
         printf("%7s  %7s  %7s  ", "", "------", "------");
@@ -393,8 +437,13 @@ int main(int argc, char *argv[]) {
 
     printf("%s\n", "------");
 
-    /* Print the total line */
+    // Print the total line
     printf("%5s  ", "");
+
+    if (oomadj) {
+        printf("%5s  ", "");
+    }
+
     if (ws) {
         printf("%7s  %6" PRIu64 "K  %6" PRIu64 "K  ",
             "", total_pss / 1024, total_uss / 1024);
@@ -444,67 +493,67 @@ static void usage(char *myname) {
                     "    -k  Only show pages collapsed by KSM\n"
                     "    -w  Display statistics for working set only.\n"
                     "    -W  Reset working set of all processes.\n"
+                    "    -o  Show and sort by oom score against lowmemorykiller thresholds.\n"
                     "    -h  Display this help screen.\n",
     myname);
 }
 
-/*
- * Get the process name for a given PID. Inserts the process name into buffer
- * buf of length len. The size of the buffer must be greater than zero to get
- * any useful output.
- *
- * Note that fgets(3) only declares length as an int, so our buffer size is
- * also declared as an int.
- *
- * Returns 0 on success, a positive value on partial success, and -1 on
- * failure. Other interesting values:
- *   1 on failure to create string to examine proc cmdline entry
- *   2 on failure to open proc cmdline entry
- *   3 on failure to read proc cmdline entry
- */
-static int getprocname(pid_t pid, char *buf, int len) {
-    char *filename;
-    FILE *f;
-    int rc = 0;
-    static const char* unknown_cmdline = "<unknown>";
+// Get the process name for a given PID.
+static std::string getprocname(pid_t pid) {
+    std::string filename = android::base::StringPrintf("/proc/%d/cmdline", pid);
 
-    if (len <= 0) {
-        return -1;
+    std::string procname;
+
+    if (!android::base::ReadFileToString(filename, &procname)) {
+        // The process went away before we could read its process name.
+        procname = "<unknown>";
     }
 
-    if (asprintf(&filename, "/proc/%d/cmdline", pid) < 0) {
-        rc = 1;
-        goto exit;
+    return procname;
+}
+
+static int getoomadj(pid_t pid) {
+    std::string filename = android::base::StringPrintf("/proc/%d/oom_score_adj", pid);
+    std::string oomadj;
+
+    if (!android::base::ReadFileToString(filename, &oomadj)) {
+        return -1001;
     }
 
-    f = fopen(filename, "r");
-    if (f == NULL) {
-        rc = 2;
-        goto releasefilename;
+    return strtol(oomadj.c_str(), NULL, 10);
+}
+
+static bool getminfree(std::vector<uint64_t>* minfree, std::vector<int>* adj) {
+    std::string minfree_str;
+    std::string adj_str;
+
+    if (!android::base::ReadFileToString("/sys/module/lowmemorykiller/parameters/minfree", &minfree_str)) {
+        return false;
     }
 
-    if (fgets(buf, len, f) == NULL) {
-        rc = 3;
-        goto closefile;
+    if (!android::base::ReadFileToString("/sys/module/lowmemorykiller/parameters/adj", &adj_str)) {
+        return false;
     }
 
-closefile:
-    (void) fclose(f);
-releasefilename:
-    free(filename);
-exit:
-    if (rc != 0) {
-        /*
-         * The process went away before we could read its process name. Try
-         * to give the user "<unknown>" here, but otherwise they get to look
-         * at a blank.
-         */
-        if (strlcpy(buf, unknown_cmdline, (size_t)len) >= (size_t)len) {
-            rc = 4;
-        }
-    }
+    std::vector<std::string> minfree_vec = android::base::Split(minfree_str, ",");
+    std::vector<std::string> adj_vec = android::base::Split(adj_str, ",");
 
-    return rc;
+    minfree->clear();
+    minfree->resize(minfree_vec.size());
+    adj->clear();
+    adj->resize(adj_vec.size());
+
+    std::transform(minfree_vec.begin(), minfree_vec.end(), minfree->begin(),
+                   [](const std::string& s) -> uint64_t {
+                       return strtoull(s.c_str(), NULL, 10) * PAGE_SIZE;
+                   });
+
+    std::transform(adj_vec.begin(), adj_vec.end(), adj->begin(),
+                   [](const std::string& s) -> int {
+                       return strtol(s.c_str(), NULL, 10);
+                   });
+
+    return true;
 }
 
 static int numcmp(uint64_t a, uint64_t b) {
@@ -513,11 +562,17 @@ static int numcmp(uint64_t a, uint64_t b) {
     return 0;
 }
 
+static int snumcmp(int64_t a, int64_t b) {
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
+}
+
 #define create_sort(field, compfn) \
     static int sort_by_ ## field (const void *a, const void *b) { \
         return order * compfn( \
-            (*((struct proc_info**)a))->usage.field, \
-            (*((struct proc_info**)b))->usage.field \
+            ((struct proc_info*)(a))->usage.field, \
+            ((struct proc_info*)(b))->usage.field  \
         ); \
     }
 
@@ -526,3 +581,11 @@ create_sort(rss, numcmp)
 create_sort(pss, numcmp)
 create_sort(uss, numcmp)
 create_sort(swap, numcmp)
+
+static int sort_by_oomadj (const void *a, const void *b) {
+    // Negative oomadj is higher priority, reverse the sort order
+    return -1 * order * snumcmp(
+        ((struct proc_info*)a)->oomadj,
+        ((struct proc_info*)b)->oomadj
+        );
+}
