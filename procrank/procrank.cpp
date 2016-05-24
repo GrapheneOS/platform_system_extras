@@ -28,16 +28,20 @@
 
 #include <android-base/file.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <pagemap/pagemap.h>
 
 struct proc_info {
     pid_t pid;
     pm_memusage_t usage;
     uint64_t wss;
+    int oomadj;
 };
 
 static void usage(char *myname);
 static std::string getprocname(pid_t pid);
+static int getoomadj(pid_t pid);
+static bool getminfree(std::vector<uint64_t>* minfree, std::vector<int>* adj);
 static int numcmp(uint64_t a, uint64_t b);
 
 #define declare_sort(field) \
@@ -48,6 +52,7 @@ declare_sort(rss);
 declare_sort(pss);
 declare_sort(uss);
 declare_sort(swap);
+declare_sort(oomadj);
 
 int (*compfn)(const void *a, const void *b);
 static int order;
@@ -183,6 +188,7 @@ int main(int argc, char *argv[]) {
     compfn = &sort_by_pss;
     order = -1;
     ws = WS_OFF;
+    bool oomadj = false;
 
     for (arg = 1; arg < argc; arg++) {
         if (!strcmp(argv[arg], "-v")) { compfn = &sort_by_vss; continue; }
@@ -190,6 +196,7 @@ int main(int argc, char *argv[]) {
         if (!strcmp(argv[arg], "-p")) { compfn = &sort_by_pss; continue; }
         if (!strcmp(argv[arg], "-u")) { compfn = &sort_by_uss; continue; }
         if (!strcmp(argv[arg], "-s")) { compfn = &sort_by_swap; continue; }
+        if (!strcmp(argv[arg], "-o")) { compfn = &sort_by_oomadj; oomadj = true; continue; }
         if (!strcmp(argv[arg], "-c")) { required_flags = 0; flags_mask = PM_PAGE_SWAPBACKED; continue; }
         if (!strcmp(argv[arg], "-C")) { required_flags = flags_mask = PM_PAGE_SWAPBACKED; continue; }
         if (!strcmp(argv[arg], "-k")) { required_flags = flags_mask = PM_PAGE_KSM; continue; }
@@ -221,6 +228,7 @@ int main(int argc, char *argv[]) {
     std::vector<proc_info> procs(num_procs);
     for (i = 0; i < num_procs; i++) {
         procs[i].pid = pids[i];
+        procs[i].oomadj = getoomadj(pids[i]);
         pm_memusage_zero(&procs[i].usage);
         pm_memusage_pswap_init_handle(&procs[i].usage, p_swap);
         error = pm_process_create(ker, pids[i], &proc);
@@ -282,6 +290,9 @@ int main(int argc, char *argv[]) {
     }
 
     printf("%5s  ", "PID");
+    if (oomadj) {
+        printf("%5s  ", "oom");
+    }
     if (ws) {
         printf("%7s  %7s  %7s  ", "WRss", "WPss", "WUss");
         if (has_swap) {
@@ -309,7 +320,48 @@ int main(int argc, char *argv[]) {
     total_uswap = 0;
     total_zswap = 0;
 
+    std::vector<uint64_t> lmk_minfree;
+    std::vector<int> lmk_adj;
+    if (oomadj) {
+        getminfree(&lmk_minfree, &lmk_adj);
+    }
+    auto lmk_minfree_it = lmk_minfree.cbegin();
+    auto lmk_adj_it = lmk_adj.cbegin();
+
+    auto print_oomadj_totals = [&](int adj){
+        for (; lmk_adj_it != lmk_adj.cend() && lmk_minfree_it != lmk_minfree.cend() &&
+                 adj > *lmk_adj_it; lmk_adj_it++, lmk_minfree_it++) {
+            // Print the cumulative total line
+            printf("%5s  ", ""); // pid
+
+            printf("%5s  ", ""); // oomadj
+
+            if (ws) {
+                printf("%7s  %6" PRIu64 "K  %6" PRIu64 "K  ",
+                       "", total_pss / 1024, total_uss / 1024);
+            } else {
+                printf("%8s  %7s  %6" PRIu64 "K  %6" PRIu64 "K  ",
+                       "", "", total_pss / 1024, total_uss / 1024);
+            }
+
+            if (has_swap) {
+                printf("%6" PRIu64 "K  ", total_swap / 1024);
+                printf("%6" PRIu64 "K  ", total_pswap / 1024);
+                printf("%6" PRIu64 "K  ", total_uswap / 1024);
+                if (has_zram) {
+                    printf("%6" PRIu64 "K  ", total_zswap / 1024);
+                }
+            }
+
+            printf("TOTAL for oomadj < %d (%6" PRIu64 "K)\n", *lmk_adj_it, *lmk_minfree_it / 1024);
+        }
+    };
+
     for (auto& proc: procs) {
+        if (oomadj) {
+            print_oomadj_totals(proc.oomadj);
+        }
+
         std::string cmdline = getprocname(proc.pid);
 
         total_pss += proc.usage.pss;
@@ -317,6 +369,10 @@ int main(int argc, char *argv[]) {
         total_swap += proc.usage.swap;
 
         printf("%5d  ", proc.pid);
+
+        if (oomadj) {
+            printf("%5d  ", proc.oomadj);
+        }
 
         if (ws) {
             printf("%6zuK  %6zuK  %6zuK  ",
@@ -355,8 +411,16 @@ int main(int argc, char *argv[]) {
 
     pm_memusage_pswap_destroy(p_swap);
 
+    if (oomadj) {
+        print_oomadj_totals(INT_MAX);
+    }
+
     // Print the separator line
     printf("%5s  ", "");
+
+    if (oomadj) {
+        printf("%5s  ", "");
+    }
 
     if (ws) {
         printf("%7s  %7s  %7s  ", "", "------", "------");
@@ -375,6 +439,11 @@ int main(int argc, char *argv[]) {
 
     // Print the total line
     printf("%5s  ", "");
+
+    if (oomadj) {
+        printf("%5s  ", "");
+    }
+
     if (ws) {
         printf("%7s  %6" PRIu64 "K  %6" PRIu64 "K  ",
             "", total_pss / 1024, total_uss / 1024);
@@ -424,6 +493,7 @@ static void usage(char *myname) {
                     "    -k  Only show pages collapsed by KSM\n"
                     "    -w  Display statistics for working set only.\n"
                     "    -W  Reset working set of all processes.\n"
+                    "    -o  Show and sort by oom score against lowmemorykiller thresholds.\n"
                     "    -h  Display this help screen.\n",
     myname);
 }
@@ -442,7 +512,57 @@ static std::string getprocname(pid_t pid) {
     return procname;
 }
 
+static int getoomadj(pid_t pid) {
+    std::string filename = android::base::StringPrintf("/proc/%d/oom_score_adj", pid);
+    std::string oomadj;
+
+    if (!android::base::ReadFileToString(filename, &oomadj)) {
+        return -1001;
+    }
+
+    return strtol(oomadj.c_str(), NULL, 10);
+}
+
+static bool getminfree(std::vector<uint64_t>* minfree, std::vector<int>* adj) {
+    std::string minfree_str;
+    std::string adj_str;
+
+    if (!android::base::ReadFileToString("/sys/module/lowmemorykiller/parameters/minfree", &minfree_str)) {
+        return false;
+    }
+
+    if (!android::base::ReadFileToString("/sys/module/lowmemorykiller/parameters/adj", &adj_str)) {
+        return false;
+    }
+
+    std::vector<std::string> minfree_vec = android::base::Split(minfree_str, ",");
+    std::vector<std::string> adj_vec = android::base::Split(adj_str, ",");
+
+    minfree->clear();
+    minfree->resize(minfree_vec.size());
+    adj->clear();
+    adj->resize(adj_vec.size());
+
+    std::transform(minfree_vec.begin(), minfree_vec.end(), minfree->begin(),
+                   [](const std::string& s) -> uint64_t {
+                       return strtoull(s.c_str(), NULL, 10) * PAGE_SIZE;
+                   });
+
+    std::transform(adj_vec.begin(), adj_vec.end(), adj->begin(),
+                   [](const std::string& s) -> int {
+                       return strtol(s.c_str(), NULL, 10);
+                   });
+
+    return true;
+}
+
 static int numcmp(uint64_t a, uint64_t b) {
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
+}
+
+static int snumcmp(int64_t a, int64_t b) {
     if (a < b) return -1;
     if (a > b) return 1;
     return 0;
@@ -461,3 +581,11 @@ create_sort(rss, numcmp)
 create_sort(pss, numcmp)
 create_sort(uss, numcmp)
 create_sort(swap, numcmp)
+
+static int sort_by_oomadj (const void *a, const void *b) {
+    // Negative oomadj is higher priority, reverse the sort order
+    return -1 * order * snumcmp(
+        ((struct proc_info*)a)->oomadj,
+        ((struct proc_info*)b)->oomadj
+        );
+}
