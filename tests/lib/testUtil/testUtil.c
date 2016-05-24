@@ -32,7 +32,7 @@
 
 #include <cutils/log.h>
 
-#define ALEN(a) (sizeof(a) / sizeof(a [0]))  // Array length
+#define ALEN(a) (sizeof(a) / sizeof((a)[0]))  // Array length
 typedef unsigned int bool_t;
 #define true (0 == 0)
 #define false (!true)
