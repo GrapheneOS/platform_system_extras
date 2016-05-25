@@ -72,6 +72,8 @@ class ThreadTree {
   void AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t len, uint64_t pgoff,
                     uint64_t time, const std::string& filename);
   const MapEntry* FindMap(const ThreadEntry* thread, uint64_t ip, bool in_kernel);
+  // Find map for an ip address when we don't know whether it is in kernel.
+  const MapEntry* FindMap(const ThreadEntry* thread, uint64_t ip);
   const Symbol* FindSymbol(const MapEntry* map, uint64_t ip);
   const MapEntry* UnknownMap() const {
     return &unknown_map_;
