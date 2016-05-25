@@ -74,7 +74,6 @@ simpleperf_ldlibs_host_linux := -lrt
 # libsimpleperf
 # =========================================================
 libsimpleperf_src_files := \
-  callchain.cpp \
   cmd_dumprecord.cpp \
   cmd_help.cpp \
   cmd_report.cpp \
@@ -87,7 +86,6 @@ libsimpleperf_src_files := \
   read_elf.cpp \
   record.cpp \
   record_file_reader.cpp \
-  sample_tree.cpp \
   thread_tree.cpp \
   utils.cpp \
 
