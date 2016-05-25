@@ -87,7 +87,7 @@ void ThreadTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
     return;
   }
   Dso* dso = FindKernelDsoOrNew(filename);
-  MapEntry* map = AllocateMap(MapEntry(start_addr, len, pgoff, time, dso));
+  MapEntry* map = AllocateMap(MapEntry(start_addr, len, pgoff, time, dso, true));
   FixOverlappedMap(&kernel_map_tree_, map);
   auto pair = kernel_map_tree_.insert(map);
   CHECK(pair.second);
@@ -95,9 +95,6 @@ void ThreadTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
 
 Dso* ThreadTree::FindKernelDsoOrNew(const std::string& filename) {
   if (filename == DEFAULT_KERNEL_MMAP_NAME) {
-    if (kernel_dso_ == nullptr) {
-      kernel_dso_ = Dso::CreateDso(DSO_KERNEL);
-    }
     return kernel_dso_.get();
   }
   auto it = module_dso_tree_.find(filename);
@@ -112,7 +109,7 @@ void ThreadTree::AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t le
                               uint64_t time, const std::string& filename) {
   ThreadEntry* thread = FindThreadOrNew(pid, tid);
   Dso* dso = FindUserDsoOrNew(filename);
-  MapEntry* map = AllocateMap(MapEntry(start_addr, len, pgoff, time, dso));
+  MapEntry* map = AllocateMap(MapEntry(start_addr, len, pgoff, time, dso, false));
   FixOverlappedMap(&thread->maps, map);
   auto pair = thread->maps.insert(map);
   CHECK(pair.second);
@@ -145,13 +142,13 @@ void ThreadTree::FixOverlappedMap(std::set<MapEntry*, MapComparator>* map_set, c
       MapEntry* old = *it;
       if (old->start_addr < map->start_addr) {
         MapEntry* before = AllocateMap(MapEntry(old->start_addr, map->start_addr - old->start_addr,
-                                                old->pgoff, old->time, old->dso));
+                                                old->pgoff, old->time, old->dso, old->in_kernel));
         map_set->insert(before);
       }
       if (old->get_end_addr() > map->get_end_addr()) {
         MapEntry* after = AllocateMap(
             MapEntry(map->get_end_addr(), old->get_end_addr() - map->get_end_addr(),
-                     map->get_end_addr() - old->start_addr + old->pgoff, old->time, old->dso));
+                     map->get_end_addr() - old->start_addr + old->pgoff, old->time, old->dso, old->in_kernel));
         map_set->insert(after);
       }
 
@@ -167,7 +164,7 @@ static bool IsAddrInMap(uint64_t addr, const MapEntry* map) {
 static MapEntry* FindMapByAddr(const std::set<MapEntry*, MapComparator>& maps, uint64_t addr) {
   // Construct a map_entry which is strictly after the searched map_entry, based on MapComparator.
   MapEntry find_map(addr, std::numeric_limits<uint64_t>::max(), 0,
-                    std::numeric_limits<uint64_t>::max(), nullptr);
+                    std::numeric_limits<uint64_t>::max(), nullptr, false);
   auto it = maps.upper_bound(&find_map);
   if (it != maps.begin() && IsAddrInMap(addr, *--it)) {
     return *it;
@@ -202,6 +199,13 @@ const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip) {
     vaddr_in_file = ip - map->start_addr + map->dso->MinVirtualAddress();
   }
   const Symbol* symbol = map->dso->FindSymbol(vaddr_in_file);
+  if (symbol == nullptr && map->in_kernel && map->dso != kernel_dso_.get()) {
+    // It is in a kernel module, but we can't find the kernel module file, or
+    // the kernel module file contains no symbol. Try finding the symbol in
+    // /proc/kallsyms.
+    vaddr_in_file = ip;
+    symbol = kernel_dso_->FindSymbol(vaddr_in_file);
+  }
   if (symbol == nullptr) {
     symbol = &unknown_symbol_;
   }
@@ -221,18 +225,18 @@ void ThreadTree::Clear() {
 }  // namespace simpleperf
 
 void BuildThreadTree(const Record& record, ThreadTree* thread_tree) {
-  if (record.header.type == PERF_RECORD_MMAP) {
+  if (record.type() == PERF_RECORD_MMAP) {
     const MmapRecord& r = *static_cast<const MmapRecord*>(&record);
-    if ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL) {
+    if (r.InKernel()) {
       thread_tree->AddKernelMap(r.data.addr, r.data.len, r.data.pgoff, r.sample_id.time_data.time,
                                 r.filename);
     } else {
       thread_tree->AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
                                 r.sample_id.time_data.time, r.filename);
     }
-  } else if (record.header.type == PERF_RECORD_MMAP2) {
+  } else if (record.type() == PERF_RECORD_MMAP2) {
     const Mmap2Record& r = *static_cast<const Mmap2Record*>(&record);
-    if ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL) {
+    if (r.InKernel()) {
       thread_tree->AddKernelMap(r.data.addr, r.data.len, r.data.pgoff, r.sample_id.time_data.time,
                                 r.filename);
     } else {
@@ -241,11 +245,19 @@ void BuildThreadTree(const Record& record, ThreadTree* thread_tree) {
       thread_tree->AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
                                 r.sample_id.time_data.time, filename);
     }
-  } else if (record.header.type == PERF_RECORD_COMM) {
+  } else if (record.type() == PERF_RECORD_COMM) {
     const CommRecord& r = *static_cast<const CommRecord*>(&record);
     thread_tree->AddThread(r.data.pid, r.data.tid, r.comm);
-  } else if (record.header.type == PERF_RECORD_FORK) {
+  } else if (record.type() == PERF_RECORD_FORK) {
     const ForkRecord& r = *static_cast<const ForkRecord*>(&record);
     thread_tree->ForkThread(r.data.pid, r.data.tid, r.data.ppid, r.data.ptid);
+  } else if (record.type() == SIMPLE_PERF_RECORD_KERNEL_SYMBOL) {
+    const auto& r = *static_cast<const KernelSymbolRecord*>(&record);
+    static std::string kallsyms;
+    kallsyms += r.kallsyms;
+    if (r.end_of_symbols) {
+      Dso::SetKallsyms(std::move(kallsyms));
+      kallsyms.clear();
+    }
   }
 }

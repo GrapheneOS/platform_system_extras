@@ -55,6 +55,11 @@ struct Dso {
   static std::string Demangle(const std::string& name);
   static bool SetSymFsDir(const std::string& symfs_dir);
   static void SetVmlinux(const std::string& vmlinux);
+  static void SetKallsyms(std::string kallsyms) {
+    if (!kallsyms.empty()) {
+      kallsyms_ = std::move(kallsyms);
+    }
+  }
   static void SetBuildIds(const std::vector<std::pair<std::string, BuildId>>& build_ids);
 
   static std::unique_ptr<Dso> CreateDso(DsoType dso_type, const std::string& dso_path = "");
@@ -85,6 +90,7 @@ struct Dso {
   static bool demangle_;
   static std::string symfs_dir_;
   static std::string vmlinux_;
+  static std::string kallsyms_;
   static std::unordered_map<std::string, BuildId> build_id_map_;
   static size_t dso_count_;
 

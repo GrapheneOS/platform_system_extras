@@ -19,6 +19,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -258,4 +259,45 @@ bool IsRoot() {
 #endif
   }
   return is_root == 1;
+}
+
+bool ProcessKernelSymbols(std::string& symbol_data,
+                          std::function<bool(const KernelSymbol&)> callback) {
+  char* p = &symbol_data[0];
+  char* data_end = p + symbol_data.size();
+  while (p < data_end) {
+    char* line_end = strchr(p, '\n');
+    if (line_end != nullptr) {
+      *line_end = '\0';
+    }
+    size_t line_size = (line_end != nullptr) ? (line_end - p) : (data_end - p);
+    // Parse line like: ffffffffa005c4e4 d __warned.41698       [libsas]
+    char name[line_size];
+    char module[line_size];
+    strcpy(module, "");
+
+    KernelSymbol symbol;
+    int ret = sscanf(p, "%" PRIx64 " %c %s%s", &symbol.addr, &symbol.type, name, module);
+    if (line_end != nullptr) {
+      *line_end = '\n';
+      p = line_end + 1;
+    } else {
+      p = data_end;
+    }
+    if (ret >= 3) {
+      symbol.name = name;
+      size_t module_len = strlen(module);
+      if (module_len > 2 && module[0] == '[' && module[module_len - 1] == ']') {
+        module[module_len - 1] = '\0';
+        symbol.module = &module[1];
+      } else {
+        symbol.module = nullptr;
+      }
+
+      if (callback(symbol)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
