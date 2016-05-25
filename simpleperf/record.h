@@ -81,12 +81,13 @@ struct PerfSampleRawType {
   std::vector<char> data;
 };
 
+struct BranchStackItemType {
+  uint64_t from;
+  uint64_t to;
+  uint64_t flags;
+};
+
 struct PerfSampleBranchStackType {
-  struct BranchStackItemType {
-    uint64_t from;
-    uint64_t to;
-    uint64_t flags;
-  };
   std::vector<BranchStackItemType> stack;
 };
 
@@ -150,6 +151,10 @@ struct Record {
 
   uint32_t type() const {
     return header.type;
+  }
+
+  bool InKernel() const {
+    return (header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL;
   }
 
   void Dump(size_t indent = 0) const;

@@ -185,6 +185,15 @@ const MapEntry* ThreadTree::FindMap(const ThreadEntry* thread, uint64_t ip, bool
   return result != nullptr ? result : &unknown_map_;
 }
 
+const MapEntry* ThreadTree::FindMap(const ThreadEntry* thread, uint64_t ip) {
+  MapEntry* result = FindMapByAddr(thread->maps, ip);
+  if (result != nullptr) {
+    return result;
+  }
+  result = FindMapByAddr(kernel_map_tree_, ip);
+  return result != nullptr ? result : &unknown_map_;
+}
+
 const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip) {
   uint64_t vaddr_in_file;
   if (map->dso == kernel_dso_.get()) {
