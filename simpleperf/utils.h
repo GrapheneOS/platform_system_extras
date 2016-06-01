@@ -125,4 +125,14 @@ bool GetLogSeverity(const std::string& name, android::base::LogSeverity* severit
 
 bool IsRoot();
 
+struct KernelSymbol {
+  uint64_t addr;
+  char type;
+  const char* name;
+  const char* module;  // If nullptr, the symbol is not in a kernel module.
+};
+
+bool ProcessKernelSymbols(std::string& symbol_data,
+                          std::function<bool(const KernelSymbol&)> callback);
+
 #endif  // SIMPLE_PERF_UTILS_H_

@@ -274,6 +274,12 @@ TEST_F(ReportCommandTest, report_more_than_one_event_types) {
   ASSERT_NE(content.find("cpu-clock"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, report_kernel_symbol) {
+  Report(PERF_DATA_WITH_KERNEL_SYMBOL);
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("perf_event_comm_output"), std::string::npos);
+}
+
 #if defined(__linux__)
 
 static std::unique_ptr<Command> RecordCmd() {

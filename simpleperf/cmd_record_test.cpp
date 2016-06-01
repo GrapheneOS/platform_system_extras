@@ -35,7 +35,8 @@ static std::unique_ptr<Command> RecordCmd() {
   return CreateCommandInstance("record");
 }
 
-static bool RunRecordCmd(std::vector<std::string> v, const char* output_file = nullptr) {
+static bool RunRecordCmd(std::vector<std::string> v,
+                         const char* output_file = nullptr) {
   std::unique_ptr<TemporaryFile> tmpfile;
   std::string out_file;
   if (output_file != nullptr) {
@@ -48,9 +49,7 @@ static bool RunRecordCmd(std::vector<std::string> v, const char* output_file = n
   return RecordCmd()->Run(v);
 }
 
-TEST(record_cmd, no_options) {
-  ASSERT_TRUE(RunRecordCmd({}));
-}
+TEST(record_cmd, no_options) { ASSERT_TRUE(RunRecordCmd({})); }
 
 TEST(record_cmd, system_wide_option) {
   TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-a"})));
@@ -77,14 +76,16 @@ TEST(record_cmd, output_file_option) {
 TEST(record_cmd, dump_kernel_mmap) {
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+  std::unique_ptr<RecordFileReader> reader =
+      RecordFileReader::CreateInstance(tmpfile.path);
   ASSERT_TRUE(reader != nullptr);
   std::vector<std::unique_ptr<Record>> records = reader->DataSection();
   ASSERT_GT(records.size(), 0U);
   bool have_kernel_mmap = false;
   for (auto& record : records) {
-    if (record->header.type == PERF_RECORD_MMAP) {
-      const MmapRecord* mmap_record = static_cast<const MmapRecord*>(record.get());
+    if (record->type() == PERF_RECORD_MMAP) {
+      const MmapRecord* mmap_record =
+          static_cast<const MmapRecord*>(record.get());
       if (mmap_record->filename == DEFAULT_KERNEL_MMAP_NAME) {
         have_kernel_mmap = true;
         break;
@@ -97,10 +98,12 @@ TEST(record_cmd, dump_kernel_mmap) {
 TEST(record_cmd, dump_build_id_feature) {
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+  std::unique_ptr<RecordFileReader> reader =
+      RecordFileReader::CreateInstance(tmpfile.path);
   ASSERT_TRUE(reader != nullptr);
   const FileHeader& file_header = reader->FileHeader();
-  ASSERT_TRUE(file_header.features[FEAT_BUILD_ID / 8] & (1 << (FEAT_BUILD_ID % 8)));
+  ASSERT_TRUE(file_header.features[FEAT_BUILD_ID / 8] &
+              (1 << (FEAT_BUILD_ID % 8)));
   ASSERT_GT(reader->FeatureSectionDescriptors().size(), 0u);
 }
 
@@ -116,8 +119,8 @@ TEST(record_cmd, branch_sampling) {
     ASSERT_TRUE(RunRecordCmd({"-j", "any,u"}));
     ASSERT_FALSE(RunRecordCmd({"-j", "u"}));
   } else {
-    GTEST_LOG_(INFO)
-        << "This test does nothing as branch stack sampling is not supported on this device.";
+    GTEST_LOG_(INFO) << "This test does nothing as branch stack sampling is "
+                        "not supported on this device.";
   }
 }
 
@@ -139,8 +142,8 @@ TEST(record_cmd, dwarf_callchain_sampling) {
     ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf,16384"}));
     ASSERT_TRUE(RunRecordCmd({"-g"}));
   } else {
-    GTEST_LOG_(INFO)
-        << "This test does nothing as dwarf callchain sampling is not supported on this device.";
+    GTEST_LOG_(INFO) << "This test does nothing as dwarf callchain sampling is "
+                        "not supported on this device.";
   }
 }
 
@@ -148,8 +151,8 @@ TEST(record_cmd, system_wide_dwarf_callchain_sampling) {
   if (IsDwarfCallChainSamplingSupported()) {
     TEST_IN_ROOT(RunRecordCmd({"-a", "--call-graph", "dwarf"}));
   } else {
-    GTEST_LOG_(INFO)
-        << "This test does nothing as dwarf callchain sampling is not supported on this device.";
+    GTEST_LOG_(INFO) << "This test does nothing as dwarf callchain sampling is "
+                        "not supported on this device.";
   }
 }
 
@@ -157,8 +160,8 @@ TEST(record_cmd, no_unwind_option) {
   if (IsDwarfCallChainSamplingSupported()) {
     ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf", "--no-unwind"}));
   } else {
-    GTEST_LOG_(INFO)
-        << "This test does nothing as dwarf callchain sampling is not supported on this device.";
+    GTEST_LOG_(INFO) << "This test does nothing as dwarf callchain sampling is "
+                        "not supported on this device.";
   }
   ASSERT_FALSE(RunRecordCmd({"--no-unwind"}));
 }
@@ -167,8 +170,8 @@ TEST(record_cmd, post_unwind_option) {
   if (IsDwarfCallChainSamplingSupported()) {
     ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf", "--post-unwind"}));
   } else {
-    GTEST_LOG_(INFO)
-        << "This test does nothing as dwarf callchain sampling is not supported on this device.";
+    GTEST_LOG_(INFO) << "This test does nothing as dwarf callchain sampling is "
+                        "not supported on this device.";
   }
   ASSERT_FALSE(RunRecordCmd({"--post-unwind"}));
   ASSERT_FALSE(
@@ -178,8 +181,8 @@ TEST(record_cmd, post_unwind_option) {
 TEST(record_cmd, existing_processes) {
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(2, &workloads);
-  std::string pid_list =
-      android::base::StringPrintf("%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
+  std::string pid_list = android::base::StringPrintf(
+      "%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
   TemporaryFile tmpfile;
   ASSERT_TRUE(RecordCmd()->Run({"-p", pid_list, "-o", tmpfile.path}));
 }
@@ -188,15 +191,13 @@ TEST(record_cmd, existing_threads) {
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(2, &workloads);
   // Process id can also be used as thread id in linux.
-  std::string tid_list =
-      android::base::StringPrintf("%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
+  std::string tid_list = android::base::StringPrintf(
+      "%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
   TemporaryFile tmpfile;
   ASSERT_TRUE(RecordCmd()->Run({"-t", tid_list, "-o", tmpfile.path}));
 }
 
-TEST(record_cmd, no_monitored_threads) {
-  ASSERT_FALSE(RecordCmd()->Run({""}));
-}
+TEST(record_cmd, no_monitored_threads) { ASSERT_FALSE(RecordCmd()->Run({""})); }
 
 TEST(record_cmd, more_than_one_event_types) {
   ASSERT_TRUE(RunRecordCmd({"-e", "cpu-cycles,cpu-clock"}));
@@ -212,4 +213,36 @@ TEST(record_cmd, mmap_page_option) {
   ASSERT_TRUE(RunRecordCmd({"-m", "1"}));
   ASSERT_FALSE(RunRecordCmd({"-m", "0"}));
   ASSERT_FALSE(RunRecordCmd({"-m", "7"}));
+}
+
+void CheckKernelSymbol(const std::string& path, bool need_kallsyms,
+                     bool* success) {
+  *success = false;
+  std::unique_ptr<RecordFileReader> reader =
+      RecordFileReader::CreateInstance(path);
+  ASSERT_TRUE(reader != nullptr);
+  std::vector<std::unique_ptr<Record>> records = reader->DataSection();
+  bool has_kernel_symbol_records = false;
+  for (const auto& record : records) {
+    if (record->type() == SIMPLE_PERF_RECORD_KERNEL_SYMBOL) {
+      has_kernel_symbol_records = true;
+      auto& r = *static_cast<KernelSymbolRecord*>(record.get());
+      if (!r.end_of_symbols) {
+        ASSERT_FALSE(r.kallsyms.empty());
+      }
+    }
+  }
+  ASSERT_EQ(need_kallsyms, has_kernel_symbol_records);
+  *success = true;
+}
+
+TEST(record_cmd, kernel_symbol) {
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
+  bool success;
+  CheckKernelSymbol(tmpfile.path, true, &success);
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(RunRecordCmd({"--no-dump-kernel-symbols"}, tmpfile.path));
+  CheckKernelSymbol(tmpfile.path, false, &success);
+  ASSERT_TRUE(success);
 }
