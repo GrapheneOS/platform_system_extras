@@ -25,10 +25,6 @@ std::vector<uint64_t> UnwindCallChain(ArchType, const ThreadEntry&, const RegSet
   return std::vector<uint64_t>();
 }
 
-bool ProcessKernelSymbols(const std::string&, std::function<bool(const KernelSymbol&)>) {
-  return false;
-}
-
 bool GetKernelBuildId(BuildId*) {
   return false;
 }

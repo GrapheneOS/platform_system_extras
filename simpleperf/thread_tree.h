@@ -33,9 +33,10 @@ struct MapEntry {
   uint64_t pgoff;
   uint64_t time;  // Map creation time.
   Dso* dso;
+  bool in_kernel;
 
-  MapEntry(uint64_t start_addr, uint64_t len, uint64_t pgoff, uint64_t time, Dso* dso)
-      : start_addr(start_addr), len(len), pgoff(pgoff), time(time), dso(dso) {
+  MapEntry(uint64_t start_addr, uint64_t len, uint64_t pgoff, uint64_t time, Dso* dso, bool in_kernel)
+      : start_addr(start_addr), len(len), pgoff(pgoff), time(time), dso(dso), in_kernel(in_kernel) {
   }
   MapEntry() {
   }
@@ -61,7 +62,8 @@ class ThreadTree {
   ThreadTree() : unknown_symbol_("unknown", 0, std::numeric_limits<unsigned long long>::max()) {
     unknown_dso_ = Dso::CreateDso(DSO_ELF_FILE, "unknown");
     unknown_map_ =
-        MapEntry(0, std::numeric_limits<unsigned long long>::max(), 0, 0, unknown_dso_.get());
+        MapEntry(0, std::numeric_limits<unsigned long long>::max(), 0, 0, unknown_dso_.get(), false);
+    kernel_dso_ = Dso::CreateDso(DSO_KERNEL);
   }
 
   void AddThread(int pid, int tid, const std::string& comm);

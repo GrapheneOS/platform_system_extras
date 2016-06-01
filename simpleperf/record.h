@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+#include <android-base/logging.h>
+
 #include "build_id.h"
 #include "perf_event.h"
 
@@ -34,11 +36,15 @@ struct ThreadComm;
 struct ThreadMmap;
 
 enum user_record_type {
+  PERF_RECORD_USER_DEFINED_TYPE_START = 64,
   PERF_RECORD_ATTR = 64,
   PERF_RECORD_EVENT_TYPE,
   PERF_RECORD_TRACING_DATA,
   PERF_RECORD_BUILD_ID,
   PERF_RECORD_FINISHED_ROUND,
+
+  SIMPLE_PERF_RECORD_TYPE_START = 32768,
+  SIMPLE_PERF_RECORD_KERNEL_SYMBOL,
 };
 
 struct PerfSampleIpType {
@@ -139,22 +145,44 @@ struct Record {
   perf_event_header header;
   SampleId sample_id;
 
-  Record();
-  Record(const perf_event_header* pheader);
-
-  virtual ~Record() {
+  Record() {
+    memset(&header, 0, sizeof(header));
+  }
+  Record(const perf_event_header* pheader) {
+    header = *pheader;
   }
 
-  size_t size() const {
-    return header.size;
+  virtual ~Record() {
   }
 
   uint32_t type() const {
     return header.type;
   }
 
+  uint16_t misc() const {
+    return header.misc;
+  }
+
+  size_t size() const {
+    return header.size;
+  }
+
+  static uint32_t header_size() {
+    return sizeof(perf_event_header);
+  }
+
   bool InKernel() const {
     return (header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL;
+  }
+
+  void SetTypeAndMisc(uint32_t type, uint16_t misc) {
+    header.type = type;
+    header.misc = misc;
+  }
+
+  void SetSize(uint32_t size) {
+    CHECK_LT(size, 1u << 16);
+    header.size = size;
   }
 
   void Dump(size_t indent = 0) const;
@@ -299,6 +327,20 @@ struct BuildIdRecord : public Record {
   void DumpData(size_t indent) const override;
 };
 
+struct KernelSymbolRecord : public Record {
+  bool end_of_symbols;
+  std::string kallsyms;
+
+  KernelSymbolRecord() {
+  }
+
+  KernelSymbolRecord(const perf_event_header* pheader);
+  std::vector<char> BinaryFormat() const override;
+
+ protected:
+  void DumpData(size_t indent) const override;
+};
+
 // UnknownRecord is used for unknown record types, it makes sure all unknown records
 // are not changed when modifying perf.data.
 struct UnknownRecord : public Record {
@@ -371,5 +413,6 @@ ForkRecord CreateForkRecord(const perf_event_attr& attr, uint32_t pid, uint32_t 
                             uint32_t ptid, uint64_t event_id);
 BuildIdRecord CreateBuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id,
                                   const std::string& filename);
+std::vector<KernelSymbolRecord> CreateKernelSymbolRecords(const std::string& kallsyms);
 
 #endif  // SIMPLE_PERF_RECORD_H_
