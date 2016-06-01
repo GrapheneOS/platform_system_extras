@@ -23,6 +23,7 @@
 #include <limits>
 #include <vector>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
 
 #include "environment.h"
@@ -54,6 +55,7 @@ const char* Symbol::DemangledName() const {
 bool Dso::demangle_ = true;
 std::string Dso::symfs_dir_;
 std::string Dso::vmlinux_;
+std::string Dso::kallsyms_;
 std::unordered_map<std::string, BuildId> Dso::build_id_map_;
 size_t Dso::dso_count_;
 
@@ -142,7 +144,13 @@ Dso::Dso(DsoType type, const std::string& path)
 
 Dso::~Dso() {
   if (--dso_count_ == 0) {
+    // Clean up global variables when no longer used.
     symbol_name_allocator.Clear();
+    demangle_ = true;
+    symfs_dir_.clear();
+    vmlinux_.clear();
+    kallsyms_.clear();
+    build_id_map_.clear();
   }
 }
 
@@ -238,6 +246,22 @@ bool Dso::LoadKernel() {
   if (!vmlinux_.empty()) {
     ParseSymbolsFromElfFile(vmlinux_, build_id,
                             std::bind(VmlinuxSymbolCallback, std::placeholders::_1, this));
+  } else if (!kallsyms_.empty()) {
+    ProcessKernelSymbols(kallsyms_,
+                         std::bind(&KernelSymbolCallback, std::placeholders::_1, this));
+    bool all_zero = true;
+    for (const auto& symbol : symbols_) {
+      if (symbol.addr != 0) {
+        all_zero = false;
+        break;
+      }
+    }
+    if (all_zero) {
+      LOG(WARNING) << "Symbol addresses in /proc/kallsyms on device are all zero. "
+                      "`echo 0 >/proc/sys/kernel/kptr_restrict` or use root privilege if possible.";
+      symbols_.clear();
+      return false;
+    }
   } else {
     if (!build_id.IsEmpty()) {
       BuildId real_build_id;
@@ -250,18 +274,23 @@ bool Dso::LoadKernel() {
       }
     }
 
-    ProcessKernelSymbols("/proc/kallsyms",
+    std::string kallsyms;
+    if (!android::base::ReadFileToString("/proc/kallsyms", &kallsyms)) {
+      LOG(DEBUG) << "failed to read /proc/kallsyms";
+      return false;
+    }
+    ProcessKernelSymbols(kallsyms,
                          std::bind(&KernelSymbolCallback, std::placeholders::_1, this));
-    bool allZero = true;
-    for (auto& symbol : symbols_) {
+    bool all_zero = true;
+    for (const auto& symbol : symbols_) {
       if (symbol.addr != 0) {
-        allZero = false;
+        all_zero = false;
         break;
       }
     }
-    if (allZero) {
-      LOG(WARNING) << "Symbol addresses in /proc/kallsyms are all zero. Check "
-                      "/proc/sys/kernel/kptr_restrict if possible.";
+    if (all_zero) {
+      LOG(WARNING) << "Symbol addresses in /proc/kallsyms are all zero. "
+                      "`echo 0 >/proc/sys/kernel/kptr_restrict` or use root privilege if possible.";
       symbols_.clear();
       return false;
     }

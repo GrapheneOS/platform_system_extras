@@ -31,13 +31,15 @@ static void CheckBuildIdRecordDataEqual(const BuildIdRecord& r1, const BuildIdRe
 }
 
 static void CheckRecordEqual(const Record& r1, const Record& r2) {
-  ASSERT_EQ(0, memcmp(&r1.header, &r2.header, sizeof(r1.header)));
+  ASSERT_EQ(r1.type(), r2.type());
+  ASSERT_EQ(r1.misc(), r2.misc());
+  ASSERT_EQ(r1.size(), r2.size());
   ASSERT_EQ(0, memcmp(&r1.sample_id, &r2.sample_id, sizeof(r1.sample_id)));
-  if (r1.header.type == PERF_RECORD_MMAP) {
+  if (r1.type() == PERF_RECORD_MMAP) {
     CheckMmapRecordDataEqual(static_cast<const MmapRecord&>(r1), static_cast<const MmapRecord&>(r2));
-  } else if (r1.header.type == PERF_RECORD_COMM) {
+  } else if (r1.type() == PERF_RECORD_COMM) {
     CheckCommRecordDataEqual(static_cast<const CommRecord&>(r1), static_cast<const CommRecord&>(r2));
-  } else if (r1.header.type == PERF_RECORD_BUILD_ID) {
+  } else if (r1.type() == PERF_RECORD_BUILD_ID) {
     CheckBuildIdRecordDataEqual(static_cast<const BuildIdRecord&>(r1),
                                 static_cast<const BuildIdRecord&>(r2));
   }

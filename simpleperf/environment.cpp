@@ -106,41 +106,6 @@ std::vector<int> GetCpusFromString(const std::string& s) {
   return std::vector<int>(cpu_set.begin(), cpu_set.end());
 }
 
-bool ProcessKernelSymbols(const std::string& symbol_file,
-                          std::function<bool(const KernelSymbol&)> callback) {
-  FILE* fp = fopen(symbol_file.c_str(), "re");
-  if (fp == nullptr) {
-    PLOG(ERROR) << "failed to open file " << symbol_file;
-    return false;
-  }
-  LineReader reader(fp);
-  char* line;
-  while ((line = reader.ReadLine()) != nullptr) {
-    // Parse line like: ffffffffa005c4e4 d __warned.41698       [libsas]
-    char name[reader.MaxLineSize()];
-    char module[reader.MaxLineSize()];
-    strcpy(module, "");
-
-    KernelSymbol symbol;
-    if (sscanf(line, "%" PRIx64 " %c %s%s", &symbol.addr, &symbol.type, name, module) < 3) {
-      continue;
-    }
-    symbol.name = name;
-    size_t module_len = strlen(module);
-    if (module_len > 2 && module[0] == '[' && module[module_len - 1] == ']') {
-      module[module_len - 1] = '\0';
-      symbol.module = &module[1];
-    } else {
-      symbol.module = nullptr;
-    }
-
-    if (callback(symbol)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 static std::vector<KernelMmap> GetLoadedModules() {
   std::vector<KernelMmap> result;
   FILE* fp = fopen("/proc/modules", "re");
@@ -161,6 +126,16 @@ static std::vector<KernelMmap> GetLoadedModules() {
       map.start_addr = addr;
       result.push_back(map);
     }
+  }
+  bool all_zero = true;
+  for (const auto& map : result) {
+    if (map.start_addr != 0) {
+      all_zero = false;
+    }
+  }
+  if (all_zero) {
+    LOG(DEBUG) << "addresses in /proc/modules are all zero, so ignore kernel modules";
+    return std::vector<KernelMmap>();
   }
   return result;
 }
