@@ -118,6 +118,7 @@ bool RecordFileReader::ReadAttrSection() {
     if (!ReadIdsForAttr(file_attrs_[i], &ids)) {
       return false;
     }
+    event_ids_for_file_attrs_.push_back(ids);
     for (auto id : ids) {
       event_id_to_attr_map_[id] = &file_attrs_[i].attr;
     }

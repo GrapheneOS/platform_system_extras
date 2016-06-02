@@ -136,4 +136,8 @@ struct KernelSymbol {
 bool ProcessKernelSymbols(std::string& symbol_data,
                           std::function<bool(const KernelSymbol&)> callback);
 
+size_t GetPageSize();
+
+uint64_t ConvertBytesToValue(const char* bytes, uint32_t size);
+
 #endif  // SIMPLE_PERF_UTILS_H_

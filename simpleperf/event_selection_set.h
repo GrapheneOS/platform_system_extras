@@ -64,8 +64,8 @@ class EventSelectionSet {
   void SetEnableOnExec(bool enable);
   bool GetEnableOnExec();
   void SampleIdAll();
-  void SetSampleFreq(uint64_t sample_freq);
-  void SetSamplePeriod(uint64_t sample_period);
+  void SetSampleFreq(const EventTypeAndModifier& event_type_modifier, uint64_t sample_freq);
+  void SetSamplePeriod(const EventTypeAndModifier& event_type_modifier, uint64_t sample_period);
   bool SetBranchSampling(uint64_t branch_sample_type);
   void EnableFpCallChainSampling();
   bool EnableDwarfCallChainSampling(uint32_t dump_stack_size);

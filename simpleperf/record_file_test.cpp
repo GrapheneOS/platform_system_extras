@@ -79,12 +79,10 @@ TEST_F(RecordFileTest, smoke) {
   // Read from a record file.
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile_.path);
   ASSERT_TRUE(reader != nullptr);
-  const std::vector<FileAttr>& file_attrs = reader->AttrSection();
-  ASSERT_EQ(1u, file_attrs.size());
-  ASSERT_EQ(0, memcmp(&file_attrs[0].attr, attr_ids_[0].attr, sizeof(perf_event_attr)));
-  std::vector<uint64_t> ids;
-  ASSERT_TRUE(reader->ReadIdsForAttr(file_attrs[0], &ids));
-  ASSERT_EQ(ids, attr_ids_[0].ids);
+  std::vector<AttrWithId> attrs = reader->AttrSection();
+  ASSERT_EQ(1u, attrs.size());
+  ASSERT_EQ(0, memcmp(attrs[0].attr, attr_ids_[0].attr, sizeof(perf_event_attr)));
+  ASSERT_EQ(attrs[0].ids, attr_ids_[0].ids);
 
   // Read and check data section.
   std::vector<std::unique_ptr<Record>> records = reader->DataSection();
@@ -152,12 +150,10 @@ TEST_F(RecordFileTest, record_more_than_one_attr) {
   // Read from a record file.
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile_.path);
   ASSERT_TRUE(reader != nullptr);
-  const std::vector<FileAttr>& file_attrs = reader->AttrSection();
-  ASSERT_EQ(3u, file_attrs.size());
-  for (size_t i = 0; i < file_attrs.size(); ++i) {
-    ASSERT_EQ(0, memcmp(&file_attrs[i].attr, attr_ids_[i].attr, sizeof(perf_event_attr)));
-    std::vector<uint64_t> ids;
-    ASSERT_TRUE(reader->ReadIdsForAttr(file_attrs[i], &ids));
-    ASSERT_EQ(ids, attr_ids_[i].ids);
+  std::vector<AttrWithId> attrs = reader->AttrSection();
+  ASSERT_EQ(3u, attrs.size());
+  for (size_t i = 0; i < attrs.size(); ++i) {
+    ASSERT_EQ(0, memcmp(attrs[i].attr, attr_ids_[i].attr, sizeof(perf_event_attr)));
+    ASSERT_EQ(attrs[i].ids, attr_ids_[i].ids);
   }
 }
