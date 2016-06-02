@@ -570,6 +570,80 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
   }
 }
 
+TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
+{
+  // This test makes sure that the perf.data converter
+  // can handle call chains.
+  //
+  std::string input_perf_data(test_dir);
+  input_perf_data += "/callchain.canned.perf.data";
+
+  // Set up config to avoid these annotations (they are tested elsewhere)
+  ConfigReader config;
+  config.overrideUnsignedEntry("collect_cpu_utilization", 0);
+  config.overrideUnsignedEntry("collect_charging_state", 0);
+  config.overrideUnsignedEntry("collect_camera_active", 0);
+
+  // Kick off encoder and check return code
+  PROFILE_RESULT result =
+      encode_to_proto(input_perf_data, encoded_file_path(0).c_str(), config, 0);
+  EXPECT_EQ(OK_PROFILE_COLLECTION, result);
+
+  // Read and decode the resulting perf.data.encoded file
+  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
+  readEncodedProfile("BasicRunWithCannedPerf",
+                     encodedProfile);
+
+
+  // Expect 29 load modules
+  EXPECT_EQ(4, encodedProfile.programs_size());
+
+  // Check a couple of load modules
+  { const auto &lm0 = encodedProfile.load_modules(0);
+    std::string act_lm0 = encodedLoadModuleToString(lm0);
+    std::string sqact0 = squeezeWhite(act_lm0, "actual for lm 0");
+    const std::string expected_lm0 = RAW_RESULT(
+        name: "/system/bin/dex2oat"
+        build_id: "ee12bd1a1de39422d848f249add0afc4"
+                                                );
+    std::string sqexp0 = squeezeWhite(expected_lm0, "expected_lm0");
+    EXPECT_STREQ(sqexp0.c_str(), sqact0.c_str());
+  }
+  { const auto &lm1 = encodedProfile.load_modules(1);
+    std::string act_lm1 = encodedLoadModuleToString(lm1);
+    std::string sqact1 = squeezeWhite(act_lm1, "actual for lm 1");
+    const std::string expected_lm1 = RAW_RESULT(
+        name: "/system/bin/linker"
+        build_id: "a36715f673a4a0aa76ef290124c516cc"
+                                                );
+    std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
+    EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
+  }
+
+  // Examine some of the samples now
+  { const auto &p1 = encodedProfile.programs(0);
+    const auto &lm1 = p1.modules(0);
+    std::string act_lm1 = encodedModuleSamplesToString(lm1);
+    std::string sqact1 = squeezeWhite(act_lm1, "actual for lm1");
+    const std::string expected_lm1 = RAW_RESULT(
+        load_module_id: 0
+        address_samples { address: 108460 count: 2 }
+                                                );
+    std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
+    EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
+  }
+  { const auto &p1 = encodedProfile.programs(1);
+    const auto &lm2 = p1.modules(2);
+    std::string act_lm2 = encodedModuleSamplesToString(lm2);
+    std::string sqact2 = squeezeWhite(act_lm2, "actual for lm2");
+    const std::string expected_lm2 = RAW_RESULT(
+        load_module_id: 3 address_samples { address: 686690 count: 1 } address_samples { address: 693516 count: 1 } address_samples { address: 693770 count: 1 } address_samples { address: 694362 count: 1 } address_samples { address: 695874 count: 1 } address_samples { address: 720318 count: 2 } address_samples { address: 1510368 count: 1 } address_samples { address: 1715444 count: 1 } address_samples { address: 2809724 count: 1 } address_samples { address: 3200568 count: 1 }
+                                                );
+    std::string sqexp2 = squeezeWhite(expected_lm2, "expected_lm2");
+    EXPECT_STREQ(sqexp2.c_str(), sqact2.c_str());
+  }
+}
+
 TEST_F(PerfProfdTest, BasicRunWithLivePerf)
 {
   //
