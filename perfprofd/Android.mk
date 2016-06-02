@@ -73,3 +73,5 @@ include $(BUILD_EXECUTABLE)
 # Clean temp vars
 perfprofd_cppflags :=
 proto_header_dir :=
+
+include $(call first-makefiles-under,$(LOCAL_PATH))

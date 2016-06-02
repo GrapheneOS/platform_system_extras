@@ -549,7 +549,7 @@ static PROFILE_RESULT invoke_perf(const std::string &perf_path,
     }
 
     // marshall arguments
-    constexpr unsigned max_args = 12;
+    constexpr unsigned max_args = 13;
     const char *argv[max_args];
     unsigned slot = 0;
     argv[slot++] = perf_path.c_str();
@@ -570,6 +570,9 @@ static PROFILE_RESULT invoke_perf(const std::string &perf_path,
 
     // system wide profiling
     argv[slot++] = "-a";
+
+    // no need for kernel symbols
+    argv[slot++] = "--no-dump-kernel-symbols";
 
     // sleep <duration>
     argv[slot++] = "/system/bin/sleep";
