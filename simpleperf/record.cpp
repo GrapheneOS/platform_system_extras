@@ -23,18 +23,27 @@
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 
+#include "dso.h"
 #include "environment.h"
 #include "perf_regs.h"
 #include "utils.h"
 
 static std::string RecordTypeToString(int record_type) {
   static std::unordered_map<int, std::string> record_type_names = {
-      {PERF_RECORD_MMAP, "mmap"},         {PERF_RECORD_LOST, "lost"},
-      {PERF_RECORD_COMM, "comm"},         {PERF_RECORD_EXIT, "exit"},
-      {PERF_RECORD_THROTTLE, "throttle"}, {PERF_RECORD_UNTHROTTLE, "unthrottle"},
-      {PERF_RECORD_FORK, "fork"},         {PERF_RECORD_READ, "read"},
-      {PERF_RECORD_SAMPLE, "sample"},     {PERF_RECORD_BUILD_ID, "build_id"},
-      {PERF_RECORD_MMAP2, "mmap2"},       {SIMPLE_PERF_RECORD_KERNEL_SYMBOL, "kernel_symbol"},
+      {PERF_RECORD_MMAP, "mmap"},
+      {PERF_RECORD_LOST, "lost"},
+      {PERF_RECORD_COMM, "comm"},
+      {PERF_RECORD_EXIT, "exit"},
+      {PERF_RECORD_THROTTLE, "throttle"},
+      {PERF_RECORD_UNTHROTTLE, "unthrottle"},
+      {PERF_RECORD_FORK, "fork"},
+      {PERF_RECORD_READ, "read"},
+      {PERF_RECORD_SAMPLE, "sample"},
+      {PERF_RECORD_BUILD_ID, "build_id"},
+      {PERF_RECORD_MMAP2, "mmap2"},
+      {SIMPLE_PERF_RECORD_KERNEL_SYMBOL, "kernel_symbol"},
+      {SIMPLE_PERF_RECORD_DSO, "dso"},
+      {SIMPLE_PERF_RECORD_SYMBOL, "symbol"},
   };
 
   auto it = record_type_names.find(record_type);
@@ -64,9 +73,7 @@ void MoveToBinaryFormat(const T* data_p, size_t n, char*& p) {
   p += size;
 }
 
-SampleId::SampleId() {
-  memset(this, 0, sizeof(SampleId));
-}
+SampleId::SampleId() { memset(this, 0, sizeof(SampleId)); }
 
 // Return sample_id size in binary format.
 size_t SampleId::CreateContent(const perf_event_attr& attr, uint64_t event_id) {
@@ -77,7 +84,8 @@ size_t SampleId::CreateContent(const perf_event_attr& attr, uint64_t event_id) {
   return Size();
 }
 
-void SampleId::ReadFromBinaryFormat(const perf_event_attr& attr, const char* p, const char* end) {
+void SampleId::ReadFromBinaryFormat(const perf_event_attr& attr, const char* p,
+                                    const char* end) {
   sample_id_all = attr.sample_id_all;
   sample_type = attr.sample_type;
   if (sample_id_all) {
@@ -129,7 +137,8 @@ void SampleId::WriteToBinaryFormat(char*& p) const {
 void SampleId::Dump(size_t indent) const {
   if (sample_id_all) {
     if (sample_type & PERF_SAMPLE_TID) {
-      PrintIndented(indent, "sample_id: pid %u, tid %u\n", tid_data.pid, tid_data.tid);
+      PrintIndented(indent, "sample_id: pid %u, tid %u\n", tid_data.pid,
+                    tid_data.tid);
     }
     if (sample_type & PERF_SAMPLE_TIME) {
       PrintIndented(indent, "sample_id: time %" PRId64 "\n", time_data.time);
@@ -138,10 +147,12 @@ void SampleId::Dump(size_t indent) const {
       PrintIndented(indent, "sample_id: id %" PRId64 "\n", id_data.id);
     }
     if (sample_type & PERF_SAMPLE_STREAM_ID) {
-      PrintIndented(indent, "sample_id: stream_id %" PRId64 "\n", stream_id_data.stream_id);
+      PrintIndented(indent, "sample_id: stream_id %" PRId64 "\n",
+                    stream_id_data.stream_id);
     }
     if (sample_type & PERF_SAMPLE_CPU) {
-      PrintIndented(indent, "sample_id: cpu %u, res %u\n", cpu_data.cpu, cpu_data.res);
+      PrintIndented(indent, "sample_id: cpu %u, res %u\n", cpu_data.cpu,
+                    cpu_data.res);
     }
   }
 }
@@ -178,11 +189,10 @@ void Record::Dump(size_t indent) const {
   sample_id.Dump(indent + 1);
 }
 
-uint64_t Record::Timestamp() const {
-  return sample_id.time_data.time;
-}
+uint64_t Record::Timestamp() const { return sample_id.time_data.time; }
 
-MmapRecord::MmapRecord(const perf_event_attr& attr, const perf_event_header* pheader)
+MmapRecord::MmapRecord(const perf_event_attr& attr,
+                       const perf_event_header* pheader)
     : Record(pheader) {
   const char* p = reinterpret_cast<const char*>(pheader + 1);
   const char* end = reinterpret_cast<const char*>(pheader) + size();
@@ -205,16 +215,39 @@ std::vector<char> MmapRecord::BinaryFormat() const {
 }
 
 void MmapRecord::AdjustSizeBasedOnData() {
-  SetSize(header_size() + sizeof(data) + ALIGN(filename.size() + 1, 8) + sample_id.Size());
+  SetSize(header_size() + sizeof(data) + ALIGN(filename.size() + 1, 8) +
+          sample_id.Size());
 }
 
 void MmapRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "pid %u, tid %u, addr 0x%" PRIx64 ", len 0x%" PRIx64 "\n", data.pid,
-                data.tid, data.addr, data.len);
-  PrintIndented(indent, "pgoff 0x%" PRIx64 ", filename %s\n", data.pgoff, filename.c_str());
+  PrintIndented(indent,
+                "pid %u, tid %u, addr 0x%" PRIx64 ", len 0x%" PRIx64 "\n",
+                data.pid, data.tid, data.addr, data.len);
+  PrintIndented(indent, "pgoff 0x%" PRIx64 ", filename %s\n", data.pgoff,
+                filename.c_str());
 }
 
-Mmap2Record::Mmap2Record(const perf_event_attr& attr, const perf_event_header* pheader)
+MmapRecord MmapRecord::Create(const perf_event_attr& attr, bool in_kernel,
+                              uint32_t pid, uint32_t tid, uint64_t addr,
+                              uint64_t len, uint64_t pgoff,
+                              const std::string& filename, uint64_t event_id) {
+  MmapRecord record;
+  record.SetTypeAndMisc(PERF_RECORD_MMAP, in_kernel ? PERF_RECORD_MISC_KERNEL
+                                                    : PERF_RECORD_MISC_USER);
+  record.data.pid = pid;
+  record.data.tid = tid;
+  record.data.addr = addr;
+  record.data.len = len;
+  record.data.pgoff = pgoff;
+  record.filename = filename;
+  size_t sample_id_size = record.sample_id.CreateContent(attr, event_id);
+  record.SetSize(record.header_size() + sizeof(record.data) +
+                 ALIGN(record.filename.size() + 1, 8) + sample_id_size);
+  return record;
+}
+
+Mmap2Record::Mmap2Record(const perf_event_attr& attr,
+                         const perf_event_header* pheader)
     : Record(pheader) {
   const char* p = reinterpret_cast<const char*>(pheader + 1);
   const char* end = reinterpret_cast<const char*>(pheader) + size();
@@ -237,20 +270,23 @@ std::vector<char> Mmap2Record::BinaryFormat() const {
 }
 
 void Mmap2Record::AdjustSizeBasedOnData() {
-  SetSize(header_size() + sizeof(data) + ALIGN(filename.size() + 1, 8) + sample_id.Size());
+  SetSize(header_size() + sizeof(data) + ALIGN(filename.size() + 1, 8) +
+          sample_id.Size());
 }
 
 void Mmap2Record::DumpData(size_t indent) const {
-  PrintIndented(indent, "pid %u, tid %u, addr 0x%" PRIx64 ", len 0x%" PRIx64 "\n", data.pid,
-                data.tid, data.addr, data.len);
   PrintIndented(indent,
-                "pgoff 0x" PRIx64 ", maj %u, min %u, ino %" PRId64 ", ino_generation %" PRIu64 "\n",
+                "pid %u, tid %u, addr 0x%" PRIx64 ", len 0x%" PRIx64 "\n",
+                data.pid, data.tid, data.addr, data.len);
+  PrintIndented(indent, "pgoff 0x" PRIx64 ", maj %u, min %u, ino %" PRId64
+                        ", ino_generation %" PRIu64 "\n",
                 data.pgoff, data.maj, data.min, data.ino, data.ino_generation);
-  PrintIndented(indent, "prot %u, flags %u, filenames %s\n", data.prot, data.flags,
-                filename.c_str());
+  PrintIndented(indent, "prot %u, flags %u, filenames %s\n", data.prot,
+                data.flags, filename.c_str());
 }
 
-CommRecord::CommRecord(const perf_event_attr& attr, const perf_event_header* pheader)
+CommRecord::CommRecord(const perf_event_attr& attr,
+                       const perf_event_header* pheader)
     : Record(pheader) {
   const char* p = reinterpret_cast<const char*>(pheader + 1);
   const char* end = reinterpret_cast<const char*>(pheader) + size();
@@ -273,10 +309,26 @@ std::vector<char> CommRecord::BinaryFormat() const {
 }
 
 void CommRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "pid %u, tid %u, comm %s\n", data.pid, data.tid, comm.c_str());
+  PrintIndented(indent, "pid %u, tid %u, comm %s\n", data.pid, data.tid,
+                comm.c_str());
 }
 
-ExitOrForkRecord::ExitOrForkRecord(const perf_event_attr& attr, const perf_event_header* pheader)
+CommRecord CommRecord::Create(const perf_event_attr& attr, uint32_t pid,
+                              uint32_t tid, const std::string& comm,
+                              uint64_t event_id) {
+  CommRecord record;
+  record.SetTypeAndMisc(PERF_RECORD_COMM, 0);
+  record.data.pid = pid;
+  record.data.tid = tid;
+  record.comm = comm;
+  size_t sample_id_size = record.sample_id.CreateContent(attr, event_id);
+  record.SetSize(record.header_size() + sizeof(record.data) +
+                 ALIGN(record.comm.size() + 1, 8) + sample_id_size);
+  return record;
+}
+
+ExitOrForkRecord::ExitOrForkRecord(const perf_event_attr& attr,
+                                   const perf_event_header* pheader)
     : Record(pheader) {
   const char* p = reinterpret_cast<const char*>(pheader + 1);
   const char* end = reinterpret_cast<const char*>(pheader) + size();
@@ -295,11 +347,27 @@ std::vector<char> ExitOrForkRecord::BinaryFormat() const {
 }
 
 void ExitOrForkRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "pid %u, ppid %u, tid %u, ptid %u\n", data.pid, data.ppid, data.tid,
-                data.ptid);
+  PrintIndented(indent, "pid %u, ppid %u, tid %u, ptid %u\n", data.pid,
+                data.ppid, data.tid, data.ptid);
 }
 
-SampleRecord::SampleRecord(const perf_event_attr& attr, const perf_event_header* pheader)
+ForkRecord ForkRecord::Create(const perf_event_attr& attr, uint32_t pid,
+                              uint32_t tid, uint32_t ppid, uint32_t ptid,
+                              uint64_t event_id) {
+  ForkRecord record;
+  record.SetTypeAndMisc(PERF_RECORD_FORK, 0);
+  record.data.pid = pid;
+  record.data.ppid = ppid;
+  record.data.tid = tid;
+  record.data.ptid = ptid;
+  record.data.time = 0;
+  size_t sample_id_size = record.sample_id.CreateContent(attr, event_id);
+  record.SetSize(record.header_size() + sizeof(record.data) + sample_id_size);
+  return record;
+}
+
+SampleRecord::SampleRecord(const perf_event_attr& attr,
+                           const perf_event_header* pheader)
     : Record(pheader) {
   const char* p = reinterpret_cast<const char*>(pheader + 1);
   const char* end = reinterpret_cast<const char*>(pheader) + size();
@@ -433,7 +501,8 @@ std::vector<char> SampleRecord::BinaryFormat() const {
   if (sample_type & PERF_SAMPLE_REGS_USER) {
     MoveToBinaryFormat(regs_user_data.abi, p);
     if (regs_user_data.abi != 0) {
-      MoveToBinaryFormat(regs_user_data.regs.data(), regs_user_data.regs.size(), p);
+      MoveToBinaryFormat(regs_user_data.regs.data(), regs_user_data.regs.size(),
+                         p);
     }
   }
   if (sample_type & PERF_SAMPLE_STACK_USER) {
@@ -445,8 +514,9 @@ std::vector<char> SampleRecord::BinaryFormat() const {
     }
   }
 
-  // If record command does stack unwinding, sample records' size may be decreased.
-  // So we can't trust header.size here, and should adjust buffer size based on real need.
+  // If record command does stack unwinding, sample records' size may be
+  // decreased. So we can't trust header.size here, and should adjust buffer
+  // size based on real need.
   buf.resize(p - buf.data());
   return buf;
 }
@@ -454,7 +524,7 @@ std::vector<char> SampleRecord::BinaryFormat() const {
 void SampleRecord::AdjustSizeBasedOnData() {
   size_t size = BinaryFormat().size();
   LOG(DEBUG) << "Record (type " << RecordTypeToString(type())
-      << ") size is changed from " << this->size() << " to " << size;
+             << ") size is changed from " << this->size() << " to " << size;
   SetSize(size);
 }
 
@@ -485,23 +555,27 @@ void SampleRecord::DumpData(size_t indent) const {
     PrintIndented(indent, "period %" PRId64 "\n", period_data.period);
   }
   if (sample_type & PERF_SAMPLE_CALLCHAIN) {
-    PrintIndented(indent, "callchain nr=%" PRIu64 "\n", callchain_data.ips.size());
+    PrintIndented(indent, "callchain nr=%" PRIu64 "\n",
+                  callchain_data.ips.size());
     for (auto& ip : callchain_data.ips) {
       PrintIndented(indent + 1, "0x%" PRIx64 "\n", ip);
     }
   }
   if (sample_type & PERF_SAMPLE_RAW) {
     PrintIndented(indent, "raw size=%zu\n", raw_data.data.size());
-    const uint32_t* data = reinterpret_cast<const uint32_t*>(raw_data.data.data());
+    const uint32_t* data =
+        reinterpret_cast<const uint32_t*>(raw_data.data.data());
     size_t size = raw_data.data.size() / sizeof(uint32_t);
     for (size_t i = 0; i < size; ++i) {
       PrintIndented(indent + 1, "0x%08x (%zu)\n", data[i], data[i]);
     }
   }
   if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
-    PrintIndented(indent, "branch_stack nr=%" PRIu64 "\n", branch_stack_data.stack.size());
+    PrintIndented(indent, "branch_stack nr=%" PRIu64 "\n",
+                  branch_stack_data.stack.size());
     for (auto& item : branch_stack_data.stack) {
-      PrintIndented(indent + 1, "from 0x%" PRIx64 ", to 0x%" PRIx64 ", flags 0x%" PRIx64 "\n",
+      PrintIndented(indent + 1, "from 0x%" PRIx64 ", to 0x%" PRIx64
+                                ", flags 0x%" PRIx64 "\n",
                     item.from, item.to, item.flags);
     }
   }
@@ -509,16 +583,18 @@ void SampleRecord::DumpData(size_t indent) const {
     PrintIndented(indent, "user regs: abi=%" PRId64 "\n", regs_user_data.abi);
     for (size_t i = 0, pos = 0; i < 64; ++i) {
       if ((regs_user_data.reg_mask >> i) & 1) {
-        PrintIndented(indent + 1, "reg (%s) 0x%016" PRIx64 "\n",
-                      GetRegName(i, ScopedCurrentArch::GetCurrentArch()).c_str(),
-                      regs_user_data.regs[pos++]);
+        PrintIndented(
+            indent + 1, "reg (%s) 0x%016" PRIx64 "\n",
+            GetRegName(i, ScopedCurrentArch::GetCurrentArch()).c_str(),
+            regs_user_data.regs[pos++]);
       }
     }
   }
   if (sample_type & PERF_SAMPLE_STACK_USER) {
     PrintIndented(indent, "user stack: size %zu dyn_size %" PRIu64 "\n",
                   stack_user_data.data.size(), stack_user_data.dyn_size);
-    const uint64_t* p = reinterpret_cast<const uint64_t*>(stack_user_data.data.data());
+    const uint64_t* p =
+        reinterpret_cast<const uint64_t*>(stack_user_data.data.data());
     const uint64_t* end = p + (stack_user_data.data.size() / sizeof(uint64_t));
     while (p < end) {
       PrintIndented(indent + 1, "");
@@ -531,11 +607,10 @@ void SampleRecord::DumpData(size_t indent) const {
   }
 }
 
-uint64_t SampleRecord::Timestamp() const {
-  return time_data.time;
-}
+uint64_t SampleRecord::Timestamp() const { return time_data.time; }
 
-BuildIdRecord::BuildIdRecord(const perf_event_header* pheader) : Record(pheader) {
+BuildIdRecord::BuildIdRecord(const perf_event_header* pheader)
+    : Record(pheader) {
   const char* p = reinterpret_cast<const char*>(pheader + 1);
   const char* end = reinterpret_cast<const char*>(pheader) + size();
   MoveFromBinaryFormat(pid, p);
@@ -563,7 +638,24 @@ void BuildIdRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "filename %s\n", filename.c_str());
 }
 
-KernelSymbolRecord::KernelSymbolRecord(const perf_event_header* pheader) : Record(pheader) {
+BuildIdRecord BuildIdRecord::Create(bool in_kernel, pid_t pid,
+                                    const BuildId& build_id,
+                                    const std::string& filename) {
+  BuildIdRecord record;
+  record.SetTypeAndMisc(PERF_RECORD_BUILD_ID, in_kernel
+                                                  ? PERF_RECORD_MISC_KERNEL
+                                                  : PERF_RECORD_MISC_USER);
+  record.pid = pid;
+  record.build_id = build_id;
+  record.filename = filename;
+  record.SetSize(record.header_size() + sizeof(record.pid) +
+                 ALIGN(record.build_id.Size(), 8) +
+                 ALIGN(filename.size() + 1, 64));
+  return record;
+}
+
+KernelSymbolRecord::KernelSymbolRecord(const perf_event_header* pheader)
+    : Record(pheader) {
   const char* p = reinterpret_cast<const char*>(pheader + 1);
   const char* end = reinterpret_cast<const char*>(pheader) + size();
   uint32_t end_flag;
@@ -592,122 +684,13 @@ std::vector<char> KernelSymbolRecord::BinaryFormat() const {
 }
 
 void KernelSymbolRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "end_of_symbols: %s\n", end_of_symbols ? "true" : "false");
+  PrintIndented(indent, "end_of_symbols: %s\n",
+                end_of_symbols ? "true" : "false");
   PrintIndented(indent, "kallsyms: %s\n", kallsyms.c_str());
 }
 
-UnknownRecord::UnknownRecord(const perf_event_header* pheader) : Record(pheader) {
-  const char* p = reinterpret_cast<const char*>(pheader + 1);
-  const char* end = reinterpret_cast<const char*>(pheader) + size();
-  data.insert(data.end(), p, end);
-}
-
-std::vector<char> UnknownRecord::BinaryFormat() const {
-  std::vector<char> buf(size());
-  char* p = buf.data();
-  MoveToBinaryFormat(header, p);
-  MoveToBinaryFormat(data.data(), data.size(), p);
-  return buf;
-}
-
-void UnknownRecord::DumpData(size_t) const {
-}
-
-std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
-                                             const perf_event_header* pheader) {
-  switch (pheader->type) {
-    case PERF_RECORD_MMAP:
-      return std::unique_ptr<Record>(new MmapRecord(attr, pheader));
-    case PERF_RECORD_MMAP2:
-      return std::unique_ptr<Record>(new Mmap2Record(attr, pheader));
-    case PERF_RECORD_COMM:
-      return std::unique_ptr<Record>(new CommRecord(attr, pheader));
-    case PERF_RECORD_EXIT:
-      return std::unique_ptr<Record>(new ExitRecord(attr, pheader));
-    case PERF_RECORD_FORK:
-      return std::unique_ptr<Record>(new ForkRecord(attr, pheader));
-    case PERF_RECORD_SAMPLE:
-      return std::unique_ptr<Record>(new SampleRecord(attr, pheader));
-    case SIMPLE_PERF_RECORD_KERNEL_SYMBOL:
-      return std::unique_ptr<Record>(new KernelSymbolRecord(pheader));
-    default:
-      return std::unique_ptr<Record>(new UnknownRecord(pheader));
-  }
-}
-
-std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(const perf_event_attr& attr,
-                                                           const char* buf, size_t buf_size) {
-  std::vector<std::unique_ptr<Record>> result;
-  const char* p = buf;
-  const char* end = buf + buf_size;
-  while (p < end) {
-    const perf_event_header* header = reinterpret_cast<const perf_event_header*>(p);
-    uint32_t size = header->size;
-    CHECK_LE(p + size, end);
-    CHECK_NE(0u, size);
-    result.push_back(ReadRecordFromBuffer(attr, header));
-    p += size;
-  }
-  return result;
-}
-
-MmapRecord CreateMmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_t pid, uint32_t tid,
-                            uint64_t addr, uint64_t len, uint64_t pgoff,
-                            const std::string& filename, uint64_t event_id) {
-  MmapRecord record;
-  record.SetTypeAndMisc(PERF_RECORD_MMAP, in_kernel ? PERF_RECORD_MISC_KERNEL : PERF_RECORD_MISC_USER);
-  record.data.pid = pid;
-  record.data.tid = tid;
-  record.data.addr = addr;
-  record.data.len = len;
-  record.data.pgoff = pgoff;
-  record.filename = filename;
-  size_t sample_id_size = record.sample_id.CreateContent(attr, event_id);
-  record.SetSize(record.header_size() + sizeof(record.data) +
-                 ALIGN(record.filename.size() + 1, 8) + sample_id_size);
-  return record;
-}
-
-CommRecord CreateCommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
-                            const std::string& comm, uint64_t event_id) {
-  CommRecord record;
-  record.SetTypeAndMisc(PERF_RECORD_COMM, 0);
-  record.data.pid = pid;
-  record.data.tid = tid;
-  record.comm = comm;
-  size_t sample_id_size = record.sample_id.CreateContent(attr, event_id);
-  record.SetSize(record.header_size() + sizeof(record.data) +
-                 ALIGN(record.comm.size() + 1, 8) + sample_id_size);
-  return record;
-}
-
-ForkRecord CreateForkRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid, uint32_t ppid,
-                            uint32_t ptid, uint64_t event_id) {
-  ForkRecord record;
-  record.SetTypeAndMisc(PERF_RECORD_FORK, 0);
-  record.data.pid = pid;
-  record.data.ppid = ppid;
-  record.data.tid = tid;
-  record.data.ptid = ptid;
-  record.data.time = 0;
-  size_t sample_id_size = record.sample_id.CreateContent(attr, event_id);
-  record.SetSize(record.header_size() + sizeof(record.data) + sample_id_size);
-  return record;
-}
-
-BuildIdRecord CreateBuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id,
-                                  const std::string& filename) {
-  BuildIdRecord record;
-  record.SetTypeAndMisc(PERF_RECORD_BUILD_ID, in_kernel ? PERF_RECORD_MISC_KERNEL : PERF_RECORD_MISC_USER);
-  record.pid = pid;
-  record.build_id = build_id;
-  record.filename = filename;
-  record.SetSize(record.header_size() + sizeof(record.pid) +
-                       ALIGN(record.build_id.Size(), 8) + ALIGN(filename.size() + 1, 64));
-  return record;
-}
-
-std::vector<KernelSymbolRecord> CreateKernelSymbolRecords(const std::string& kallsyms) {
+std::vector<KernelSymbolRecord> KernelSymbolRecord::Create(
+    const std::string& kallsyms) {
   std::vector<KernelSymbolRecord> result;
   size_t left_bytes = kallsyms.size();
   const size_t max_bytes_per_record = 64000;
@@ -726,7 +709,149 @@ std::vector<KernelSymbolRecord> CreateKernelSymbolRecords(const std::string& kal
   return result;
 }
 
-bool RecordCache::RecordWithSeq::IsHappensBefore(const RecordWithSeq& other) const {
+DsoRecord::DsoRecord(const perf_event_header* pheader) : Record(pheader) {
+  const char* p = reinterpret_cast<const char*>(pheader + 1);
+  const char* end = reinterpret_cast<const char*>(pheader) + size();
+  MoveFromBinaryFormat(dso_type, p);
+  MoveFromBinaryFormat(dso_id, p);
+  dso_name = p;
+  p += ALIGN(dso_name.size() + 1, 8);
+  CHECK_EQ(p, end);
+}
+
+std::vector<char> DsoRecord::BinaryFormat() const {
+  std::vector<char> buf(size());
+  char* p = buf.data();
+  MoveToBinaryFormat(header, p);
+  MoveToBinaryFormat(dso_type, p);
+  MoveToBinaryFormat(dso_id, p);
+  strcpy(p, dso_name.c_str());
+  return buf;
+}
+
+void DsoRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "dso_type: %s(%" PRIu64 ")\n",
+                DsoTypeToString(static_cast<DsoType>(dso_type)), dso_type);
+  PrintIndented(indent, "dso_id: %" PRIu64 "\n", dso_id);
+  PrintIndented(indent, "dso_name: %s\n", dso_name.c_str());
+}
+
+DsoRecord DsoRecord::Create(uint64_t dso_type, uint64_t dso_id,
+                            const std::string& dso_name) {
+  DsoRecord record;
+  record.SetTypeAndMisc(SIMPLE_PERF_RECORD_DSO, 0);
+  record.dso_type = dso_type;
+  record.dso_id = dso_id;
+  record.dso_name = dso_name;
+  record.SetSize(record.header_size() + 2 * sizeof(uint64_t) +
+                 ALIGN(record.dso_name.size() + 1, 8));
+  return record;
+}
+
+SymbolRecord::SymbolRecord(const perf_event_header* pheader) : Record(pheader) {
+  const char* p = reinterpret_cast<const char*>(pheader + 1);
+  const char* end = reinterpret_cast<const char*>(pheader) + size();
+  MoveFromBinaryFormat(addr, p);
+  MoveFromBinaryFormat(len, p);
+  MoveFromBinaryFormat(dso_id, p);
+  name = p;
+  p += ALIGN(name.size() + 1, 8);
+  CHECK_EQ(p, end);
+}
+
+std::vector<char> SymbolRecord::BinaryFormat() const {
+  std::vector<char> buf(size());
+  char* p = buf.data();
+  MoveToBinaryFormat(header, p);
+  MoveToBinaryFormat(addr, p);
+  MoveToBinaryFormat(len, p);
+  MoveToBinaryFormat(dso_id, p);
+  strcpy(p, name.c_str());
+  return buf;
+}
+
+void SymbolRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "name: %s\n", name.c_str());
+  PrintIndented(indent, "addr: 0x%" PRIx64 "\n", addr);
+  PrintIndented(indent, "len: 0x%" PRIx64 "\n", len);
+  PrintIndented(indent, "dso_id: %" PRIu64 "\n", dso_id);
+}
+
+SymbolRecord SymbolRecord::Create(uint64_t addr, uint64_t len,
+                                  const std::string& name, uint64_t dso_id) {
+  SymbolRecord record;
+  record.SetTypeAndMisc(SIMPLE_PERF_RECORD_SYMBOL, 0);
+  record.addr = addr;
+  record.len = len;
+  record.dso_id = dso_id;
+  record.name = name;
+  record.SetSize(record.header_size() + 3 * sizeof(uint64_t) +
+                 ALIGN(record.name.size() + 1, 8));
+  return record;
+}
+
+UnknownRecord::UnknownRecord(const perf_event_header* pheader)
+    : Record(pheader) {
+  const char* p = reinterpret_cast<const char*>(pheader + 1);
+  const char* end = reinterpret_cast<const char*>(pheader) + size();
+  data.insert(data.end(), p, end);
+}
+
+std::vector<char> UnknownRecord::BinaryFormat() const {
+  std::vector<char> buf(size());
+  char* p = buf.data();
+  MoveToBinaryFormat(header, p);
+  MoveToBinaryFormat(data.data(), data.size(), p);
+  return buf;
+}
+
+void UnknownRecord::DumpData(size_t) const {}
+
+std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
+                                             const perf_event_header* pheader) {
+  switch (pheader->type) {
+    case PERF_RECORD_MMAP:
+      return std::unique_ptr<Record>(new MmapRecord(attr, pheader));
+    case PERF_RECORD_MMAP2:
+      return std::unique_ptr<Record>(new Mmap2Record(attr, pheader));
+    case PERF_RECORD_COMM:
+      return std::unique_ptr<Record>(new CommRecord(attr, pheader));
+    case PERF_RECORD_EXIT:
+      return std::unique_ptr<Record>(new ExitRecord(attr, pheader));
+    case PERF_RECORD_FORK:
+      return std::unique_ptr<Record>(new ForkRecord(attr, pheader));
+    case PERF_RECORD_SAMPLE:
+      return std::unique_ptr<Record>(new SampleRecord(attr, pheader));
+    case SIMPLE_PERF_RECORD_KERNEL_SYMBOL:
+      return std::unique_ptr<Record>(new KernelSymbolRecord(pheader));
+    case SIMPLE_PERF_RECORD_DSO:
+      return std::unique_ptr<Record>(new DsoRecord(pheader));
+    case SIMPLE_PERF_RECORD_SYMBOL:
+      return std::unique_ptr<Record>(new SymbolRecord(pheader));
+    default:
+      return std::unique_ptr<Record>(new UnknownRecord(pheader));
+  }
+}
+
+std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(
+    const perf_event_attr& attr, const char* buf, size_t buf_size) {
+  std::vector<std::unique_ptr<Record>> result;
+  const char* p = buf;
+  const char* end = buf + buf_size;
+  while (p < end) {
+    const perf_event_header* header =
+        reinterpret_cast<const perf_event_header*>(p);
+    uint32_t size = header->size;
+    CHECK_LE(p + size, end);
+    CHECK_NE(0u, size);
+    result.push_back(ReadRecordFromBuffer(attr, header));
+    p += size;
+  }
+  return result;
+}
+
+bool RecordCache::RecordWithSeq::IsHappensBefore(
+    const RecordWithSeq& other) const {
   bool is_sample = (record->type() == PERF_RECORD_SAMPLE);
   bool is_other_sample = (other.record->type() == PERF_RECORD_SAMPLE);
   uint64_t time = record->Timestamp();
@@ -735,8 +860,9 @@ bool RecordCache::RecordWithSeq::IsHappensBefore(const RecordWithSeq& other) con
   if (time != other_time) {
     return time < other_time;
   }
-  // If happening at the same time, make non-sample records before sample records,
-  // because non-sample records may contain useful information to parse sample records.
+  // If happening at the same time, make non-sample records before sample
+  // records, because non-sample records may contain useful information to
+  // parse sample records.
   if (is_sample != is_other_sample) {
     return is_sample ? false : true;
   }
@@ -749,18 +875,16 @@ bool RecordCache::RecordComparator::operator()(const RecordWithSeq& r1,
   return r2.IsHappensBefore(r1);
 }
 
-RecordCache::RecordCache(bool has_timestamp, size_t min_cache_size, uint64_t min_time_diff_in_ns)
+RecordCache::RecordCache(bool has_timestamp, size_t min_cache_size,
+                         uint64_t min_time_diff_in_ns)
     : has_timestamp_(has_timestamp),
       min_cache_size_(min_cache_size),
       min_time_diff_in_ns_(min_time_diff_in_ns),
       last_time_(0),
       cur_seq_(0),
-      queue_(RecordComparator()) {
-}
+      queue_(RecordComparator()) {}
 
-RecordCache::~RecordCache() {
-  PopAll();
-}
+RecordCache::~RecordCache() { PopAll(); }
 
 void RecordCache::Push(std::unique_ptr<Record> record) {
   if (has_timestamp_) {
@@ -798,7 +922,7 @@ std::vector<std::unique_ptr<Record>> RecordCache::PopAll() {
   return result;
 }
 
-RecordCache::RecordWithSeq RecordCache::CreateRecordWithSeq(Record *r) {
+RecordCache::RecordWithSeq RecordCache::CreateRecordWithSeq(Record* r) {
   RecordWithSeq result;
   result.seq = cur_seq_++;
   result.record = r;

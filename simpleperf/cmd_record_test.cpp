@@ -19,6 +19,7 @@
 #include <android-base/stringprintf.h>
 #include <android-base/test_utils.h>
 
+#include <map>
 #include <memory>
 
 #include "command.h"
@@ -215,8 +216,8 @@ TEST(record_cmd, mmap_page_option) {
   ASSERT_FALSE(RunRecordCmd({"-m", "7"}));
 }
 
-void CheckKernelSymbol(const std::string& path, bool need_kallsyms,
-                     bool* success) {
+static void CheckKernelSymbol(const std::string& path, bool need_kallsyms,
+                              bool* success) {
   *success = false;
   std::unique_ptr<RecordFileReader> reader =
       RecordFileReader::CreateInstance(path);
@@ -244,5 +245,53 @@ TEST(record_cmd, kernel_symbol) {
   ASSERT_TRUE(success);
   ASSERT_TRUE(RunRecordCmd({"--no-dump-kernel-symbols"}, tmpfile.path));
   CheckKernelSymbol(tmpfile.path, false, &success);
+  ASSERT_TRUE(success);
+}
+
+static void CheckDsoSymbolRecords(const std::string& path,
+                                  bool need_dso_symbol_records, bool* success) {
+  *success = false;
+  std::unique_ptr<RecordFileReader> reader =
+      RecordFileReader::CreateInstance(path);
+  ASSERT_TRUE(reader != nullptr);
+  std::vector<std::unique_ptr<Record>> records = reader->DataSection();
+  bool has_dso_record = false;
+  bool has_symbol_record = false;
+  std::map<uint64_t, bool> dso_hit_map;
+  for (const auto& record : records) {
+    if (record->type() == SIMPLE_PERF_RECORD_DSO) {
+      has_dso_record = true;
+      uint64_t dso_id = static_cast<const DsoRecord*>(record.get())->dso_id;
+      ASSERT_EQ(dso_hit_map.end(), dso_hit_map.find(dso_id));
+      dso_hit_map.insert(std::make_pair(dso_id, false));
+    } else if (record->type() == SIMPLE_PERF_RECORD_SYMBOL) {
+      has_symbol_record = true;
+      uint64_t dso_id = static_cast<const SymbolRecord*>(record.get())->dso_id;
+      auto it = dso_hit_map.find(dso_id);
+      ASSERT_NE(dso_hit_map.end(), it);
+      it->second = true;
+    }
+  }
+  for (auto& pair : dso_hit_map) {
+    ASSERT_TRUE(pair.second);
+  }
+  if (need_dso_symbol_records) {
+    ASSERT_TRUE(has_dso_record);
+    ASSERT_TRUE(has_symbol_record);
+  } else {
+    ASSERT_FALSE(has_dso_record);
+    ASSERT_FALSE(has_symbol_record);
+  }
+  *success = true;
+}
+
+TEST(record_cmd, dump_symbols) {
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
+  bool success;
+  CheckDsoSymbolRecords(tmpfile.path, false, &success);
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(RunRecordCmd({"--dump-symbols"}, tmpfile.path));
+  CheckDsoSymbolRecords(tmpfile.path, true, &success);
   ASSERT_TRUE(success);
 }

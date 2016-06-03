@@ -100,6 +100,14 @@ void PrintIndented(size_t indent, const char* fmt, ...) {
   va_end(ap);
 }
 
+void FprintIndented(FILE* fp, size_t indent, const char* fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  fprintf(fp, "%*s", static_cast<int>(indent * 2), "");
+  vfprintf(fp, fmt, ap);
+  va_end(ap);
+}
+
 bool IsPowerOfTwo(uint64_t value) {
   return (value != 0 && ((value & (value - 1)) == 0));
 }
@@ -237,6 +245,7 @@ bool GetLogSeverity(const std::string& name, android::base::LogSeverity* severit
   static std::map<std::string, android::base::LogSeverity> log_severity_map = {
       {"verbose", android::base::VERBOSE},
       {"debug", android::base::DEBUG},
+      {"info", android::base::INFO},
       {"warning", android::base::WARNING},
       {"error", android::base::ERROR},
       {"fatal", android::base::FATAL},
