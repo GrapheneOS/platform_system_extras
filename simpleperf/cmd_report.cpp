@@ -39,6 +39,7 @@
 #include "record_file.h"
 #include "sample_tree.h"
 #include "thread_tree.h"
+#include "tracing.h"
 #include "utils.h"
 
 namespace {
@@ -224,6 +225,12 @@ using ReportCmdSampleTreeSorter = SampleTreeSorter<SampleEntry>;
 using ReportCmdSampleTreeDisplayer =
     SampleTreeDisplayer<SampleEntry, SampleTree>;
 
+struct EventAttrWithName {
+  perf_event_attr attr;
+  std::string name;
+  std::vector<uint64_t> event_ids;
+};
+
 class ReportCommand : public Command {
  public:
   ReportCommand()
@@ -273,13 +280,14 @@ class ReportCommand : public Command {
   bool ReadFeaturesFromRecordFile();
   bool ReadSampleTreeFromRecordFile();
   bool ProcessRecord(std::unique_ptr<Record> record);
+  bool ProcessTracingData(const std::vector<char>& data);
   bool PrintReport();
   void PrintReportContext(FILE* fp);
 
   std::string record_filename_;
   ArchType record_file_arch_;
   std::unique_ptr<RecordFileReader> record_file_reader_;
-  std::vector<perf_event_attr> event_attrs_;
+  std::vector<EventAttrWithName> event_attrs_;
   ThreadTree thread_tree_;
   SampleTree sample_tree_;
   std::unique_ptr<ReportCmdSampleTreeBuilder> sample_tree_builder_;
@@ -499,15 +507,22 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
 }
 
 bool ReportCommand::ReadEventAttrFromRecordFile() {
-  const std::vector<PerfFileFormat::FileAttr>& file_attrs =
-      record_file_reader_->AttrSection();
-  for (const auto& attr : file_attrs) {
-    event_attrs_.push_back(attr.attr);
+  std::vector<AttrWithId> attrs = record_file_reader_->AttrSection();
+  for (const auto& attr_with_id : attrs) {
+    EventAttrWithName attr;
+    attr.attr = *attr_with_id.attr;
+    attr.event_ids = attr_with_id.ids;
+    const EventType* event_type =
+        FindEventTypeByConfig(attr.attr.type, attr.attr.config);
+    if (event_type != nullptr) {
+      attr.name = event_type->name;
+    }
+    event_attrs_.push_back(attr);
   }
   if (use_branch_address_) {
     bool has_branch_stack = true;
     for (const auto& attr : event_attrs_) {
-      if ((attr.sample_type & PERF_SAMPLE_BRANCH_STACK) == 0) {
+      if ((attr.attr.sample_type & PERF_SAMPLE_BRANCH_STACK) == 0) {
         has_branch_stack = false;
         break;
       }
@@ -558,6 +573,16 @@ bool ReportCommand::ReadFeaturesFromRecordFile() {
       }
     }
   }
+  if (record_file_reader_->HasFeature(PerfFileFormat::FEAT_TRACING_DATA)) {
+    std::vector<char> tracing_data;
+    if (!record_file_reader_->ReadFeatureSection(
+            PerfFileFormat::FEAT_TRACING_DATA, &tracing_data)) {
+      return false;
+    }
+    if (!ProcessTracingData(tracing_data)) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -586,6 +611,22 @@ bool ReportCommand::ProcessRecord(std::unique_ptr<Record> record) {
   if (record->type() == PERF_RECORD_SAMPLE) {
     sample_tree_builder_->ProcessSampleRecord(
         *static_cast<const SampleRecord*>(record.get()));
+  } else if (record->type() == PERF_RECORD_TRACING_DATA) {
+    const auto& r = *static_cast<TracingDataRecord*>(record.get());
+    if (!ProcessTracingData(r.data)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ReportCommand::ProcessTracingData(const std::vector<char>& data) {
+  Tracing tracing(data);
+  for (auto& attr : event_attrs_) {
+    if (attr.attr.type == PERF_TYPE_TRACEPOINT) {
+      uint64_t trace_event_id = attr.attr.config;
+      attr.name = tracing.GetTracingEventNameHavingId(trace_event_id);
+    }
   }
   return true;
 }
@@ -618,13 +659,8 @@ void ReportCommand::PrintReportContext(FILE* report_fp) {
   }
   fprintf(report_fp, "Arch: %s\n", GetArchString(record_file_arch_).c_str());
   for (const auto& attr : event_attrs_) {
-    const EventType* event_type = FindEventTypeByConfig(attr.type, attr.config);
-    std::string name;
-    if (event_type != nullptr) {
-      name = event_type->name;
-    }
-    fprintf(report_fp, "Event: %s (type %u, config %llu)\n", name.c_str(),
-            attr.type, attr.config);
+    fprintf(report_fp, "Event: %s (type %u, config %llu)\n", attr.name.c_str(),
+            attr.attr.type, attr.attr.config);
   }
   fprintf(report_fp, "Samples: %" PRIu64 "\n", sample_tree_.total_samples);
   fprintf(report_fp, "Event count: %" PRIu64 "\n\n", sample_tree_.total_period);

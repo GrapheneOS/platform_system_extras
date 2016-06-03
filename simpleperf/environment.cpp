@@ -424,6 +424,10 @@ static const char* GetLimitLevelDescription(int limit_level) {
 }
 
 bool CheckPerfEventLimit() {
+  // root is not limited by /proc/sys/kernel/perf_event_paranoid.
+  if (IsRoot()) {
+    return true;
+  }
   int limit_level;
   if (!ReadPerfEventParanoid(&limit_level)) {
     return false;

@@ -240,6 +240,11 @@ bool StatCommand::AddMeasuredEventType(const std::string& event_type_name) {
   if (event_type_modifier == nullptr) {
     return false;
   }
+  for (const auto& type : measured_event_types_) {
+    if (type.name == event_type_modifier->name) {
+      return true;
+    }
+  }
   measured_event_types_.push_back(*event_type_modifier);
   return true;
 }
