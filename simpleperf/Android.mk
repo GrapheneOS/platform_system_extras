@@ -47,6 +47,7 @@ simpleperf_static_libraries_target := \
   libLLVMMCParser \
   libLLVMCore \
   libLLVMSupport \
+  libprotobuf-cpp-lite \
   libc \
 
 simpleperf_static_libraries_host := \
@@ -62,6 +63,7 @@ simpleperf_static_libraries_host := \
   libLLVMMCParser \
   libLLVMCore \
   libLLVMSupport \
+  libprotobuf-cpp-lite \
 
 simpleperf_static_libraries_host_linux := \
   libbacktrace_offline \
@@ -87,6 +89,7 @@ libsimpleperf_src_files := \
   read_elf.cpp \
   record.cpp \
   record_file_reader.cpp \
+  report_sample.proto \
   thread_tree.cpp \
   utils.cpp \
 
@@ -120,6 +123,7 @@ LOCAL_SRC_FILES := \
 
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_target)
 LOCAL_MULTILIB := both
+LOCAL_PROTOC_OPTIMIZE_TYPE := lite-static
 include $(LLVM_DEVICE_BUILD_MK)
 include $(BUILD_STATIC_LIBRARY)
 
@@ -140,6 +144,7 @@ LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
 LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := first
+LOCAL_PROTOC_OPTIMIZE_TYPE := lite-static
 include $(LLVM_HOST_BUILD_MK)
 include $(BUILD_HOST_STATIC_LIBRARY)
 
