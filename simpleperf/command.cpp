@@ -74,6 +74,7 @@ extern void RegisterHelpCommand();
 extern void RegisterListCommand();
 extern void RegisterRecordCommand();
 extern void RegisterReportCommand();
+extern void RegisterReportSampleCommand();
 extern void RegisterStatCommand();
 
 class CommandRegister {
@@ -82,6 +83,7 @@ class CommandRegister {
     RegisterDumpRecordCommand();
     RegisterHelpCommand();
     RegisterReportCommand();
+    RegisterReportSampleCommand();
 #if defined(__linux__)
     RegisterListCommand();
     RegisterRecordCommand();
