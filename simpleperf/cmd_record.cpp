@@ -74,6 +74,9 @@ class RecordCommand : public Command {
 "--cpu cpu_item1,cpu_item2,...\n"
 "             Collect samples only on the selected cpus. cpu_item can be cpu\n"
 "             number like 1, or cpu range like 0-3.\n"
+"--dump-symbols  Dump symbols in perf.data. By default perf.data doesn't contain\n"
+"                symbol information for samples. This option is used when there\n"
+"                is no symbol information in report environment.\n"
 "-e event1[:modifier1],event2[:modifier2],...\n"
 "             Select the event list to sample. Use `simpleperf list` to find\n"
 "             all possible event names. Modifiers can be added to define how\n"
@@ -125,6 +128,7 @@ class RecordCommand : public Command {
         post_unwind_(false),
         child_inherit_(true),
         can_dump_kernel_symbols_(true),
+        dump_symbols_(false),
         perf_mmap_pages_(16),
         record_filename_("perf.data"),
         sample_record_count_(0) {
@@ -149,8 +153,9 @@ class RecordCommand : public Command {
                               bool all_threads,
                               const std::vector<pid_t>& selected_threads);
   bool ProcessRecord(Record* record);
+  bool DumpSymbolForRecord(const SampleRecord& r, bool for_callchain);
   void UpdateRecordForEmbeddedElfPath(Record* record);
-  void UnwindRecord(Record* record);
+  bool UnwindRecord(Record* record);
   bool PostUnwind(const std::vector<std::string>& args);
   bool DumpAdditionalFeatures(const std::vector<std::string>& args);
   bool DumpBuildIdFeature();
@@ -171,6 +176,7 @@ class RecordCommand : public Command {
   bool post_unwind_;
   bool child_inherit_;
   bool can_dump_kernel_symbols_;
+  bool dump_symbols_;
   std::vector<pid_t> monitored_threads_;
   std::vector<int> cpus_;
   std::vector<EventTypeAndModifier> measured_event_types_;
@@ -344,6 +350,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       cpus_ = GetCpusFromString(args[i]);
+    } else if (args[i] == "--dump-symbols") {
+      dump_symbols_ = true;
     } else if (args[i] == "-e") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -452,6 +460,11 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     LOG(ERROR) << "Record system wide and existing processes/threads can't be "
                   "used at the same time.";
     return false;
+  }
+
+  if (dump_symbols_ && can_dump_kernel_symbols_) {
+    // No need to dump kernel symbols as we will dump all required symbols.
+    can_dump_kernel_symbols_ = false;
   }
 
   if (non_option_args != nullptr) {
@@ -568,7 +581,7 @@ bool RecordCommand::DumpKernelSymbol() {
       }
     }
     std::vector<KernelSymbolRecord> records =
-        CreateKernelSymbolRecords(std::move(kallsyms));
+        KernelSymbolRecord::Create(std::move(kallsyms));
     for (auto& r : records) {
       if (!ProcessRecord(&r)) {
         return false;
@@ -585,15 +598,15 @@ bool RecordCommand::DumpKernelAndModuleMmaps(const perf_event_attr* attr,
   GetKernelAndModuleMmaps(&kernel_mmap, &module_mmaps);
 
   MmapRecord mmap_record =
-      CreateMmapRecord(*attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
-                       kernel_mmap.len, 0, kernel_mmap.filepath, event_id);
+      MmapRecord::Create(*attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
+                         kernel_mmap.len, 0, kernel_mmap.filepath, event_id);
   if (!ProcessRecord(&mmap_record)) {
     return false;
   }
   for (auto& module_mmap : module_mmaps) {
     MmapRecord mmap_record =
-        CreateMmapRecord(*attr, true, UINT_MAX, 0, module_mmap.start_addr,
-                         module_mmap.len, 0, module_mmap.filepath, event_id);
+        MmapRecord::Create(*attr, true, UINT_MAX, 0, module_mmap.start_addr,
+                           module_mmap.len, 0, module_mmap.filepath, event_id);
     if (!ProcessRecord(&mmap_record)) {
       return false;
     }
@@ -629,8 +642,8 @@ bool RecordCommand::DumpThreadCommAndMmaps(
         dump_processes.find(thread.pid) == dump_processes.end()) {
       continue;
     }
-    CommRecord record =
-        CreateCommRecord(*attr, thread.pid, thread.tid, thread.comm, event_id);
+    CommRecord record = CommRecord::Create(*attr, thread.pid, thread.tid,
+                                           thread.comm, event_id);
     if (!ProcessRecord(&record)) {
       return false;
     }
@@ -643,7 +656,7 @@ bool RecordCommand::DumpThreadCommAndMmaps(
       if (thread_mmap.executable == 0) {
         continue;  // No need to dump non-executable mmap info.
       }
-      MmapRecord record = CreateMmapRecord(
+      MmapRecord record = MmapRecord::Create(
           *attr, false, thread.pid, thread.tid, thread_mmap.start_addr,
           thread_mmap.len, thread_mmap.pgoff, thread_mmap.name, event_id);
       if (!ProcessRecord(&record)) {
@@ -660,13 +673,13 @@ bool RecordCommand::DumpThreadCommAndMmaps(
     if (!all_threads && dump_threads.find(thread.tid) == dump_threads.end()) {
       continue;
     }
-    ForkRecord fork_record = CreateForkRecord(*attr, thread.pid, thread.tid,
-                                              thread.pid, thread.pid, event_id);
+    ForkRecord fork_record = ForkRecord::Create(
+        *attr, thread.pid, thread.tid, thread.pid, thread.pid, event_id);
     if (!ProcessRecord(&fork_record)) {
       return false;
     }
-    CommRecord comm_record =
-        CreateCommRecord(*attr, thread.pid, thread.tid, thread.comm, event_id);
+    CommRecord comm_record = CommRecord::Create(*attr, thread.pid, thread.tid,
+                                                thread.comm, event_id);
     if (!ProcessRecord(&comm_record)) {
       return false;
     }
@@ -676,16 +689,54 @@ bool RecordCommand::DumpThreadCommAndMmaps(
 
 bool RecordCommand::ProcessRecord(Record* record) {
   UpdateRecordForEmbeddedElfPath(record);
-  BuildThreadTree(*record, &thread_tree_);
+  thread_tree_.Update(*record);
   CollectHitFileInfo(record);
   if (unwind_dwarf_callchain_ && !post_unwind_) {
-    UnwindRecord(record);
+    if (!UnwindRecord(record)) {
+      return false;
+    }
   }
   if (record->type() == PERF_RECORD_SAMPLE) {
     sample_record_count_++;
+    if (dump_symbols_) {
+      auto& r = *static_cast<SampleRecord*>(record);
+      if (!DumpSymbolForRecord(r, false)) {
+        return false;
+      }
+    }
   }
   bool result = record_file_writer_->WriteData(record->BinaryFormat());
   return result;
+}
+
+bool RecordCommand::DumpSymbolForRecord(const SampleRecord& r,
+                                        bool for_callchain) {
+  const ThreadEntry* thread =
+      thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
+  const std::vector<uint64_t>& ips = for_callchain
+                                         ? r.callchain_data.ips
+                                         : std::vector<uint64_t>{r.ip_data.ip};
+  for (auto& ip : ips) {
+    const MapEntry* map = thread_tree_.FindMap(thread, ip, r.InKernel());
+    if (!map->dso->HasDumped()) {
+      map->dso->SetDumped();
+      DsoRecord dso_record =
+          DsoRecord::Create(map->dso->type(), map->dso->id(), map->dso->Path());
+      if (!record_file_writer_->WriteData(dso_record.BinaryFormat())) {
+        return false;
+      }
+    }
+    const Symbol* symbol = thread_tree_.FindSymbol(map, ip);
+    if (!symbol->HasDumped()) {
+      symbol->SetDumped();
+      SymbolRecord symbol_record = SymbolRecord::Create(
+          symbol->addr, symbol->len, symbol->Name(), map->dso->id());
+      if (!record_file_writer_->WriteData(symbol_record.BinaryFormat())) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 template <class RecordType>
@@ -721,7 +772,7 @@ void RecordCommand::UpdateRecordForEmbeddedElfPath(Record* record) {
   }
 }
 
-void RecordCommand::UnwindRecord(Record* record) {
+bool RecordCommand::UnwindRecord(Record* record) {
   if (record->type() == PERF_RECORD_SAMPLE) {
     SampleRecord& r = *static_cast<SampleRecord*>(record);
     if ((r.sample_type & PERF_SAMPLE_CALLCHAIN) &&
@@ -749,12 +800,16 @@ void RecordCommand::UnwindRecord(Record* record) {
       r.stack_user_data.data.clear();
       r.stack_user_data.dyn_size = 0;
       r.AdjustSizeBasedOnData();
+      if (!DumpSymbolForRecord(r, true)) {
+        return false;
+      }
     }
   }
+  return true;
 }
 
 bool RecordCommand::PostUnwind(const std::vector<std::string>& args) {
-  thread_tree_.Clear();
+  thread_tree_.ClearThreadAndMap();
   std::unique_ptr<RecordFileReader> reader =
       RecordFileReader::CreateInstance(record_filename_);
   if (reader == nullptr) {
@@ -767,8 +822,10 @@ bool RecordCommand::PostUnwind(const std::vector<std::string>& args) {
   }
   bool result = reader->ReadDataSection(
       [this](std::unique_ptr<Record> record) {
-        BuildThreadTree(*record, &thread_tree_);
-        UnwindRecord(record.get());
+        thread_tree_.Update(*record);
+        if (!UnwindRecord(record.get())) {
+          return false;
+        }
         return record_file_writer_->WriteData(record->BinaryFormat());
       },
       false);
@@ -843,7 +900,7 @@ bool RecordCommand::DumpBuildIdFeature() {
         LOG(DEBUG) << "can't read build_id for kernel";
         continue;
       }
-      build_id_records.push_back(CreateBuildIdRecord(
+      build_id_records.push_back(BuildIdRecord::Create(
           true, UINT_MAX, build_id, DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID));
     } else {
       std::string path = filename;
@@ -856,7 +913,7 @@ bool RecordCommand::DumpBuildIdFeature() {
         continue;
       }
       build_id_records.push_back(
-          CreateBuildIdRecord(true, UINT_MAX, build_id, filename));
+          BuildIdRecord::Create(true, UINT_MAX, build_id, filename));
     }
   }
   // Add build_ids for user elf files.
@@ -878,7 +935,7 @@ bool RecordCommand::DumpBuildIdFeature() {
       }
     }
     build_id_records.push_back(
-        CreateBuildIdRecord(false, UINT_MAX, build_id, filename));
+        BuildIdRecord::Create(false, UINT_MAX, build_id, filename));
   }
   if (!record_file_writer_->WriteBuildIdFeature(build_id_records)) {
     return false;

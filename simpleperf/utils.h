@@ -109,6 +109,7 @@ void MoveFromBinaryFormat(T& data, const char*& p) {
 }
 
 void PrintIndented(size_t indent, const char* fmt, ...);
+void FprintIndented(FILE* fp, size_t indent, const char* fmt, ...);
 
 bool IsPowerOfTwo(uint64_t value);
 
