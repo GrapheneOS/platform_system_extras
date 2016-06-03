@@ -24,6 +24,9 @@
 #include <set>
 
 #include "dso.h"
+#include "environment.h"
+
+struct Record;
 
 namespace simpleperf {
 
@@ -57,13 +60,16 @@ struct ThreadEntry {
   std::set<MapEntry*, MapComparator> maps;
 };
 
+// ThreadTree contains thread information (in ThreadEntry) and mmap information
+// (in MapEntry) of the monitored threads. It also has interface to access
+// symbols in executable binaries mapped in the monitored threads.
 class ThreadTree {
  public:
   ThreadTree() : unknown_symbol_("unknown", 0, std::numeric_limits<unsigned long long>::max()) {
     unknown_dso_ = Dso::CreateDso(DSO_ELF_FILE, "unknown");
     unknown_map_ =
         MapEntry(0, std::numeric_limits<unsigned long long>::max(), 0, 0, unknown_dso_.get(), false);
-    kernel_dso_ = Dso::CreateDso(DSO_KERNEL);
+    kernel_dso_ = Dso::CreateDso(DSO_KERNEL, DEFAULT_KERNEL_MMAP_NAME);
   }
 
   void AddThread(int pid, int tid, const std::string& comm);
@@ -81,7 +87,12 @@ class ThreadTree {
     return &unknown_map_;
   }
 
-  void Clear();
+  // Clear thread and map information, but keep loaded dso information. It saves
+  // the time to reload dso information.
+  void ClearThreadAndMap();
+
+  // Update thread tree with information provided by record.
+  void Update(const Record& record);
 
  private:
   Dso* FindKernelDsoOrNew(const std::string& filename);
@@ -101,6 +112,7 @@ class ThreadTree {
   std::unordered_map<std::string, std::unique_ptr<Dso>> user_dso_tree_;
   std::unique_ptr<Dso> unknown_dso_;
   Symbol unknown_symbol_;
+  std::unordered_map<uint64_t, Dso*> dso_id_to_dso_map_;
 };
 
 }  // namespace simpleperf
@@ -109,8 +121,5 @@ using MapEntry = simpleperf::MapEntry;
 using ThreadEntry = simpleperf::ThreadEntry;
 using ThreadTree = simpleperf::ThreadTree;
 
-struct Record;
-
-void BuildThreadTree(const Record& record, ThreadTree* thread_tree);
 
 #endif  // SIMPLE_PERF_THREAD_TREE_H_
