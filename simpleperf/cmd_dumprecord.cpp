@@ -157,20 +157,14 @@ static const std::string GetFeatureName(int feature) {
 }
 
 void DumpRecordCommand::DumpAttrSection() {
-  const std::vector<FileAttr>& attrs = record_file_reader_->AttrSection();
+  std::vector<AttrWithId> attrs = record_file_reader_->AttrSection();
   for (size_t i = 0; i < attrs.size(); ++i) {
     const auto& attr = attrs[i];
-    printf("file_attr %zu:\n", i + 1);
-    DumpPerfEventAttr(attr.attr, 1);
-    printf("  ids[file_section]: offset %" PRId64 ", size %" PRId64 "\n", attr.ids.offset,
-           attr.ids.size);
-    std::vector<uint64_t> ids;
-    if (!record_file_reader_->ReadIdsForAttr(attr, &ids)) {
-      return;
-    }
-    if (!ids.empty()) {
+    printf("attr %zu:\n", i + 1);
+    DumpPerfEventAttr(*attr.attr, 1);
+    if (!attr.ids.empty()) {
       printf("  ids:");
-      for (const auto& id : ids) {
+      for (const auto& id : attr.ids) {
         printf(" %" PRId64, id);
       }
       printf("\n");

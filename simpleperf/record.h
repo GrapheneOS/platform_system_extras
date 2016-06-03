@@ -380,14 +380,26 @@ struct SymbolRecord : public Record {
 
   static SymbolRecord Create(uint64_t addr, uint64_t len,
                              const std::string& name, uint64_t dso_id);
+ protected:
+  void DumpData(size_t indent) const override;
+};
 
+struct TracingDataRecord : public Record {
+  std::vector<char> data;
+
+  TracingDataRecord() {
+  }
+
+  TracingDataRecord(const perf_event_header* pheader);
+  std::vector<char> BinaryFormat() const override;
+
+  static TracingDataRecord Create(std::vector<char> tracing_data);
  protected:
   void DumpData(size_t indent) const override;
 };
 
 // UnknownRecord is used for unknown record types, it makes sure all unknown
-// records
-// are not changed when modifying perf.data.
+// records are not changed when modifying perf.data.
 struct UnknownRecord : public Record {
   std::vector<char> data;
 
