@@ -112,20 +112,18 @@ void EventSelectionSet::SampleIdAll() {
   }
 }
 
-void EventSelectionSet::SetSampleFreq(uint64_t sample_freq) {
-  for (auto& selection : selections_) {
-    perf_event_attr& attr = selection.event_attr;
-    attr.freq = 1;
-    attr.sample_freq = sample_freq;
-  }
+void EventSelectionSet::SetSampleFreq(const EventTypeAndModifier& event_type_modifier, uint64_t sample_freq) {
+  EventSelection* sel = FindSelectionByType(event_type_modifier);
+  CHECK(sel != nullptr);
+  sel->event_attr.freq = 1;
+  sel->event_attr.sample_freq = sample_freq;
 }
 
-void EventSelectionSet::SetSamplePeriod(uint64_t sample_period) {
-  for (auto& selection : selections_) {
-    perf_event_attr& attr = selection.event_attr;
-    attr.freq = 0;
-    attr.sample_period = sample_period;
-  }
+void EventSelectionSet::SetSamplePeriod(const EventTypeAndModifier& event_type_modifier, uint64_t sample_period) {
+  EventSelection* sel = FindSelectionByType(event_type_modifier);
+  CHECK(sel != nullptr);
+  sel->event_attr.freq = 0;
+  sel->event_attr.sample_period = sample_period;
 }
 
 bool EventSelectionSet::SetBranchSampling(uint64_t branch_sample_type) {
