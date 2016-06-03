@@ -154,7 +154,7 @@ static void get_cpu_stat(cpu_stat_t *cpu) {
 /*
  * Calculate cpu usage in the past interval.
  * If tracing is on, increase the idle threshold by 1.00% so that we do not
- * turn on and off tracing frequently whe the cpu load is right close to
+ * turn on and off tracing frequently when the cpu load is right close to
  * threshold.
  */
 static bool is_heavy_load(void) {
