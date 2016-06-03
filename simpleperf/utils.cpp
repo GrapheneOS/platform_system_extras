@@ -310,3 +310,26 @@ bool ProcessKernelSymbols(std::string& symbol_data,
   }
   return false;
 }
+
+size_t GetPageSize() {
+#if defined(__linux__)
+  return sysconf(_SC_PAGE_SIZE);
+#else
+  return 4096;
+#endif
+}
+
+uint64_t ConvertBytesToValue(const char* bytes, uint32_t size) {
+  switch (size) {
+    case 1:
+      return *reinterpret_cast<const uint8_t*>(bytes);
+    case 2:
+      return *reinterpret_cast<const uint16_t*>(bytes);
+    case 4:
+      return *reinterpret_cast<const uint32_t*>(bytes);
+    case 8:
+      return *reinterpret_cast<const uint64_t*>(bytes);
+  }
+  LOG(FATAL) << "unexpected size " << size << " in ConvertBytesToValue";
+  return 0;
+}
