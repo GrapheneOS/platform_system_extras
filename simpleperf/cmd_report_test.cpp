@@ -36,16 +36,18 @@ static std::unique_ptr<Command> ReportCmd() {
 
 class ReportCommandTest : public ::testing::Test {
  protected:
-  void Report(const std::string perf_data,
-              const std::vector<std::string>& add_args = std::vector<std::string>()) {
+  void Report(
+      const std::string perf_data,
+      const std::vector<std::string>& add_args = std::vector<std::string>()) {
     ReportRaw(GetTestData(perf_data), add_args);
   }
 
-  void ReportRaw(const std::string perf_data,
-                 const std::vector<std::string>& add_args = std::vector<std::string>()) {
+  void ReportRaw(
+      const std::string perf_data,
+      const std::vector<std::string>& add_args = std::vector<std::string>()) {
     success = false;
-    std::vector<std::string> args = {"-i", perf_data,
-        "--symfs", GetTestDataDir(), "-o", tmp_file.path};
+    std::vector<std::string> args = {
+        "-i", perf_data, "--symfs", GetTestDataDir(), "-o", tmp_file.path};
     args.insert(args.end(), add_args.begin(), add_args.end());
     ASSERT_TRUE(ReportCmd()->Run(args));
     ASSERT_TRUE(android::base::ReadFileToString(tmp_file.path, &content));
@@ -84,7 +86,8 @@ TEST_F(ReportCommandTest, sort_option_pid) {
   Report(PERF_DATA, {"--sort", "pid"});
   ASSERT_TRUE(success);
   size_t line_index = 0;
-  while (line_index < lines.size() && lines[line_index].find("Pid") == std::string::npos) {
+  while (line_index < lines.size() &&
+         lines[line_index].find("Pid") == std::string::npos) {
     line_index++;
   }
   ASSERT_LT(line_index + 2, lines.size());
@@ -94,7 +97,8 @@ TEST_F(ReportCommandTest, sort_option_more_than_one) {
   Report(PERF_DATA, {"--sort", "comm,pid,dso,symbol"});
   ASSERT_TRUE(success);
   size_t line_index = 0;
-  while (line_index < lines.size() && lines[line_index].find("Overhead") == std::string::npos) {
+  while (line_index < lines.size() &&
+         lines[line_index].find("Overhead") == std::string::npos) {
     line_index++;
   }
   ASSERT_LT(line_index + 1, lines.size());
@@ -112,7 +116,8 @@ TEST_F(ReportCommandTest, children_option) {
   for (size_t i = 0; i < lines.size(); ++i) {
     char name[1024];
     std::pair<double, double> pair;
-    if (sscanf(lines[i].c_str(), "%lf%%%lf%%%s", &pair.first, &pair.second, name) == 3) {
+    if (sscanf(lines[i].c_str(), "%lf%%%lf%%%s", &pair.first, &pair.second,
+               name) == 3) {
       map.insert(std::make_pair(name, pair));
     }
   }
@@ -163,9 +168,11 @@ TEST_F(ReportCommandTest, callgraph_option) {
   ASSERT_TRUE(CheckCallerMode(lines));
 }
 
-static bool AllItemsWithString(std::vector<std::string>& lines, const std::vector<std::string>& strs) {
+static bool AllItemsWithString(std::vector<std::string>& lines,
+                               const std::vector<std::string>& strs) {
   size_t line_index = 0;
-  while (line_index < lines.size() && lines[line_index].find("Overhead") == std::string::npos) {
+  while (line_index < lines.size() &&
+         lines[line_index].find("Overhead") == std::string::npos) {
     line_index++;
   }
   if (line_index == lines.size() || line_index + 1 == lines.size()) {
@@ -254,16 +261,19 @@ TEST_F(ReportCommandTest, use_branch_address) {
       }
     }
   }
-  ASSERT_NE(hit_set.find(std::make_pair<std::string, std::string>("GlobalFunc", "CalledFunc")),
+  ASSERT_NE(hit_set.find(std::make_pair<std::string, std::string>(
+                "GlobalFunc", "CalledFunc")),
             hit_set.end());
-  ASSERT_NE(hit_set.find(std::make_pair<std::string, std::string>("CalledFunc", "GlobalFunc")),
+  ASSERT_NE(hit_set.find(std::make_pair<std::string, std::string>(
+                "CalledFunc", "GlobalFunc")),
             hit_set.end());
 }
 
 TEST_F(ReportCommandTest, report_symbols_of_nativelib_in_apk) {
   Report(NATIVELIB_IN_APK_PERF_DATA);
   ASSERT_TRUE(success);
-  ASSERT_NE(content.find(GetUrlInApk(APK_FILE, NATIVELIB_IN_APK)), std::string::npos);
+  ASSERT_NE(content.find(GetUrlInApk(APK_FILE, NATIVELIB_IN_APK)),
+            std::string::npos);
   ASSERT_NE(content.find("Func2"), std::string::npos);
 }
 
@@ -280,6 +290,12 @@ TEST_F(ReportCommandTest, report_kernel_symbol) {
   ASSERT_NE(content.find("perf_event_comm_output"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, report_dumped_symbols) {
+  Report(PERF_DATA_WITH_SYMBOLS);
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("page_fault"), std::string::npos);
+}
+
 #if defined(__linux__)
 
 static std::unique_ptr<Command> RecordCmd() {
@@ -289,27 +305,30 @@ static std::unique_ptr<Command> RecordCmd() {
 TEST_F(ReportCommandTest, dwarf_callgraph) {
   if (IsDwarfCallChainSamplingSupported()) {
     TemporaryFile tmp_file;
-    ASSERT_TRUE(RecordCmd()->Run({"-g", "-o", tmp_file.path, "sleep", SLEEP_SEC}));
+    ASSERT_TRUE(
+        RecordCmd()->Run({"-g", "-o", tmp_file.path, "sleep", SLEEP_SEC}));
     ReportRaw(tmp_file.path, {"-g"});
     ASSERT_TRUE(success);
   } else {
-    GTEST_LOG_(INFO)
-        << "This test does nothing as dwarf callchain sampling is not supported on this device.";
+    GTEST_LOG_(INFO) << "This test does nothing as dwarf callchain sampling is "
+                        "not supported on this device.";
   }
 }
 
 TEST_F(ReportCommandTest, report_dwarf_callgraph_of_nativelib_in_apk) {
-  // NATIVELIB_IN_APK_PERF_DATA is recorded on arm64, so can only report callgraph on arm64.
+  // NATIVELIB_IN_APK_PERF_DATA is recorded on arm64, so can only report
+  // callgraph on arm64.
   if (GetBuildArch() == ARCH_ARM64) {
     Report(NATIVELIB_IN_APK_PERF_DATA, {"-g"});
-    ASSERT_NE(content.find(GetUrlInApk(APK_FILE, NATIVELIB_IN_APK)), std::string::npos);
+    ASSERT_NE(content.find(GetUrlInApk(APK_FILE, NATIVELIB_IN_APK)),
+              std::string::npos);
     ASSERT_NE(content.find("Func2"), std::string::npos);
     ASSERT_NE(content.find("Func1"), std::string::npos);
     ASSERT_NE(content.find("GlobalFunc"), std::string::npos);
   } else {
-    GTEST_LOG_(INFO) << "This test does nothing as it is only run on arm64 devices";
+    GTEST_LOG_(INFO)
+        << "This test does nothing as it is only run on arm64 devices";
   }
 }
 
 #endif
-

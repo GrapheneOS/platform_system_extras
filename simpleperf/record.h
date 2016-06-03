@@ -45,6 +45,8 @@ enum user_record_type {
 
   SIMPLE_PERF_RECORD_TYPE_START = 32768,
   SIMPLE_PERF_RECORD_KERNEL_SYMBOL,
+  SIMPLE_PERF_RECORD_DSO,
+  SIMPLE_PERF_RECORD_SYMBOL,
 };
 
 struct PerfSampleIpType {
@@ -108,18 +110,20 @@ struct PerfSampleStackUserType {
   uint64_t dyn_size;
 };
 
-// SampleId is optional at the end of a record in binary format. Its content is determined by
-// sample_id_all and sample_type in perf_event_attr. To avoid the complexity of referring to
-// perf_event_attr each time, we copy sample_id_all and sample_type inside the SampleId structure.
+// SampleId is optional at the end of a record in binary format. Its content is
+// determined by sample_id_all and sample_type in perf_event_attr. To avoid the
+// complexity of referring to perf_event_attr each time, we copy sample_id_all
+// and sample_type inside the SampleId structure.
 struct SampleId {
   bool sample_id_all;
   uint64_t sample_type;
 
-  PerfSampleTidType tid_data;             // Valid if sample_id_all && PERF_SAMPLE_TID.
-  PerfSampleTimeType time_data;           // Valid if sample_id_all && PERF_SAMPLE_TIME.
-  PerfSampleIdType id_data;               // Valid if sample_id_all && PERF_SAMPLE_ID.
-  PerfSampleStreamIdType stream_id_data;  // Valid if sample_id_all && PERF_SAMPLE_STREAM_ID.
-  PerfSampleCpuType cpu_data;             // Valid if sample_id_all && PERF_SAMPLE_CPU.
+  PerfSampleTidType tid_data;    // Valid if sample_id_all && PERF_SAMPLE_TID.
+  PerfSampleTimeType time_data;  // Valid if sample_id_all && PERF_SAMPLE_TIME.
+  PerfSampleIdType id_data;      // Valid if sample_id_all && PERF_SAMPLE_ID.
+  PerfSampleStreamIdType
+      stream_id_data;  // Valid if sample_id_all && PERF_SAMPLE_STREAM_ID.
+  PerfSampleCpuType cpu_data;  // Valid if sample_id_all && PERF_SAMPLE_CPU.
 
   SampleId();
 
@@ -127,7 +131,8 @@ struct SampleId {
   size_t CreateContent(const perf_event_attr& attr, uint64_t event_id);
 
   // Parse sample_id from binary format in the buffer pointed by p.
-  void ReadFromBinaryFormat(const perf_event_attr& attr, const char* p, const char* end);
+  void ReadFromBinaryFormat(const perf_event_attr& attr, const char* p,
+                            const char* end);
 
   // Write the binary format of sample_id to the buffer pointed by p.
   void WriteToBinaryFormat(char*& p) const;
@@ -135,44 +140,33 @@ struct SampleId {
   size_t Size() const;
 };
 
-// Usually one record contains the following three parts in order in binary format:
-//   perf_event_header (at the head of a record, containing type and size information)
+// Usually one record contains the following three parts in order in binary
+// format:
+//   perf_event_header (at the head of a record, containing type and size info)
 //   data depends on the record type
 //   sample_id (optional part at the end of a record)
-// We hold the common parts (perf_event_header and sample_id) in the base class Record, and
-// hold the type specific data part in classes derived from Record.
+// We hold the common parts (perf_event_header and sample_id) in the base class
+// Record, and hold the type specific data part in classes derived from Record.
 struct Record {
   perf_event_header header;
   SampleId sample_id;
 
-  Record() {
-    memset(&header, 0, sizeof(header));
-  }
-  Record(const perf_event_header* pheader) {
-    header = *pheader;
-  }
+  Record() { memset(&header, 0, sizeof(header)); }
+  Record(const perf_event_header* pheader) { header = *pheader; }
 
-  virtual ~Record() {
-  }
+  virtual ~Record() {}
 
-  uint32_t type() const {
-    return header.type;
-  }
+  uint32_t type() const { return header.type; }
 
-  uint16_t misc() const {
-    return header.misc;
-  }
+  uint16_t misc() const { return header.misc; }
 
-  size_t size() const {
-    return header.size;
-  }
+  size_t size() const { return header.size; }
 
-  static uint32_t header_size() {
-    return sizeof(perf_event_header);
-  }
+  static uint32_t header_size() { return sizeof(perf_event_header); }
 
   bool InKernel() const {
-    return (header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL;
+    return (header.misc & PERF_RECORD_MISC_CPUMODE_MASK) ==
+           PERF_RECORD_MISC_KERNEL;
   }
 
   void SetTypeAndMisc(uint32_t type, uint16_t misc) {
@@ -209,6 +203,11 @@ struct MmapRecord : public Record {
   std::vector<char> BinaryFormat() const override;
   void AdjustSizeBasedOnData();
 
+  static MmapRecord Create(const perf_event_attr& attr, bool in_kernel,
+                           uint32_t pid, uint32_t tid, uint64_t addr,
+                           uint64_t len, uint64_t pgoff,
+                           const std::string& filename, uint64_t event_id);
+
  protected:
   void DumpData(size_t indent) const override;
 };
@@ -227,8 +226,7 @@ struct Mmap2Record : public Record {
   } data;
   std::string filename;
 
-  Mmap2Record() {
-  }
+  Mmap2Record() {}
 
   Mmap2Record(const perf_event_attr& attr, const perf_event_header* pheader);
   std::vector<char> BinaryFormat() const override;
@@ -244,11 +242,14 @@ struct CommRecord : public Record {
   } data;
   std::string comm;
 
-  CommRecord() {
-  }
+  CommRecord() {}
 
   CommRecord(const perf_event_attr& attr, const perf_event_header* pheader);
   std::vector<char> BinaryFormat() const override;
+
+  static CommRecord Create(const perf_event_attr& attr, uint32_t pid,
+                           uint32_t tid, const std::string& comm,
+                           uint64_t event_id);
 
  protected:
   void DumpData(size_t indent) const override;
@@ -261,9 +262,9 @@ struct ExitOrForkRecord : public Record {
     uint64_t time;
   } data;
 
-  ExitOrForkRecord() {
-  }
-  ExitOrForkRecord(const perf_event_attr& attr, const perf_event_header* pheader);
+  ExitOrForkRecord() {}
+  ExitOrForkRecord(const perf_event_attr& attr,
+                   const perf_event_header* pheader);
   std::vector<char> BinaryFormat() const override;
 
  protected:
@@ -272,20 +273,22 @@ struct ExitOrForkRecord : public Record {
 
 struct ExitRecord : public ExitOrForkRecord {
   ExitRecord(const perf_event_attr& attr, const perf_event_header* pheader)
-      : ExitOrForkRecord(attr, pheader) {
-  }
+      : ExitOrForkRecord(attr, pheader) {}
 };
 
 struct ForkRecord : public ExitOrForkRecord {
-  ForkRecord() {
-  }
+  ForkRecord() {}
   ForkRecord(const perf_event_attr& attr, const perf_event_header* pheader)
-      : ExitOrForkRecord(attr, pheader) {
-  }
+      : ExitOrForkRecord(attr, pheader) {}
+
+  static ForkRecord Create(const perf_event_attr& attr, uint32_t pid,
+                           uint32_t tid, uint32_t ppid, uint32_t ptid,
+                           uint64_t event_id);
 };
 
 struct SampleRecord : public Record {
-  uint64_t sample_type;  // sample_type is a bit mask determining which fields below are valid.
+  uint64_t sample_type;  // sample_type is a bit mask determining which fields
+                         // below are valid.
 
   PerfSampleIpType ip_data;               // Valid if PERF_SAMPLE_IP.
   PerfSampleTidType tid_data;             // Valid if PERF_SAMPLE_TID.
@@ -296,11 +299,12 @@ struct SampleRecord : public Record {
   PerfSampleCpuType cpu_data;             // Valid if PERF_SAMPLE_CPU.
   PerfSamplePeriodType period_data;       // Valid if PERF_SAMPLE_PERIOD.
 
-  PerfSampleCallChainType callchain_data;       // Valid if PERF_SAMPLE_CALLCHAIN.
-  PerfSampleRawType raw_data;                   // Valid if PERF_SAMPLE_RAW.
-  PerfSampleBranchStackType branch_stack_data;  // Valid if PERF_SAMPLE_BRANCH_STACK.
-  PerfSampleRegsUserType regs_user_data;        // Valid if PERF_SAMPLE_REGS_USER.
-  PerfSampleStackUserType stack_user_data;      // Valid if PERF_SAMPLE_STACK_USER.
+  PerfSampleCallChainType callchain_data;  // Valid if PERF_SAMPLE_CALLCHAIN.
+  PerfSampleRawType raw_data;              // Valid if PERF_SAMPLE_RAW.
+  PerfSampleBranchStackType
+      branch_stack_data;                  // Valid if PERF_SAMPLE_BRANCH_STACK.
+  PerfSampleRegsUserType regs_user_data;  // Valid if PERF_SAMPLE_REGS_USER.
+  PerfSampleStackUserType stack_user_data;  // Valid if PERF_SAMPLE_STACK_USER.
 
   SampleRecord(const perf_event_attr& attr, const perf_event_header* pheader);
   std::vector<char> BinaryFormat() const override;
@@ -311,17 +315,21 @@ struct SampleRecord : public Record {
   void DumpData(size_t indent) const override;
 };
 
-// BuildIdRecord is defined in user-space, stored in BuildId feature section in record file.
+// BuildIdRecord is defined in user-space, stored in BuildId feature section in
+// record file.
 struct BuildIdRecord : public Record {
   uint32_t pid;
   BuildId build_id;
   std::string filename;
 
-  BuildIdRecord() {
-  }
+  BuildIdRecord() {}
 
   BuildIdRecord(const perf_event_header* pheader);
   std::vector<char> BinaryFormat() const override;
+
+  static BuildIdRecord Create(bool in_kernel, pid_t pid,
+                              const BuildId& build_id,
+                              const std::string& filename);
 
  protected:
   void DumpData(size_t indent) const override;
@@ -331,17 +339,54 @@ struct KernelSymbolRecord : public Record {
   bool end_of_symbols;
   std::string kallsyms;
 
-  KernelSymbolRecord() {
-  }
+  KernelSymbolRecord() {}
 
   KernelSymbolRecord(const perf_event_header* pheader);
   std::vector<char> BinaryFormat() const override;
+
+  static std::vector<KernelSymbolRecord> Create(const std::string& kallsyms);
 
  protected:
   void DumpData(size_t indent) const override;
 };
 
-// UnknownRecord is used for unknown record types, it makes sure all unknown records
+struct DsoRecord : public Record {
+  uint64_t dso_type;
+  uint64_t dso_id;
+  std::string dso_name;
+
+  DsoRecord() {}
+
+  DsoRecord(const perf_event_header* pheader);
+  std::vector<char> BinaryFormat() const override;
+
+  static DsoRecord Create(uint64_t dso_type, uint64_t dso_id,
+                          const std::string& dso_name);
+
+ protected:
+  void DumpData(size_t indent) const override;
+};
+
+struct SymbolRecord : public Record {
+  uint64_t addr;
+  uint64_t len;
+  uint64_t dso_id;
+  std::string name;
+
+  SymbolRecord() {}
+
+  SymbolRecord(const perf_event_header* pheader);
+  std::vector<char> BinaryFormat() const override;
+
+  static SymbolRecord Create(uint64_t addr, uint64_t len,
+                             const std::string& name, uint64_t dso_id);
+
+ protected:
+  void DumpData(size_t indent) const override;
+};
+
+// UnknownRecord is used for unknown record types, it makes sure all unknown
+// records
 // are not changed when modifying perf.data.
 struct UnknownRecord : public Record {
   std::vector<char> data;
@@ -353,20 +398,27 @@ struct UnknownRecord : public Record {
   void DumpData(size_t indent) const override;
 };
 
+std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
+                                             const perf_event_header* pheader);
+std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(
+    const perf_event_attr& attr, const char* buf, size_t buf_size);
+
 // RecordCache is a cache used when receiving records from the kernel.
 // It sorts received records based on type and timestamp, and pops records
 // in sorted order. Records from the kernel need to be sorted because
 // records may come from different cpus at the same time, and it is affected
 // by the order in which we collect records from different cpus.
-// RecordCache pushes records and pops sorted record online. It uses two checks to help
-// ensure that records are popped in order. Each time we pop a record A, it is the earliest record
-// among all records in the cache. In addition, we have checks for min_cache_size and
-// min_time_diff. For min_cache_size check, we check if the cache size >= min_cache_size,
-// which is based on the assumption that if we have received (min_cache_size - 1) records
-// after record A, we are not likely to receive a record earlier than A. For min_time_diff
-// check, we check if record A is generated min_time_diff ns earlier than the latest
-// record, which is based on the assumption that if we have received a record for time t,
-// we are not likely to receive a record for time (t - min_time_diff) or earlier.
+// RecordCache pushes records and pops sorted record online. It uses two checks
+// to help ensure that records are popped in order. Each time we pop a record A,
+// it is the earliest record among all records in the cache. In addition, we
+// have checks for min_cache_size and min_time_diff. For min_cache_size check,
+// we check if the cache size >= min_cache_size, which is based on the
+// assumption that if we have received (min_cache_size - 1) records after
+// record A, we are not likely to receive a record earlier than A. For
+// min_time_diff check, we check if record A is generated min_time_diff ns
+// earlier than the latest record, which is based on the assumption that if we
+// have received a record for time t, we are not likely to receive a record for
+// time (t - min_time_diff) or earlier.
 class RecordCache {
  public:
   RecordCache(bool has_timestamp, size_t min_cache_size = 1000u,
@@ -380,7 +432,7 @@ class RecordCache {
  private:
   struct RecordWithSeq {
     uint32_t seq;
-    Record *record;
+    Record* record;
 
     bool IsHappensBefore(const RecordWithSeq& other) const;
   };
@@ -389,7 +441,7 @@ class RecordCache {
     bool operator()(const RecordWithSeq& r1, const RecordWithSeq& r2);
   };
 
-  RecordWithSeq CreateRecordWithSeq(Record *r);
+  RecordWithSeq CreateRecordWithSeq(Record* r);
 
   bool has_timestamp_;
   size_t min_cache_size_;
@@ -397,22 +449,7 @@ class RecordCache {
   uint64_t last_time_;
   uint32_t cur_seq_;
   std::priority_queue<RecordWithSeq, std::vector<RecordWithSeq>,
-      RecordComparator> queue_;
+                      RecordComparator> queue_;
 };
-
-std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
-                                                    const perf_event_header* pheader);
-std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(const perf_event_attr& attr,
-                                                           const char* buf, size_t buf_size);
-MmapRecord CreateMmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_t pid, uint32_t tid,
-                            uint64_t addr, uint64_t len, uint64_t pgoff,
-                            const std::string& filename, uint64_t event_id);
-CommRecord CreateCommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
-                            const std::string& comm, uint64_t event_id);
-ForkRecord CreateForkRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid, uint32_t ppid,
-                            uint32_t ptid, uint64_t event_id);
-BuildIdRecord CreateBuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id,
-                                  const std::string& filename);
-std::vector<KernelSymbolRecord> CreateKernelSymbolRecords(const std::string& kallsyms);
 
 #endif  // SIMPLE_PERF_RECORD_H_

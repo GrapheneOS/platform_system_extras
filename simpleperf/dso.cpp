@@ -37,8 +37,8 @@ Symbol::Symbol(const std::string& name, uint64_t addr, uint64_t len)
     : addr(addr),
       len(len),
       name_(symbol_name_allocator.AllocateString(name)),
-      demangled_name_(nullptr) {
-}
+      demangled_name_(nullptr),
+      has_dumped_(false) {}
 
 const char* Symbol::DemangledName() const {
   if (demangled_name_ == nullptr) {
@@ -59,11 +59,10 @@ std::string Dso::kallsyms_;
 std::unordered_map<std::string, BuildId> Dso::build_id_map_;
 size_t Dso::dso_count_;
 
-void Dso::SetDemangle(bool demangle) {
-  demangle_ = demangle;
-}
+void Dso::SetDemangle(bool demangle) { demangle_ = demangle; }
 
-extern "C" char* __cxa_demangle(const char* mangled_name, char* buf, size_t* n, int* status);
+extern "C" char* __cxa_demangle(const char* mangled_name, char* buf, size_t* n,
+                                int* status);
 
 std::string Dso::Demangle(const std::string& name) {
   if (!demangle_) {
@@ -108,14 +107,14 @@ bool Dso::SetSymFsDir(const std::string& symfs_dir) {
   return true;
 }
 
-void Dso::SetVmlinux(const std::string& vmlinux) {
-  vmlinux_ = vmlinux;
-}
+void Dso::SetVmlinux(const std::string& vmlinux) { vmlinux_ = vmlinux; }
 
-void Dso::SetBuildIds(const std::vector<std::pair<std::string, BuildId>>& build_ids) {
+void Dso::SetBuildIds(
+    const std::vector<std::pair<std::string, BuildId>>& build_ids) {
   std::unordered_map<std::string, BuildId> map;
   for (auto& pair : build_ids) {
-    LOG(DEBUG) << "build_id_map: " << pair.first << ", " << pair.second.ToString();
+    LOG(DEBUG) << "build_id_map: " << pair.first << ", "
+               << pair.second.ToString();
     map.insert(pair);
   }
   build_id_map_ = std::move(map);
@@ -129,16 +128,19 @@ BuildId Dso::GetExpectedBuildId(const std::string& filename) {
   return BuildId();
 }
 
-std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_path) {
-  std::string path = dso_path;
-  if (dso_type == DSO_KERNEL) {
-    path = "[kernel.kallsyms]";
-  }
-  return std::unique_ptr<Dso>(new Dso(dso_type, path));
+std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type,
+                                    const std::string& dso_path) {
+  static uint64_t id = 0;
+  return std::unique_ptr<Dso>(new Dso(dso_type, ++id, dso_path));
 }
 
-Dso::Dso(DsoType type, const std::string& path)
-    : type_(type), path_(path), min_vaddr_(std::numeric_limits<uint64_t>::max()), is_loaded_(false) {
+Dso::Dso(DsoType type, uint64_t id, const std::string& path)
+    : type_(type),
+      id_(id),
+      path_(path),
+      min_vaddr_(std::numeric_limits<uint64_t>::max()),
+      is_loaded_(false),
+      has_dumped_(false) {
   dso_count_++;
 }
 
@@ -154,27 +156,25 @@ Dso::~Dso() {
   }
 }
 
-struct SymbolComparator {
-  bool operator()(const Symbol& symbol1, const Symbol& symbol2) {
-    return symbol1.addr < symbol2.addr;
-  }
-};
-
-std::string Dso::GetAccessiblePath() const {
-  return symfs_dir_ + path_;
-}
+std::string Dso::GetAccessiblePath() const { return symfs_dir_ + path_; }
 
 const Symbol* Dso::FindSymbol(uint64_t vaddr_in_dso) {
   if (!is_loaded_) {
     is_loaded_ = true;
-    if (!Load()) {
-      LOG(DEBUG) << "failed to load dso: " << path_;
-      return nullptr;
+    // If symbols has been read from SymbolRecords, no need to load them from
+    // dso.
+    if (symbols_.empty()) {
+      if (!Load()) {
+        LOG(DEBUG) << "failed to load dso: " << path_;
+        return nullptr;
+      }
     }
   }
+  if (symbols_.empty()) {
+    return nullptr;
+  }
 
-  auto it = std::upper_bound(symbols_.begin(), symbols_.end(), Symbol("", vaddr_in_dso, 0),
-                             SymbolComparator());
+  auto it = symbols_.upper_bound(Symbol("", vaddr_in_dso, 0));
   if (it != symbols_.begin()) {
     --it;
     if (it->addr <= vaddr_in_dso && it->addr + it->len > vaddr_in_dso) {
@@ -191,7 +191,8 @@ uint64_t Dso::MinVirtualAddress() {
       BuildId build_id = GetExpectedBuildId(GetAccessiblePath());
 
       uint64_t addr;
-      if (ReadMinExecutableVirtualAddressFromElfFile(GetAccessiblePath(), build_id, &addr)) {
+      if (ReadMinExecutableVirtualAddressFromElfFile(GetAccessiblePath(),
+                                                     build_id, &addr)) {
         min_vaddr_ = addr;
       }
     }
@@ -218,14 +219,14 @@ bool Dso::Load() {
     }
   }
   if (result) {
-    std::sort(symbols_.begin(), symbols_.end(), SymbolComparator());
     FixupSymbolLength();
   }
   return result;
 }
 
 static bool IsKernelFunctionSymbol(const KernelSymbol& symbol) {
-  return (symbol.type == 'T' || symbol.type == 't' || symbol.type == 'W' || symbol.type == 'w');
+  return (symbol.type == 'T' || symbol.type == 't' || symbol.type == 'W' ||
+          symbol.type == 'w');
 }
 
 bool Dso::KernelSymbolCallback(const KernelSymbol& kernel_symbol, Dso* dso) {
@@ -237,18 +238,20 @@ bool Dso::KernelSymbolCallback(const KernelSymbol& kernel_symbol, Dso* dso) {
 
 void Dso::VmlinuxSymbolCallback(const ElfFileSymbol& elf_symbol, Dso* dso) {
   if (elf_symbol.is_func) {
-    dso->InsertSymbol(Symbol(elf_symbol.name, elf_symbol.vaddr, elf_symbol.len));
+    dso->InsertSymbol(
+        Symbol(elf_symbol.name, elf_symbol.vaddr, elf_symbol.len));
   }
 }
 
 bool Dso::LoadKernel() {
   BuildId build_id = GetExpectedBuildId(DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID);
   if (!vmlinux_.empty()) {
-    ParseSymbolsFromElfFile(vmlinux_, build_id,
-                            std::bind(VmlinuxSymbolCallback, std::placeholders::_1, this));
+    ParseSymbolsFromElfFile(
+        vmlinux_, build_id,
+        std::bind(VmlinuxSymbolCallback, std::placeholders::_1, this));
   } else if (!kallsyms_.empty()) {
-    ProcessKernelSymbols(kallsyms_,
-                         std::bind(&KernelSymbolCallback, std::placeholders::_1, this));
+    ProcessKernelSymbols(kallsyms_, std::bind(&KernelSymbolCallback,
+                                              std::placeholders::_1, this));
     bool all_zero = true;
     for (const auto& symbol : symbols_) {
       if (symbol.addr != 0) {
@@ -257,8 +260,10 @@ bool Dso::LoadKernel() {
       }
     }
     if (all_zero) {
-      LOG(WARNING) << "Symbol addresses in /proc/kallsyms on device are all zero. "
-                      "`echo 0 >/proc/sys/kernel/kptr_restrict` or use root privilege if possible.";
+      LOG(WARNING)
+          << "Symbol addresses in /proc/kallsyms on device are all zero. "
+             "`echo 0 >/proc/sys/kernel/kptr_restrict` or use root privilege "
+             "if possible.";
       symbols_.clear();
       return false;
     }
@@ -267,8 +272,9 @@ bool Dso::LoadKernel() {
       BuildId real_build_id;
       GetKernelBuildId(&real_build_id);
       bool match = (build_id == real_build_id);
-      LOG(DEBUG) << "check kernel build id (" << (match ? "match" : "mismatch") << "): expected "
-                 << build_id.ToString() << ", real " << real_build_id.ToString();
+      LOG(DEBUG) << "check kernel build id (" << (match ? "match" : "mismatch")
+                 << "): expected " << build_id.ToString() << ", real "
+                 << real_build_id.ToString();
       if (!match) {
         return false;
       }
@@ -279,8 +285,8 @@ bool Dso::LoadKernel() {
       LOG(DEBUG) << "failed to read /proc/kallsyms";
       return false;
     }
-    ProcessKernelSymbols(kallsyms,
-                         std::bind(&KernelSymbolCallback, std::placeholders::_1, this));
+    ProcessKernelSymbols(kallsyms, std::bind(&KernelSymbolCallback,
+                                             std::placeholders::_1, this));
     bool all_zero = true;
     for (const auto& symbol : symbols_) {
       if (symbol.addr != 0) {
@@ -290,7 +296,8 @@ bool Dso::LoadKernel() {
     }
     if (all_zero) {
       LOG(WARNING) << "Symbol addresses in /proc/kallsyms are all zero. "
-                      "`echo 0 >/proc/sys/kernel/kptr_restrict` or use root privilege if possible.";
+                      "`echo 0 >/proc/sys/kernel/kptr_restrict` or use root "
+                      "privilege if possible.";
       symbols_.clear();
       return false;
     }
@@ -301,7 +308,8 @@ bool Dso::LoadKernel() {
 void Dso::ElfFileSymbolCallback(const ElfFileSymbol& elf_symbol, Dso* dso,
                                 bool (*filter)(const ElfFileSymbol&)) {
   if (filter(elf_symbol)) {
-    dso->InsertSymbol(Symbol(elf_symbol.name, elf_symbol.vaddr, elf_symbol.len));
+    dso->InsertSymbol(
+        Symbol(elf_symbol.name, elf_symbol.vaddr, elf_symbol.len));
   }
 }
 
@@ -314,12 +322,14 @@ bool Dso::LoadKernelModule() {
   BuildId build_id = GetExpectedBuildId(path_);
   ParseSymbolsFromElfFile(
       symfs_dir_ + path_, build_id,
-      std::bind(ElfFileSymbolCallback, std::placeholders::_1, this, SymbolFilterForKernelModule));
+      std::bind(ElfFileSymbolCallback, std::placeholders::_1, this,
+                SymbolFilterForKernelModule));
   return true;
 }
 
 static bool SymbolFilterForDso(const ElfFileSymbol& elf_symbol) {
-  return elf_symbol.is_func || (elf_symbol.is_label && elf_symbol.is_in_text_section);
+  return elf_symbol.is_func ||
+         (elf_symbol.is_label && elf_symbol.is_in_text_section);
 }
 
 bool Dso::LoadElfFile() {
@@ -330,12 +340,14 @@ bool Dso::LoadElfFile() {
     // Linux host can store debug shared libraries in /usr/lib/debug.
     loaded = ParseSymbolsFromElfFile(
         "/usr/lib/debug" + path_, build_id,
-        std::bind(ElfFileSymbolCallback, std::placeholders::_1, this, SymbolFilterForDso));
+        std::bind(ElfFileSymbolCallback, std::placeholders::_1, this,
+                  SymbolFilterForDso));
   }
   if (!loaded) {
     loaded = ParseSymbolsFromElfFile(
         GetAccessiblePath(), build_id,
-        std::bind(ElfFileSymbolCallback, std::placeholders::_1, this, SymbolFilterForDso));
+        std::bind(ElfFileSymbolCallback, std::placeholders::_1, this,
+                  SymbolFilterForDso));
   }
   return loaded;
 }
@@ -345,14 +357,13 @@ bool Dso::LoadEmbeddedElfFile() {
   BuildId build_id = GetExpectedBuildId(path);
   auto tuple = SplitUrlInApk(path);
   CHECK(std::get<0>(tuple));
-  return ParseSymbolsFromApkFile(std::get<1>(tuple), std::get<2>(tuple), build_id,
-                                 std::bind(ElfFileSymbolCallback, std::placeholders::_1,
-                                           this, SymbolFilterForDso));
+  return ParseSymbolsFromApkFile(
+      std::get<1>(tuple), std::get<2>(tuple), build_id,
+      std::bind(ElfFileSymbolCallback, std::placeholders::_1, this,
+                SymbolFilterForDso));
 }
 
-void Dso::InsertSymbol(const Symbol& symbol) {
-  symbols_.push_back(symbol);
-}
+void Dso::InsertSymbol(const Symbol& symbol) { symbols_.insert(symbol); }
 
 void Dso::FixupSymbolLength() {
   Symbol* prev_symbol = nullptr;
@@ -360,9 +371,22 @@ void Dso::FixupSymbolLength() {
     if (prev_symbol != nullptr && prev_symbol->len == 0) {
       prev_symbol->len = symbol.addr - prev_symbol->addr;
     }
-    prev_symbol = &symbol;
+    prev_symbol = const_cast<Symbol*>(&symbol);
   }
   if (prev_symbol != nullptr && prev_symbol->len == 0) {
     prev_symbol->len = std::numeric_limits<uint64_t>::max() - prev_symbol->addr;
+  }
+}
+
+const char* DsoTypeToString(DsoType dso_type) {
+  switch (dso_type) {
+    case DSO_KERNEL:
+      return "dso_kernel";
+    case DSO_KERNEL_MODULE:
+      return "dso_kernel_module";
+    case DSO_ELF_FILE:
+      return "dso_elf_file";
+    default:
+      return "unknown";
   }
 }
