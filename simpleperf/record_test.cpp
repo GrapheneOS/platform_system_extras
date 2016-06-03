@@ -46,12 +46,12 @@ void RecordTest::CheckRecordMatchBinary(const RecordType& record) {
 
 TEST_F(RecordTest, MmapRecordMatchBinary) {
   MmapRecord record =
-      CreateMmapRecord(event_attr, true, 1, 2, 0x1000, 0x2000, 0x3000, "MmapRecord", 0);
+      MmapRecord::Create(event_attr, true, 1, 2, 0x1000, 0x2000, 0x3000, "MmapRecord", 0);
   CheckRecordMatchBinary(record);
 }
 
 TEST_F(RecordTest, CommRecordMatchBinary) {
-  CommRecord record = CreateCommRecord(event_attr, 1, 2, "CommRecord", 0);
+  CommRecord record = CommRecord::Create(event_attr, 1, 2, "CommRecord", 0);
   CheckRecordMatchBinary(record);
 }
 
@@ -59,7 +59,7 @@ TEST_F(RecordTest, RecordCache_smoke) {
   event_attr.sample_id_all = 1;
   event_attr.sample_type |= PERF_SAMPLE_TIME;
   RecordCache cache(true, 2, 2);
-  MmapRecord r1 = CreateMmapRecord(event_attr, true, 1, 1, 0x100, 0x200, 0x300, "mmap_record1", 0);
+  MmapRecord r1 = MmapRecord::Create(event_attr, true, 1, 1, 0x100, 0x200, 0x300, "mmap_record1", 0);
   MmapRecord r2 = r1;
   MmapRecord r3 = r1;
   MmapRecord r4 = r1;
@@ -103,7 +103,7 @@ TEST_F(RecordTest, RecordCache_FIFO) {
   RecordCache cache(true, 2, 2);
   std::vector<MmapRecord> records;
   for (size_t i = 0; i < 10; ++i) {
-    MmapRecord r = CreateMmapRecord(event_attr, true, 1, i, 0x100, 0x200, 0x300, "mmap_record1", 0);
+    MmapRecord r = MmapRecord::Create(event_attr, true, 1, i, 0x100, 0x200, 0x300, "mmap_record1", 0);
     records.push_back(r);
     cache.Push(std::unique_ptr<Record>(new MmapRecord(r)));
   }

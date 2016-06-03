@@ -77,6 +77,7 @@ libsimpleperf_src_files := \
   cmd_dumprecord.cpp \
   cmd_help.cpp \
   cmd_report.cpp \
+  cmd_report_sample.cpp \
   command.cpp \
   dso.cpp \
   event_attr.cpp \
@@ -186,6 +187,7 @@ include $(BUILD_HOST_EXECUTABLE)
 # =========================================================
 simpleperf_unit_test_src_files := \
   cmd_report_test.cpp \
+  cmd_report_sample_test.cpp \
   command_test.cpp \
   gtest_main.cpp \
   read_apk_test.cpp \

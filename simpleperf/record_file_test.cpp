@@ -61,8 +61,8 @@ TEST_F(RecordFileTest, smoke) {
   ASSERT_TRUE(writer->WriteAttrSection(attr_ids_));
 
   // Write data section.
-  MmapRecord mmap_record = CreateMmapRecord(*(attr_ids_[0].attr), true, 1, 1, 0x1000, 0x2000,
-                                            0x3000, "mmap_record_example", attr_ids_[0].ids[0]);
+  MmapRecord mmap_record = MmapRecord::Create(*(attr_ids_[0].attr), true, 1, 1, 0x1000, 0x2000,
+                                              0x3000, "mmap_record_example", attr_ids_[0].ids[0]);
   ASSERT_TRUE(writer->WriteData(mmap_record.BinaryFormat()));
 
   // Write feature section.
@@ -72,7 +72,7 @@ TEST_F(RecordFileTest, smoke) {
     p[i] = i;
   }
   BuildId build_id(p);
-  BuildIdRecord build_id_record = CreateBuildIdRecord(false, getpid(), build_id, "init");
+  BuildIdRecord build_id_record = BuildIdRecord::Create(false, getpid(), build_id, "init");
   ASSERT_TRUE(writer->WriteBuildIdFeature({build_id_record}));
   ASSERT_TRUE(writer->Close());
 
@@ -112,7 +112,7 @@ TEST_F(RecordFileTest, records_sorted_by_time) {
 
   // Write data section.
   MmapRecord r1 =
-      CreateMmapRecord(*(attr_ids_[0].attr), true, 1, 1, 0x100, 0x2000, 0x3000, "mmap_record1",
+      MmapRecord::Create(*(attr_ids_[0].attr), true, 1, 1, 0x100, 0x2000, 0x3000, "mmap_record1",
                        attr_ids_[0].ids[0]);
   MmapRecord r2 = r1;
   MmapRecord r3 = r1;
