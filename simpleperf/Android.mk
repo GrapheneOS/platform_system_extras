@@ -88,6 +88,7 @@ libsimpleperf_src_files := \
   record.cpp \
   record_file_reader.cpp \
   thread_tree.cpp \
+  tracing.cpp \
   utils.cpp \
 
 libsimpleperf_src_files_linux := \

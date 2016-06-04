@@ -39,6 +39,7 @@
 #include "record_file.h"
 #include "scoped_signal_handler.h"
 #include "thread_tree.h"
+#include "tracing.h"
 #include "utils.h"
 #include "workload.h"
 
@@ -56,6 +57,9 @@ static std::unordered_map<std::string, uint64_t> branch_sampling_type_map = {
 static volatile bool signaled;
 static void signal_handler(int) { signaled = true; }
 
+constexpr uint64_t DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT = 4000;
+constexpr uint64_t DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT = 1;
+
 class RecordCommand : public Command {
  public:
   RecordCommand()
@@ -66,7 +70,9 @@ class RecordCommand : public Command {
 "       Gather sampling information when running [command].\n"
 "-a     System-wide collection.\n"
 "-b     Enable take branch stack sampling. Same as '-j any'\n"
-"-c count     Set event sample period.\n"
+"-c count     Set event sample period. It means recording one sample when\n"
+"             [count] events happen. Can't be used with -f/-F option.\n"
+"             For tracepoint events, the default option is -c 1.\n"
 "--call-graph fp | dwarf[,<dump_stack_size>]\n"
 "             Enable call graph recording. Use frame pointer or dwarf debug\n"
 "             frame as the method to parse call graph in stack.\n"
@@ -84,7 +90,9 @@ class RecordCommand : public Command {
 "             Possible modifiers are:\n"
 "                u - monitor user space events only\n"
 "                k - monitor kernel space events only\n"
-"-f freq      Set event sample frequency.\n"
+"-f freq      Set event sample frequency. It means recording at most [freq]\n"
+"             samples every second. For non-tracepoint events, the default\n"
+"             option is -f 4000.\n"
 "-F freq      Same as '-f freq'.\n"
 "-g           Same as '--call-graph dwarf'.\n"
 "-j branch_filter1,branch_filter2,...\n"
@@ -117,8 +125,10 @@ class RecordCommand : public Command {
 "-t tid1,tid2,... Record events on existing threads. Mutually exclusive with -a.\n"
             // clang-format on
             ),
-        use_sample_freq_(true),
-        sample_freq_(4000),
+        use_sample_freq_(false),
+        sample_freq_(0),
+        use_sample_period_(false),
+        sample_period_(0),
         system_wide_collection_(false),
         branch_sampling_(0),
         fp_callchain_sampling_(false),
@@ -148,6 +158,7 @@ class RecordCommand : public Command {
   std::unique_ptr<RecordFileWriter> CreateRecordFile(
       const std::string& filename);
   bool DumpKernelSymbol();
+  bool DumpTracingData();
   bool DumpKernelAndModuleMmaps(const perf_event_attr* attr, uint64_t event_id);
   bool DumpThreadCommAndMmaps(const perf_event_attr* attr, uint64_t event_id,
                               bool all_threads,
@@ -162,9 +173,9 @@ class RecordCommand : public Command {
   void CollectHitFileInfo(Record* record);
   std::pair<std::string, uint64_t> TestForEmbeddedElf(Dso* dso, uint64_t pgoff);
 
-  // Use sample_freq_ when true, otherwise using sample_period_.
   bool use_sample_freq_;
-  uint64_t sample_freq_;    // Sample 'sample_freq_' times per second.
+  uint64_t sample_freq_;  // Sample 'sample_freq_' times per second.
+  bool use_sample_period_;
   uint64_t sample_period_;  // Sample once when 'sample_period_' events occur.
 
   bool system_wide_collection_;
@@ -313,7 +324,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         LOG(ERROR) << "Invalid sample period: '" << args[i] << "'";
         return false;
       }
-      use_sample_freq_ = false;
+      use_sample_period_ = true;
     } else if (args[i] == "--call-graph") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -434,6 +445,11 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     }
   }
 
+  if (use_sample_freq_ && use_sample_period_) {
+    LOG(ERROR) << "-f option can't be used with -c option.";
+    return false;
+  }
+
   if (!dwarf_callchain_sampling_) {
     if (!unwind_dwarf_callchain_) {
       LOG(ERROR)
@@ -482,6 +498,11 @@ bool RecordCommand::AddMeasuredEventType(const std::string& event_type_name) {
   if (event_type_modifier == nullptr) {
     return false;
   }
+  for (const auto& type : measured_event_types_) {
+    if (type.name == event_type_modifier->name) {
+      return true;
+    }
+  }
   measured_event_types_.push_back(*event_type_modifier);
   return true;
 }
@@ -492,10 +513,20 @@ bool RecordCommand::SetEventSelection() {
       return false;
     }
   }
-  if (use_sample_freq_) {
-    event_selection_set_.SetSampleFreq(sample_freq_);
-  } else {
-    event_selection_set_.SetSamplePeriod(sample_period_);
+  for (auto& event_type : measured_event_types_) {
+    if (use_sample_freq_) {
+      event_selection_set_.SetSampleFreq(event_type, sample_freq_);
+    } else if (use_sample_period_) {
+      event_selection_set_.SetSamplePeriod(event_type, sample_period_);
+    } else {
+      if (event_type.event_type.type == PERF_TYPE_TRACEPOINT) {
+        event_selection_set_.SetSamplePeriod(
+            event_type, DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT);
+      } else {
+        event_selection_set_.SetSampleFreq(
+            event_type, DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT);
+      }
+    }
   }
   event_selection_set_.SampleIdAll();
   if (!event_selection_set_.SetBranchSampling(branch_sampling_)) {
@@ -525,6 +556,9 @@ bool RecordCommand::CreateAndInitRecordFile() {
       event_selection_set_.FindEventFdsByType(measured_event_types_[0]);
   uint64_t event_id = (*fds)[0]->Id();
   if (!DumpKernelSymbol()) {
+    return false;
+  }
+  if (!DumpTracingData()) {
     return false;
   }
   if (!DumpKernelAndModuleMmaps(attr, event_id)) {
@@ -587,6 +621,28 @@ bool RecordCommand::DumpKernelSymbol() {
         return false;
       }
     }
+  }
+  return true;
+}
+
+bool RecordCommand::DumpTracingData() {
+  bool has_tracepoint = false;
+  for (const auto& type : measured_event_types_) {
+    if (type.event_type.type == PERF_TYPE_TRACEPOINT) {
+      has_tracepoint = true;
+      break;
+    }
+  }
+  if (!has_tracepoint) {
+    return true;  // No need to dump tracing data.
+  }
+  std::vector<char> tracing_data;
+  if (!GetTracingData(measured_event_types_, &tracing_data)) {
+    return false;
+  }
+  TracingDataRecord record = TracingDataRecord::Create(std::move(tracing_data));
+  if (!ProcessRecord(&record)) {
+    return false;
   }
   return true;
 }
