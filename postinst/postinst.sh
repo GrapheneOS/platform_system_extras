@@ -53,7 +53,7 @@ status_fd="$2"
 my_dir=$(dirname "$0")
 
 # We can notify the updater of the progress of our program by writing to the
-# status file descriptor "set_progress <frac>\n".
+# status file descriptor "global_progress <frac>\n".
 print -u${status_fd} "global_progress 0"
 
 echo "The output of this program will show up in the logs." >&2
