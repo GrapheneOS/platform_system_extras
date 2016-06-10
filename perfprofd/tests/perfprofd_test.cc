@@ -25,6 +25,7 @@
 #include <fcntl.h>
 
 #include <android-base/stringprintf.h>
+#include <cutils/properties.h>
 
 #include "perfprofdcore.h"
 #include "configreader.h"
@@ -595,8 +596,9 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
                      encodedProfile);
 
 
-  // Expect 29 load modules
+  // Expect 4 programs 8 load modules
   EXPECT_EQ(4, encodedProfile.programs_size());
+  EXPECT_EQ(8, encodedProfile.load_modules_size());
 
   // Check a couple of load modules
   { const auto &lm0 = encodedProfile.load_modules(0);
@@ -621,23 +623,23 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
   }
 
   // Examine some of the samples now
-  { const auto &p1 = encodedProfile.programs(0);
-    const auto &lm1 = p1.modules(0);
+  { const auto &p0 = encodedProfile.programs(0);
+    const auto &lm1 = p0.modules(0);
     std::string act_lm1 = encodedModuleSamplesToString(lm1);
     std::string sqact1 = squeezeWhite(act_lm1, "actual for lm1");
     const std::string expected_lm1 = RAW_RESULT(
         load_module_id: 0
-        address_samples { address: 108460 count: 2 }
+        address_samples { address: 108552 count: 2 }
                                                 );
     std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
     EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
   }
-  { const auto &p1 = encodedProfile.programs(1);
-    const auto &lm2 = p1.modules(2);
+  { const auto &p4 = encodedProfile.programs(3);
+    const auto &lm2 = p4.modules(1);
     std::string act_lm2 = encodedModuleSamplesToString(lm2);
     std::string sqact2 = squeezeWhite(act_lm2, "actual for lm2");
     const std::string expected_lm2 = RAW_RESULT(
-        load_module_id: 3 address_samples { address: 686690 count: 1 } address_samples { address: 693516 count: 1 } address_samples { address: 693770 count: 1 } address_samples { address: 694362 count: 1 } address_samples { address: 695874 count: 1 } address_samples { address: 720318 count: 2 } address_samples { address: 1510368 count: 1 } address_samples { address: 1715444 count: 1 } address_samples { address: 2809724 count: 1 } address_samples { address: 3200568 count: 1 }
+        load_module_id: 2 address_samples { address: 403913 count: 1 } address_samples { address: 840761 count: 1 } address_samples { address: 846481 count: 1 } address_samples { address: 999053 count: 1 } address_samples { address: 1012959 count: 1 } address_samples { address: 1524309 count: 1 } address_samples { address: 1580779 count: 1 } address_samples { address: 4287986288 count: 1 }
                                                 );
     std::string sqexp2 = squeezeWhite(expected_lm2, "expected_lm2");
     EXPECT_STREQ(sqexp2.c_str(), sqact2.c_str());
@@ -757,6 +759,68 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
   // check to make sure log excerpt matches
   compareLogMessages(mock_perfprofdutils_getlogged(),
                      expected, "BasicRunWithLivePerf", true);
+}
+
+TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
+{
+  //
+  // Callchain profiles are only supported on certain devices.
+  // For now this test is stubbed out except when run on "angler".
+  //
+  char propBuf[PROPERTY_VALUE_MAX];
+  propBuf[0] = '\0';
+  property_get("ro.hardware", propBuf, "");
+  if (strcmp(propBuf, "angler")) {
+    return;
+  }
+
+  //
+  // Collect a callchain profile, so as to exercise the code in
+  // perf_data post-processing that digests callchains.
+  //
+  PerfProfdRunner runner;
+  std::string ddparam("destination_directory="); ddparam += dest_dir;
+  runner.addToConfig(ddparam);
+  std::string cfparam("config_directory="); cfparam += test_dir;
+  runner.addToConfig(cfparam);
+  runner.addToConfig("main_loop_iterations=1");
+  runner.addToConfig("use_fixed_seed=12345678");
+  runner.addToConfig("max_unprocessed_profiles=100");
+  runner.addToConfig("collection_interval=9999");
+  runner.addToConfig("stack_profile=1");
+  runner.addToConfig("sample_duration=2");
+
+  // Create semaphore file
+  runner.create_semaphore_file();
+
+  // Kick off daemon
+  int daemon_main_return_code = runner.invoke();
+
+  // Check return code from daemon
+  EXPECT_EQ(0, daemon_main_return_code);
+
+  // Read and decode the resulting perf.data.encoded file
+  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
+  readEncodedProfile("CallChainRunWithLivePerf", encodedProfile);
+
+  // Examine what we get back. Since it's a live profile, we can't
+  // really do much in terms of verifying the contents.
+  EXPECT_LT(0, encodedProfile.programs_size());
+
+  // Verify log contents
+  const std::string expected = RAW_RESULT(
+      I: starting Android Wide Profiling daemon
+      I: config file path set to /data/nativetest/perfprofd_test/perfprofd.conf
+      I: random seed set to 12345678
+      I: sleep 674 seconds
+      I: initiating profile collection
+      I: profile collection complete
+      I: sleep 9325 seconds
+      I: finishing Android Wide Profiling daemon
+                                          );
+  // check to make sure log excerpt matches
+  compareLogMessages(mock_perfprofdutils_getlogged(),
+                     expected, "CallChainRunWithLivePerf", true);
 }
 
 int main(int argc, char **argv) {
