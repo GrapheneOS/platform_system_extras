@@ -72,6 +72,7 @@ struct fec_verity_metadata {
     bool disabled;
     uint64_t data_size;
     uint8_t signature[ANDROID_PUBKEY_MODULUS_SIZE];
+    uint8_t ecc_signature[ANDROID_PUBKEY_MODULUS_SIZE];
     const char *table;
     uint32_t table_length;
 };
