@@ -180,7 +180,7 @@ bool RecordFileWriter::WriteFeatureString(int feature, const std::string& s) {
   if (!WriteFeatureBegin(&start_offset)) {
     return false;
   }
-  uint32_t len = static_cast<uint32_t>(ALIGN(s.size() + 1, 64));
+  uint32_t len = static_cast<uint32_t>(SIMPLEPERF_ALIGN(s.size() + 1, 64));
   if (!Write(&len, sizeof(len))) {
     return false;
   }
@@ -202,7 +202,7 @@ bool RecordFileWriter::WriteCmdlineFeature(const std::vector<std::string>& cmdli
     return false;
   }
   for (auto& arg : cmdline) {
-    uint32_t len = static_cast<uint32_t>(ALIGN(arg.size() + 1, 64));
+    uint32_t len = static_cast<uint32_t>(SIMPLEPERF_ALIGN(arg.size() + 1, 64));
     if (!Write(&len, sizeof(len))) {
       return false;
     }
