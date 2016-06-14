@@ -248,6 +248,7 @@ TEST(record_cmd, kernel_symbol) {
   ASSERT_TRUE(success);
 }
 
+// Check if the dso/symbol records in perf.data matches our expectation.
 static void CheckDsoSymbolRecords(const std::string& path,
                                   bool need_dso_symbol_records, bool* success) {
   *success = false;
