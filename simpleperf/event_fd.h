@@ -40,9 +40,12 @@ struct pollfd;
 class EventFd {
  public:
   static std::unique_ptr<EventFd> OpenEventFile(const perf_event_attr& attr, pid_t tid, int cpu,
-                                                bool report_error = true);
+                                                EventFd* group_event_fd, bool report_error = true);
 
   ~EventFd();
+
+  // Give information about this perf_event_file, like (event_name, tid, cpu).
+  std::string Name() const;
 
   uint64_t Id() const;
 
@@ -80,9 +83,6 @@ class EventFd {
         mmap_addr_(nullptr),
         mmap_len_(0) {
   }
-
-  // Give information about this perf_event_file, like (event_name, tid, cpu).
-  std::string Name() const;
 
   // Discard how much data we have read, so the kernel can reuse this part of mapped area to store
   // new data.
