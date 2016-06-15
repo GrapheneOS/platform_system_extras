@@ -512,11 +512,7 @@ bool ReportCommand::ReadEventAttrFromRecordFile() {
     EventAttrWithName attr;
     attr.attr = *attr_with_id.attr;
     attr.event_ids = attr_with_id.ids;
-    const EventType* event_type =
-        FindEventTypeByConfig(attr.attr.type, attr.attr.config);
-    if (event_type != nullptr) {
-      attr.name = event_type->name;
-    }
+    attr.name = GetEventNameByAttr(attr.attr);
     event_attrs_.push_back(attr);
   }
   if (use_branch_address_) {
