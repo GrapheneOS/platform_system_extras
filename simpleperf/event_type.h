@@ -41,7 +41,6 @@ struct EventType {
 };
 
 const std::vector<EventType>& GetAllEventTypes();
-const EventType* FindEventTypeByConfig(uint32_t type, uint64_t config);
 const EventType* FindEventTypeByName(const std::string& name);
 
 struct EventTypeAndModifier {
