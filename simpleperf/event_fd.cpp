@@ -31,6 +31,7 @@
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 
+#include "event_attr.h"
 #include "event_type.h"
 #include "perf_event.h"
 #include "utils.h"
@@ -45,11 +46,7 @@ static int perf_event_open(perf_event_attr* attr, pid_t pid, int cpu, int group_
 std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr, pid_t tid, int cpu,
                                                 bool report_error) {
   perf_event_attr perf_attr = attr;
-  std::string event_name = "unknown event";
-  const EventType* event_type = FindEventTypeByConfig(perf_attr.type, perf_attr.config);
-  if (event_type != nullptr) {
-    event_name = event_type->name;
-  }
+  std::string event_name = GetEventNameByAttr(attr);
   int perf_event_fd = perf_event_open(&perf_attr, tid, cpu, -1, 0);
   if (perf_event_fd == -1) {
     if (report_error) {
