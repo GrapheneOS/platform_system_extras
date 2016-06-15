@@ -26,7 +26,9 @@
 #include <android-base/macros.h>
 #include <ziparchive/zip_archive.h>
 
-#define SIMPLEPERF_ALIGN(value, alignment) (((value) + (alignment)-1) & ~((alignment)-1))
+static inline uint64_t Align(uint64_t value, uint64_t alignment) {
+  return (value + alignment - 1) & ~(alignment - 1);
+}
 
 #ifdef _WIN32
 #define CLOSE_ON_EXEC_MODE ""
