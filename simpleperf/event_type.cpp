@@ -74,15 +74,6 @@ const std::vector<EventType>& GetAllEventTypes() {
   return event_type_array;
 }
 
-const EventType* FindEventTypeByConfig(uint32_t type, uint64_t config) {
-  for (auto& event_type : GetAllEventTypes()) {
-    if (event_type.type == type && event_type.config == config) {
-      return &event_type;
-    }
-  }
-  return nullptr;
-}
-
 const EventType* FindEventTypeByName(const std::string& name) {
   const EventType* result = nullptr;
   for (auto& event_type : GetAllEventTypes()) {

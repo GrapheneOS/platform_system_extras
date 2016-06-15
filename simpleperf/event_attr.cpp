@@ -98,12 +98,7 @@ perf_event_attr CreateDefaultPerfEventAttr(const EventType& event_type) {
 }
 
 void DumpPerfEventAttr(const perf_event_attr& attr, size_t indent) {
-  std::string event_name = "unknown";
-  const EventType* event_type = FindEventTypeByConfig(attr.type, attr.config);
-  if (event_type != nullptr) {
-    event_name = event_type->name;
-  }
-
+  std::string event_name = GetEventNameByAttr(attr);
   PrintIndented(indent, "event_attr: for event type %s\n", event_name.c_str());
 
   PrintIndented(indent + 1, "type %u, size %u, config %llu\n", attr.type, attr.size, attr.config);
@@ -225,4 +220,19 @@ bool GetCommonEventIdPositionsForAttrs(std::vector<perf_event_attr>& attrs,
 
 bool IsTimestampSupported(const perf_event_attr& attr) {
   return attr.sample_id_all && (attr.sample_type & PERF_SAMPLE_TIME);
+}
+
+std::string GetEventNameByAttr(const perf_event_attr& attr) {
+  for (const auto& event_type : GetAllEventTypes()) {
+    if (event_type.type == attr.type && event_type.config == attr.config) {
+      std::string name = event_type.name;
+      if (attr.exclude_user && !attr.exclude_kernel) {
+        name += ":k";
+      } else if (attr.exclude_kernel && !attr.exclude_user) {
+        name += ":u";
+      }
+      return name;
+    }
+  }
+  return "unknown";
 }
