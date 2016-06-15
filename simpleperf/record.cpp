@@ -200,7 +200,7 @@ MmapRecord::MmapRecord(const perf_event_attr& attr,
   const char* end = reinterpret_cast<const char*>(pheader) + size();
   MoveFromBinaryFormat(data, p);
   filename = p;
-  p += SIMPLEPERF_ALIGN(filename.size() + 1, 8);
+  p += Align(filename.size() + 1, 8);
   CHECK_LE(p, end);
   sample_id.ReadFromBinaryFormat(attr, p, end);
 }
@@ -211,13 +211,13 @@ std::vector<char> MmapRecord::BinaryFormat() const {
   MoveToBinaryFormat(header, p);
   MoveToBinaryFormat(data, p);
   strcpy(p, filename.c_str());
-  p += SIMPLEPERF_ALIGN(filename.size() + 1, 8);
+  p += Align(filename.size() + 1, 8);
   sample_id.WriteToBinaryFormat(p);
   return buf;
 }
 
 void MmapRecord::AdjustSizeBasedOnData() {
-  SetSize(header_size() + sizeof(data) + SIMPLEPERF_ALIGN(filename.size() + 1, 8) +
+  SetSize(header_size() + sizeof(data) + Align(filename.size() + 1, 8) +
           sample_id.Size());
 }
 
@@ -244,7 +244,7 @@ MmapRecord MmapRecord::Create(const perf_event_attr& attr, bool in_kernel,
   record.filename = filename;
   size_t sample_id_size = record.sample_id.CreateContent(attr, event_id);
   record.SetSize(record.header_size() + sizeof(record.data) +
-                 SIMPLEPERF_ALIGN(record.filename.size() + 1, 8) + sample_id_size);
+                 Align(record.filename.size() + 1, 8) + sample_id_size);
   return record;
 }
 
@@ -255,7 +255,7 @@ Mmap2Record::Mmap2Record(const perf_event_attr& attr,
   const char* end = reinterpret_cast<const char*>(pheader) + size();
   MoveFromBinaryFormat(data, p);
   filename = p;
-  p += SIMPLEPERF_ALIGN(filename.size() + 1, 8);
+  p += Align(filename.size() + 1, 8);
   CHECK_LE(p, end);
   sample_id.ReadFromBinaryFormat(attr, p, end);
 }
@@ -266,13 +266,13 @@ std::vector<char> Mmap2Record::BinaryFormat() const {
   MoveToBinaryFormat(header, p);
   MoveToBinaryFormat(data, p);
   strcpy(p, filename.c_str());
-  p += SIMPLEPERF_ALIGN(filename.size() + 1, 8);
+  p += Align(filename.size() + 1, 8);
   sample_id.WriteToBinaryFormat(p);
   return buf;
 }
 
 void Mmap2Record::AdjustSizeBasedOnData() {
-  SetSize(header_size() + sizeof(data) + SIMPLEPERF_ALIGN(filename.size() + 1, 8) +
+  SetSize(header_size() + sizeof(data) + Align(filename.size() + 1, 8) +
           sample_id.Size());
 }
 
@@ -294,7 +294,7 @@ CommRecord::CommRecord(const perf_event_attr& attr,
   const char* end = reinterpret_cast<const char*>(pheader) + size();
   MoveFromBinaryFormat(data, p);
   comm = p;
-  p += SIMPLEPERF_ALIGN(strlen(p) + 1, 8);
+  p += Align(strlen(p) + 1, 8);
   CHECK_LE(p, end);
   sample_id.ReadFromBinaryFormat(attr, p, end);
 }
@@ -305,7 +305,7 @@ std::vector<char> CommRecord::BinaryFormat() const {
   MoveToBinaryFormat(header, p);
   MoveToBinaryFormat(data, p);
   strcpy(p, comm.c_str());
-  p += SIMPLEPERF_ALIGN(comm.size() + 1, 8);
+  p += Align(comm.size() + 1, 8);
   sample_id.WriteToBinaryFormat(p);
   return buf;
 }
@@ -325,7 +325,7 @@ CommRecord CommRecord::Create(const perf_event_attr& attr, uint32_t pid,
   record.comm = comm;
   size_t sample_id_size = record.sample_id.CreateContent(attr, event_id);
   record.SetSize(record.header_size() + sizeof(record.data) +
-                 SIMPLEPERF_ALIGN(record.comm.size() + 1, 8) + sample_id_size);
+                 Align(record.comm.size() + 1, 8) + sample_id_size);
   return record;
 }
 
@@ -617,9 +617,9 @@ BuildIdRecord::BuildIdRecord(const perf_event_header* pheader)
   const char* end = reinterpret_cast<const char*>(pheader) + size();
   MoveFromBinaryFormat(pid, p);
   build_id = BuildId(p, BUILD_ID_SIZE);
-  p += SIMPLEPERF_ALIGN(build_id.Size(), 8);
+  p += Align(build_id.Size(), 8);
   filename = p;
-  p += SIMPLEPERF_ALIGN(filename.size() + 1, 64);
+  p += Align(filename.size() + 1, 64);
   CHECK_EQ(p, end);
 }
 
@@ -629,7 +629,7 @@ std::vector<char> BuildIdRecord::BinaryFormat() const {
   MoveToBinaryFormat(header, p);
   MoveToBinaryFormat(pid, p);
   memcpy(p, build_id.Data(), build_id.Size());
-  p += SIMPLEPERF_ALIGN(build_id.Size(), 8);
+  p += Align(build_id.Size(), 8);
   strcpy(p, filename.c_str());
   return buf;
 }
@@ -651,8 +651,8 @@ BuildIdRecord BuildIdRecord::Create(bool in_kernel, pid_t pid,
   record.build_id = build_id;
   record.filename = filename;
   record.SetSize(record.header_size() + sizeof(record.pid) +
-                 SIMPLEPERF_ALIGN(record.build_id.Size(), 8) +
-                 SIMPLEPERF_ALIGN(filename.size() + 1, 64));
+                 Align(record.build_id.Size(), 8) +
+                 Align(filename.size() + 1, 64));
   return record;
 }
 
@@ -669,7 +669,7 @@ KernelSymbolRecord::KernelSymbolRecord(const perf_event_header* pheader)
   if (size != 0u) {
     memcpy(&kallsyms[0], p, size);
   }
-  p += SIMPLEPERF_ALIGN(size, 8);
+  p += Align(size, 8);
   CHECK_EQ(p, end);
 }
 
@@ -703,7 +703,7 @@ std::vector<KernelSymbolRecord> KernelSymbolRecord::Create(
     r.SetTypeAndMisc(SIMPLE_PERF_RECORD_KERNEL_SYMBOL, 0);
     r.end_of_symbols = (used_bytes == left_bytes);
     r.kallsyms.assign(p, used_bytes);
-    r.SetSize(r.header_size() + 8 + SIMPLEPERF_ALIGN(r.kallsyms.size(), 8));
+    r.SetSize(r.header_size() + 8 + Align(r.kallsyms.size(), 8));
     result.push_back(r);
     p += used_bytes;
     left_bytes -= used_bytes;
@@ -717,7 +717,7 @@ DsoRecord::DsoRecord(const perf_event_header* pheader) : Record(pheader) {
   MoveFromBinaryFormat(dso_type, p);
   MoveFromBinaryFormat(dso_id, p);
   dso_name = p;
-  p += SIMPLEPERF_ALIGN(dso_name.size() + 1, 8);
+  p += Align(dso_name.size() + 1, 8);
   CHECK_EQ(p, end);
 }
 
@@ -746,7 +746,7 @@ DsoRecord DsoRecord::Create(uint64_t dso_type, uint64_t dso_id,
   record.dso_id = dso_id;
   record.dso_name = dso_name;
   record.SetSize(record.header_size() + 2 * sizeof(uint64_t) +
-                 SIMPLEPERF_ALIGN(record.dso_name.size() + 1, 8));
+                 Align(record.dso_name.size() + 1, 8));
   return record;
 }
 
@@ -757,7 +757,7 @@ SymbolRecord::SymbolRecord(const perf_event_header* pheader) : Record(pheader) {
   MoveFromBinaryFormat(len, p);
   MoveFromBinaryFormat(dso_id, p);
   name = p;
-  p += SIMPLEPERF_ALIGN(name.size() + 1, 8);
+  p += Align(name.size() + 1, 8);
   CHECK_EQ(p, end);
 }
 
@@ -788,7 +788,7 @@ SymbolRecord SymbolRecord::Create(uint64_t addr, uint64_t len,
   record.dso_id = dso_id;
   record.name = name;
   record.SetSize(record.header_size() + 3 * sizeof(uint64_t) +
-                 SIMPLEPERF_ALIGN(record.name.size() + 1, 8));
+                 Align(record.name.size() + 1, 8));
   return record;
 }
 
@@ -799,7 +799,7 @@ TracingDataRecord::TracingDataRecord(const perf_event_header* pheader) : Record(
   MoveFromBinaryFormat(size, p);
   data.resize(size);
   memcpy(data.data(), p, size);
-  p += SIMPLEPERF_ALIGN(size, 64);
+  p += Align(size, 64);
   CHECK_EQ(p, end);
 }
 
@@ -823,7 +823,7 @@ TracingDataRecord TracingDataRecord::Create(std::vector<char> tracing_data) {
   record.SetTypeAndMisc(PERF_RECORD_TRACING_DATA, 0);
   record.data = std::move(tracing_data);
   record.SetSize(record.header_size() + sizeof(uint32_t) +
-                 SIMPLEPERF_ALIGN(record.data.size(), 64));
+                 Align(record.data.size(), 64));
   return record;
 }
 

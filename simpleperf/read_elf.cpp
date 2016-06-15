@@ -75,8 +75,8 @@ static bool GetBuildIdFromNoteSection(const char* section, size_t section_size, 
     p += 4;
     uint32_t type = *reinterpret_cast<const uint32_t*>(p);
     p += 4;
-    namesz = SIMPLEPERF_ALIGN(namesz, 4);
-    descsz = SIMPLEPERF_ALIGN(descsz, 4);
+    namesz = Align(namesz, 4);
+    descsz = Align(descsz, 4);
     CHECK_LE(p + namesz + descsz, end);
     if ((type == NT_GNU_BUILD_ID) && (strcmp(p, ELF_NOTE_GNU) == 0)) {
       *build_id = BuildId(p + namesz, descsz);
