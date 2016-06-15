@@ -78,6 +78,7 @@ simpleperf_ldlibs_host_linux := -lrt
 libsimpleperf_src_files := \
   cmd_dumprecord.cpp \
   cmd_help.cpp \
+  cmd_kmem.cpp \
   cmd_report.cpp \
   cmd_report_sample.cpp \
   command.cpp \
@@ -192,6 +193,7 @@ include $(BUILD_HOST_EXECUTABLE)
 # simpleperf_unit_test
 # =========================================================
 simpleperf_unit_test_src_files := \
+  cmd_kmem_test.cpp \
   cmd_report_test.cpp \
   cmd_report_sample_test.cpp \
   command_test.cpp \

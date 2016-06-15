@@ -72,6 +72,7 @@ const std::vector<std::string> GetAllCommandNames() {
 extern void RegisterDumpRecordCommand();
 extern void RegisterHelpCommand();
 extern void RegisterListCommand();
+extern void RegisterKmemCommand();
 extern void RegisterRecordCommand();
 extern void RegisterReportCommand();
 extern void RegisterReportSampleCommand();
@@ -82,6 +83,7 @@ class CommandRegister {
   CommandRegister() {
     RegisterDumpRecordCommand();
     RegisterHelpCommand();
+    RegisterKmemCommand();
     RegisterReportCommand();
     RegisterReportSampleCommand();
 #if defined(__linux__)
