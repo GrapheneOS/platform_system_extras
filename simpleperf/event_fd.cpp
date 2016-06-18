@@ -44,27 +44,31 @@ static int perf_event_open(perf_event_attr* attr, pid_t pid, int cpu, int group_
 }
 
 std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr, pid_t tid, int cpu,
-                                                bool report_error) {
+                                                EventFd* group_event_fd, bool report_error) {
   perf_event_attr perf_attr = attr;
   std::string event_name = GetEventNameByAttr(attr);
-  int perf_event_fd = perf_event_open(&perf_attr, tid, cpu, -1, 0);
+  int group_fd = -1;
+  if (group_event_fd != nullptr) {
+    group_fd = group_event_fd->perf_event_fd_;
+  }
+  int perf_event_fd = perf_event_open(&perf_attr, tid, cpu, group_fd, 0);
   if (perf_event_fd == -1) {
     if (report_error) {
       PLOG(ERROR) << "open perf_event_file (event " << event_name << ", tid " << tid << ", cpu "
-                  << cpu << ") failed";
+                  << cpu << ", group_fd " << group_fd << ") failed";
     } else {
       PLOG(DEBUG) << "open perf_event_file (event " << event_name << ", tid " << tid << ", cpu "
-                  << cpu << ") failed";
+                  << cpu << ", group_fd " << group_fd << ") failed";
     }
     return nullptr;
   }
   if (fcntl(perf_event_fd, F_SETFD, FD_CLOEXEC) == -1) {
     if (report_error) {
       PLOG(ERROR) << "fcntl(FD_CLOEXEC) for perf_event_file (event " << event_name << ", tid "
-                  << tid << ", cpu " << cpu << ") failed";
+                  << tid << ", cpu " << cpu << ", group_fd " << group_fd << ") failed";
     } else {
       PLOG(DEBUG) << "fcntl(FD_CLOEXEC) for perf_event_file (event " << event_name << ", tid "
-                  << tid << ", cpu " << cpu << ") failed";
+                  << tid << ", cpu " << cpu << ", group_fd " << group_fd << ") failed";
     }
     return nullptr;
   }
@@ -190,6 +194,6 @@ void EventFd::PrepareToPollForMmapData(pollfd* poll_fd) {
 }
 
 bool IsEventAttrSupportedByKernel(perf_event_attr attr) {
-  auto event_fd = EventFd::OpenEventFile(attr, getpid(), -1, false);
+  auto event_fd = EventFd::OpenEventFile(attr, getpid(), -1, nullptr, false);
   return event_fd != nullptr;
 }

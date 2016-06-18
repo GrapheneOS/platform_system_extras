@@ -38,6 +38,8 @@
 #include "utils.h"
 #include "workload.h"
 
+namespace {
+
 static std::vector<std::string> default_measured_event_types{
     "cpu-cycles",   "stalled-cycles-frontend", "stalled-cycles-backend",
     "instructions", "branch-instructions",     "branch-misses",
@@ -45,33 +47,36 @@ static std::vector<std::string> default_measured_event_types{
 };
 
 static volatile bool signaled;
-static void signal_handler(int) {
-  signaled = true;
-}
+static void signal_handler(int) { signaled = true; }
 
 class StatCommand : public Command {
  public:
   StatCommand()
-      : Command("stat", "gather performance counter information",
-                "Usage: simpleperf stat [options] [command [command-args]]\n"
-                "    Gather performance counter information of running [command].\n"
-                "    -a           Collect system-wide information.\n"
-                "    --cpu cpu_item1,cpu_item2,...\n"
-                "                 Collect information only on the selected cpus. cpu_item can\n"
-                "                 be a cpu number like 1, or a cpu range like 0-3.\n"
-                "    -e event1[:modifier1],event2[:modifier2],...\n"
-                "                 Select the event list to count. Use `simpleperf list` to find\n"
-                "                 all possible event names. Modifiers can be added to define\n"
-                "                 how the event should be monitored. Possible modifiers are:\n"
-                "                   u - monitor user space events only\n"
-                "                   k - monitor kernel space events only\n"
-                "    --no-inherit\n"
-                "                 Don't stat created child threads/processes.\n"
-                "    -p pid1,pid2,...\n"
-                "                 Stat events on existing processes. Mutually exclusive with -a.\n"
-                "    -t tid1,tid2,...\n"
-                "                 Stat events on existing threads. Mutually exclusive with -a.\n"
-                "    --verbose    Show result in verbose mode.\n"),
+      : Command(
+            "stat", "gather performance counter information",
+            // clang-format off
+"Usage: simpleperf stat [options] [command [command-args]]\n"
+"    Gather performance counter information of running [command].\n"
+"-a           Collect system-wide information.\n"
+"--cpu cpu_item1,cpu_item2,...\n"
+"                 Collect information only on the selected cpus. cpu_item can\n"
+"                 be a cpu number like 1, or a cpu range like 0-3.\n"
+"-e event1[:modifier1],event2[:modifier2],...\n"
+"                 Select the event list to count. Use `simpleperf list` to find\n"
+"                 all possible event names. Modifiers can be added to define\n"
+"                 how the event should be monitored. Possible modifiers are:\n"
+"                   u - monitor user space events only\n"
+"                   k - monitor kernel space events only\n"
+"--group event1[:modifier],event2[:modifier2],...\n"
+"             Similar to -e option. But events specified in the same --group\n"
+"             option are monitored as a group, and scheduled in and out at the\n"
+"             same time.\n"
+"--no-inherit     Don't stat created child threads/processes.\n"
+"-p pid1,pid2,... Stat events on existing processes. Mutually exclusive with -a.\n"
+"-t tid1,tid2,... Stat events on existing threads. Mutually exclusive with -a.\n"
+"--verbose        Show result in verbose mode.\n"
+            // clang-format on
+            ),
         verbose_mode_(false),
         system_wide_collection_(false),
         child_inherit_(true) {
@@ -83,18 +88,18 @@ class StatCommand : public Command {
   bool Run(const std::vector<std::string>& args);
 
  private:
-  bool ParseOptions(const std::vector<std::string>& args, std::vector<std::string>* non_option_args);
-  bool AddMeasuredEventType(const std::string& event_type_name);
+  bool ParseOptions(const std::vector<std::string>& args,
+                    std::vector<std::string>* non_option_args);
   bool AddDefaultMeasuredEventTypes();
-  bool SetEventSelection();
-  bool ShowCounters(const std::vector<CountersInfo>& counters, double duration_in_sec);
+  void SetEventSelectionFlags();
+  bool ShowCounters(const std::vector<CountersInfo>& counters,
+                    double duration_in_sec);
 
   bool verbose_mode_;
   bool system_wide_collection_;
   bool child_inherit_;
   std::vector<pid_t> monitored_threads_;
   std::vector<int> cpus_;
-  std::vector<EventTypeAndModifier> measured_event_types_;
   EventSelectionSet event_selection_set_;
 
   std::unique_ptr<ScopedSignalHandler> scoped_signal_handler_;
@@ -110,14 +115,12 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   if (!ParseOptions(args, &workload_args)) {
     return false;
   }
-  if (measured_event_types_.empty()) {
+  if (event_selection_set_.empty()) {
     if (!AddDefaultMeasuredEventTypes()) {
       return false;
     }
   }
-  if (!SetEventSelection()) {
-    return false;
-  }
+  SetEventSelectionFlags();
 
   // 2. Create workload.
   std::unique_ptr<Workload> workload;
@@ -132,7 +135,8 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
       monitored_threads_.push_back(workload->GetPid());
       event_selection_set_.SetEnableOnExec(true);
     } else {
-      LOG(ERROR) << "No threads to monitor. Try `simpleperf help stat` for help\n";
+      LOG(ERROR)
+          << "No threads to monitor. Try `simpleperf help stat` for help\n";
       return false;
     }
   }
@@ -146,7 +150,8 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
     if (cpus_.empty()) {
       cpus_ = {-1};
     }
-    if (!event_selection_set_.OpenEventFilesForThreadsOnCpus(monitored_threads_, cpus_)) {
+    if (!event_selection_set_.OpenEventFilesForThreadsOnCpus(monitored_threads_,
+                                                             cpus_)) {
       return false;
     }
   }
@@ -167,7 +172,9 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
     return false;
   }
   double duration_in_sec =
-      std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time).count();
+      std::chrono::duration_cast<std::chrono::duration<double>>(end_time -
+                                                                start_time)
+          .count();
   if (!ShowCounters(counters, duration_in_sec)) {
     return false;
   }
@@ -192,9 +199,17 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
       }
       std::vector<std::string> event_types = android::base::Split(args[i], ",");
       for (auto& event_type : event_types) {
-        if (!AddMeasuredEventType(event_type)) {
+        if (!event_selection_set_.AddEventType(event_type)) {
           return false;
         }
+      }
+    } else if (args[i] == "--group") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      std::vector<std::string> event_types = android::base::Split(args[i], ",");
+      if (!event_selection_set_.AddEventGroup(event_types)) {
+        return false;
       }
     } else if (args[i] == "--no-inherit") {
       child_inherit_ = false;
@@ -220,9 +235,11 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
     }
   }
 
-  monitored_threads_.insert(monitored_threads_.end(), tid_set.begin(), tid_set.end());
+  monitored_threads_.insert(monitored_threads_.end(), tid_set.begin(),
+                            tid_set.end());
   if (system_wide_collection_ && !monitored_threads_.empty()) {
-    LOG(ERROR) << "Stat system wide and existing processes/threads can't be used at the same time.";
+    LOG(ERROR) << "Stat system wide and existing processes/threads can't be "
+                  "used at the same time.";
     return false;
   }
 
@@ -235,47 +252,31 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
   return true;
 }
 
-bool StatCommand::AddMeasuredEventType(const std::string& event_type_name) {
-  std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType(event_type_name);
-  if (event_type_modifier == nullptr) {
-    return false;
-  }
-  for (const auto& type : measured_event_types_) {
-    if (type.name == event_type_modifier->name) {
-      return true;
-    }
-  }
-  measured_event_types_.push_back(*event_type_modifier);
-  return true;
-}
-
 bool StatCommand::AddDefaultMeasuredEventTypes() {
   for (auto& name : default_measured_event_types) {
-    // It is not an error when some event types in the default list are not supported by the kernel.
+    // It is not an error when some event types in the default list are not
+    // supported by the kernel.
     const EventType* type = FindEventTypeByName(name);
-    if (type != nullptr && IsEventAttrSupportedByKernel(CreateDefaultPerfEventAttr(*type))) {
-      AddMeasuredEventType(name);
+    if (type != nullptr &&
+        IsEventAttrSupportedByKernel(CreateDefaultPerfEventAttr(*type))) {
+      if (!event_selection_set_.AddEventType(name)) {
+        return false;
+      }
     }
   }
-  if (measured_event_types_.empty()) {
+  if (event_selection_set_.empty()) {
     LOG(ERROR) << "Failed to add any supported default measured types";
     return false;
   }
   return true;
 }
 
-bool StatCommand::SetEventSelection() {
-  for (auto& event_type : measured_event_types_) {
-    if (!event_selection_set_.AddEventType(event_type)) {
-      return false;
-    }
-  }
+void StatCommand::SetEventSelectionFlags() {
   event_selection_set_.SetInherit(child_inherit_);
-  return true;
 }
 
-static std::string ReadableCountValue(uint64_t count,
-                                      const EventTypeAndModifier& event_type_modifier) {
+static std::string ReadableCountValue(
+    uint64_t count, const EventTypeAndModifier& event_type_modifier) {
   if (event_type_modifier.event_type.name == "cpu-clock" ||
       event_type_modifier.event_type.name == "task-clock") {
     double value = count / 1e6;
@@ -293,36 +294,57 @@ static std::string ReadableCountValue(uint64_t count,
 }
 
 struct CounterSummary {
-  const EventTypeAndModifier* event_type;
+  const EventSelection* selection;
   uint64_t count;
   double scale;
   std::string readable_count_str;
   std::string comment;
 };
 
-static std::string GetCommentForSummary(const CounterSummary& summary,
-                                        const std::vector<CounterSummary>& summaries,
-                                        double duration_in_sec) {
-  const std::string& type_name = summary.event_type->event_type.name;
-  const std::string& modifier = summary.event_type->modifier;
+static const CounterSummary* FindMatchedSummary(
+    const std::vector<CounterSummary>& summaries, const std::string& type_name,
+    const CounterSummary& summary) {
+  std::string modifier = summary.selection->event_type_modifier.modifier;
+  for (const auto& t : summaries) {
+    if (t.selection->event_type_modifier.event_type.name == type_name &&
+        t.selection->event_type_modifier.modifier == modifier) {
+      // The matched summary should be in the same group as summary,
+      // or both have scale == 1.0 (enabled all the time).
+      if (t.selection->group_id == summary.selection->group_id ||
+          (t.scale == 1.0 && summary.scale == 1.0)) {
+        return &t;
+      }
+    }
+  }
+  return nullptr;
+}
+
+static std::string GetCommentForSummary(
+    const CounterSummary& summary, const std::vector<CounterSummary>& summaries,
+    double duration_in_sec) {
+  const EventTypeAndModifier& type_modifier =
+      summary.selection->event_type_modifier;
+  const std::string& type_name = type_modifier.event_type.name;
   if (type_name == "task-clock") {
     double run_sec = summary.count / 1e9;
-    double cpu_usage = run_sec / duration_in_sec;
-    return android::base::StringPrintf("%lf%% cpu usage", cpu_usage * 100);
+    double used_cpus = run_sec / (duration_in_sec / summary.scale);
+    return android::base::StringPrintf("%lf cpus used", used_cpus);
   }
   if (type_name == "cpu-clock") {
     return "";
   }
   if (type_name == "cpu-cycles") {
-    double hz = summary.count / duration_in_sec;
+    double hz = summary.count / (duration_in_sec / summary.scale);
     return android::base::StringPrintf("%lf GHz", hz / 1e9);
   }
   if (type_name == "instructions" && summary.count != 0) {
-    for (auto& t : summaries) {
-      if (t.event_type->event_type.name == "cpu-cycles" && t.event_type->modifier == modifier) {
-        double cycles_per_instruction = t.count * 1.0 / summary.count;
-        return android::base::StringPrintf("%lf cycles per instruction", cycles_per_instruction);
-      }
+    const CounterSummary* cpu_cycles_summary =
+        FindMatchedSummary(summaries, "cpu-cycles", summary);
+    if (cpu_cycles_summary != nullptr) {
+      double cycles_per_instruction =
+          static_cast<double>(cpu_cycles_summary->count) / summary.count;
+      return android::base::StringPrintf("%lf cycles per instruction",
+                                         cycles_per_instruction);
     }
   }
   if (android::base::EndsWith(type_name, "-misses")) {
@@ -334,14 +356,15 @@ static std::string GetCommentForSummary(const CounterSummary& summary,
     } else {
       s = type_name.substr(0, type_name.size() - strlen("-misses")) + "s";
     }
-    for (auto& t : summaries) {
-      if (t.event_type->event_type.name == s && t.event_type->modifier == modifier && t.count != 0) {
-        double miss_rate = summary.count * 1.0 / t.count;
-        return android::base::StringPrintf("%lf%% miss rate", miss_rate * 100);
-      }
+    const CounterSummary* matched_summary =
+        FindMatchedSummary(summaries, s, summary);
+    if (matched_summary != nullptr && matched_summary->count != 0) {
+      double miss_rate =
+          static_cast<double>(summary.count) / matched_summary->count;
+      return android::base::StringPrintf("%lf%% miss rate", miss_rate * 100);
     }
   }
-  double rate = summary.count / duration_in_sec;
+  double rate = summary.count / (duration_in_sec / summary.scale);
   if (rate > 1e9) {
     return android::base::StringPrintf("%.3lf G/sec", rate / 1e9);
   }
@@ -354,19 +377,22 @@ static std::string GetCommentForSummary(const CounterSummary& summary,
   return android::base::StringPrintf("%.3lf /sec", rate);
 }
 
-bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters, double duration_in_sec) {
+bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters,
+                               double duration_in_sec) {
   printf("Performance counter statistics:\n\n");
 
   if (verbose_mode_) {
     for (auto& counters_info : counters) {
-      const EventTypeAndModifier* event_type = counters_info.event_type;
+      const EventTypeAndModifier& event_type =
+          counters_info.selection->event_type_modifier;
       for (auto& counter_info : counters_info.counters) {
-        printf("%s(tid %d, cpu %d): count %s, time_enabled %" PRIu64 ", time running %" PRIu64
-               ", id %" PRIu64 "\n",
-               event_type->name.c_str(), counter_info.tid, counter_info.cpu,
-               ReadableCountValue(counter_info.counter.value, *event_type).c_str(),
-               counter_info.counter.time_enabled, counter_info.counter.time_running,
-               counter_info.counter.id);
+        printf(
+            "%s(tid %d, cpu %d): count %s, time_enabled %" PRIu64
+            ", time running %" PRIu64 ", id %" PRIu64 "\n",
+            event_type.name.c_str(), counter_info.tid, counter_info.cpu,
+            ReadableCountValue(counter_info.counter.value, event_type).c_str(),
+            counter_info.counter.time_enabled,
+            counter_info.counter.time_running, counter_info.counter.id);
       }
     }
   }
@@ -377,8 +403,8 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters, double
     uint64_t time_enabled_sum = 0;
     uint64_t time_running_sum = 0;
     for (auto& counter_info : counters_info.counters) {
-      // If time_running is 0, the program has never run on this event and we shouldn't
-      // summarize it.
+      // If time_running is 0, the program has never run on this event and we
+      // shouldn't summarize it.
       if (counter_info.counter.time_running != 0) {
         value_sum += counter_info.counter.value;
         time_enabled_sum += counter_info.counter.time_enabled;
@@ -390,10 +416,11 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters, double
       scale = static_cast<double>(time_enabled_sum) / time_running_sum;
     }
     CounterSummary summary;
-    summary.event_type = counters_info.event_type;
+    summary.selection = counters_info.selection;
     summary.count = value_sum;
     summary.scale = scale;
-    summary.readable_count_str = ReadableCountValue(summary.count, *summary.event_type);
+    summary.readable_count_str = ReadableCountValue(
+        summary.count, summary.selection->event_type_modifier);
     summaries.push_back(summary);
   }
 
@@ -405,22 +432,31 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters, double
   size_t name_column_width = 0;
   size_t comment_column_width = 0;
   for (auto& summary : summaries) {
-    count_column_width = std::max(count_column_width, summary.readable_count_str.size());
-    name_column_width = std::max(name_column_width, summary.event_type->name.size());
-    comment_column_width = std::max(comment_column_width, summary.comment.size());
+    count_column_width =
+        std::max(count_column_width, summary.readable_count_str.size());
+    name_column_width = std::max(
+        name_column_width, summary.selection->event_type_modifier.name.size());
+    comment_column_width =
+        std::max(comment_column_width, summary.comment.size());
   }
 
   for (auto& summary : summaries) {
-    printf("  %*s  %-*s   # %-*s   (%.0lf%%)\n", static_cast<int>(count_column_width),
-           summary.readable_count_str.c_str(), static_cast<int>(name_column_width),
-           summary.event_type->name.c_str(), static_cast<int>(comment_column_width),
-           summary.comment.c_str(), 1.0 / summary.scale * 100);
+    printf("  %*s  %-*s   # %-*s   (%.0lf%%)\n",
+           static_cast<int>(count_column_width),
+           summary.readable_count_str.c_str(),
+           static_cast<int>(name_column_width),
+           summary.selection->event_type_modifier.name.c_str(),
+           static_cast<int>(comment_column_width), summary.comment.c_str(),
+           1.0 / summary.scale * 100);
   }
 
   printf("\nTotal test time: %lf seconds.\n", duration_in_sec);
   return true;
 }
 
+}  // namespace
+
 void RegisterStatCommand() {
-  RegisterCommand("stat", [] { return std::unique_ptr<Command>(new StatCommand); });
+  RegisterCommand("stat",
+                  [] { return std::unique_ptr<Command>(new StatCommand); });
 }
