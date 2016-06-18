@@ -296,3 +296,10 @@ TEST(record_cmd, dump_symbols) {
   CheckDsoSymbolRecords(tmpfile.path, true, &success);
   ASSERT_TRUE(success);
 }
+
+TEST(record_cmd, group_option) {
+  ASSERT_TRUE(RunRecordCmd({"--group", "cpu-cycles,cpu-clock"}));
+  ASSERT_TRUE(RunRecordCmd({"--group", "cpu-cycles,cpu-clock", "--group",
+                            "cpu-cycles:u,cpu-clock:u", "--group",
+                            "cpu-cycles:k,cpu-clock:k"}));
+}

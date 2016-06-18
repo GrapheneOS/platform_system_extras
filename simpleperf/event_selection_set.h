@@ -29,8 +29,17 @@
 #include "perf_event.h"
 #include "record.h"
 
+struct EventSelection {
+  uint32_t group_id;
+  uint32_t selection_id;
+  EventTypeAndModifier event_type_modifier;
+  perf_event_attr event_attr;
+  std::vector<std::unique_ptr<EventFd>> event_fds;
+};
+typedef std::vector<EventSelection> EventSelectionGroup;
+
 struct CountersInfo {
-  const EventTypeAndModifier* event_type;
+  const EventSelection* selection;
   struct CounterInfo {
     pid_t tid;
     int cpu;
@@ -55,17 +64,22 @@ class EventSelectionSet {
   EventSelectionSet() {
   }
 
-  bool Empty() const {
-    return selections_.empty();
+  bool empty() const {
+    return groups_.empty();
   }
 
-  bool AddEventType(const EventTypeAndModifier& event_type_modifier);
+  const std::vector<EventSelectionGroup>& groups() {
+    return groups_;
+  }
+
+  bool AddEventType(const std::string& event_name);
+  bool AddEventGroup(const std::vector<std::string>& event_names);
 
   void SetEnableOnExec(bool enable);
   bool GetEnableOnExec();
   void SampleIdAll();
-  void SetSampleFreq(const EventTypeAndModifier& event_type_modifier, uint64_t sample_freq);
-  void SetSamplePeriod(const EventTypeAndModifier& event_type_modifier, uint64_t sample_period);
+  void SetSampleFreq(const EventSelection& selection, uint64_t sample_freq);
+  void SetSamplePeriod(const EventSelection& selection, uint64_t sample_period);
   bool SetBranchSampling(uint64_t branch_sample_type);
   void EnableFpCallChainSampling();
   bool EnableDwarfCallChainSampling(uint32_t dump_stack_size);
@@ -80,24 +94,15 @@ class EventSelectionSet {
   bool ReadMmapEventData();
   bool FinishReadMmapEventData();
 
-  const perf_event_attr* FindEventAttrByType(const EventTypeAndModifier& event_type_modifier);
-  const std::vector<std::unique_ptr<EventFd>>* FindEventFdsByType(
-      const EventTypeAndModifier& event_type_modifier);
-
  private:
+  bool BuildAndCheckEventSelection(const std::string& event_name,
+                                   EventSelection* selection);
   void UnionSampleType();
   bool OpenEventFiles(const std::vector<pid_t>& threads, const std::vector<int>& cpus);
   bool ReadMmapEventDataForFd(std::unique_ptr<EventFd>& event_fd, const perf_event_attr& attr,
                               bool* has_data);
 
-  struct EventSelection {
-    EventTypeAndModifier event_type_modifier;
-    perf_event_attr event_attr;
-    std::vector<std::unique_ptr<EventFd>> event_fds;
-  };
-  EventSelection* FindSelectionByType(const EventTypeAndModifier& event_type_modifier);
-
-  std::vector<EventSelection> selections_;
+  std::vector<EventSelectionGroup> groups_;
 
   std::function<bool (Record*)> record_callback_;
   std::unique_ptr<RecordCache> record_cache_;
