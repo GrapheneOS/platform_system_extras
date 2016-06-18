@@ -95,6 +95,10 @@ class RecordCommand : public Command {
 "             option is -f 4000.\n"
 "-F freq      Same as '-f freq'.\n"
 "-g           Same as '--call-graph dwarf'.\n"
+"--group event1[:modifier],event2[:modifier2],...\n"
+"             Similar to -e option. But events specified in the same --group\n"
+"             option are monitored as a group, and scheduled in and out at the\n"
+"             same time.\n"
 "-j branch_filter1,branch_filter2,...\n"
 "             Enable taken branch stack sampling. Each sample captures a series\n"
 "             of consecutive taken branches.\n"
@@ -152,15 +156,14 @@ class RecordCommand : public Command {
  private:
   bool ParseOptions(const std::vector<std::string>& args,
                     std::vector<std::string>* non_option_args);
-  bool AddMeasuredEventType(const std::string& event_type_name);
-  bool SetEventSelection();
+  bool SetEventSelectionFlags();
   bool CreateAndInitRecordFile();
   std::unique_ptr<RecordFileWriter> CreateRecordFile(
       const std::string& filename);
   bool DumpKernelSymbol();
   bool DumpTracingData();
-  bool DumpKernelAndModuleMmaps(const perf_event_attr* attr, uint64_t event_id);
-  bool DumpThreadCommAndMmaps(const perf_event_attr* attr, uint64_t event_id,
+  bool DumpKernelAndModuleMmaps(const perf_event_attr& attr, uint64_t event_id);
+  bool DumpThreadCommAndMmaps(const perf_event_attr& attr, uint64_t event_id,
                               bool all_threads,
                               const std::vector<pid_t>& selected_threads);
   bool ProcessRecord(Record* record);
@@ -190,7 +193,6 @@ class RecordCommand : public Command {
   bool dump_symbols_;
   std::vector<pid_t> monitored_threads_;
   std::vector<int> cpus_;
-  std::vector<EventTypeAndModifier> measured_event_types_;
   EventSelectionSet event_selection_set_;
 
   // mmap pages used by each perf event file, should be a power of 2.
@@ -217,12 +219,12 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   if (!ParseOptions(args, &workload_args)) {
     return false;
   }
-  if (measured_event_types_.empty()) {
-    if (!AddMeasuredEventType(default_measured_event_type)) {
+  if (event_selection_set_.empty()) {
+    if (!event_selection_set_.AddEventType(default_measured_event_type)) {
       return false;
     }
   }
-  if (!SetEventSelection()) {
+  if (!SetEventSelectionFlags()) {
     return false;
   }
 
@@ -369,7 +371,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       }
       std::vector<std::string> event_types = android::base::Split(args[i], ",");
       for (auto& event_type : event_types) {
-        if (!AddMeasuredEventType(event_type)) {
+        if (!event_selection_set_.AddEventType(event_type)) {
           return false;
         }
       }
@@ -387,6 +389,14 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     } else if (args[i] == "-g") {
       fp_callchain_sampling_ = false;
       dwarf_callchain_sampling_ = true;
+    } else if (args[i] == "--group") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      std::vector<std::string> event_types = android::base::Split(args[i], ",");
+      if (!event_selection_set_.AddEventGroup(event_types)) {
+        return false;
+      }
     } else if (args[i] == "-j") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -492,39 +502,22 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   return true;
 }
 
-bool RecordCommand::AddMeasuredEventType(const std::string& event_type_name) {
-  std::unique_ptr<EventTypeAndModifier> event_type_modifier =
-      ParseEventType(event_type_name);
-  if (event_type_modifier == nullptr) {
-    return false;
-  }
-  for (const auto& type : measured_event_types_) {
-    if (type.name == event_type_modifier->name) {
-      return true;
-    }
-  }
-  measured_event_types_.push_back(*event_type_modifier);
-  return true;
-}
-
-bool RecordCommand::SetEventSelection() {
-  for (auto& event_type : measured_event_types_) {
-    if (!event_selection_set_.AddEventType(event_type)) {
-      return false;
-    }
-  }
-  for (auto& event_type : measured_event_types_) {
-    if (use_sample_freq_) {
-      event_selection_set_.SetSampleFreq(event_type, sample_freq_);
-    } else if (use_sample_period_) {
-      event_selection_set_.SetSamplePeriod(event_type, sample_period_);
-    } else {
-      if (event_type.event_type.type == PERF_TYPE_TRACEPOINT) {
-        event_selection_set_.SetSamplePeriod(
-            event_type, DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT);
+bool RecordCommand::SetEventSelectionFlags() {
+  for (const auto& group : event_selection_set_.groups()) {
+    for (const auto& selection : group) {
+      if (use_sample_freq_) {
+        event_selection_set_.SetSampleFreq(selection, sample_freq_);
+      } else if (use_sample_period_) {
+        event_selection_set_.SetSamplePeriod(selection, sample_period_);
       } else {
-        event_selection_set_.SetSampleFreq(
-            event_type, DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT);
+        if (selection.event_type_modifier.event_type.type ==
+            PERF_TYPE_TRACEPOINT) {
+          event_selection_set_.SetSamplePeriod(
+              selection, DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT);
+        } else {
+          event_selection_set_.SetSampleFreq(
+              selection, DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT);
+        }
       }
     }
   }
@@ -550,11 +543,10 @@ bool RecordCommand::CreateAndInitRecordFile() {
     return false;
   }
   // Use first perf_event_attr and first event id to dump mmap and comm records.
-  const perf_event_attr* attr =
-      event_selection_set_.FindEventAttrByType(measured_event_types_[0]);
-  const std::vector<std::unique_ptr<EventFd>>* fds =
-      event_selection_set_.FindEventFdsByType(measured_event_types_[0]);
-  uint64_t event_id = (*fds)[0]->Id();
+  const EventSelection& selection = event_selection_set_.groups()[0][0];
+  const perf_event_attr& attr = selection.event_attr;
+  const std::vector<std::unique_ptr<EventFd>>& fds = selection.event_fds;
+  uint64_t event_id = fds[0]->Id();
   if (!DumpKernelSymbol()) {
     return false;
   }
@@ -580,17 +572,17 @@ std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(
   }
 
   std::vector<AttrWithId> attr_ids;
-  for (auto& event_type : measured_event_types_) {
-    AttrWithId attr_id;
-    attr_id.attr = event_selection_set_.FindEventAttrByType(event_type);
-    CHECK(attr_id.attr != nullptr);
-    const std::vector<std::unique_ptr<EventFd>>* fds =
-        event_selection_set_.FindEventFdsByType(event_type);
-    CHECK(fds != nullptr);
-    for (auto& fd : *fds) {
-      attr_id.ids.push_back(fd->Id());
+  for (const auto& group : event_selection_set_.groups()) {
+    for (const auto& selection : group) {
+      AttrWithId attr_id;
+      attr_id.attr = &selection.event_attr;
+      CHECK(attr_id.attr != nullptr);
+      const std::vector<std::unique_ptr<EventFd>>& fds = selection.event_fds;
+      for (const auto& fd : fds) {
+        attr_id.ids.push_back(fd->Id());
+      }
+      attr_ids.push_back(attr_id);
     }
-    attr_ids.push_back(attr_id);
   }
   if (!writer->WriteAttrSection(attr_ids)) {
     return nullptr;
@@ -602,10 +594,11 @@ bool RecordCommand::DumpKernelSymbol() {
   if (can_dump_kernel_symbols_) {
     std::string kallsyms;
     bool need_kernel_symbol = false;
-    for (const auto& type : measured_event_types_) {
-      if (!type.exclude_kernel) {
-        need_kernel_symbol = true;
-        break;
+    for (const auto& group : event_selection_set_.groups()) {
+      for (const auto& selection : group) {
+        if (!selection.event_type_modifier.exclude_kernel) {
+          need_kernel_symbol = true;
+        }
       }
     }
     if (need_kernel_symbol) {
@@ -626,18 +619,21 @@ bool RecordCommand::DumpKernelSymbol() {
 }
 
 bool RecordCommand::DumpTracingData() {
-  bool has_tracepoint = false;
-  for (const auto& type : measured_event_types_) {
-    if (type.event_type.type == PERF_TYPE_TRACEPOINT) {
-      has_tracepoint = true;
-      break;
+  std::vector<const EventType*> tracepoint_event_types;
+  for (const auto& group : event_selection_set_.groups()) {
+    for (const auto& selection : group) {
+      if (selection.event_type_modifier.event_type.type ==
+          PERF_TYPE_TRACEPOINT) {
+        tracepoint_event_types.push_back(
+            &selection.event_type_modifier.event_type);
+      }
     }
   }
-  if (!has_tracepoint) {
+  if (tracepoint_event_types.empty()) {
     return true;  // No need to dump tracing data.
   }
   std::vector<char> tracing_data;
-  if (!GetTracingData(measured_event_types_, &tracing_data)) {
+  if (!GetTracingData(tracepoint_event_types, &tracing_data)) {
     return false;
   }
   TracingDataRecord record = TracingDataRecord::Create(std::move(tracing_data));
@@ -647,21 +643,21 @@ bool RecordCommand::DumpTracingData() {
   return true;
 }
 
-bool RecordCommand::DumpKernelAndModuleMmaps(const perf_event_attr* attr,
+bool RecordCommand::DumpKernelAndModuleMmaps(const perf_event_attr& attr,
                                              uint64_t event_id) {
   KernelMmap kernel_mmap;
   std::vector<KernelMmap> module_mmaps;
   GetKernelAndModuleMmaps(&kernel_mmap, &module_mmaps);
 
   MmapRecord mmap_record =
-      MmapRecord::Create(*attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
+      MmapRecord::Create(attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
                          kernel_mmap.len, 0, kernel_mmap.filepath, event_id);
   if (!ProcessRecord(&mmap_record)) {
     return false;
   }
   for (auto& module_mmap : module_mmaps) {
     MmapRecord mmap_record =
-        MmapRecord::Create(*attr, true, UINT_MAX, 0, module_mmap.start_addr,
+        MmapRecord::Create(attr, true, UINT_MAX, 0, module_mmap.start_addr,
                            module_mmap.len, 0, module_mmap.filepath, event_id);
     if (!ProcessRecord(&mmap_record)) {
       return false;
@@ -671,7 +667,7 @@ bool RecordCommand::DumpKernelAndModuleMmaps(const perf_event_attr* attr,
 }
 
 bool RecordCommand::DumpThreadCommAndMmaps(
-    const perf_event_attr* attr, uint64_t event_id, bool all_threads,
+    const perf_event_attr& attr, uint64_t event_id, bool all_threads,
     const std::vector<pid_t>& selected_threads) {
   std::vector<ThreadComm> thread_comms;
   if (!GetThreadComms(&thread_comms)) {
@@ -698,8 +694,8 @@ bool RecordCommand::DumpThreadCommAndMmaps(
         dump_processes.find(thread.pid) == dump_processes.end()) {
       continue;
     }
-    CommRecord record = CommRecord::Create(*attr, thread.pid, thread.tid,
-                                           thread.comm, event_id);
+    CommRecord record =
+        CommRecord::Create(attr, thread.pid, thread.tid, thread.comm, event_id);
     if (!ProcessRecord(&record)) {
       return false;
     }
@@ -713,7 +709,7 @@ bool RecordCommand::DumpThreadCommAndMmaps(
         continue;  // No need to dump non-executable mmap info.
       }
       MmapRecord record = MmapRecord::Create(
-          *attr, false, thread.pid, thread.tid, thread_mmap.start_addr,
+          attr, false, thread.pid, thread.tid, thread_mmap.start_addr,
           thread_mmap.len, thread_mmap.pgoff, thread_mmap.name, event_id);
       if (!ProcessRecord(&record)) {
         return false;
@@ -730,12 +726,12 @@ bool RecordCommand::DumpThreadCommAndMmaps(
       continue;
     }
     ForkRecord fork_record = ForkRecord::Create(
-        *attr, thread.pid, thread.tid, thread.pid, thread.pid, event_id);
+        attr, thread.pid, thread.tid, thread.pid, thread.pid, event_id);
     if (!ProcessRecord(&fork_record)) {
       return false;
     }
-    CommRecord comm_record = CommRecord::Create(*attr, thread.pid, thread.tid,
-                                                thread.comm, event_id);
+    CommRecord comm_record =
+        CommRecord::Create(attr, thread.pid, thread.tid, thread.comm, event_id);
     if (!ProcessRecord(&comm_record)) {
       return false;
     }

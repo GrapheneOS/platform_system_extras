@@ -232,7 +232,7 @@ TEST(cpu_offline, offline_while_recording) {
   size_t iterations = 0;
 
   while (std::chrono::steady_clock::now() < end_time) {
-    std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, -1, test_cpu, false);
+    std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, -1, test_cpu, nullptr, false);
     if (event_fd == nullptr) {
       // Failed to open because the test_cpu is offline.
       continue;
@@ -273,7 +273,7 @@ TEST(cpu_offline, offline_while_ioctl_enable) {
   size_t iterations = 0;
 
   while (std::chrono::steady_clock::now() < end_time) {
-    std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, -1, test_cpu, false);
+    std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, -1, test_cpu, nullptr, false);
     if (event_fd == nullptr) {
       // Failed to open because the test_cpu is offline.
       continue;
@@ -310,11 +310,11 @@ TEST(cpu_offline, offline_while_recording_on_another_cpu) {
   for (size_t i = 0; i < TEST_ITERATION_COUNT; ++i) {
     int record_cpu = 0;
     ASSERT_TRUE(SetCpuOnline(test_cpu, true));
-    std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, getpid(), record_cpu);
+    std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, getpid(), record_cpu, nullptr);
     ASSERT_TRUE(event_fd != nullptr);
     ASSERT_TRUE(SetCpuOnline(test_cpu, false));
     event_fd = nullptr;
-    event_fd = EventFd::OpenEventFile(attr, getpid(), record_cpu);
+    event_fd = EventFd::OpenEventFile(attr, getpid(), record_cpu, nullptr);
     ASSERT_TRUE(event_fd != nullptr);
   }
 }
