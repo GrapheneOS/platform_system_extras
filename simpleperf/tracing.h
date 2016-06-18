@@ -73,7 +73,7 @@ class Tracing {
   std::vector<TracingFormat> tracing_formats_;
 };
 
-bool GetTracingData(const std::vector<EventTypeAndModifier>& event_types,
+bool GetTracingData(const std::vector<const EventType*>& event_types,
                     std::vector<char>* data);
 
 #endif  // SIMPLE_PERF_TRACING_H_

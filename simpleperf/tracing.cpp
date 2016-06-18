@@ -396,18 +396,17 @@ const std::string& Tracing::GetKallsyms() const {
 
 uint32_t Tracing::GetPageSize() const { return tracing_file_->GetPageSize(); }
 
-bool GetTracingData(const std::vector<EventTypeAndModifier>& event_types,
+bool GetTracingData(const std::vector<const EventType*>& event_types,
                     std::vector<char>* data) {
   data->clear();
   std::vector<TraceType> trace_types;
   for (const auto& type : event_types) {
-    if (type.event_type.type == PERF_TYPE_TRACEPOINT) {
-      size_t pos = type.event_type.name.find(':');
-      TraceType trace_type;
-      trace_type.system = type.event_type.name.substr(0, pos);
-      trace_type.name = type.event_type.name.substr(pos + 1);
-      trace_types.push_back(trace_type);
-    }
+    CHECK_EQ(PERF_TYPE_TRACEPOINT, type->type);
+    size_t pos = type->name.find(':');
+    TraceType trace_type;
+    trace_type.system = type->name.substr(0, pos);
+    trace_type.name = type->name.substr(pos + 1);
+    trace_types.push_back(trace_type);
   }
   TracingFile tracing_file;
   if (!tracing_file.RecordHeaderFiles()) {
