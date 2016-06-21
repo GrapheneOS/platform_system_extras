@@ -22,6 +22,7 @@
 #include <android-base/logging.h>
 
 #include "event_type.h"
+#include "utils.h"
 
 struct TracingField {
   std::string name;
@@ -31,16 +32,25 @@ struct TracingField {
   bool is_signed;
 };
 
+struct TracingFieldPlace {
+  uint32_t offset;
+  uint32_t size;
+
+  uint64_t ReadFromData(const char* raw_data) {
+    return ConvertBytesToValue(raw_data + offset, size);
+  }
+};
+
 struct TracingFormat {
   std::string system_name;
   std::string name;
   uint64_t id;
   std::vector<TracingField> fields;
 
-  void GetField(const std::string& name, uint32_t& offset, uint32_t& size) {
+  void GetField(const std::string& name, TracingFieldPlace& place) {
     const TracingField& field = GetField(name);
-    offset = field.offset;
-    size = field.elem_size;
+    place.offset = field.offset;
+    place.size = field.elem_size;
   }
 
  private:
