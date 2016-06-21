@@ -212,6 +212,11 @@ const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip) {
   return symbol;
 }
 
+const Symbol* ThreadTree::FindKernelSymbol(uint64_t ip) {
+  const MapEntry* map = FindMap(nullptr, ip, true);
+  return FindSymbol(map, ip);
+}
+
 void ThreadTree::ClearThreadAndMap() {
   thread_tree_.clear();
   thread_comm_storage_.clear();

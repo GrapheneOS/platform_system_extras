@@ -262,8 +262,7 @@ bool Dso::LoadKernel() {
     if (all_zero) {
       LOG(WARNING)
           << "Symbol addresses in /proc/kallsyms on device are all zero. "
-             "`echo 0 >/proc/sys/kernel/kptr_restrict` or use root privilege "
-             "if possible.";
+             "`echo 0 >/proc/sys/kernel/kptr_restrict` if possible.";
       symbols_.clear();
       return false;
     }
@@ -296,8 +295,7 @@ bool Dso::LoadKernel() {
     }
     if (all_zero) {
       LOG(WARNING) << "Symbol addresses in /proc/kallsyms are all zero. "
-                      "`echo 0 >/proc/sys/kernel/kptr_restrict` or use root "
-                      "privilege if possible.";
+                      "`echo 0 >/proc/sys/kernel/kptr_restrict` if possible.";
       symbols_.clear();
       return false;
     }
