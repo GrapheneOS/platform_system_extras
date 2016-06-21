@@ -53,9 +53,9 @@ class SampleTreeBuilder {
  public:
   SampleTreeBuilder(SampleComparator<EntryT> comparator)
       : sample_set_(comparator),
+        accumulate_callchain_(false),
         callchain_sample_set_(comparator),
         use_branch_address_(false),
-        accumulate_callchain_(false),
         build_callchain_(false),
         use_caller_as_callchain_root_(false),
         strict_unwind_arch_check_(false) {}
@@ -246,6 +246,7 @@ class SampleTreeBuilder {
   }
 
   std::set<EntryT*, SampleComparator<EntryT>> sample_set_;
+  bool accumulate_callchain_;
 
  private:
   // If a CallChainSample is filtered out, it is stored in callchain_sample_set_
@@ -254,7 +255,6 @@ class SampleTreeBuilder {
   std::vector<std::unique_ptr<EntryT>> sample_storage_;
 
   bool use_branch_address_;
-  bool accumulate_callchain_;
   bool build_callchain_;
   bool use_caller_as_callchain_root_;
   bool strict_unwind_arch_check_;

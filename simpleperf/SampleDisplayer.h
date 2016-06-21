@@ -49,6 +49,12 @@ std::string DisplaySelfOverhead(const EntryT* sample, const InfoT* info) {
     return android::base::StringPrintf("%" PRIu64, sample->display_part); \
   }
 
+#define BUILD_DISPLAY_HEX64_FUNCTION(function_name, display_part)         \
+  template <typename EntryT>                                              \
+  std::string function_name(const EntryT* sample) {                       \
+    return android::base::StringPrintf("0x%" PRIx64, sample->display_part);\
+}
+
 BUILD_DISPLAY_UINT64_FUNCTION(DisplaySampleCount, sample_count);
 
 template <typename EntryT>
