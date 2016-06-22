@@ -368,6 +368,31 @@ ForkRecord ForkRecord::Create(const perf_event_attr& attr, uint32_t pid,
   return record;
 }
 
+LostRecord::LostRecord(const perf_event_attr& attr,
+                       const perf_event_header* pheader)
+    : Record(pheader) {
+  const char* p = reinterpret_cast<const char*>(pheader + 1);
+  const char* end = reinterpret_cast<const char*>(pheader) + pheader->size;
+  MoveFromBinaryFormat(id, p);
+  MoveFromBinaryFormat(lost, p);
+  CHECK_LE(p, end);
+  sample_id.ReadFromBinaryFormat(attr, p, end);
+}
+
+std::vector<char> LostRecord::BinaryFormat() const {
+  std::vector<char> buf(size());
+  char* p = buf.data();
+  MoveToBinaryFormat(header, p);
+  MoveToBinaryFormat(id, p);
+  MoveToBinaryFormat(lost, p);
+  sample_id.WriteToBinaryFormat(p);
+  return buf;
+}
+
+void LostRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "id %" PRIu64 ", lost %" PRIu64 "\n", id, lost);
+}
+
 SampleRecord::SampleRecord(const perf_event_attr& attr,
                            const perf_event_header* pheader)
     : Record(pheader) {
@@ -857,6 +882,8 @@ std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
       return std::unique_ptr<Record>(new ExitRecord(attr, pheader));
     case PERF_RECORD_FORK:
       return std::unique_ptr<Record>(new ForkRecord(attr, pheader));
+    case PERF_RECORD_LOST:
+      return std::unique_ptr<Record>(new LostRecord(attr, pheader));
     case PERF_RECORD_SAMPLE:
       return std::unique_ptr<Record>(new SampleRecord(attr, pheader));
     case PERF_RECORD_TRACING_DATA:
