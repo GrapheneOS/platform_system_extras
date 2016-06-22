@@ -26,6 +26,7 @@
 
 #include <android-base/logging.h>
 #include <android-base/file.h>
+#include <android-base/parseint.h>
 #include <android-base/strings.h>
 
 #include "command.h"
@@ -379,10 +380,11 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
-      char* endptr;
-      sample_freq_ = strtoull(args[i].c_str(), &endptr, 0);
-      if (*endptr != '\0' || sample_freq_ == 0) {
-        LOG(ERROR) << "Invalid sample frequency: '" << args[i] << "'";
+      if (!android::base::ParseUint(args[i].c_str(), &sample_freq_)) {
+        LOG(ERROR) << "Invalid sample frequency: " << args[i];
+        return false;
+      }
+      if (!CheckSampleFrequency(sample_freq_)) {
         return false;
       }
       use_sample_freq_ = true;
