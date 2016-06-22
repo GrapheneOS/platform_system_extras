@@ -286,6 +286,20 @@ struct ForkRecord : public ExitOrForkRecord {
                            uint64_t event_id);
 };
 
+struct LostRecord : public Record {
+  uint64_t id;
+  uint64_t lost;
+
+  LostRecord() {
+  }
+
+  LostRecord(const perf_event_attr& attr, const perf_event_header* pheader);
+  std::vector<char> BinaryFormat() const override;
+
+ protected:
+  void DumpData(size_t indent) const override;
+};
+
 struct SampleRecord : public Record {
   uint64_t sample_type;  // sample_type is a bit mask determining which fields
                          // below are valid.
@@ -394,6 +408,7 @@ struct TracingDataRecord : public Record {
   std::vector<char> BinaryFormat() const override;
 
   static TracingDataRecord Create(std::vector<char> tracing_data);
+
  protected:
   void DumpData(size_t indent) const override;
 };

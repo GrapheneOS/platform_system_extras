@@ -148,7 +148,8 @@ class RecordCommand : public Command {
         dump_symbols_(false),
         perf_mmap_pages_(0),
         record_filename_("perf.data"),
-        sample_record_count_(0) {
+        sample_record_count_(0),
+        lost_record_count_(0) {
     signaled = false;
     scoped_signal_handler_.reset(
         new ScopedSignalHandler({SIGCHLD, SIGINT, SIGTERM}, signal_handler));
@@ -210,6 +211,7 @@ class RecordCommand : public Command {
 
   std::unique_ptr<ScopedSignalHandler> scoped_signal_handler_;
   uint64_t sample_record_count_;
+  uint64_t lost_record_count_;
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
@@ -306,7 +308,21 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   }
-  LOG(VERBOSE) << "Record " << sample_record_count_ << " samples.";
+
+  // 8. Show brief record result.
+  LOG(INFO) << "Samples recorded: " << sample_record_count_
+            << ". Samples lost: " << lost_record_count_ << ".";
+  if (sample_record_count_ + lost_record_count_ != 0) {
+    double lost_percent = static_cast<double>(lost_record_count_) /
+                          (lost_record_count_ + sample_record_count_);
+    constexpr double LOST_PERCENT_WARNING_BAR = 0.1;
+    if (lost_percent >= LOST_PERCENT_WARNING_BAR) {
+      LOG(WARNING) << "Lost " << (lost_percent * 100) << "% of samples, "
+                   << "consider increasing mmap_pages(-m), "
+                   << "or decreasing sample frequency(-f), "
+                   << "or increasing sample period(-c).";
+    }
+  }
   return true;
 }
 
@@ -772,6 +788,8 @@ bool RecordCommand::ProcessRecord(Record* record) {
         return false;
       }
     }
+  } else if (record->type() == PERF_RECORD_LOST) {
+    lost_record_count_ += static_cast<LostRecord*>(record)->lost;
   }
   bool result = record_file_writer_->WriteData(record->BinaryFormat());
   return result;
