@@ -70,5 +70,6 @@ bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>
 bool GetExecPath(std::string* exec_path);
 
 bool CheckPerfEventLimit();
+bool CheckSampleFrequency(uint64_t sample_freq);
 
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_
