@@ -163,7 +163,6 @@ LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := main.cpp
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_target)
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
 ifdef TARGET_2ND_ARCH
 LOCAL_MULTILIB := both
 LOCAL_MODULE_STEM_32 := simpleperf32
@@ -172,6 +171,11 @@ endif
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 include $(LLVM_DEVICE_BUILD_MK)
 include $(BUILD_EXECUTABLE)
+
+$(call dist-for-goals,sdk,$(ALL_MODULES.simpleperf.BUILT))
+ifdef TARGET_2ND_ARCH
+$(call dist-for-goals,sdk,$(ALL_MODULES.simpleperf$(TARGET_2ND_ARCH_MODULE_SUFFIX).BUILT))
+endif
 
 # simpleperf host
 include $(CLEAR_VARS)
@@ -189,6 +193,8 @@ LOCAL_MULTILIB := first
 include $(LLVM_HOST_BUILD_MK)
 include $(BUILD_HOST_EXECUTABLE)
 
+$(call dist-for-goals,sdk,$(LOCAL_BUILT_MODULE):simpleperf_host)
+$(call dist-for-goals,win_sdk,$(ALL_MODULES.host_cross_simpleperf.BUILT))
 
 # simpleperf_unit_test
 # =========================================================
@@ -223,7 +229,6 @@ LOCAL_SRC_FILES := \
   $(simpleperf_unit_test_src_files_linux) \
 
 LOCAL_STATIC_LIBRARIES += libsimpleperf $(simpleperf_static_libraries_target)
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
 LOCAL_POST_LINK_CMD = \
   TMP_FILE=`mktemp $(OUT_DIR)/simpleperf-post-link-XXXXXXXXXX` && \
   (cd $(LOCAL_PATH)/testdata && zip - -0 -r .) > $$TMP_FILE && \
@@ -265,7 +270,6 @@ LOCAL_MODULE := simpleperf_cpu_hotplug_test
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := $(simpleperf_cpu_hotplug_test_src_files)
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_target)
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
 LOCAL_MULTILIB := both
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 include $(LLVM_DEVICE_BUILD_MK)
@@ -302,7 +306,6 @@ LOCAL_MODULE := libsimpleperf_cts_test
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := $(libsimpleperf_cts_test_src_files)
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_target)
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
 LOCAL_MULTILIB := both
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 include $(LLVM_DEVICE_BUILD_MK)
