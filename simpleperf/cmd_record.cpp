@@ -488,6 +488,11 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     return false;
   }
 
+  if (system_wide_collection_ && !IsRoot()) {
+    LOG(ERROR) << "System wide profiling needs root privilege.";
+    return false;
+  }
+
   if (dump_symbols_ && can_dump_kernel_symbols_) {
     // No need to dump kernel symbols as we will dump all required symbols.
     can_dump_kernel_symbols_ = false;
