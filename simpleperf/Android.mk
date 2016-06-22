@@ -147,6 +147,7 @@ LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := first
 LOCAL_PROTOC_OPTIMIZE_TYPE := lite-static
+LOCAL_CXX_STL := libc++_static
 include $(LLVM_HOST_BUILD_MK)
 include $(BUILD_HOST_STATIC_LIBRARY)
 
@@ -186,6 +187,7 @@ LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
 LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := first
+LOCAL_CXX_STL := libc++_static
 include $(LLVM_HOST_BUILD_MK)
 include $(BUILD_HOST_EXECUTABLE)
 
