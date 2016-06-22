@@ -112,7 +112,9 @@ class RecordCommand : public Command {
 "             This option requires at least one branch type among any, any_call,\n"
 "             any_ret, ind_call.\n"
 "-m mmap_pages   Set the size of the buffer used to receiving sample data from\n"
-"                the kernel. It should be a power of 2. The default value is 16.\n"
+"                the kernel. It should be a power of 2. The default value for\n"
+"                system wide profiling is 256. The default value for non system\n"
+"                wide profiling is 16.\n"
 "--no-dump-kernel-symbols  Don't dump kernel symbols in perf.data. By default\n"
 "                          kernel symbols will be dumped when needed.\n"
 "--no-inherit  Don't record created child threads/processes.\n"
@@ -143,7 +145,7 @@ class RecordCommand : public Command {
         child_inherit_(true),
         can_dump_kernel_symbols_(true),
         dump_symbols_(false),
-        perf_mmap_pages_(16),
+        perf_mmap_pages_(0),
         record_filename_("perf.data"),
         sample_record_count_(0) {
     signaled = false;
@@ -310,6 +312,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
 bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
                                  std::vector<std::string>* non_option_args) {
   std::set<pid_t> tid_set;
+  size_t mmap_pages = 0;
   size_t i;
   for (i = 0; i < args.size() && !args[i].empty() && args[i][0] == '-'; ++i) {
     if (args[i] == "-a") {
@@ -421,7 +424,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         LOG(ERROR) << "Invalid mmap_pages: '" << args[i] << "'";
         return false;
       }
-      perf_mmap_pages_ = pages;
+      mmap_pages = pages;
     } else if (args[i] == "--no-dump-kernel-symbols") {
       can_dump_kernel_symbols_ = false;
     } else if (args[i] == "--no-inherit") {
@@ -491,6 +494,12 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   if (dump_symbols_ && can_dump_kernel_symbols_) {
     // No need to dump kernel symbols as we will dump all required symbols.
     can_dump_kernel_symbols_ = false;
+  }
+
+  if (mmap_pages != 0) {
+    perf_mmap_pages_ = mmap_pages;
+  } else {
+    perf_mmap_pages_ = (system_wide_collection_ ? 256 : 16);
   }
 
   if (non_option_args != nullptr) {
