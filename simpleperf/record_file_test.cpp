@@ -63,7 +63,7 @@ TEST_F(RecordFileTest, smoke) {
   // Write data section.
   MmapRecord mmap_record = MmapRecord::Create(*(attr_ids_[0].attr), true, 1, 1, 0x1000, 0x2000,
                                               0x3000, "mmap_record_example", attr_ids_[0].ids[0]);
-  ASSERT_TRUE(writer->WriteData(mmap_record.BinaryFormat()));
+  ASSERT_TRUE(writer->WriteRecord(mmap_record));
 
   // Write feature section.
   ASSERT_TRUE(writer->WriteFeatureHeader(1));
@@ -117,9 +117,9 @@ TEST_F(RecordFileTest, records_sorted_by_time) {
   r1.sample_id.time_data.time = 2;
   r2.sample_id.time_data.time = 1;
   r3.sample_id.time_data.time = 3;
-  ASSERT_TRUE(writer->WriteData(r1.BinaryFormat()));
-  ASSERT_TRUE(writer->WriteData(r2.BinaryFormat()));
-  ASSERT_TRUE(writer->WriteData(r3.BinaryFormat()));
+  ASSERT_TRUE(writer->WriteRecord(r1));
+  ASSERT_TRUE(writer->WriteRecord(r2));
+  ASSERT_TRUE(writer->WriteRecord(r3));
   ASSERT_TRUE(writer->Close());
 
   // Read from a record file.
