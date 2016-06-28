@@ -47,7 +47,23 @@ enum user_record_type {
   SIMPLE_PERF_RECORD_KERNEL_SYMBOL,
   SIMPLE_PERF_RECORD_DSO,
   SIMPLE_PERF_RECORD_SYMBOL,
+  SIMPLE_PERF_RECORD_SPLIT,
+  SIMPLE_PERF_RECORD_SPLIT_END,
 };
+
+// perf_event_header uses u16 to store record size. However, that is not
+// enough for storing records like KERNEL_SYMBOL or TRACING_DATA. So define
+// a simpleperf_record_header struct to store record header for simpleperf
+// defined records (type > SIMPLE_PERF_RECORD_TYPE_START).
+struct simpleperf_record_header {
+  uint32_t type;
+  uint16_t size1;
+  uint16_t size0;
+};
+
+static_assert(
+    sizeof(simpleperf_record_header) == sizeof(perf_event_header),
+    "simpleperf_record_header should have the same size as perf_event_header");
 
 struct PerfSampleIpType {
   uint64_t ip;
@@ -110,6 +126,46 @@ struct PerfSampleStackUserType {
   uint64_t dyn_size;
 };
 
+struct RecordHeader {
+ public:
+  uint32_t type;
+  uint16_t misc;
+  uint32_t size;
+
+  RecordHeader() : type(0), misc(0), size(0) {}
+
+  RecordHeader(const char* p) {
+    auto pheader = reinterpret_cast<const perf_event_header*>(p);
+    if (pheader->type < SIMPLE_PERF_RECORD_TYPE_START) {
+      type = pheader->type;
+      misc = pheader->misc;
+      size = pheader->size;
+    } else {
+      auto sheader = reinterpret_cast<const simpleperf_record_header*>(p);
+      type = sheader->type;
+      misc = 0;
+      size = (sheader->size1 << 16) | sheader->size0;
+    }
+  }
+
+  void MoveToBinaryFormat(char*& p) const {
+    if (type < SIMPLE_PERF_RECORD_TYPE_START) {
+      auto pheader = reinterpret_cast<perf_event_header*>(p);
+      pheader->type = type;
+      pheader->misc = misc;
+      CHECK_LT(size, 1u << 16);
+      pheader->size = static_cast<uint16_t>(size);
+    } else {
+      auto sheader = reinterpret_cast<simpleperf_record_header*>(p);
+      sheader->type = type;
+      CHECK_EQ(misc, 0u);
+      sheader->size1 = size >> 16;
+      sheader->size0 = size & 0xffff;
+    }
+    p += sizeof(perf_event_header);
+  }
+};
+
 // SampleId is optional at the end of a record in binary format. Its content is
 // determined by sample_id_all and sample_type in perf_event_attr. To avoid the
 // complexity of referring to perf_event_attr each time, we copy sample_id_all
@@ -142,17 +198,17 @@ struct SampleId {
 
 // Usually one record contains the following three parts in order in binary
 // format:
-//   perf_event_header (at the head of a record, containing type and size info)
+//   RecordHeader (at the head of a record, containing type and size info)
 //   data depends on the record type
-//   sample_id (optional part at the end of a record)
-// We hold the common parts (perf_event_header and sample_id) in the base class
+//   SampleId (optional part at the end of a record)
+// We hold the common parts (RecordHeader and SampleId) in the base class
 // Record, and hold the type specific data part in classes derived from Record.
 struct Record {
-  perf_event_header header;
+  RecordHeader header;
   SampleId sample_id;
 
-  Record() { memset(&header, 0, sizeof(header)); }
-  Record(const perf_event_header* pheader) { header = *pheader; }
+  Record() {}
+  Record(const char* p) : header(p) {}
 
   virtual ~Record() {}
 
@@ -160,7 +216,7 @@ struct Record {
 
   uint16_t misc() const { return header.misc; }
 
-  size_t size() const { return header.size; }
+  uint32_t size() const { return header.size; }
 
   static uint32_t header_size() { return sizeof(perf_event_header); }
 
@@ -174,10 +230,7 @@ struct Record {
     header.misc = misc;
   }
 
-  void SetSize(uint32_t size) {
-    CHECK_LT(size, 1u << 16);
-    header.size = size;
-  }
+  void SetSize(uint32_t size) { header.size = size; }
 
   void Dump(size_t indent = 0) const;
   virtual std::vector<char> BinaryFormat() const = 0;
@@ -199,7 +252,7 @@ struct MmapRecord : public Record {
   MmapRecord() {  // For CreateMmapRecord.
   }
 
-  MmapRecord(const perf_event_attr& attr, const perf_event_header* pheader);
+  MmapRecord(const perf_event_attr& attr, const char* p);
   std::vector<char> BinaryFormat() const override;
   void AdjustSizeBasedOnData();
 
@@ -228,7 +281,7 @@ struct Mmap2Record : public Record {
 
   Mmap2Record() {}
 
-  Mmap2Record(const perf_event_attr& attr, const perf_event_header* pheader);
+  Mmap2Record(const perf_event_attr& attr, const char* p);
   std::vector<char> BinaryFormat() const override;
   void AdjustSizeBasedOnData();
 
@@ -244,7 +297,7 @@ struct CommRecord : public Record {
 
   CommRecord() {}
 
-  CommRecord(const perf_event_attr& attr, const perf_event_header* pheader);
+  CommRecord(const perf_event_attr& attr, const char* p);
   std::vector<char> BinaryFormat() const override;
 
   static CommRecord Create(const perf_event_attr& attr, uint32_t pid,
@@ -263,8 +316,7 @@ struct ExitOrForkRecord : public Record {
   } data;
 
   ExitOrForkRecord() {}
-  ExitOrForkRecord(const perf_event_attr& attr,
-                   const perf_event_header* pheader);
+  ExitOrForkRecord(const perf_event_attr& attr, const char* p);
   std::vector<char> BinaryFormat() const override;
 
  protected:
@@ -272,14 +324,14 @@ struct ExitOrForkRecord : public Record {
 };
 
 struct ExitRecord : public ExitOrForkRecord {
-  ExitRecord(const perf_event_attr& attr, const perf_event_header* pheader)
-      : ExitOrForkRecord(attr, pheader) {}
+  ExitRecord(const perf_event_attr& attr, const char* p)
+      : ExitOrForkRecord(attr, p) {}
 };
 
 struct ForkRecord : public ExitOrForkRecord {
   ForkRecord() {}
-  ForkRecord(const perf_event_attr& attr, const perf_event_header* pheader)
-      : ExitOrForkRecord(attr, pheader) {}
+  ForkRecord(const perf_event_attr& attr, const char* p)
+      : ExitOrForkRecord(attr, p) {}
 
   static ForkRecord Create(const perf_event_attr& attr, uint32_t pid,
                            uint32_t tid, uint32_t ppid, uint32_t ptid,
@@ -290,10 +342,9 @@ struct LostRecord : public Record {
   uint64_t id;
   uint64_t lost;
 
-  LostRecord() {
-  }
+  LostRecord() {}
 
-  LostRecord(const perf_event_attr& attr, const perf_event_header* pheader);
+  LostRecord(const perf_event_attr& attr, const char* p);
   std::vector<char> BinaryFormat() const override;
 
  protected:
@@ -320,7 +371,7 @@ struct SampleRecord : public Record {
   PerfSampleRegsUserType regs_user_data;  // Valid if PERF_SAMPLE_REGS_USER.
   PerfSampleStackUserType stack_user_data;  // Valid if PERF_SAMPLE_STACK_USER.
 
-  SampleRecord(const perf_event_attr& attr, const perf_event_header* pheader);
+  SampleRecord(const perf_event_attr& attr, const char* p);
   std::vector<char> BinaryFormat() const override;
   void AdjustSizeBasedOnData();
   uint64_t Timestamp() const override;
@@ -338,7 +389,7 @@ struct BuildIdRecord : public Record {
 
   BuildIdRecord() {}
 
-  BuildIdRecord(const perf_event_header* pheader);
+  BuildIdRecord(const char* p);
   std::vector<char> BinaryFormat() const override;
 
   static BuildIdRecord Create(bool in_kernel, pid_t pid,
@@ -350,15 +401,14 @@ struct BuildIdRecord : public Record {
 };
 
 struct KernelSymbolRecord : public Record {
-  bool end_of_symbols;
   std::string kallsyms;
 
   KernelSymbolRecord() {}
 
-  KernelSymbolRecord(const perf_event_header* pheader);
+  KernelSymbolRecord(const char* p);
   std::vector<char> BinaryFormat() const override;
 
-  static std::vector<KernelSymbolRecord> Create(const std::string& kallsyms);
+  static KernelSymbolRecord Create(std::string kallsyms);
 
  protected:
   void DumpData(size_t indent) const override;
@@ -371,7 +421,7 @@ struct DsoRecord : public Record {
 
   DsoRecord() {}
 
-  DsoRecord(const perf_event_header* pheader);
+  DsoRecord(const char* p);
   std::vector<char> BinaryFormat() const override;
 
   static DsoRecord Create(uint64_t dso_type, uint64_t dso_id,
@@ -389,11 +439,12 @@ struct SymbolRecord : public Record {
 
   SymbolRecord() {}
 
-  SymbolRecord(const perf_event_header* pheader);
+  SymbolRecord(const char* p);
   std::vector<char> BinaryFormat() const override;
 
   static SymbolRecord Create(uint64_t addr, uint64_t len,
                              const std::string& name, uint64_t dso_id);
+
  protected:
   void DumpData(size_t indent) const override;
 };
@@ -401,10 +452,9 @@ struct SymbolRecord : public Record {
 struct TracingDataRecord : public Record {
   std::vector<char> data;
 
-  TracingDataRecord() {
-  }
+  TracingDataRecord() {}
 
-  TracingDataRecord(const perf_event_header* pheader);
+  TracingDataRecord(const char* p);
   std::vector<char> BinaryFormat() const override;
 
   static TracingDataRecord Create(std::vector<char> tracing_data);
@@ -418,7 +468,7 @@ struct TracingDataRecord : public Record {
 struct UnknownRecord : public Record {
   std::vector<char> data;
 
-  UnknownRecord(const perf_event_header* pheader);
+  UnknownRecord(const char* p);
   std::vector<char> BinaryFormat() const override;
 
  protected:
@@ -426,7 +476,7 @@ struct UnknownRecord : public Record {
 };
 
 std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
-                                             const perf_event_header* pheader);
+                                             uint32_t type, const char* p);
 std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(
     const perf_event_attr& attr, const char* buf, size_t buf_size);
 
