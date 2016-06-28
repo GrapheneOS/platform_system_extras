@@ -639,12 +639,9 @@ bool RecordCommand::DumpKernelSymbol() {
         return false;
       }
     }
-    std::vector<KernelSymbolRecord> records =
-        KernelSymbolRecord::Create(std::move(kallsyms));
-    for (auto& r : records) {
-      if (!ProcessRecord(&r)) {
-        return false;
-      }
+    KernelSymbolRecord r = KernelSymbolRecord::Create(std::move(kallsyms));
+    if (!ProcessRecord(&r)) {
+      return false;
     }
   }
   return true;
@@ -791,7 +788,7 @@ bool RecordCommand::ProcessRecord(Record* record) {
   } else if (record->type() == PERF_RECORD_LOST) {
     lost_record_count_ += static_cast<LostRecord*>(record)->lost;
   }
-  bool result = record_file_writer_->WriteData(record->BinaryFormat());
+  bool result = record_file_writer_->WriteRecord(*record);
   return result;
 }
 
@@ -808,7 +805,7 @@ bool RecordCommand::DumpSymbolForRecord(const SampleRecord& r,
       map->dso->SetDumped();
       DsoRecord dso_record =
           DsoRecord::Create(map->dso->type(), map->dso->id(), map->dso->Path());
-      if (!record_file_writer_->WriteData(dso_record.BinaryFormat())) {
+      if (!record_file_writer_->WriteRecord(dso_record)) {
         return false;
       }
     }
@@ -817,7 +814,7 @@ bool RecordCommand::DumpSymbolForRecord(const SampleRecord& r,
       symbol->SetDumped();
       SymbolRecord symbol_record = SymbolRecord::Create(
           symbol->addr, symbol->len, symbol->Name(), map->dso->id());
-      if (!record_file_writer_->WriteData(symbol_record.BinaryFormat())) {
+      if (!record_file_writer_->WriteRecord(symbol_record)) {
         return false;
       }
     }
@@ -912,7 +909,7 @@ bool RecordCommand::PostUnwind(const std::vector<std::string>& args) {
         if (!UnwindRecord(record.get())) {
           return false;
         }
-        return record_file_writer_->WriteData(record->BinaryFormat());
+        return record_file_writer_->WriteRecord(*record);
       },
       false);
   if (!result) {
