@@ -287,7 +287,7 @@ TEST_F(ReportCommandTest, report_more_than_one_event_types) {
 TEST_F(ReportCommandTest, report_kernel_symbol) {
   Report(PERF_DATA_WITH_KERNEL_SYMBOL);
   ASSERT_TRUE(success);
-  ASSERT_NE(content.find("perf_event_comm_output"), std::string::npos);
+  ASSERT_NE(content.find("perf_event_aux"), std::string::npos);
 }
 
 TEST_F(ReportCommandTest, report_dumped_symbols) {
