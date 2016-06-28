@@ -253,12 +253,7 @@ void ThreadTree::Update(const Record& record) {
     ForkThread(r.data.pid, r.data.tid, r.data.ppid, r.data.ptid);
   } else if (record.type() == SIMPLE_PERF_RECORD_KERNEL_SYMBOL) {
     const auto& r = *static_cast<const KernelSymbolRecord*>(&record);
-    static std::string kallsyms;
-    kallsyms += r.kallsyms;
-    if (r.end_of_symbols) {
-      Dso::SetKallsyms(std::move(kallsyms));
-      kallsyms.clear();
-    }
+    Dso::SetKallsyms(std::move(r.kallsyms));
   } else if (record.type() == SIMPLE_PERF_RECORD_DSO) {
     auto& r = *static_cast<const DsoRecord*>(&record);
     Dso* dso = nullptr;

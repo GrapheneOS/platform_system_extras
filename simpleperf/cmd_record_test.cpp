@@ -225,10 +225,6 @@ static void CheckKernelSymbol(const std::string& path, bool need_kallsyms,
   for (const auto& record : records) {
     if (record->type() == SIMPLE_PERF_RECORD_KERNEL_SYMBOL) {
       has_kernel_symbol_records = true;
-      auto& r = *static_cast<KernelSymbolRecord*>(record.get());
-      if (!r.end_of_symbols) {
-        ASSERT_FALSE(r.kallsyms.empty());
-      }
     }
   }
   ASSERT_EQ(need_kallsyms, has_kernel_symbol_records);

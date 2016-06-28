@@ -66,11 +66,7 @@ bool RecordFileReader::Close() {
 }
 
 bool RecordFileReader::ReadHeader() {
-  if (fread(&header_, sizeof(header_), 1, record_fp_) != 1) {
-    PLOG(ERROR) << "failed to read file " << filename_;
-    return false;
-  }
-  return true;
+  return Read(&header_, sizeof(header_));
 }
 
 bool RecordFileReader::ReadAttrSection() {
@@ -89,8 +85,7 @@ bool RecordFileReader::ReadAttrSection() {
   }
   for (size_t i = 0; i < attr_count; ++i) {
     std::vector<char> buf(header_.attr_size);
-    if (fread(&buf[0], buf.size(), 1, record_fp_) != 1) {
-      PLOG(ERROR) << "failed to read " << filename_;
+    if (!Read(buf.data(), buf.size())) {
       return false;
     }
     // The size of perf_event_attr is changing between different linux kernel versions.
@@ -142,8 +137,7 @@ bool RecordFileReader::ReadFeatureSectionDescriptors() {
   }
   for (const auto& id : features) {
     SectionDesc desc;
-    if (fread(&desc, sizeof(desc), 1, record_fp_) != 1) {
-      PLOG(ERROR) << "failed to read " << filename_;
+    if (!Read(&desc, sizeof(desc))) {
       return false;
     }
     feature_section_descriptors_.emplace(id, desc);
@@ -158,8 +152,7 @@ bool RecordFileReader::ReadIdsForAttr(const FileAttr& attr, std::vector<uint64_t
     return false;
   }
   ids->resize(id_count);
-  if (fread(ids->data(), attr.ids.size, 1, record_fp_) != 1) {
-    PLOG(ERROR) << "failed to read file " << filename_;
+  if (!Read(ids->data(), attr.ids.size)) {
     return false;
   }
   return true;
@@ -180,11 +173,10 @@ bool RecordFileReader::ReadDataSection(std::function<bool(std::unique_ptr<Record
   }
   RecordCache cache(has_timestamp);
   for (size_t nbytes_read = 0; nbytes_read < header_.data.size;) {
-    std::unique_ptr<Record> record = ReadRecord();
+    std::unique_ptr<Record> record = ReadRecord(&nbytes_read);
     if (record == nullptr) {
       return false;
     }
-    nbytes_read += record->size();
     if (sorted) {
       cache.Push(std::move(record));
       record = cache.Pop();
@@ -208,36 +200,57 @@ bool RecordFileReader::ReadDataSection(std::function<bool(std::unique_ptr<Record
   return true;
 }
 
-std::unique_ptr<Record> RecordFileReader::ReadRecord() {
-  std::vector<char> buf(sizeof(perf_event_header));
-  if (fread(buf.data(), sizeof(perf_event_header), 1, record_fp_) != 1) {
-    PLOG(ERROR) << "failed to read file " << filename_;
+std::unique_ptr<Record> RecordFileReader::ReadRecord(size_t* nbytes_read) {
+  std::vector<char> buf(Record::header_size());
+  if (!Read(buf.data(), buf.size())) {
     return nullptr;
   }
-  perf_event_header* pheader = reinterpret_cast<perf_event_header*>(&buf[0]);
-  if (buf.size() < pheader->size) {
-    buf.resize(pheader->size);
-    pheader = reinterpret_cast<perf_event_header*>(&buf[0]);
-  }
-  if (buf.size() > sizeof(perf_event_header)) {
-    if (fread(&buf[sizeof(perf_event_header)], pheader->size - sizeof(perf_event_header), 1, record_fp_) != 1) {
-      PLOG(ERROR) << "failed to read file " << filename_;
+  RecordHeader header(buf.data());
+  if (header.type == SIMPLE_PERF_RECORD_SPLIT) {
+    // Read until meeting a RECORD_SPLIT_END record.
+    buf.clear();
+    size_t cur_size = 0;
+    char header_buf[Record::header_size()];
+    while (header.type == SIMPLE_PERF_RECORD_SPLIT) {
+      size_t bytes_to_read = header.size - Record::header_size();
+      buf.resize(cur_size + bytes_to_read);
+      if (!Read(&buf[cur_size], bytes_to_read)) {
+        return nullptr;
+      }
+      cur_size += bytes_to_read;
+      *nbytes_read += header.size;
+      if (!Read(header_buf, Record::header_size())) {
+        return nullptr;
+      }
+      header = RecordHeader(header_buf);
+    }
+    if (header.type != SIMPLE_PERF_RECORD_SPLIT_END) {
+      LOG(ERROR) << "SPLIT records are not followed by a SPLIT_END record.";
       return nullptr;
     }
+    *nbytes_read += header.size;
+    header = RecordHeader(buf.data());
+  } else if (Record::header_size() < header.size) {
+    buf.resize(header.size);
+    if (!Read(&buf[Record::header_size()], header.size - Record::header_size())) {
+      return nullptr;
+    }
+    *nbytes_read += header.size;
   }
+
   const perf_event_attr* attr = &file_attrs_[0].attr;
-  if (file_attrs_.size() > 1 && pheader->type < PERF_RECORD_USER_DEFINED_TYPE_START) {
+  if (file_attrs_.size() > 1 && header.type < PERF_RECORD_USER_DEFINED_TYPE_START) {
     bool has_event_id = false;
     uint64_t event_id;
-    if (pheader->type == PERF_RECORD_SAMPLE) {
-      if (pheader->size > event_id_pos_in_sample_records_ + sizeof(uint64_t)) {
+    if (header.type == PERF_RECORD_SAMPLE) {
+      if (header.size > event_id_pos_in_sample_records_ + sizeof(uint64_t)) {
         has_event_id = true;
         event_id = *reinterpret_cast<uint64_t*>(&buf[event_id_pos_in_sample_records_]);
       }
     } else {
-      if (pheader->size > event_id_reverse_pos_in_non_sample_records_) {
+      if (header.size > event_id_reverse_pos_in_non_sample_records_) {
         has_event_id = true;
-        event_id = *reinterpret_cast<uint64_t*>(&buf[pheader->size - event_id_reverse_pos_in_non_sample_records_]);
+        event_id = *reinterpret_cast<uint64_t*>(&buf[header.size - event_id_reverse_pos_in_non_sample_records_]);
       }
     }
     if (has_event_id) {
@@ -247,7 +260,15 @@ std::unique_ptr<Record> RecordFileReader::ReadRecord() {
       }
     }
   }
-  return ReadRecordFromBuffer(*attr, pheader);
+  return ReadRecordFromBuffer(*attr, header.type, buf.data());
+}
+
+bool RecordFileReader::Read(void* buf, size_t len) {
+  if (fread(buf, len, 1, record_fp_) != 1) {
+    PLOG(FATAL) << "failed to read file " << filename_;
+    return false;
+  }
+  return true;
 }
 
 bool RecordFileReader::ReadFeatureSection(int feature, std::vector<char>* data) {
@@ -265,8 +286,7 @@ bool RecordFileReader::ReadFeatureSection(int feature, std::vector<char>* data) 
     PLOG(ERROR) << "failed to fseek()";
     return false;
   }
-  if (fread(data->data(), data->size(), 1, record_fp_) != 1) {
-    PLOG(ERROR) << "failed to read " << filename_;
+  if (!Read(data->data(), data->size())) {
     return false;
   }
   return true;
@@ -302,12 +322,11 @@ std::vector<BuildIdRecord> RecordFileReader::ReadBuildIdFeature() {
   const char* end = buf.data() + buf.size();
   std::vector<BuildIdRecord> result;
   while (p < end) {
-    const perf_event_header* header = reinterpret_cast<const perf_event_header*>(p);
-    CHECK_LE(p + header->size, end);
-    BuildIdRecord record(header);
+    BuildIdRecord record(p);
     // Set type explicitly as the perf.data produced by perf doesn't set it.
     record.SetTypeAndMisc(PERF_RECORD_BUILD_ID, record.misc());
     result.push_back(record);
+    CHECK_LE(p + record.size(), end);
     p += record.size();
   }
   return result;
