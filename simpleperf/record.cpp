@@ -68,6 +68,11 @@ void MoveToBinaryFormat(const T& data, char*& p) {
   p += sizeof(T);
 }
 
+template <>
+void MoveToBinaryFormat(const RecordHeader& data, char*& p) {
+  data.MoveToBinaryFormat(p);
+}
+
 template <class T>
 void MoveToBinaryFormat(const T* data_p, size_t n, char*& p) {
   size_t size = n * sizeof(T);
@@ -193,11 +198,9 @@ void Record::Dump(size_t indent) const {
 
 uint64_t Record::Timestamp() const { return sample_id.time_data.time; }
 
-MmapRecord::MmapRecord(const perf_event_attr& attr,
-                       const perf_event_header* pheader)
-    : Record(pheader) {
-  const char* p = reinterpret_cast<const char*>(pheader + 1);
-  const char* end = reinterpret_cast<const char*>(pheader) + size();
+MmapRecord::MmapRecord(const perf_event_attr& attr, const char* p) : Record(p) {
+  const char* end = p + size();
+  p += header_size();
   MoveFromBinaryFormat(data, p);
   filename = p;
   p += Align(filename.size() + 1, 8);
@@ -248,11 +251,10 @@ MmapRecord MmapRecord::Create(const perf_event_attr& attr, bool in_kernel,
   return record;
 }
 
-Mmap2Record::Mmap2Record(const perf_event_attr& attr,
-                         const perf_event_header* pheader)
-    : Record(pheader) {
-  const char* p = reinterpret_cast<const char*>(pheader + 1);
-  const char* end = reinterpret_cast<const char*>(pheader) + size();
+Mmap2Record::Mmap2Record(const perf_event_attr& attr, const char* p)
+    : Record(p) {
+  const char* end = p + size();
+  p += header_size();
   MoveFromBinaryFormat(data, p);
   filename = p;
   p += Align(filename.size() + 1, 8);
@@ -287,11 +289,9 @@ void Mmap2Record::DumpData(size_t indent) const {
                 data.flags, filename.c_str());
 }
 
-CommRecord::CommRecord(const perf_event_attr& attr,
-                       const perf_event_header* pheader)
-    : Record(pheader) {
-  const char* p = reinterpret_cast<const char*>(pheader + 1);
-  const char* end = reinterpret_cast<const char*>(pheader) + size();
+CommRecord::CommRecord(const perf_event_attr& attr, const char* p) : Record(p) {
+  const char* end = p + size();
+  p += header_size();
   MoveFromBinaryFormat(data, p);
   comm = p;
   p += Align(strlen(p) + 1, 8);
@@ -329,11 +329,10 @@ CommRecord CommRecord::Create(const perf_event_attr& attr, uint32_t pid,
   return record;
 }
 
-ExitOrForkRecord::ExitOrForkRecord(const perf_event_attr& attr,
-                                   const perf_event_header* pheader)
-    : Record(pheader) {
-  const char* p = reinterpret_cast<const char*>(pheader + 1);
-  const char* end = reinterpret_cast<const char*>(pheader) + size();
+ExitOrForkRecord::ExitOrForkRecord(const perf_event_attr& attr, const char* p)
+    : Record(p) {
+  const char* end = p + size();
+  p += header_size();
   MoveFromBinaryFormat(data, p);
   CHECK_LE(p, end);
   sample_id.ReadFromBinaryFormat(attr, p, end);
@@ -368,11 +367,9 @@ ForkRecord ForkRecord::Create(const perf_event_attr& attr, uint32_t pid,
   return record;
 }
 
-LostRecord::LostRecord(const perf_event_attr& attr,
-                       const perf_event_header* pheader)
-    : Record(pheader) {
-  const char* p = reinterpret_cast<const char*>(pheader + 1);
-  const char* end = reinterpret_cast<const char*>(pheader) + pheader->size;
+LostRecord::LostRecord(const perf_event_attr& attr, const char* p) : Record(p) {
+  const char* end = p + size();
+  p += header_size();
   MoveFromBinaryFormat(id, p);
   MoveFromBinaryFormat(lost, p);
   CHECK_LE(p, end);
@@ -393,11 +390,10 @@ void LostRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "id %" PRIu64 ", lost %" PRIu64 "\n", id, lost);
 }
 
-SampleRecord::SampleRecord(const perf_event_attr& attr,
-                           const perf_event_header* pheader)
-    : Record(pheader) {
-  const char* p = reinterpret_cast<const char*>(pheader + 1);
-  const char* end = reinterpret_cast<const char*>(pheader) + size();
+SampleRecord::SampleRecord(const perf_event_attr& attr, const char* p)
+    : Record(p) {
+  const char* end = p + size();
+  p += header_size();
   sample_type = attr.sample_type;
 
   if (sample_type & PERF_SAMPLE_IDENTIFIER) {
@@ -636,10 +632,9 @@ void SampleRecord::DumpData(size_t indent) const {
 
 uint64_t SampleRecord::Timestamp() const { return time_data.time; }
 
-BuildIdRecord::BuildIdRecord(const perf_event_header* pheader)
-    : Record(pheader) {
-  const char* p = reinterpret_cast<const char*>(pheader + 1);
-  const char* end = reinterpret_cast<const char*>(pheader) + size();
+BuildIdRecord::BuildIdRecord(const char* p) : Record(p) {
+  const char* end = p + size();
+  p += header_size();
   MoveFromBinaryFormat(pid, p);
   build_id = BuildId(p, BUILD_ID_SIZE);
   p += Align(build_id.Size(), 8);
@@ -681,13 +676,9 @@ BuildIdRecord BuildIdRecord::Create(bool in_kernel, pid_t pid,
   return record;
 }
 
-KernelSymbolRecord::KernelSymbolRecord(const perf_event_header* pheader)
-    : Record(pheader) {
-  const char* p = reinterpret_cast<const char*>(pheader + 1);
-  const char* end = reinterpret_cast<const char*>(pheader) + size();
-  uint32_t end_flag;
-  MoveFromBinaryFormat(end_flag, p);
-  end_of_symbols = (end_flag == 1);
+KernelSymbolRecord::KernelSymbolRecord(const char* p) : Record(p) {
+  const char* end = p + size();
+  p += header_size();
   uint32_t size;
   MoveFromBinaryFormat(size, p);
   kallsyms.resize(size);
@@ -702,8 +693,6 @@ std::vector<char> KernelSymbolRecord::BinaryFormat() const {
   std::vector<char> buf(size());
   char* p = buf.data();
   MoveToBinaryFormat(header, p);
-  uint32_t end_flag = (end_of_symbols ? 1 : 0);
-  MoveToBinaryFormat(end_flag, p);
   uint32_t size = static_cast<uint32_t>(kallsyms.size());
   MoveToBinaryFormat(size, p);
   memcpy(p, kallsyms.data(), size);
@@ -711,34 +700,20 @@ std::vector<char> KernelSymbolRecord::BinaryFormat() const {
 }
 
 void KernelSymbolRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "end_of_symbols: %s\n",
-                end_of_symbols ? "true" : "false");
   PrintIndented(indent, "kallsyms: %s\n", kallsyms.c_str());
 }
 
-std::vector<KernelSymbolRecord> KernelSymbolRecord::Create(
-    const std::string& kallsyms) {
-  std::vector<KernelSymbolRecord> result;
-  size_t left_bytes = kallsyms.size();
-  const size_t max_bytes_per_record = 64000;
-  const char* p = kallsyms.c_str();
-  while (left_bytes > 0) {
-    size_t used_bytes = std::min(left_bytes, max_bytes_per_record);
-    KernelSymbolRecord r;
-    r.SetTypeAndMisc(SIMPLE_PERF_RECORD_KERNEL_SYMBOL, 0);
-    r.end_of_symbols = (used_bytes == left_bytes);
-    r.kallsyms.assign(p, used_bytes);
-    r.SetSize(r.header_size() + 8 + Align(r.kallsyms.size(), 8));
-    result.push_back(r);
-    p += used_bytes;
-    left_bytes -= used_bytes;
-  }
-  return result;
+KernelSymbolRecord KernelSymbolRecord::Create(std::string kallsyms) {
+  KernelSymbolRecord r;
+  r.SetTypeAndMisc(SIMPLE_PERF_RECORD_KERNEL_SYMBOL, 0);
+  r.kallsyms = std::move(kallsyms);
+  r.SetSize(r.header_size() + 4 + Align(r.kallsyms.size(), 8));
+  return r;
 }
 
-DsoRecord::DsoRecord(const perf_event_header* pheader) : Record(pheader) {
-  const char* p = reinterpret_cast<const char*>(pheader + 1);
-  const char* end = reinterpret_cast<const char*>(pheader) + size();
+DsoRecord::DsoRecord(const char* p) : Record(p) {
+  const char* end = p + size();
+  p += header_size();
   MoveFromBinaryFormat(dso_type, p);
   MoveFromBinaryFormat(dso_id, p);
   dso_name = p;
@@ -775,9 +750,9 @@ DsoRecord DsoRecord::Create(uint64_t dso_type, uint64_t dso_id,
   return record;
 }
 
-SymbolRecord::SymbolRecord(const perf_event_header* pheader) : Record(pheader) {
-  const char* p = reinterpret_cast<const char*>(pheader + 1);
-  const char* end = reinterpret_cast<const char*>(pheader) + size();
+SymbolRecord::SymbolRecord(const char* p) : Record(p) {
+  const char* end = p + size();
+  p += header_size();
   MoveFromBinaryFormat(addr, p);
   MoveFromBinaryFormat(len, p);
   MoveFromBinaryFormat(dso_id, p);
@@ -817,9 +792,9 @@ SymbolRecord SymbolRecord::Create(uint64_t addr, uint64_t len,
   return record;
 }
 
-TracingDataRecord::TracingDataRecord(const perf_event_header* pheader) : Record(pheader) {
-  const char* p = reinterpret_cast<const char*>(pheader + 1);
-  const char* end = reinterpret_cast<const char*>(pheader) + pheader->size;
+TracingDataRecord::TracingDataRecord(const char* p) : Record(p) {
+  const char* end = p + size();
+  p += header_size();
   uint32_t size;
   MoveFromBinaryFormat(size, p);
   data.resize(size);
@@ -852,11 +827,8 @@ TracingDataRecord TracingDataRecord::Create(std::vector<char> tracing_data) {
   return record;
 }
 
-UnknownRecord::UnknownRecord(const perf_event_header* pheader)
-    : Record(pheader) {
-  const char* p = reinterpret_cast<const char*>(pheader + 1);
-  const char* end = reinterpret_cast<const char*>(pheader) + size();
-  data.insert(data.end(), p, end);
+UnknownRecord::UnknownRecord(const char* p) : Record(p) {
+  data.insert(data.end(), p + header_size(), p + size());
 }
 
 std::vector<char> UnknownRecord::BinaryFormat() const {
@@ -870,32 +842,32 @@ std::vector<char> UnknownRecord::BinaryFormat() const {
 void UnknownRecord::DumpData(size_t) const {}
 
 std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
-                                             const perf_event_header* pheader) {
-  switch (pheader->type) {
+                                             uint32_t type, const char* p) {
+  switch (type) {
     case PERF_RECORD_MMAP:
-      return std::unique_ptr<Record>(new MmapRecord(attr, pheader));
+      return std::unique_ptr<Record>(new MmapRecord(attr, p));
     case PERF_RECORD_MMAP2:
-      return std::unique_ptr<Record>(new Mmap2Record(attr, pheader));
+      return std::unique_ptr<Record>(new Mmap2Record(attr, p));
     case PERF_RECORD_COMM:
-      return std::unique_ptr<Record>(new CommRecord(attr, pheader));
+      return std::unique_ptr<Record>(new CommRecord(attr, p));
     case PERF_RECORD_EXIT:
-      return std::unique_ptr<Record>(new ExitRecord(attr, pheader));
+      return std::unique_ptr<Record>(new ExitRecord(attr, p));
     case PERF_RECORD_FORK:
-      return std::unique_ptr<Record>(new ForkRecord(attr, pheader));
+      return std::unique_ptr<Record>(new ForkRecord(attr, p));
     case PERF_RECORD_LOST:
-      return std::unique_ptr<Record>(new LostRecord(attr, pheader));
+      return std::unique_ptr<Record>(new LostRecord(attr, p));
     case PERF_RECORD_SAMPLE:
-      return std::unique_ptr<Record>(new SampleRecord(attr, pheader));
+      return std::unique_ptr<Record>(new SampleRecord(attr, p));
     case PERF_RECORD_TRACING_DATA:
-      return std::unique_ptr<Record>(new TracingDataRecord(pheader));
+      return std::unique_ptr<Record>(new TracingDataRecord(p));
     case SIMPLE_PERF_RECORD_KERNEL_SYMBOL:
-      return std::unique_ptr<Record>(new KernelSymbolRecord(pheader));
+      return std::unique_ptr<Record>(new KernelSymbolRecord(p));
     case SIMPLE_PERF_RECORD_DSO:
-      return std::unique_ptr<Record>(new DsoRecord(pheader));
+      return std::unique_ptr<Record>(new DsoRecord(p));
     case SIMPLE_PERF_RECORD_SYMBOL:
-      return std::unique_ptr<Record>(new SymbolRecord(pheader));
+      return std::unique_ptr<Record>(new SymbolRecord(p));
     default:
-      return std::unique_ptr<Record>(new UnknownRecord(pheader));
+      return std::unique_ptr<Record>(new UnknownRecord(p));
   }
 }
 
@@ -905,13 +877,11 @@ std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(
   const char* p = buf;
   const char* end = buf + buf_size;
   while (p < end) {
-    const perf_event_header* header =
-        reinterpret_cast<const perf_event_header*>(p);
-    uint32_t size = header->size;
-    CHECK_LE(p + size, end);
-    CHECK_NE(0u, size);
-    result.push_back(ReadRecordFromBuffer(attr, header));
-    p += size;
+    RecordHeader header(p);
+    CHECK_LE(p + header.size, end);
+    CHECK_NE(0u, header.size);
+    result.push_back(ReadRecordFromBuffer(attr, header.type, p));
+    p += header.size;
   }
   return result;
 }

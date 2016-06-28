@@ -45,11 +45,7 @@ class RecordFileWriter {
   ~RecordFileWriter();
 
   bool WriteAttrSection(const std::vector<AttrWithId>& attr_ids);
-  bool WriteData(const void* buf, size_t len);
-
-  bool WriteData(const std::vector<char>& data) {
-    return WriteData(data.data(), data.size());
-  }
+  bool WriteRecord(const Record& record);
 
   bool WriteFeatureHeader(size_t feature_count);
   bool WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records);
@@ -68,6 +64,7 @@ class RecordFileWriter {
                              std::vector<std::string>* hit_kernel_modules,
                              std::vector<std::string>* hit_user_files);
   bool WriteFileHeader();
+  bool WriteData(const void* buf, size_t len);
   bool Write(const void* buf, size_t len);
   bool SeekFileEnd(uint64_t* file_end);
   bool WriteFeatureBegin(uint64_t* start_offset);
@@ -132,7 +129,8 @@ class RecordFileReader {
   bool ReadAttrSection();
   bool ReadIdsForAttr(const PerfFileFormat::FileAttr& attr, std::vector<uint64_t>* ids);
   bool ReadFeatureSectionDescriptors();
-  std::unique_ptr<Record> ReadRecord();
+  std::unique_ptr<Record> ReadRecord(size_t* nbytes_read);
+  bool Read(void* buf, size_t len);
 
   const std::string filename_;
   FILE* record_fp_;
