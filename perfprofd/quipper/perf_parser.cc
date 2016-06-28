@@ -216,6 +216,10 @@ bool PerfParser::ProcessEvents() {
                 << ". Doing nothing.";
         break;
     case SIMPLE_PERF_RECORD_KERNEL_SYMBOL:
+    case SIMPLE_PERF_RECORD_DSO:
+    case SIMPLE_PERF_RECORD_SYMBOL:
+    case SIMPLE_PERF_RECORD_SPLIT:
+    case SIMPLE_PERF_RECORD_SPLIT_END:
       break;
       default:
         LOG(ERROR) << "Unknown event type: " << event.header.type;

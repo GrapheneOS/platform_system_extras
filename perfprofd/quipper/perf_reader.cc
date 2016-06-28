@@ -802,6 +802,10 @@ bool PerfReader::IsSupportedEventType(uint32_t type) {
   case PERF_RECORD_THROTTLE:
   case PERF_RECORD_UNTHROTTLE:
   case SIMPLE_PERF_RECORD_KERNEL_SYMBOL:
+  case SIMPLE_PERF_RECORD_DSO:
+  case SIMPLE_PERF_RECORD_SYMBOL:
+  case SIMPLE_PERF_RECORD_SPLIT:
+  case SIMPLE_PERF_RECORD_SPLIT_END:
     return true;
   case PERF_RECORD_READ:
   case PERF_RECORD_MAX:
@@ -822,7 +826,11 @@ bool PerfReader::ReadPerfSampleInfo(const event_t& event,
   }
 
   // We want to completely ignore these records
-  if (event.header.type == SIMPLE_PERF_RECORD_KERNEL_SYMBOL)
+  if (event.header.type == SIMPLE_PERF_RECORD_KERNEL_SYMBOL ||
+      event.header.type == SIMPLE_PERF_RECORD_DSO ||
+      event.header.type == SIMPLE_PERF_RECORD_SYMBOL ||
+      event.header.type == SIMPLE_PERF_RECORD_SPLIT ||
+      event.header.type == SIMPLE_PERF_RECORD_SPLIT_END)
     return true;
 
   uint64_t sample_format = GetSampleFieldsForEventType(event.header.type,
@@ -1431,11 +1439,19 @@ bool PerfReader::ReadPerfEventBlock(const event_t& event) {
     ByteSwap(&size);
 
   //
-  // Special case for kernel symbol record, which may be very
-  // large -- this is safe to do since we will be skipping over
-  // the kernel symbols entirely later on.
+  // Upstream linux perf limits the size of an event record to 2^16 bytes,
+  // however simpleperf includes extensions to support larger (2^32) record
+  // sizes via a split record scheme (the larger records are split up
+  // into chunks and then embedded into a series of SIMPLE_PERF_RECORD_SPLIT
+  // records followed by a terminating SIMPLE_PERF_RECORD_SPLIT_END record.
+  // At the moment none of the larger records are of interest to perfprofd, so
+  // the main thing we're doing here is ignoring/bypassing them.
   //
-  if (event.header.type == SIMPLE_PERF_RECORD_KERNEL_SYMBOL)
+  if (event.header.type == SIMPLE_PERF_RECORD_KERNEL_SYMBOL ||
+      event.header.type == SIMPLE_PERF_RECORD_DSO ||
+      event.header.type == SIMPLE_PERF_RECORD_SYMBOL ||
+      event.header.type == SIMPLE_PERF_RECORD_SPLIT ||
+      event.header.type == SIMPLE_PERF_RECORD_SPLIT_END)
     size = sizeof(event_t);
   else if (size > sizeof(event_t)) {
     LOG(INFO) << "Data size: " << size << " sizeof(event_t): "
