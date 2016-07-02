@@ -84,8 +84,7 @@ class TestSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, int> {
   const ThreadEntry* GetThreadOfSample(SampleEntry*) override {
     return nullptr;
   }
-  void InsertCallChainForSample(SampleEntry*, const std::vector<SampleEntry*>&,
-                                const int&) override {}
+  uint64_t GetPeriodForCallChain(const int&) override { return 0; }
   void MergeSample(SampleEntry* sample1, SampleEntry* sample2) override {
     sample1->sample_count += sample2->sample_count;
   }

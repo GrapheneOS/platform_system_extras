@@ -809,7 +809,7 @@ bool RecordCommand::DumpSymbolForRecord(const SampleRecord& r,
         return false;
       }
     }
-    const Symbol* symbol = thread_tree_.FindSymbol(map, ip);
+    const Symbol* symbol = thread_tree_.FindSymbol(map, ip, nullptr);
     if (!symbol->HasDumped()) {
       symbol->SetDumped();
       SymbolRecord symbol_record = SymbolRecord::Create(

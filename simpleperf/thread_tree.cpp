@@ -26,12 +26,13 @@
 
 namespace simpleperf {
 
-bool MapComparator::operator()(const MapEntry* map1, const MapEntry* map2) const {
+bool MapComparator::operator()(const MapEntry* map1,
+                               const MapEntry* map2) const {
   if (map1->start_addr != map2->start_addr) {
     return map1->start_addr < map2->start_addr;
   }
-  // Compare map->len instead of map->get_end_addr() here. Because we set map's len
-  // to std::numeric_limits<uint64_t>::max() in FindMapByAddr(), which makes
+  // Compare map->len instead of map->get_end_addr() here. Because we set map's
+  // len to std::numeric_limits<uint64_t>::max() in FindMapByAddr(), which makes
   // map->get_end_addr() overflow.
   if (map1->len != map2->len) {
     return map1->len < map2->len;
@@ -50,11 +51,13 @@ void ThreadTree::AddThread(int pid, int tid, const std::string& comm) {
         "unknown",                             // comm
         std::set<MapEntry*, MapComparator>(),  // maps
     };
-    auto pair = thread_tree_.insert(std::make_pair(tid, std::unique_ptr<ThreadEntry>(thread)));
+    auto pair = thread_tree_.insert(
+        std::make_pair(tid, std::unique_ptr<ThreadEntry>(thread)));
     CHECK(pair.second);
     it = pair.first;
   }
-  thread_comm_storage_.push_back(std::unique_ptr<std::string>(new std::string(comm)));
+  thread_comm_storage_.push_back(
+      std::unique_ptr<std::string>(new std::string(comm)));
   it->second->comm = thread_comm_storage_.back()->c_str();
 }
 
@@ -73,21 +76,23 @@ ThreadEntry* ThreadTree::FindThreadOrNew(int pid, int tid) {
   } else {
     if (pid != it->second.get()->pid) {
       // TODO: b/22185053.
-      LOG(DEBUG) << "unexpected (pid, tid) pair: expected (" << it->second.get()->pid << ", " << tid
-                 << "), actual (" << pid << ", " << tid << ")";
+      LOG(DEBUG) << "unexpected (pid, tid) pair: expected ("
+                 << it->second.get()->pid << ", " << tid << "), actual (" << pid
+                 << ", " << tid << ")";
     }
   }
   return it->second.get();
 }
 
-void ThreadTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff, uint64_t time,
-                              const std::string& filename) {
+void ThreadTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
+                              uint64_t time, const std::string& filename) {
   // kernel map len can be 0 when record command is not run in supervisor mode.
   if (len == 0) {
     return;
   }
   Dso* dso = FindKernelDsoOrNew(filename);
-  MapEntry* map = AllocateMap(MapEntry(start_addr, len, pgoff, time, dso, true));
+  MapEntry* map =
+      AllocateMap(MapEntry(start_addr, len, pgoff, time, dso, true));
   FixOverlappedMap(&kernel_map_tree_, map);
   auto pair = kernel_map_tree_.insert(map);
   CHECK(pair.second);
@@ -105,11 +110,13 @@ Dso* ThreadTree::FindKernelDsoOrNew(const std::string& filename) {
   return it->second.get();
 }
 
-void ThreadTree::AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t len, uint64_t pgoff,
-                              uint64_t time, const std::string& filename) {
+void ThreadTree::AddThreadMap(int pid, int tid, uint64_t start_addr,
+                              uint64_t len, uint64_t pgoff, uint64_t time,
+                              const std::string& filename) {
   ThreadEntry* thread = FindThreadOrNew(pid, tid);
   Dso* dso = FindUserDsoOrNew(filename);
-  MapEntry* map = AllocateMap(MapEntry(start_addr, len, pgoff, time, dso, false));
+  MapEntry* map =
+      AllocateMap(MapEntry(start_addr, len, pgoff, time, dso, false));
   FixOverlappedMap(&thread->maps, map);
   auto pair = thread->maps.insert(map);
   CHECK(pair.second);
@@ -130,7 +137,8 @@ MapEntry* ThreadTree::AllocateMap(const MapEntry& value) {
   return map;
 }
 
-void ThreadTree::FixOverlappedMap(std::set<MapEntry*, MapComparator>* map_set, const MapEntry* map) {
+void ThreadTree::FixOverlappedMap(std::set<MapEntry*, MapComparator>* map_set,
+                                  const MapEntry* map) {
   for (auto it = map_set->begin(); it != map_set->end();) {
     if ((*it)->start_addr >= map->get_end_addr()) {
       // No more overlapped maps.
@@ -141,14 +149,16 @@ void ThreadTree::FixOverlappedMap(std::set<MapEntry*, MapComparator>* map_set, c
     } else {
       MapEntry* old = *it;
       if (old->start_addr < map->start_addr) {
-        MapEntry* before = AllocateMap(MapEntry(old->start_addr, map->start_addr - old->start_addr,
-                                                old->pgoff, old->time, old->dso, old->in_kernel));
+        MapEntry* before = AllocateMap(
+            MapEntry(old->start_addr, map->start_addr - old->start_addr,
+                     old->pgoff, old->time, old->dso, old->in_kernel));
         map_set->insert(before);
       }
       if (old->get_end_addr() > map->get_end_addr()) {
-        MapEntry* after = AllocateMap(
-            MapEntry(map->get_end_addr(), old->get_end_addr() - map->get_end_addr(),
-                     map->get_end_addr() - old->start_addr + old->pgoff, old->time, old->dso, old->in_kernel));
+        MapEntry* after = AllocateMap(MapEntry(
+            map->get_end_addr(), old->get_end_addr() - map->get_end_addr(),
+            map->get_end_addr() - old->start_addr + old->pgoff, old->time,
+            old->dso, old->in_kernel));
         map_set->insert(after);
       }
 
@@ -161,8 +171,10 @@ static bool IsAddrInMap(uint64_t addr, const MapEntry* map) {
   return (addr >= map->start_addr && addr < map->get_end_addr());
 }
 
-static MapEntry* FindMapByAddr(const std::set<MapEntry*, MapComparator>& maps, uint64_t addr) {
-  // Construct a map_entry which is strictly after the searched map_entry, based on MapComparator.
+static MapEntry* FindMapByAddr(const std::set<MapEntry*, MapComparator>& maps,
+                               uint64_t addr) {
+  // Construct a map_entry which is strictly after the searched map_entry, based
+  // on MapComparator.
   MapEntry find_map(addr, std::numeric_limits<uint64_t>::max(), 0,
                     std::numeric_limits<uint64_t>::max(), nullptr, false);
   auto it = maps.upper_bound(&find_map);
@@ -172,7 +184,8 @@ static MapEntry* FindMapByAddr(const std::set<MapEntry*, MapComparator>& maps, u
   return nullptr;
 }
 
-const MapEntry* ThreadTree::FindMap(const ThreadEntry* thread, uint64_t ip, bool in_kernel) {
+const MapEntry* ThreadTree::FindMap(const ThreadEntry* thread, uint64_t ip,
+                                    bool in_kernel) {
   MapEntry* result = nullptr;
   if (!in_kernel) {
     result = FindMapByAddr(thread->maps, ip);
@@ -191,7 +204,8 @@ const MapEntry* ThreadTree::FindMap(const ThreadEntry* thread, uint64_t ip) {
   return result != nullptr ? result : &unknown_map_;
 }
 
-const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip) {
+const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip,
+                                     uint64_t* pvaddr_in_file) {
   uint64_t vaddr_in_file;
   if (map->dso == kernel_dso_.get()) {
     vaddr_in_file = ip;
@@ -209,12 +223,15 @@ const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip) {
   if (symbol == nullptr) {
     symbol = &unknown_symbol_;
   }
+  if (pvaddr_in_file != nullptr) {
+    *pvaddr_in_file = vaddr_in_file;
+  }
   return symbol;
 }
 
 const Symbol* ThreadTree::FindKernelSymbol(uint64_t ip) {
   const MapEntry* map = FindMap(nullptr, ip, true);
-  return FindSymbol(map, ip);
+  return FindSymbol(map, ip, nullptr);
 }
 
 void ThreadTree::ClearThreadAndMap() {
@@ -228,22 +245,23 @@ void ThreadTree::Update(const Record& record) {
   if (record.type() == PERF_RECORD_MMAP) {
     const MmapRecord& r = *static_cast<const MmapRecord*>(&record);
     if (r.InKernel()) {
-      AddKernelMap(r.data.addr, r.data.len, r.data.pgoff, r.sample_id.time_data.time,
-                                r.filename);
+      AddKernelMap(r.data.addr, r.data.len, r.data.pgoff,
+                   r.sample_id.time_data.time, r.filename);
     } else {
-      AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
-                                r.sample_id.time_data.time, r.filename);
+      AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len,
+                   r.data.pgoff, r.sample_id.time_data.time, r.filename);
     }
   } else if (record.type() == PERF_RECORD_MMAP2) {
     const Mmap2Record& r = *static_cast<const Mmap2Record*>(&record);
     if (r.InKernel()) {
-      AddKernelMap(r.data.addr, r.data.len, r.data.pgoff, r.sample_id.time_data.time,
-                                r.filename);
+      AddKernelMap(r.data.addr, r.data.len, r.data.pgoff,
+                   r.sample_id.time_data.time, r.filename);
     } else {
-      std::string filename =
-          (r.filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) ? "[unknown]" : r.filename;
-      AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
-                                r.sample_id.time_data.time, filename);
+      std::string filename = (r.filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP)
+                                 ? "[unknown]"
+                                 : r.filename;
+      AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len,
+                   r.data.pgoff, r.sample_id.time_data.time, filename);
     }
   } else if (record.type() == PERF_RECORD_COMM) {
     const CommRecord& r = *static_cast<const CommRecord*>(&record);
@@ -272,4 +290,3 @@ void ThreadTree::Update(const Record& record) {
 }
 
 }  // namespace simpleperf
-
