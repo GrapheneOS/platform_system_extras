@@ -296,6 +296,12 @@ TEST_F(ReportCommandTest, report_dumped_symbols) {
   ASSERT_NE(content.find("page_fault"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, report_sort_vaddr_in_file) {
+  Report(PERF_DATA, {"--sort", "vaddr_in_file"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("VaddrInFile"), std::string::npos);
+}
+
 #if defined(__linux__)
 
 static std::unique_ptr<Command> RecordCmd() {

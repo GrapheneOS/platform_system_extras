@@ -85,7 +85,7 @@ class SampleComparator {
                       other.compare_v_.end());
   }
 
-  bool operator()(const EntryT* sample1, const EntryT* sample2) {
+  bool operator()(const EntryT* sample1, const EntryT* sample2) const {
     for (const auto& func : compare_v_) {
       int ret = func(sample1, sample2);
       if (ret != 0) {
@@ -93,6 +93,15 @@ class SampleComparator {
       }
     }
     return false;
+  }
+
+  bool IsSameSample(const EntryT* sample1, const EntryT* sample2) const {
+    for (const auto& func : compare_v_) {
+      if (func(sample1, sample2) != 0) {
+        return false;
+      }
+    }
+    return true;
   }
 
   bool empty() const { return compare_v_.empty(); }
