@@ -19,6 +19,7 @@
 
 #include <inttypes.h>
 
+#include <functional>
 #include <string>
 
 #include <android-base/logging.h>
@@ -49,11 +50,11 @@ std::string DisplaySelfOverhead(const EntryT* sample, const InfoT* info) {
     return android::base::StringPrintf("%" PRIu64, sample->display_part); \
   }
 
-#define BUILD_DISPLAY_HEX64_FUNCTION(function_name, display_part)         \
-  template <typename EntryT>                                              \
-  std::string function_name(const EntryT* sample) {                       \
-    return android::base::StringPrintf("0x%" PRIx64, sample->display_part);\
-}
+#define BUILD_DISPLAY_HEX64_FUNCTION(function_name, display_part)           \
+  template <typename EntryT>                                                \
+  std::string function_name(const EntryT* sample) {                         \
+    return android::base::StringPrintf("0x%" PRIx64, sample->display_part); \
+  }
 
 BUILD_DISPLAY_UINT64_FUNCTION(DisplaySampleCount, sample_count);
 
@@ -92,51 +93,60 @@ std::string DisplaySymbolFrom(const EntryT* sample) {
   return sample->branch_from.symbol->DemangledName();
 }
 
-template <typename CallChainNodeT>
-void DisplayCallGraphEntry(FILE* fp, size_t depth, std::string prefix,
-                           const std::unique_ptr<CallChainNodeT>& node,
-                           uint64_t parent_period, bool last) {
-  if (depth > 20) {
-    LOG(WARNING) << "truncated callgraph at depth " << depth;
-    return;
-  }
-  prefix += "|";
-  fprintf(fp, "%s\n", prefix.c_str());
-  if (last) {
-    prefix.back() = ' ';
-  }
-  std::string percentage_s = "-- ";
-  if (node->period + node->children_period != parent_period) {
-    double percentage =
-        100.0 * (node->period + node->children_period) / parent_period;
-    percentage_s = android::base::StringPrintf("--%.2f%%-- ", percentage);
-  }
-  fprintf(fp, "%s%s%s\n", prefix.c_str(), percentage_s.c_str(),
-          node->chain[0]->symbol->DemangledName());
-  prefix.append(percentage_s.size(), ' ');
-  for (size_t i = 1; i < node->chain.size(); ++i) {
-    fprintf(fp, "%s%s\n", prefix.c_str(),
-            node->chain[i]->symbol->DemangledName());
-  }
-  for (size_t i = 0; i < node->children.size(); ++i) {
-    DisplayCallGraphEntry(fp, depth + 1, prefix, node->children[i],
-                          node->children_period,
-                          (i + 1 == node->children.size()));
-  }
-}
+template <typename SampleT, typename CallChainNodeT>
+class CallgraphDisplayer {
+ public:
+  virtual ~CallgraphDisplayer() {}
 
-template <typename EntryT>
-void DisplayCallgraph(FILE* fp, const EntryT* sample) {
-  std::string prefix = "       ";
-  fprintf(fp, "%s|\n", prefix.c_str());
-  fprintf(fp, "%s-- %s\n", prefix.c_str(), sample->symbol->DemangledName());
-  prefix.append(3, ' ');
-  for (size_t i = 0; i < sample->callchain.children.size(); ++i) {
-    DisplayCallGraphEntry(fp, 1, prefix, sample->callchain.children[i],
-                          sample->callchain.children_period,
-                          (i + 1 == sample->callchain.children.size()));
+  void operator()(FILE* fp, const SampleT* sample) {
+    std::string prefix = "       ";
+    fprintf(fp, "%s|\n", prefix.c_str());
+    fprintf(fp, "%s-- %s\n", prefix.c_str(), PrintSampleName(sample).c_str());
+    prefix.append(3, ' ');
+    for (size_t i = 0; i < sample->callchain.children.size(); ++i) {
+      DisplayCallGraphEntry(fp, 1, prefix, sample->callchain.children[i],
+                            sample->callchain.children_period,
+                            (i + 1 == sample->callchain.children.size()));
+    }
   }
-}
+
+  void DisplayCallGraphEntry(FILE* fp, size_t depth, std::string prefix,
+                             const std::unique_ptr<CallChainNodeT>& node,
+                             uint64_t parent_period, bool last) {
+    if (depth > 20) {
+      LOG(WARNING) << "truncated callgraph at depth " << depth;
+      return;
+    }
+    prefix += "|";
+    fprintf(fp, "%s\n", prefix.c_str());
+    if (last) {
+      prefix.back() = ' ';
+    }
+    std::string percentage_s = "-- ";
+    if (node->period + node->children_period != parent_period) {
+      double percentage =
+          100.0 * (node->period + node->children_period) / parent_period;
+      percentage_s = android::base::StringPrintf("--%.2f%%-- ", percentage);
+    }
+    fprintf(fp, "%s%s%s\n", prefix.c_str(), percentage_s.c_str(),
+            PrintSampleName(node->chain[0]).c_str());
+    prefix.append(percentage_s.size(), ' ');
+    for (size_t i = 1; i < node->chain.size(); ++i) {
+      fprintf(fp, "%s%s\n", prefix.c_str(),
+              PrintSampleName(node->chain[i]).c_str());
+    }
+    for (size_t i = 0; i < node->children.size(); ++i) {
+      DisplayCallGraphEntry(fp, depth + 1, prefix, node->children[i],
+                            node->children_period,
+                            (i + 1 == node->children.size()));
+    }
+  }
+
+ protected:
+  virtual std::string PrintSampleName(const SampleT* sample) {
+    return sample->symbol->DemangledName();
+  }
+};
 
 // SampleDisplayer is a class using a collections of display functions to show a
 // sample.
@@ -147,7 +157,8 @@ class SampleDisplayer {
   typedef std::string (*display_sample_func_t)(const EntryT*);
   typedef std::string (*display_sample_with_info_func_t)(const EntryT*,
                                                          const InfoT*);
-  typedef void (*exclusive_display_sample_func_t)(FILE* fp, const EntryT*);
+  using exclusive_display_sample_func_t =
+      std::function<void(FILE*, const EntryT*)>;
 
  private:
   struct Item {

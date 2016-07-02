@@ -157,7 +157,7 @@ class SlabSampleTreeBuilder
             // tracepoint events because of lacking
             // perf_arch_fetch_caller_regs().
             LOG(WARNING) << "simpleperf may not get callchains for tracepoint"
-                << " events because of lacking kernel support.";
+                         << " events because of lacking kernel support.";
           }
         }
       } else {
@@ -224,12 +224,10 @@ class SlabSampleTreeBuilder
 
   const ThreadEntry* GetThreadOfSample(SlabSample*) override { return nullptr; }
 
-  void InsertCallChainForSample(SlabSample* sample,
-                                const std::vector<SlabSample*>& callchain,
-                                const SlabAccumulateInfo&) override {
+  uint64_t GetPeriodForCallChain(const SlabAccumulateInfo&) override {
     // Decide the percentage of callchain by the sample_count, so use 1 as the
     // period when calling AddCallChain().
-    sample->callchain.AddCallChain(callchain, 1);
+    return 1;
   }
 
   void UpdateSummary(const SlabSample* sample) override {
@@ -260,6 +258,8 @@ class SlabSampleTreeBuilder
 
 using SlabSampleTreeSorter = SampleTreeSorter<SlabSample>;
 using SlabSampleTreeDisplayer = SampleTreeDisplayer<SlabSample, SlabSampleTree>;
+using SlabSampleCallgraphDisplayer =
+    CallgraphDisplayer<SlabSample, CallChainNode<SlabSample>>;
 
 struct EventAttrWithName {
   perf_event_attr attr;
@@ -502,7 +502,7 @@ bool KmemCommand::PrepareToBuildSampleTree() {
     std::string accumulated_name = accumulate_callchain_ ? "Accumulated_" : "";
 
     if (print_callgraph_) {
-      displayer.AddExclusiveDisplayFunction(DisplayCallgraph);
+      displayer.AddExclusiveDisplayFunction(SlabSampleCallgraphDisplayer());
     }
 
     for (const auto& key : slab_sort_keys_) {

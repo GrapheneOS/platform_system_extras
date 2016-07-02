@@ -48,16 +48,16 @@ static std::set<std::string> branch_sort_keys = {
     "dso_from", "dso_to", "symbol_from", "symbol_to",
 };
 struct BranchFromEntry {
-  uint64_t ip;
   const MapEntry* map;
   const Symbol* symbol;
+  uint64_t vaddr_in_file;
   uint64_t flags;
 
-  BranchFromEntry() : ip(0), map(nullptr), symbol(nullptr), flags(0) {}
+  BranchFromEntry()
+      : map(nullptr), symbol(nullptr), vaddr_in_file(0), flags(0) {}
 };
 
 struct SampleEntry {
-  uint64_t ip;
   uint64_t time;
   uint64_t period;
   // accumuated when appearing in other sample's callchain
@@ -67,23 +67,23 @@ struct SampleEntry {
   const char* thread_comm;
   const MapEntry* map;
   const Symbol* symbol;
+  uint64_t vaddr_in_file;
   BranchFromEntry branch_from;
   // a callchain tree representing all callchains in the sample
   CallChainRoot<SampleEntry> callchain;
 
-  SampleEntry(uint64_t ip, uint64_t time, uint64_t period,
-              uint64_t accumulated_period, uint64_t sample_count,
-              const ThreadEntry* thread, const MapEntry* map,
-              const Symbol* symbol)
-      : ip(ip),
-        time(time),
+  SampleEntry(uint64_t time, uint64_t period, uint64_t accumulated_period,
+              uint64_t sample_count, const ThreadEntry* thread,
+              const MapEntry* map, const Symbol* symbol, uint64_t vaddr_in_file)
+      : time(time),
         period(period),
         accumulated_period(accumulated_period),
         sample_count(sample_count),
         thread(thread),
         thread_comm(thread->comm),
         map(map),
-        symbol(symbol) {}
+        symbol(symbol),
+        vaddr_in_file(vaddr_in_file) {}
 
   // The data member 'callchain' can only move, not copy.
   SampleEntry(SampleEntry&&) = default;
@@ -95,6 +95,9 @@ struct SampleTree {
   uint64_t total_samples;
   uint64_t total_period;
 };
+
+BUILD_COMPARE_VALUE_FUNCTION(CompareVaddrInFile, vaddr_in_file);
+BUILD_DISPLAY_HEX64_FUNCTION(DisplayVaddrInFile, vaddr_in_file);
 
 class ReportCmdSampleTreeBuilder
     : public SampleTreeBuilder<SampleEntry, uint64_t> {
@@ -131,11 +134,13 @@ class ReportCmdSampleTreeBuilder
         thread_tree_->FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
     const MapEntry* map =
         thread_tree_->FindMap(thread, r.ip_data.ip, in_kernel);
-    const Symbol* symbol = thread_tree_->FindSymbol(map, r.ip_data.ip);
+    uint64_t vaddr_in_file;
+    const Symbol* symbol =
+        thread_tree_->FindSymbol(map, r.ip_data.ip, &vaddr_in_file);
     *acc_info = r.period_data.period;
     return InsertSample(std::unique_ptr<SampleEntry>(
-        new SampleEntry(r.ip_data.ip, r.time_data.time, r.period_data.period, 0,
-                        1, thread, map, symbol)));
+        new SampleEntry(r.time_data.time, r.period_data.period, 0, 1, thread,
+                        map, symbol, vaddr_in_file)));
   }
 
   SampleEntry* CreateBranchSample(const SampleRecord& r,
@@ -143,15 +148,19 @@ class ReportCmdSampleTreeBuilder
     const ThreadEntry* thread =
         thread_tree_->FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
     const MapEntry* from_map = thread_tree_->FindMap(thread, item.from);
-    const Symbol* from_symbol = thread_tree_->FindSymbol(from_map, item.from);
+    uint64_t from_vaddr_in_file;
+    const Symbol* from_symbol =
+        thread_tree_->FindSymbol(from_map, item.from, &from_vaddr_in_file);
     const MapEntry* to_map = thread_tree_->FindMap(thread, item.to);
-    const Symbol* to_symbol = thread_tree_->FindSymbol(to_map, item.to);
+    uint64_t to_vaddr_in_file;
+    const Symbol* to_symbol =
+        thread_tree_->FindSymbol(to_map, item.to, &to_vaddr_in_file);
     std::unique_ptr<SampleEntry> sample(
-        new SampleEntry(item.to, r.time_data.time, r.period_data.period, 0, 1,
-                        thread, to_map, to_symbol));
-    sample->branch_from.ip = item.from;
+        new SampleEntry(r.time_data.time, r.period_data.period, 0, 1, thread,
+                        to_map, to_symbol, to_vaddr_in_file));
     sample->branch_from.map = from_map;
     sample->branch_from.symbol = from_symbol;
+    sample->branch_from.vaddr_in_file = from_vaddr_in_file;
     sample->branch_from.flags = item.flags;
     return InsertSample(std::move(sample));
   }
@@ -162,9 +171,10 @@ class ReportCmdSampleTreeBuilder
                                      const uint64_t& acc_info) override {
     const ThreadEntry* thread = sample->thread;
     const MapEntry* map = thread_tree_->FindMap(thread, ip, in_kernel);
-    const Symbol* symbol = thread_tree_->FindSymbol(map, ip);
-    std::unique_ptr<SampleEntry> callchain_sample(
-        new SampleEntry(ip, sample->time, 0, acc_info, 0, thread, map, symbol));
+    uint64_t vaddr_in_file;
+    const Symbol* symbol = thread_tree_->FindSymbol(map, ip, &vaddr_in_file);
+    std::unique_ptr<SampleEntry> callchain_sample(new SampleEntry(
+        sample->time, 0, acc_info, 0, thread, map, symbol, vaddr_in_file));
     return InsertCallChainSample(std::move(callchain_sample), callchain);
   }
 
@@ -172,10 +182,8 @@ class ReportCmdSampleTreeBuilder
     return sample->thread;
   }
 
-  void InsertCallChainForSample(SampleEntry* sample,
-                                const std::vector<SampleEntry*>& callchain,
-                                const uint64_t& acc_info) override {
-    sample->callchain.AddCallChain(callchain, acc_info);
+  uint64_t GetPeriodForCallChain(const uint64_t& acc_info) override {
+    return acc_info;
   }
 
   bool FilterSample(const SampleEntry* sample) override {
@@ -225,6 +233,19 @@ using ReportCmdSampleTreeSorter = SampleTreeSorter<SampleEntry>;
 using ReportCmdSampleTreeDisplayer =
     SampleTreeDisplayer<SampleEntry, SampleTree>;
 
+using ReportCmdCallgraphDisplayer =
+    CallgraphDisplayer<SampleEntry, CallChainNode<SampleEntry>>;
+
+class ReportCmdCallgraphDisplayerWithVaddrInFile
+    : public ReportCmdCallgraphDisplayer {
+ protected:
+  std::string PrintSampleName(const SampleEntry* sample) override {
+    return android::base::StringPrintf("%s [+0x%" PRIx64 "]",
+                                       sample->symbol->DemangledName(),
+                                       sample->vaddr_in_file);
+  }
+};
+
 struct EventAttrWithName {
   perf_event_attr attr;
   std::string name;
@@ -253,12 +274,25 @@ class ReportCommand : public Command {
 "--no-demangle         Don't demangle symbol names.\n"
 "-o report_file_name   Set report file name, default is stdout.\n"
 "--pids pid1,pid2,...  Report only for selected pids.\n"
-"--sort key1,key2,...  Select the keys to sort and print the report.\n"
-"                      Possible keys include pid, tid, comm, dso, symbol,\n"
-"                      dso_from, dso_to, symbol_from, symbol_to.\n"
-"                      dso_from, dso_to, symbol_from, symbol_to can only be\n"
-"                      used with -b option.\n"
-"                      Default keys are \"comm,pid,tid,dso,symbol\"\n"
+"--sort key1,key2,...  Select keys used to sort and print the report. The\n"
+"                      appearance order of keys decides the order of keys used\n"
+"                      to sort and print the report.\n"
+"                      Possible keys include:\n"
+"                        pid             -- process id\n"
+"                        tid             -- thread id\n"
+"                        comm            -- thread name (can be changed during\n"
+"                                           the lifetime of a thread)\n"
+"                        dso             -- shared library\n"
+"                        symbol          -- function name in the shared library\n"
+"                        vaddr_in_file   -- virtual address in the shared\n"
+"                                           library\n"
+"                      Keys can only be used with -b option:\n"
+"                        dso_from        -- shared library branched from\n"
+"                        dso_to          -- shared library branched to\n"
+"                        symbol_from     -- name of function branched from\n"
+"                        symbol_to       -- name of function branched to\n"
+"                      The default sort keys are:\n"
+"                        comm,pid,tid,dso,symbol\n"
 "--symfs <dir>         Look for files with symbols relative to this directory.\n"
 "--tids tid1,tid2,...  Report only for selected tids.\n"
 "--vmlinux <file>      Parse kernel symbols from <file>.\n"
@@ -447,9 +481,6 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   } else {
     displayer.AddDisplayFunction("Overhead", DisplaySelfOverhead);
   }
-  if (print_callgraph_) {
-    displayer.AddExclusiveDisplayFunction(DisplayCallgraph);
-  }
   if (print_sample_count) {
     displayer.AddDisplayFunction("Sample", DisplaySampleCount);
   }
@@ -475,6 +506,9 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
     } else if (key == "symbol") {
       comparator.AddCompareFunction(CompareSymbol);
       displayer.AddDisplayFunction("Symbol", DisplaySymbol);
+    } else if (key == "vaddr_in_file") {
+      comparator.AddCompareFunction(CompareVaddrInFile);
+      displayer.AddDisplayFunction("VaddrInFile", DisplayVaddrInFile);
     } else if (key == "dso_from") {
       comparator.AddCompareFunction(CompareDsoFrom);
       displayer.AddDisplayFunction("Source Shared Object", DisplayDsoFrom);
@@ -490,6 +524,25 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
     } else {
       LOG(ERROR) << "Unknown sort key: " << key;
       return false;
+    }
+  }
+  if (print_callgraph_) {
+    bool has_symbol_key = false;
+    bool has_vaddr_in_file_key = false;
+    for (const auto& key : sort_keys) {
+      if (key == "symbol") {
+        has_symbol_key = true;
+      } else if (key == "vaddr_in_file") {
+        has_vaddr_in_file_key = true;
+      }
+    }
+    if (has_symbol_key) {
+      if (has_vaddr_in_file_key) {
+        displayer.AddExclusiveDisplayFunction(
+            ReportCmdCallgraphDisplayerWithVaddrInFile());
+      } else {
+        displayer.AddExclusiveDisplayFunction(ReportCmdCallgraphDisplayer());
+      }
     }
   }
 

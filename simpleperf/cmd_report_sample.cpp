@@ -276,7 +276,7 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
   const ThreadEntry* thread =
       thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
   const MapEntry* map = thread_tree_.FindMap(thread, r.ip_data.ip, in_kernel);
-  const Symbol* symbol = thread_tree_.FindSymbol(map, r.ip_data.ip);
+  const Symbol* symbol = thread_tree_.FindSymbol(map, r.ip_data.ip, nullptr);
   callchain->set_symbol(symbol->DemangledName());
   callchain->set_file(map->dso->Path());
 
@@ -305,7 +305,7 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
           }
         }
         const MapEntry* map = thread_tree_.FindMap(thread, ip, in_kernel);
-        const Symbol* symbol = thread_tree_.FindSymbol(map, ip);
+        const Symbol* symbol = thread_tree_.FindSymbol(map, ip, nullptr);
         callchain = sample->add_callchain();
         callchain->set_ip(ip);
         callchain->set_symbol(symbol->DemangledName());
@@ -326,7 +326,7 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r) {
   const ThreadEntry* thread =
       thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
   const MapEntry* map = thread_tree_.FindMap(thread, r.ip_data.ip, in_kernel);
-  const Symbol* symbol = thread_tree_.FindSymbol(map, r.ip_data.ip);
+  const Symbol* symbol = thread_tree_.FindSymbol(map, r.ip_data.ip, nullptr);
   FprintIndented(report_fp_, 0, "sample:\n");
   FprintIndented(report_fp_, 1, "time: %" PRIu64 "\n", r.time_data.time);
   FprintIndented(report_fp_, 1, "ip: %" PRIx64 "\n", r.ip_data.ip);
@@ -359,7 +359,7 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r) {
           }
         }
         const MapEntry* map = thread_tree_.FindMap(thread, ip, in_kernel);
-        const Symbol* symbol = thread_tree_.FindSymbol(map, ip);
+        const Symbol* symbol = thread_tree_.FindSymbol(map, ip, nullptr);
         FprintIndented(report_fp_, 2, "ip: %" PRIx64 "\n", ip);
         FprintIndented(report_fp_, 2, "dso: %s\n", map->dso->Path().c_str());
         FprintIndented(report_fp_, 2, "symbol: %s\n", symbol->DemangledName());
