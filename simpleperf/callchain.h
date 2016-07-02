@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <queue>
 #include <vector>
@@ -42,9 +43,11 @@ struct CallChainRoot {
 
   CallChainRoot() : children_period(0) {}
 
-  void AddCallChain(const std::vector<EntryT*>& callchain, uint64_t period) {
+  void AddCallChain(
+      const std::vector<EntryT*>& callchain, uint64_t period,
+      std::function<bool(const EntryT*, const EntryT*)> is_same_sample) {
     children_period += period;
-    NodeT* p = FindMatchingNode(children, callchain[0]);
+    NodeT* p = FindMatchingNode(children, callchain[0], is_same_sample);
     if (p == nullptr) {
       std::unique_ptr<NodeT> new_node = AllocateNode(callchain, 0, period, 0);
       children.push_back(std::move(new_node));
@@ -53,7 +56,7 @@ struct CallChainRoot {
     size_t callchain_pos = 0;
     while (true) {
       size_t match_length =
-          GetMatchingLengthInNode(p, callchain, callchain_pos);
+          GetMatchingLengthInNode(p, callchain, callchain_pos, is_same_sample);
       CHECK_GT(match_length, 0u);
       callchain_pos += match_length;
       bool find_child = true;
@@ -67,7 +70,8 @@ struct CallChainRoot {
       }
       p->children_period += period;
       if (find_child) {
-        NodeT* np = FindMatchingNode(p->children, callchain[callchain_pos]);
+        NodeT* np = FindMatchingNode(p->children, callchain[callchain_pos],
+                                     is_same_sample);
         if (np != nullptr) {
           p = np;
           continue;
@@ -96,30 +100,28 @@ struct CallChainRoot {
   }
 
  private:
-  NodeT* FindMatchingNode(const std::vector<std::unique_ptr<NodeT>>& nodes,
-                          const EntryT* sample) {
+  NodeT* FindMatchingNode(
+      const std::vector<std::unique_ptr<NodeT>>& nodes, const EntryT* sample,
+      std::function<bool(const EntryT*, const EntryT*)> is_same_sample) {
     for (auto& node : nodes) {
-      if (MatchSampleByName(node->chain.front(), sample)) {
+      if (is_same_sample(node->chain.front(), sample)) {
         return node.get();
       }
     }
     return nullptr;
   }
 
-  size_t GetMatchingLengthInNode(NodeT* node, const std::vector<EntryT*>& chain,
-                                 size_t chain_start) {
+  size_t GetMatchingLengthInNode(
+      NodeT* node, const std::vector<EntryT*>& chain, size_t chain_start,
+      std::function<bool(const EntryT*, const EntryT*)> is_same_sample) {
     size_t i, j;
     for (i = 0, j = chain_start; i < node->chain.size() && j < chain.size();
          ++i, ++j) {
-      if (!MatchSampleByName(node->chain[i], chain[j])) {
+      if (!is_same_sample(node->chain[i], chain[j])) {
         break;
       }
     }
     return i;
-  }
-
-  bool MatchSampleByName(const EntryT* sample1, const EntryT* sample2) {
-    return strcmp(sample1->symbol->Name(), sample2->symbol->Name()) == 0;
   }
 
   void SplitNode(NodeT* parent, size_t parent_length) {
