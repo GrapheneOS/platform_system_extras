@@ -54,6 +54,7 @@ class SampleTreeBuilder {
   SampleTreeBuilder(SampleComparator<EntryT> comparator)
       : sample_set_(comparator),
         accumulate_callchain_(false),
+        sample_comparator_(comparator),
         callchain_sample_set_(comparator),
         use_branch_address_(false),
         build_callchain_(false),
@@ -189,9 +190,7 @@ class SampleTreeBuilder {
                                         const std::vector<EntryT*>& callchain,
                                         const AccumulateInfoT& acc_info) = 0;
   virtual const ThreadEntry* GetThreadOfSample(EntryT*) = 0;
-  virtual void InsertCallChainForSample(EntryT* sample,
-                                        const std::vector<EntryT*>& callchain,
-                                        const AccumulateInfoT& acc_info) = 0;
+  virtual uint64_t GetPeriodForCallChain(const AccumulateInfoT& acc_info) = 0;
   virtual bool FilterSample(const EntryT*) { return true; }
 
   virtual void UpdateSummary(const EntryT*) {}
@@ -245,10 +244,20 @@ class SampleTreeBuilder {
     return InsertSample(std::move(sample));
   }
 
+  void InsertCallChainForSample(EntryT* sample,
+                                const std::vector<EntryT*>& callchain,
+                                const AccumulateInfoT& acc_info) {
+    uint64_t period = GetPeriodForCallChain(acc_info);
+    sample->callchain.AddCallChain(callchain, period, [&](const EntryT* s1, const EntryT* s2) {
+      return sample_comparator_.IsSameSample(s1, s2);
+    });
+  }
+
   std::set<EntryT*, SampleComparator<EntryT>> sample_set_;
   bool accumulate_callchain_;
 
  private:
+  const SampleComparator<EntryT> sample_comparator_;
   // If a CallChainSample is filtered out, it is stored in callchain_sample_set_
   // and only used in other EntryT's callchain.
   std::set<EntryT*, SampleComparator<EntryT>> callchain_sample_set_;
