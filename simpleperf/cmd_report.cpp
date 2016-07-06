@@ -112,11 +112,13 @@ class ReportCmdSampleTreeBuilder
   void SetFilters(const std::unordered_set<int>& pid_filter,
                   const std::unordered_set<int>& tid_filter,
                   const std::unordered_set<std::string>& comm_filter,
-                  const std::unordered_set<std::string>& dso_filter) {
+                  const std::unordered_set<std::string>& dso_filter,
+                  const std::unordered_set<std::string>& symbol_filter) {
     pid_filter_ = pid_filter;
     tid_filter_ = tid_filter;
     comm_filter_ = comm_filter;
     dso_filter_ = dso_filter;
+    symbol_filter_ = symbol_filter;
   }
 
   SampleTree GetSampleTree() const {
@@ -203,6 +205,11 @@ class ReportCmdSampleTreeBuilder
         dso_filter_.find(sample->map->dso->Path()) == dso_filter_.end()) {
       return false;
     }
+    if (!symbol_filter_.empty() &&
+        symbol_filter_.find(sample->symbol->DemangledName()) ==
+            symbol_filter_.end()) {
+      return false;
+    }
     return true;
   }
 
@@ -224,6 +231,7 @@ class ReportCmdSampleTreeBuilder
   std::unordered_set<int> tid_filter_;
   std::unordered_set<std::string> comm_filter_;
   std::unordered_set<std::string> dso_filter_;
+  std::unordered_set<std::string> symbol_filter_;
 
   uint64_t total_samples_;
   uint64_t total_period_;
@@ -293,6 +301,7 @@ class ReportCommand : public Command {
 "                        symbol_to       -- name of function branched to\n"
 "                      The default sort keys are:\n"
 "                        comm,pid,tid,dso,symbol\n"
+"--symbols symbol1,symbol2,...    Report only for selected symbols.\n"
 "--symfs <dir>         Look for files with symbols relative to this directory.\n"
 "--tids tid1,tid2,...  Report only for selected tids.\n"
 "--vmlinux <file>      Parse kernel symbols from <file>.\n"
@@ -376,6 +385,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   std::vector<std::string> sort_keys = {"comm", "pid", "tid", "dso", "symbol"};
   std::unordered_set<std::string> comm_filter;
   std::unordered_set<std::string> dso_filter;
+  std::unordered_set<std::string> symbol_filter;
   std::unordered_set<int> pid_filter;
   std::unordered_set<int> tid_filter;
 
@@ -384,9 +394,12 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       use_branch_address_ = true;
     } else if (args[i] == "--children") {
       accumulate_callchain_ = true;
-    } else if (args[i] == "--comms" || args[i] == "--dsos") {
+    } else if (args[i] == "--comms" || args[i] == "--dsos" ||
+               args[i] == "--symbols") {
       std::unordered_set<std::string>& filter =
-          (args[i] == "--comms" ? comm_filter : dso_filter);
+          (args[i] == "--comms"
+               ? comm_filter
+               : (args[i] == "--dsos" ? dso_filter : symbol_filter));
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
@@ -549,7 +562,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   sample_tree_builder_.reset(
       new ReportCmdSampleTreeBuilder(comparator, &thread_tree_));
   sample_tree_builder_->SetFilters(pid_filter, tid_filter, comm_filter,
-                                   dso_filter);
+                                   dso_filter, symbol_filter);
 
   SampleComparator<SampleEntry> sort_comparator;
   sort_comparator.AddCompareFunction(CompareTotalPeriod);

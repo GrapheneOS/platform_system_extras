@@ -246,6 +246,21 @@ TEST_F(ReportCommandTest, dso_filter_option) {
   ASSERT_TRUE(AllItemsWithString(lines, {"/t1", "/t2"}));
 }
 
+TEST_F(ReportCommandTest, symbol_filter_option) {
+  Report(PERF_DATA_WITH_SYMBOLS, {"--sort", "symbol"});
+  ASSERT_TRUE(success);
+  ASSERT_FALSE(AllItemsWithString(lines, {"page_fault"}));
+  ASSERT_FALSE(AllItemsWithString(lines, {"page_fault", "perf_event_aux"}));
+  Report(PERF_DATA_WITH_SYMBOLS,
+         {"--sort", "symbol", "--symbols", "page_fault"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"page_fault"}));
+  Report(PERF_DATA_WITH_SYMBOLS,
+         {"--sort", "symbol", "--symbols", "page_fault,perf_event_aux"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"page_fault", "perf_event_aux"}));
+}
+
 TEST_F(ReportCommandTest, use_branch_address) {
   Report(BRANCH_PERF_DATA, {"-b", "--sort", "symbol_from,symbol_to"});
   std::set<std::pair<std::string, std::string>> hit_set;
