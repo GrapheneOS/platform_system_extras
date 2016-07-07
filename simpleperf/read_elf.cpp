@@ -301,6 +301,39 @@ void ReadSymbolTable(llvm::object::symbol_iterator sym_begin,
 }
 
 template <class ELFT>
+void AddSymbolForPltSection(const llvm::object::ELFObjectFile<ELFT>* elf,
+                            std::function<void(const ElfFileSymbol&)> callback) {
+  // We may sample instructions in .plt section if the program
+  // calls functions from shared libraries. Different architectures use
+  // different formats to store .plt section, so it needs a lot of work to match
+  // instructions in .plt section to symbols. As samples in .plt section rarely
+  // happen, and .plt section can hardly be a performance bottleneck, we can
+  // just use a symbol @plt to represent instructions in .plt section.
+  for (auto it = elf->section_begin(); it != elf->section_end(); ++it) {
+    const llvm::object::ELFSectionRef& section_ref = *it;
+    llvm::StringRef section_name;
+    std::error_code err = section_ref.getName(section_name);
+    if (err || section_name != ".plt") {
+      continue;
+    }
+    const auto* shdr = elf->getSection(section_ref.getRawDataRefImpl());
+    if (shdr == nullptr) {
+      return;
+    }
+    ElfFileSymbol symbol;
+    symbol.vaddr = shdr->sh_addr;
+    symbol.len = shdr->sh_size;
+    symbol.is_func = true;
+    symbol.is_label = true;
+    symbol.is_in_text_section = true;
+    symbol.name = "@plt";
+    callback(symbol);
+    return;
+  }
+}
+
+
+template <class ELFT>
 void ParseSymbolsFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf,
                              std::function<void(const ElfFileSymbol&)> callback) {
   auto machine = elf->getELFFile()->getHeader()->e_machine;
@@ -310,6 +343,7 @@ void ParseSymbolsFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf,
   } else if (elf->dynamic_symbol_begin()->getRawDataRefImpl() != llvm::object::DataRefImpl()) {
     ReadSymbolTable(elf->dynamic_symbol_begin(), elf->dynamic_symbol_end(), callback, is_arm);
   }
+  AddSymbolForPltSection(elf, callback);
   std::string debugdata;
   if (ReadSectionFromELFFile(elf, ".gnu_debugdata", &debugdata, false)) {
     LOG(VERBOSE) << "Read .gnu_debugdata from " << elf->getFileName().str();

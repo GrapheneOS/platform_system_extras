@@ -105,3 +105,10 @@ TEST(read_elf, IsValidElfPath) {
   ASSERT_FALSE(IsValidElfPath("/sys/devices/system/cpu/online"));
   ASSERT_TRUE(IsValidElfPath(GetTestData(ELF_FILE)));
 }
+
+TEST(read_elf, check_symbol_for_plt_section) {
+  std::map<std::string, ElfFileSymbol> symbols;
+  ASSERT_TRUE(ParseSymbolsFromElfFile(GetTestData(ELF_FILE), BuildId(),
+                                      std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
+  ASSERT_NE(symbols.find("@plt"), symbols.end());
+}
