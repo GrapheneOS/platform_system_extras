@@ -926,12 +926,12 @@ void RecordCache::Push(std::unique_ptr<Record> record) {
   if (has_timestamp_) {
     last_time_ = std::max(last_time_, record->Timestamp());
   }
-  queue_.push(CreateRecordWithSeq(record.release()));
+  queue_.push(RecordWithSeq(cur_seq_++, record.release()));
 }
 
 void RecordCache::Push(std::vector<std::unique_ptr<Record>> records) {
   for (auto& r : records) {
-    queue_.push(CreateRecordWithSeq(r.release()));
+    Push(std::move(r));
   }
 }
 
@@ -955,12 +955,5 @@ std::vector<std::unique_ptr<Record>> RecordCache::PopAll() {
     result.emplace_back(queue_.top().record);
     queue_.pop();
   }
-  return result;
-}
-
-RecordCache::RecordWithSeq RecordCache::CreateRecordWithSeq(Record* r) {
-  RecordWithSeq result;
-  result.seq = cur_seq_++;
-  result.record = r;
   return result;
 }
