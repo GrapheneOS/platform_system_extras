@@ -113,3 +113,23 @@ TEST_F(RecordTest, RecordCache_FIFO) {
     CheckRecordEqual(records[i], *out_records[i]);
   }
 }
+
+TEST_F(RecordTest, RecordCache_PushRecordVector) {
+  event_attr.sample_id_all = 1;
+  event_attr.sample_type |= PERF_SAMPLE_TIME;
+  RecordCache cache(true, 2, 2);
+  MmapRecord r1 = MmapRecord::Create(event_attr, true, 1, 1, 0x100, 0x200, 0x300, "mmap_record1", 0);
+  MmapRecord r2 = r1;
+  r1.sample_id.time_data.time = 1;
+  r2.sample_id.time_data.time = 3;
+  std::vector<std::unique_ptr<Record>> records;
+  records.push_back(std::unique_ptr<Record>(new MmapRecord(r1)));
+  records.push_back(std::unique_ptr<Record>(new MmapRecord(r2)));
+  cache.Push(std::move(records));
+  std::unique_ptr<Record> popped_r = cache.Pop();
+  ASSERT_TRUE(popped_r != nullptr);
+  CheckRecordEqual(r1, *popped_r);
+  std::vector<std::unique_ptr<Record>> last_records = cache.PopAll();
+  ASSERT_EQ(1u, last_records.size());
+  CheckRecordEqual(r2, *last_records[0]);
+}

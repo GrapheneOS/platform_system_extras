@@ -511,14 +511,14 @@ class RecordCache {
     uint32_t seq;
     Record* record;
 
+    RecordWithSeq(uint32_t seq, Record* record) : seq(seq), record(record) {
+    }
     bool IsHappensBefore(const RecordWithSeq& other) const;
   };
 
   struct RecordComparator {
     bool operator()(const RecordWithSeq& r1, const RecordWithSeq& r2);
   };
-
-  RecordWithSeq CreateRecordWithSeq(Record* r);
 
   bool has_timestamp_;
   size_t min_cache_size_;
