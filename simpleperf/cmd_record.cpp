@@ -129,6 +129,9 @@ class RecordCommand : public Command {
 "               will be unwound while recording by default. But it may lose\n"
 "               records as stacking unwinding can be time consuming. Use this\n"
 "               option to unwind the user's stack after recording.\n"
+"--symfs <dir>    Look for files with symbols relative to this directory.\n"
+"                 This option is used to provide files with symbol table and\n"
+"                 debug information, which are used by --dump-symbols and -g.\n"
 "-t tid1,tid2,... Record events on existing threads. Mutually exclusive with -a.\n"
             // clang-format on
             ),
@@ -463,6 +466,13 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       }
     } else if (args[i] == "--post-unwind") {
       post_unwind_ = true;
+    } else if (args[i] == "--symfs") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (!Dso::SetSymFsDir(args[i])) {
+        return false;
+      }
     } else if (args[i] == "-t") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
