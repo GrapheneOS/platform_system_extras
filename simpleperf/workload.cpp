@@ -33,9 +33,9 @@ std::unique_ptr<Workload> Workload::CreateWorkload(const std::vector<std::string
 
 Workload::~Workload() {
   if (work_pid_ != -1 && work_state_ != NotYetCreateNewProcess) {
-    if (!Workload::WaitChildProcess(false)) {
+    if (!Workload::WaitChildProcess(false, false)) {
       kill(work_pid_, SIGKILL);
-      Workload::WaitChildProcess(true);
+      Workload::WaitChildProcess(true, true);
     }
   }
   if (start_signal_fd_ != -1) {
@@ -137,14 +137,16 @@ bool Workload::Start() {
   return true;
 }
 
-bool Workload::WaitChildProcess(bool wait_forever) {
+bool Workload::WaitChildProcess(bool wait_forever, bool is_child_killed) {
   bool finished = false;
   int status;
   pid_t result = TEMP_FAILURE_RETRY(waitpid(work_pid_, &status, (wait_forever ? 0 : WNOHANG)));
   if (result == work_pid_) {
     finished = true;
     if (WIFSIGNALED(status)) {
-      LOG(WARNING) << "child process was terminated by signal " << strsignal(WTERMSIG(status));
+      if (!(is_child_killed && WTERMSIG(status) == SIGKILL)) {
+        LOG(WARNING) << "child process was terminated by signal " << strsignal(WTERMSIG(status));
+      }
     } else if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
       LOG(WARNING) << "child process exited with exit code " << WEXITSTATUS(status);
     }
