@@ -52,7 +52,7 @@ class Workload {
   }
 
   bool CreateNewProcess();
-  bool WaitChildProcess(bool wait_forever);
+  bool WaitChildProcess(bool wait_forever, bool is_child_killed);
 
   WorkState work_state_;
   std::vector<std::string> args_;
