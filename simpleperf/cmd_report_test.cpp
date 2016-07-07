@@ -317,6 +317,26 @@ TEST_F(ReportCommandTest, report_sort_vaddr_in_file) {
   ASSERT_NE(content.find("VaddrInFile"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, check_build_id) {
+  Report(PERF_DATA_FOR_BUILD_ID_CHECK,
+         {"--symfs", GetTestData(CORRECT_SYMFS_FOR_BUILD_ID_CHECK)});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("main"), std::string::npos);
+  ASSERT_EXIT(
+      {
+        Report(PERF_DATA_FOR_BUILD_ID_CHECK,
+               {"--symfs", GetTestData(WRONG_SYMFS_FOR_BUILD_ID_CHECK)});
+        if (!success) {
+          exit(1);
+        }
+        if (content.find("main") != std::string::npos) {
+          exit(2);
+        }
+        exit(0);
+      },
+      testing::ExitedWithCode(0), "build id.*mismatch");
+}
+
 #if defined(__linux__)
 
 static std::unique_ptr<Command> RecordCmd() {

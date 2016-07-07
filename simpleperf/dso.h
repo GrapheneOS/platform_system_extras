@@ -84,14 +84,12 @@ struct Dso {
 
   // Return the path recorded in perf.data.
   const std::string& Path() const { return path_; }
+  // Return the path containing symbol table and debug information.
+  const std::string& GetDebugFilePath() const { return debug_file_path_; }
 
   bool HasDumped() const { return has_dumped_; }
 
   void SetDumped() { has_dumped_ = true; }
-
-  // Return the accessible path. It may be the same as Path(), or
-  // return the path with prefix set by SetSymFsDir().
-  std::string GetAccessiblePath() const;
 
   // Return the minimum virtual address in program header.
   uint64_t MinVirtualAddress();
@@ -100,12 +98,6 @@ struct Dso {
   void InsertSymbol(const Symbol& symbol);
 
  private:
-  static BuildId GetExpectedBuildId(const std::string& filename);
-  static bool KernelSymbolCallback(const KernelSymbol& kernel_symbol, Dso* dso);
-  static void VmlinuxSymbolCallback(const ElfFileSymbol& elf_symbol, Dso* dso);
-  static void ElfFileSymbolCallback(const ElfFileSymbol& elf_symbol, Dso* dso,
-                                    bool (*filter)(const ElfFileSymbol&));
-
   static bool demangle_;
   static std::string symfs_dir_;
   static std::string vmlinux_;
@@ -120,10 +112,15 @@ struct Dso {
   bool LoadElfFile();
   bool LoadEmbeddedElfFile();
   void FixupSymbolLength();
+  BuildId GetExpectedBuildId();
 
   const DsoType type_;
   const uint64_t id_;
+  // path of the shared library used by the profiled program
   const std::string path_;
+  // path of the shared library having symbol table and debug information
+  // It is the same as path_, or has the same build id as path_.
+  std::string debug_file_path_;
   uint64_t min_vaddr_;
   std::set<Symbol, SymbolComparator> symbols_;
   bool is_loaded_;
