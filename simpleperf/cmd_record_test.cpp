@@ -297,3 +297,5 @@ TEST(record_cmd, group_option) {
                             "cpu-cycles:u,cpu-clock:u", "--group",
                             "cpu-cycles:k,cpu-clock:k"}));
 }
+
+TEST(record_cmd, symfs_option) { ASSERT_TRUE(RunRecordCmd({"--symfs", "/"})); }
