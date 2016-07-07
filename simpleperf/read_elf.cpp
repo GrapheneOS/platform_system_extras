@@ -372,11 +372,13 @@ bool MatchBuildId(llvm::object::ObjectFile* obj, const BuildId& expected_build_i
     return false;
   }
   if (expected_build_id != real_build_id) {
-    LOG(DEBUG) << "build id for " << debug_filename << " mismatch: "
+    LOG(WARNING) << "build id for " << debug_filename << " mismatch: "
                << "expected " << expected_build_id.ToString()
                << ", real " << real_build_id.ToString();
     return false;
   }
+  LOG(VERBOSE) << "build id for " << debug_filename << " match: "
+               << "expected " << expected_build_id.ToString();
   return true;
 }
 
