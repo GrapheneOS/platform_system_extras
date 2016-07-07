@@ -117,7 +117,7 @@ std::vector<uint64_t> UnwindCallChain(ArchType arch, const ThreadEntry& thread,
     bt_map.start = map->start_addr;
     bt_map.end = map->start_addr + map->len;
     bt_map.offset = map->pgoff;
-    bt_map.name = map->dso->GetAccessiblePath();
+    bt_map.name = map->dso->GetDebugFilePath();
   }
   std::unique_ptr<BacktraceMap> backtrace_map(BacktraceMap::Create(thread.pid, bt_maps));
 
