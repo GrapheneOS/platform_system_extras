@@ -121,7 +121,13 @@ bool EventFd::MmapContent(size_t mmap_pages) {
   size_t mmap_len = (mmap_pages + 1) * page_size;
   void* mmap_addr = mmap(nullptr, mmap_len, PROT_READ | PROT_WRITE, MAP_SHARED, perf_event_fd_, 0);
   if (mmap_addr == MAP_FAILED) {
+    bool is_perm_error = (errno == EPERM);
     PLOG(ERROR) << "mmap() failed for " << Name();
+    if (is_perm_error) {
+      LOG(ERROR) << "It seems the kernel doesn't allow allocating enough "
+          << "buffer for dumping samples, consider decreasing the number of "
+          << "monitored threads(-t), or decreasing mmap pages(-m).";
+    }
     return false;
   }
   mmap_addr_ = mmap_addr;
