@@ -16,7 +16,9 @@
 
 #include <gtest/gtest.h>
 
+#include <android-base/file.h>
 #include <android-base/stringprintf.h>
+#include <android-base/test_utils.h>
 
 #include "command.h"
 #include "get_test_data.h"
@@ -91,4 +93,19 @@ TEST(stat_cmd, group_option) {
   ASSERT_TRUE(StatCmd()->Run({"--group", "cpu-cycles,cpu-clock", "--group",
                               "cpu-cycles:u,cpu-clock:u", "--group",
                               "cpu-cycles:k,cpu-clock:k", "sleep", "1"}));
+}
+
+TEST(stat_cmd, auto_generated_summary) {
+  TemporaryFile tmp_file;
+  ASSERT_TRUE(StatCmd()->Run({"--group", "cpu-clock:u,cpu-clock:k", "-o",
+                              tmp_file.path, "sleep", "1"}));
+  std::string s;
+  ASSERT_TRUE(android::base::ReadFileToString(tmp_file.path, &s));
+  size_t pos = s.find("cpu-clock:u");
+  ASSERT_NE(s.npos, pos);
+  pos = s.find("cpu-clock:k", pos);
+  ASSERT_NE(s.npos, pos);
+  pos += strlen("cpu-clock:k");
+  // Check if the summary of cpu-clock is generated.
+  ASSERT_NE(s.npos, s.find("cpu-clock", pos));
 }
