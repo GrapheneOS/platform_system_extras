@@ -88,8 +88,7 @@ class EventSelectionSet {
   bool OpenEventFilesForCpus(const std::vector<int>& cpus);
   bool OpenEventFilesForThreadsOnCpus(const std::vector<pid_t>& threads, std::vector<int> cpus);
   bool ReadCounters(std::vector<CountersInfo>* counters);
-  void PrepareToPollForEventFiles(std::vector<pollfd>* pollfds);
-  bool MmapEventFiles(size_t mmap_pages);
+  bool MmapEventFiles(size_t mmap_pages, std::vector<pollfd>* pollfds);
   void PrepareToReadMmapEventData(std::function<bool (Record*)> callback);
   bool ReadMmapEventData();
   bool FinishReadMmapEventData();
