@@ -246,7 +246,8 @@ TEST(record_cmd, kernel_symbol) {
 
 // Check if the dso/symbol records in perf.data matches our expectation.
 static void CheckDsoSymbolRecords(const std::string& path,
-                                  bool need_dso_symbol_records, bool* success) {
+                                  bool can_have_dso_symbol_records,
+                                  bool* success) {
   *success = false;
   std::unique_ptr<RecordFileReader> reader =
       RecordFileReader::CreateInstance(path);
@@ -269,12 +270,13 @@ static void CheckDsoSymbolRecords(const std::string& path,
       it->second = true;
     }
   }
-  for (auto& pair : dso_hit_map) {
-    ASSERT_TRUE(pair.second);
-  }
-  if (need_dso_symbol_records) {
-    ASSERT_TRUE(has_dso_record);
-    ASSERT_TRUE(has_symbol_record);
+  if (can_have_dso_symbol_records) {
+    // It is possible that there are no samples hitting functions having symbol.
+    // In that case, there are no dso/symbol records.
+    ASSERT_EQ(has_dso_record, has_symbol_record);
+    for (auto& pair : dso_hit_map) {
+      ASSERT_TRUE(pair.second);
+    }
   } else {
     ASSERT_FALSE(has_dso_record);
     ASSERT_FALSE(has_symbol_record);

@@ -90,7 +90,7 @@ class ThreadTree {
   const Symbol* FindSymbol(const MapEntry* map, uint64_t ip,
                            uint64_t* pvaddr_in_file);
   const Symbol* FindKernelSymbol(uint64_t ip);
-  const MapEntry* UnknownMap() const { return &unknown_map_; }
+  const Symbol* UnknownSymbol() const { return &unknown_symbol_; }
 
   // Clear thread and map information, but keep loaded dso information. It saves
   // the time to reload dso information.
