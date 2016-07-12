@@ -43,7 +43,7 @@ class Workload {
   }
 
  private:
-  Workload(const std::vector<std::string>& args)
+  explicit Workload(const std::vector<std::string>& args)
       : work_state_(NotYetCreateNewProcess),
         args_(args),
         work_pid_(-1),

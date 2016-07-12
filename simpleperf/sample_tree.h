@@ -51,7 +51,7 @@
 template <typename EntryT, typename AccumulateInfoT>
 class SampleTreeBuilder {
  public:
-  SampleTreeBuilder(SampleComparator<EntryT> comparator)
+  explicit SampleTreeBuilder(SampleComparator<EntryT> comparator)
       : sample_set_(comparator),
         accumulate_callchain_(false),
         sample_comparator_(comparator),
@@ -272,7 +272,7 @@ class SampleTreeBuilder {
 template <typename EntryT>
 class SampleTreeSorter {
  public:
-  SampleTreeSorter(SampleComparator<EntryT> comparator)
+  explicit SampleTreeSorter(SampleComparator<EntryT> comparator)
       : comparator_(comparator) {}
 
   virtual ~SampleTreeSorter() {}
@@ -300,7 +300,7 @@ class SampleTreeSorter {
 template <typename EntryT, typename InfoT>
 class SampleTreeDisplayer {
  public:
-  SampleTreeDisplayer(SampleDisplayer<EntryT, InfoT> displayer)
+  explicit SampleTreeDisplayer(SampleDisplayer<EntryT, InfoT> displayer)
       : displayer_(displayer) {}
 
   virtual ~SampleTreeDisplayer() {}
