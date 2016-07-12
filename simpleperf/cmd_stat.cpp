@@ -124,7 +124,7 @@ struct CounterSummary {
 
 class CounterSummaries {
  public:
-  CounterSummaries(bool csv): csv_(csv) {}
+  explicit CounterSummaries(bool csv): csv_(csv) {}
   void AddSummary(const CounterSummary& summary) {
     summaries_.push_back(summary);
   }

@@ -40,7 +40,7 @@ static inline uint64_t Align(uint64_t value, uint64_t alignment) {
 // It reduces the cost to free each allocated memory.
 class OneTimeFreeAllocator {
  public:
-  OneTimeFreeAllocator(size_t unit_size = 8192u)
+  explicit OneTimeFreeAllocator(size_t unit_size = 8192u)
       : unit_size_(unit_size), cur_(nullptr), end_(nullptr) {
   }
 
@@ -79,7 +79,7 @@ class FileHelper {
   }
 
  private:
-  FileHelper(int fd) : fd_(fd) {}
+  explicit FileHelper(int fd) : fd_(fd) {}
   int fd_;
 
   DISALLOW_COPY_AND_ASSIGN(FileHelper);
