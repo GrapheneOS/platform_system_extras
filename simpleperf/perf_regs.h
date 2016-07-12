@@ -64,7 +64,7 @@ std::string GetRegName(size_t regno, ArchType arch);
 
 class ScopedCurrentArch {
  public:
-  ScopedCurrentArch(ArchType arch) : saved_arch(current_arch) {
+  explicit ScopedCurrentArch(ArchType arch) : saved_arch(current_arch) {
     current_arch = arch;
   }
   ~ScopedCurrentArch() {

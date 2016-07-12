@@ -34,7 +34,7 @@ namespace {
 
 class ProtobufFileWriter : public google::protobuf::io::CopyingOutputStream {
  public:
-  ProtobufFileWriter(FILE* out_fp) : out_fp_(out_fp) {}
+  explicit ProtobufFileWriter(FILE* out_fp) : out_fp_(out_fp) {}
 
   bool Write(const void* buffer, int size) override {
     return fwrite(buffer, size, 1, out_fp_) == 1;
@@ -46,7 +46,7 @@ class ProtobufFileWriter : public google::protobuf::io::CopyingOutputStream {
 
 class ProtobufFileReader : public google::protobuf::io::CopyingInputStream {
  public:
-  ProtobufFileReader(FILE* in_fp) : in_fp_(in_fp) {}
+  explicit ProtobufFileReader(FILE* in_fp) : in_fp_(in_fp) {}
 
   int Read(void* buffer, int size) override {
     return fread(buffer, 1, size, in_fp_);

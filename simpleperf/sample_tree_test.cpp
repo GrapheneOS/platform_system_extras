@@ -58,7 +58,7 @@ class TestSampleComparator : public SampleComparator<SampleEntry> {
 
 class TestSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, int> {
  public:
-  TestSampleTreeBuilder(ThreadTree* thread_tree)
+  explicit TestSampleTreeBuilder(ThreadTree* thread_tree)
       : SampleTreeBuilder(TestSampleComparator()), thread_tree_(thread_tree) {}
 
   void AddSample(int pid, int tid, uint64_t ip, bool in_kernel) {
