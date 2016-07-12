@@ -70,7 +70,7 @@ class TracingFile;
 
 class Tracing {
  public:
-  Tracing(const std::vector<char>& data);
+  explicit Tracing(const std::vector<char>& data);
   ~Tracing();
   void Dump(size_t indent);
   TracingFormat GetTracingFormatHavingId(uint64_t trace_event_id);
