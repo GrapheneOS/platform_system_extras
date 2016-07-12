@@ -643,7 +643,7 @@ bool RecordCommand::DumpKernelSymbol() {
         }
       }
     }
-    if (need_kernel_symbol) {
+    if (need_kernel_symbol && CheckKernelSymbolAddresses()) {
       if (!android::base::ReadFileToString("/proc/kallsyms", &kallsyms)) {
         PLOG(ERROR) << "failed to read /proc/kallsyms";
         return false;
