@@ -477,3 +477,28 @@ bool CheckSampleFrequency(uint64_t sample_freq) {
   }
   return true;
 }
+
+bool CheckKernelSymbolAddresses() {
+  const std::string kptr_restrict_file = "/proc/sys/kernel/kptr_restrict";
+  std::string s;
+  if (!android::base::ReadFileToString(kptr_restrict_file, &s)) {
+    PLOG(WARNING) << "failed to read " << kptr_restrict_file;
+    return false;
+  }
+  s = android::base::Trim(s);
+  int value;
+  if (!android::base::ParseInt(s.c_str(), &value)) {
+    LOG(ERROR) << "failed to parse " << kptr_restrict_file << ": " << s;
+    return false;
+  }
+  if (value == 0) {
+    return true;
+  }
+  if (value == 1 && IsRoot()) {
+    return true;
+  }
+  LOG(WARNING) << "Access to kernel symbol addresses is restricted. If "
+      << "possible, please do `echo 0 >/proc/sys/kernel/kptr_restrict` "
+      << "to fix this.";
+  return false;
+}
