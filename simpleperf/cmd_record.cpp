@@ -811,6 +811,10 @@ bool RecordCommand::DumpSymbolForRecord(const SampleRecord& r,
                                          : std::vector<uint64_t>{r.ip_data.ip};
   for (auto& ip : ips) {
     const MapEntry* map = thread_tree_.FindMap(thread, ip, r.InKernel());
+    const Symbol* symbol = thread_tree_.FindSymbol(map, ip, nullptr);
+    if (symbol == thread_tree_.UnknownSymbol()) {
+      continue;
+    }
     if (!map->dso->HasDumped()) {
       map->dso->SetDumped();
       DsoRecord dso_record =
@@ -820,7 +824,6 @@ bool RecordCommand::DumpSymbolForRecord(const SampleRecord& r,
         return false;
       }
     }
-    const Symbol* symbol = thread_tree_.FindSymbol(map, ip, nullptr);
     if (!symbol->HasDumped()) {
       symbol->SetDumped();
       SymbolRecord symbol_record = SymbolRecord::Create(
