@@ -115,7 +115,7 @@ bool EventFd::ReadCounter(PerfCounter* counter) const {
   return true;
 }
 
-bool EventFd::MmapContent(size_t mmap_pages) {
+bool EventFd::CreateMappedBuffer(size_t mmap_pages, pollfd* poll_fd) {
   CHECK(IsPowerOfTwo(mmap_pages));
   size_t page_size = sysconf(_SC_PAGE_SIZE);
   size_t mmap_len = (mmap_pages + 1) * page_size;
@@ -126,7 +126,8 @@ bool EventFd::MmapContent(size_t mmap_pages) {
     if (is_perm_error) {
       LOG(ERROR) << "It seems the kernel doesn't allow allocating enough "
           << "buffer for dumping samples, consider decreasing the number of "
-          << "monitored threads(-t), or decreasing mmap pages(-m).";
+          << "monitored threads(-t), or decreasing mmap pages(-m), or "
+          << "decreasing the number of events(-e).";
     }
     return false;
   }
@@ -138,10 +139,28 @@ bool EventFd::MmapContent(size_t mmap_pages) {
   if (data_process_buffer_.size() < mmap_data_buffer_size_) {
     data_process_buffer_.resize(mmap_data_buffer_size_);
   }
+  memset(poll_fd, 0, sizeof(pollfd));
+  poll_fd->fd = perf_event_fd_;
+  poll_fd->events = POLLIN;
+  return true;
+}
+
+bool EventFd::ShareMappedBuffer(const EventFd& event_fd) {
+  CHECK(!HasMappedBuffer());
+  CHECK(event_fd.HasMappedBuffer());
+  int result = ioctl(perf_event_fd_, PERF_EVENT_IOC_SET_OUTPUT, event_fd.perf_event_fd_);
+  if (result != 0) {
+    PLOG(ERROR) << "failed to share mapped buffer of "
+        << event_fd.perf_event_fd_ << " with " << perf_event_fd_;
+    return false;
+  }
   return true;
 }
 
 size_t EventFd::GetAvailableMmapData(char** pdata) {
+  if (!HasMappedBuffer()) {
+    return 0;
+  }
   // The mmap_data_buffer is used as a ring buffer like below. The kernel continuously writes
   // records to the buffer, and the user continuously read records out.
   //         _________________________________________
@@ -191,12 +210,6 @@ size_t EventFd::GetAvailableMmapData(char** pdata) {
 
 void EventFd::DiscardMmapData(size_t discard_size) {
   mmap_metadata_page_->data_tail += discard_size;
-}
-
-void EventFd::PrepareToPollForMmapData(pollfd* poll_fd) {
-  memset(poll_fd, 0, sizeof(pollfd));
-  poll_fd->fd = perf_event_fd_;
-  poll_fd->events = POLLIN;
 }
 
 bool IsEventAttrSupportedByKernel(perf_event_attr attr) {

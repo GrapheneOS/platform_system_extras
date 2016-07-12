@@ -115,7 +115,7 @@ class RecordCommand : public Command {
 "-m mmap_pages   Set the size of the buffer used to receiving sample data from\n"
 "                the kernel. It should be a power of 2. The default value for\n"
 "                system wide profiling is 256. The default value for non system\n"
-"                wide profiling is 16.\n"
+"                wide profiling is 128.\n"
 "--no-dump-kernel-symbols  Don't dump kernel symbols in perf.data. By default\n"
 "                          kernel symbols will be dumped when needed.\n"
 "--no-inherit  Don't record created child threads/processes.\n"
@@ -267,11 +267,10 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   }
-  if (!event_selection_set_.MmapEventFiles(perf_mmap_pages_)) {
+  std::vector<pollfd> pollfds;
+  if (!event_selection_set_.MmapEventFiles(perf_mmap_pages_, &pollfds)) {
     return false;
   }
-  std::vector<pollfd> pollfds;
-  event_selection_set_.PrepareToPollForEventFiles(&pollfds);
 
   // 4. Create perf.data.
   if (!CreateAndInitRecordFile()) {
@@ -532,7 +531,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   if (mmap_pages != 0) {
     perf_mmap_pages_ = mmap_pages;
   } else {
-    perf_mmap_pages_ = (system_wide_collection_ ? 256 : 16);
+    perf_mmap_pages_ = (system_wide_collection_ ? 256 : 128);
   }
 
   if (non_option_args != nullptr) {
