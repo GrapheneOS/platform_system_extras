@@ -62,16 +62,22 @@ class EventFd {
 
   bool ReadCounter(PerfCounter* counter) const;
 
-  // Call mmap() for this perf_event_file, so we can read sampled records from mapped area.
-  // mmap_pages should be power of 2.
-  bool MmapContent(size_t mmap_pages);
+  // Create mapped buffer used to receive records sent by the kernel.
+  // mmap_pages should be power of 2. If created successfully, fill pollfd,
+  // which is used to poll() on available mapped data.
+  bool CreateMappedBuffer(size_t mmap_pages, pollfd* poll_fd);
+
+  // Share the mapped buffer used by event_fd. The two EventFds should monitor
+  // the same event on the same cpu, but have different thread ids.
+  bool ShareMappedBuffer(const EventFd& event_fd);
+
+  bool HasMappedBuffer() const {
+    return mmap_data_buffer_size_ != 0;
+  }
 
   // When the kernel writes new sampled records to the mapped area, we can get them by returning
   // the start address and size of the data.
   size_t GetAvailableMmapData(char** pdata);
-
-  // Prepare pollfd for poll() to wait on available mmap_data.
-  void PrepareToPollForMmapData(pollfd* poll_fd);
 
  private:
   EventFd(int perf_event_fd, const std::string& event_name, pid_t tid, int cpu)
@@ -81,7 +87,10 @@ class EventFd {
         tid_(tid),
         cpu_(cpu),
         mmap_addr_(nullptr),
-        mmap_len_(0) {
+        mmap_len_(0),
+        mmap_metadata_page_(nullptr),
+        mmap_data_buffer_(nullptr),
+        mmap_data_buffer_size_(0) {
   }
 
   // Discard how much data we have read, so the kernel can reuse this part of mapped area to store

@@ -294,10 +294,10 @@ TEST(record_cmd, dump_symbols) {
 }
 
 TEST(record_cmd, group_option) {
-  ASSERT_TRUE(RunRecordCmd({"--group", "cpu-cycles,cpu-clock"}));
+  ASSERT_TRUE(RunRecordCmd({"--group", "cpu-cycles,cpu-clock", "-m", "16"}));
   ASSERT_TRUE(RunRecordCmd({"--group", "cpu-cycles,cpu-clock", "--group",
                             "cpu-cycles:u,cpu-clock:u", "--group",
-                            "cpu-cycles:k,cpu-clock:k"}));
+                            "cpu-cycles:k,cpu-clock:k", "-m", "16"}));
 }
 
 TEST(record_cmd, symfs_option) { ASSERT_TRUE(RunRecordCmd({"--symfs", "/"})); }

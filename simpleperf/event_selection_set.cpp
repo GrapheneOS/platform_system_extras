@@ -335,25 +335,24 @@ bool EventSelectionSet::ReadCounters(std::vector<CountersInfo>* counters) {
   return true;
 }
 
-void EventSelectionSet::PrepareToPollForEventFiles(
-    std::vector<pollfd>* pollfds) {
+bool EventSelectionSet::MmapEventFiles(size_t mmap_pages, std::vector<pollfd>* pollfds) {
   for (auto& group : groups_) {
     for (auto& selection : group) {
+      // For each event, allocate a mapped buffer for each cpu.
+      std::map<int, EventFd*> cpu_map;
       for (auto& event_fd : selection.event_fds) {
-        pollfd poll_fd;
-        event_fd->PrepareToPollForMmapData(&poll_fd);
-        pollfds->push_back(poll_fd);
-      }
-    }
-  }
-}
-
-bool EventSelectionSet::MmapEventFiles(size_t mmap_pages) {
-  for (auto& group : groups_) {
-    for (auto& selection : group) {
-      for (auto& event_fd : selection.event_fds) {
-        if (!event_fd->MmapContent(mmap_pages)) {
-          return false;
+        auto it = cpu_map.find(event_fd->Cpu());
+        if (it != cpu_map.end()) {
+          if (!event_fd->ShareMappedBuffer(*(it->second))) {
+            return false;
+          }
+        } else {
+          pollfd poll_fd;
+          if (!event_fd->CreateMappedBuffer(mmap_pages, &poll_fd)) {
+            return false;
+          }
+          pollfds->push_back(poll_fd);
+          cpu_map.insert(std::make_pair(event_fd->Cpu(), event_fd.get()));
         }
       }
     }
