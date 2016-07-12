@@ -716,6 +716,7 @@ DsoRecord::DsoRecord(const char* p) : Record(p) {
   p += header_size();
   MoveFromBinaryFormat(dso_type, p);
   MoveFromBinaryFormat(dso_id, p);
+  MoveFromBinaryFormat(min_vaddr, p);
   dso_name = p;
   p += Align(dso_name.size() + 1, 8);
   CHECK_EQ(p, end);
@@ -727,6 +728,7 @@ std::vector<char> DsoRecord::BinaryFormat() const {
   MoveToBinaryFormat(header, p);
   MoveToBinaryFormat(dso_type, p);
   MoveToBinaryFormat(dso_id, p);
+  MoveToBinaryFormat(min_vaddr, p);
   strcpy(p, dso_name.c_str());
   return buf;
 }
@@ -735,17 +737,19 @@ void DsoRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "dso_type: %s(%" PRIu64 ")\n",
                 DsoTypeToString(static_cast<DsoType>(dso_type)), dso_type);
   PrintIndented(indent, "dso_id: %" PRIu64 "\n", dso_id);
+  PrintIndented(indent, "min_vaddr: 0x%" PRIx64 "\n", min_vaddr);
   PrintIndented(indent, "dso_name: %s\n", dso_name.c_str());
 }
 
 DsoRecord DsoRecord::Create(uint64_t dso_type, uint64_t dso_id,
-                            const std::string& dso_name) {
+                            const std::string& dso_name, uint64_t min_vaddr) {
   DsoRecord record;
   record.SetTypeAndMisc(SIMPLE_PERF_RECORD_DSO, 0);
   record.dso_type = dso_type;
   record.dso_id = dso_id;
+  record.min_vaddr = min_vaddr;
   record.dso_name = dso_name;
-  record.SetSize(record.header_size() + 2 * sizeof(uint64_t) +
+  record.SetSize(record.header_size() + 3 * sizeof(uint64_t) +
                  Align(record.dso_name.size() + 1, 8));
   return record;
 }

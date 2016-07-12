@@ -280,6 +280,7 @@ void ThreadTree::Update(const Record& record) {
     } else {
       dso = FindUserDsoOrNew(r.dso_name);
     }
+    dso->SetMinVirtualAddress(r.min_vaddr);
     dso_id_to_dso_map_[r.dso_id] = dso;
   } else if (record.type() == SIMPLE_PERF_RECORD_SYMBOL) {
     auto& r = *static_cast<const SymbolRecord*>(&record);
