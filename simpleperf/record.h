@@ -134,7 +134,7 @@ struct RecordHeader {
 
   RecordHeader() : type(0), misc(0), size(0) {}
 
-  RecordHeader(const char* p) {
+  explicit RecordHeader(const char* p) {
     auto pheader = reinterpret_cast<const perf_event_header*>(p);
     if (pheader->type < SIMPLE_PERF_RECORD_TYPE_START) {
       type = pheader->type;
@@ -208,7 +208,7 @@ struct Record {
   SampleId sample_id;
 
   Record() {}
-  Record(const char* p) : header(p) {}
+  explicit Record(const char* p) : header(p) {}
 
   virtual ~Record() {}
 
@@ -389,7 +389,7 @@ struct BuildIdRecord : public Record {
 
   BuildIdRecord() {}
 
-  BuildIdRecord(const char* p);
+  explicit BuildIdRecord(const char* p);
   std::vector<char> BinaryFormat() const override;
 
   static BuildIdRecord Create(bool in_kernel, pid_t pid,
@@ -405,7 +405,7 @@ struct KernelSymbolRecord : public Record {
 
   KernelSymbolRecord() {}
 
-  KernelSymbolRecord(const char* p);
+  explicit KernelSymbolRecord(const char* p);
   std::vector<char> BinaryFormat() const override;
 
   static KernelSymbolRecord Create(std::string kallsyms);
@@ -422,7 +422,7 @@ struct DsoRecord : public Record {
 
   DsoRecord() {}
 
-  DsoRecord(const char* p);
+  explicit DsoRecord(const char* p);
   std::vector<char> BinaryFormat() const override;
 
   static DsoRecord Create(uint64_t dso_type, uint64_t dso_id,
@@ -440,7 +440,7 @@ struct SymbolRecord : public Record {
 
   SymbolRecord() {}
 
-  SymbolRecord(const char* p);
+  explicit SymbolRecord(const char* p);
   std::vector<char> BinaryFormat() const override;
 
   static SymbolRecord Create(uint64_t addr, uint64_t len,
@@ -455,7 +455,7 @@ struct TracingDataRecord : public Record {
 
   TracingDataRecord() {}
 
-  TracingDataRecord(const char* p);
+  explicit TracingDataRecord(const char* p);
   std::vector<char> BinaryFormat() const override;
 
   static TracingDataRecord Create(std::vector<char> tracing_data);
@@ -469,7 +469,7 @@ struct TracingDataRecord : public Record {
 struct UnknownRecord : public Record {
   std::vector<char> data;
 
-  UnknownRecord(const char* p);
+  explicit UnknownRecord(const char* p);
   std::vector<char> BinaryFormat() const override;
 
  protected:
@@ -499,7 +499,7 @@ std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(
 // time (t - min_time_diff) or earlier.
 class RecordCache {
  public:
-  RecordCache(bool has_timestamp, size_t min_cache_size = 1000u,
+  explicit RecordCache(bool has_timestamp, size_t min_cache_size = 1000u,
               uint64_t min_time_diff_in_ns = 1000000u);
   ~RecordCache();
   void Push(std::unique_ptr<Record> record);
