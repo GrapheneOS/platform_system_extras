@@ -71,5 +71,6 @@ bool GetExecPath(std::string* exec_path);
 
 bool CheckPerfEventLimit();
 bool CheckSampleFrequency(uint64_t sample_freq);
+bool CheckKernelSymbolAddresses();
 
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_
