@@ -249,16 +249,16 @@ TEST_F(ReportCommandTest, dso_filter_option) {
 TEST_F(ReportCommandTest, symbol_filter_option) {
   Report(PERF_DATA_WITH_SYMBOLS, {"--sort", "symbol"});
   ASSERT_TRUE(success);
-  ASSERT_FALSE(AllItemsWithString(lines, {"page_fault"}));
-  ASSERT_FALSE(AllItemsWithString(lines, {"page_fault", "perf_event_aux"}));
+  ASSERT_FALSE(AllItemsWithString(lines, {"func2(int, int)"}));
+  ASSERT_FALSE(AllItemsWithString(lines, {"main", "func2(int, int)"}));
   Report(PERF_DATA_WITH_SYMBOLS,
-         {"--sort", "symbol", "--symbols", "page_fault"});
+         {"--sort", "symbol", "--symbols", "func2(int, int)"});
   ASSERT_TRUE(success);
-  ASSERT_TRUE(AllItemsWithString(lines, {"page_fault"}));
+  ASSERT_TRUE(AllItemsWithString(lines, {"func2(int, int)"}));
   Report(PERF_DATA_WITH_SYMBOLS,
-         {"--sort", "symbol", "--symbols", "page_fault,perf_event_aux"});
+         {"--sort", "symbol", "--symbols", "main;func2(int, int)"});
   ASSERT_TRUE(success);
-  ASSERT_TRUE(AllItemsWithString(lines, {"page_fault", "perf_event_aux"}));
+  ASSERT_TRUE(AllItemsWithString(lines, {"main", "func2(int, int)"}));
 }
 
 TEST_F(ReportCommandTest, use_branch_address) {
@@ -308,7 +308,7 @@ TEST_F(ReportCommandTest, report_kernel_symbol) {
 TEST_F(ReportCommandTest, report_dumped_symbols) {
   Report(PERF_DATA_WITH_SYMBOLS);
   ASSERT_TRUE(success);
-  ASSERT_NE(content.find("page_fault"), std::string::npos);
+  ASSERT_NE(content.find("main"), std::string::npos);
 }
 
 TEST_F(ReportCommandTest, report_sort_vaddr_in_file) {
