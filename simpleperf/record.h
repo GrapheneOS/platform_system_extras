@@ -417,6 +417,7 @@ struct KernelSymbolRecord : public Record {
 struct DsoRecord : public Record {
   uint64_t dso_type;
   uint64_t dso_id;
+  uint64_t min_vaddr;
   std::string dso_name;
 
   DsoRecord() {}
@@ -425,7 +426,7 @@ struct DsoRecord : public Record {
   std::vector<char> BinaryFormat() const override;
 
   static DsoRecord Create(uint64_t dso_type, uint64_t dso_id,
-                          const std::string& dso_name);
+                          const std::string& dso_name, uint64_t min_vaddr);
 
  protected:
   void DumpData(size_t indent) const override;
