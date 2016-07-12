@@ -301,7 +301,7 @@ class ReportCommand : public Command {
 "                        symbol_to       -- name of function branched to\n"
 "                      The default sort keys are:\n"
 "                        comm,pid,tid,dso,symbol\n"
-"--symbols symbol1,symbol2,...    Report only for selected symbols.\n"
+"--symbols symbol1;symbol2;...    Report only for selected symbols.\n"
 "--symfs <dir>         Look for files with symbols relative to this directory.\n"
 "--tids tid1,tid2,...  Report only for selected tids.\n"
 "--vmlinux <file>      Parse kernel symbols from <file>.\n"
@@ -394,12 +394,9 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       use_branch_address_ = true;
     } else if (args[i] == "--children") {
       accumulate_callchain_ = true;
-    } else if (args[i] == "--comms" || args[i] == "--dsos" ||
-               args[i] == "--symbols") {
+    } else if (args[i] == "--comms" || args[i] == "--dsos") {
       std::unordered_set<std::string>& filter =
-          (args[i] == "--comms"
-               ? comm_filter
-               : (args[i] == "--dsos" ? dso_filter : symbol_filter));
+          (args[i] == "--comms" ? comm_filter : dso_filter);
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
@@ -460,6 +457,12 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
         return false;
       }
       sort_keys = android::base::Split(args[i], ",");
+    } else if (args[i] == "--symbols") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      std::vector<std::string> strs = android::base::Split(args[i], ";");
+      symbol_filter.insert(strs.begin(), strs.end());
     } else if (args[i] == "--symfs") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
