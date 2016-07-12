@@ -814,7 +814,8 @@ bool RecordCommand::DumpSymbolForRecord(const SampleRecord& r,
     if (!map->dso->HasDumped()) {
       map->dso->SetDumped();
       DsoRecord dso_record =
-          DsoRecord::Create(map->dso->type(), map->dso->id(), map->dso->Path());
+          DsoRecord::Create(map->dso->type(), map->dso->id(), map->dso->Path(),
+                            map->dso->MinVirtualAddress());
       if (!record_file_writer_->WriteRecord(dso_record)) {
         return false;
       }
