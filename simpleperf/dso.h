@@ -93,6 +93,7 @@ struct Dso {
 
   // Return the minimum virtual address in program header.
   uint64_t MinVirtualAddress();
+  void SetMinVirtualAddress(uint64_t min_vaddr) { min_vaddr_ = min_vaddr; }
 
   const Symbol* FindSymbol(uint64_t vaddr_in_dso);
   void InsertSymbol(const Symbol& symbol);
