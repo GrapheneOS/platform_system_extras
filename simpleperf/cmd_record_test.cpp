@@ -141,6 +141,7 @@ TEST(record_cmd, dwarf_callchain_sampling) {
   if (IsDwarfCallChainSamplingSupported()) {
     ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf"}));
     ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf,16384"}));
+    ASSERT_FALSE(RunRecordCmd({"--call-graph", "dwarf,65536"}));
     ASSERT_TRUE(RunRecordCmd({"-g"}));
   } else {
     GTEST_LOG_(INFO) << "This test does nothing as dwarf callchain sampling is "
