@@ -61,6 +61,10 @@ static void signal_handler(int) { signaled = true; }
 constexpr uint64_t DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT = 4000;
 constexpr uint64_t DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT = 1;
 
+// The max size of records dumped by kernel is 65535, and dump stack size
+// should be a multiply of 8, so MAX_DUMP_STACK_SIZE is 65528.
+constexpr uint32_t MAX_DUMP_STACK_SIZE = 65528;
+
 class RecordCommand : public Command {
  public:
   RecordCommand()
@@ -77,7 +81,7 @@ class RecordCommand : public Command {
 "--call-graph fp | dwarf[,<dump_stack_size>]\n"
 "             Enable call graph recording. Use frame pointer or dwarf debug\n"
 "             frame as the method to parse call graph in stack.\n"
-"             Default is dwarf,8192.\n"
+"             Default is dwarf,65528.\n"
 "--cpu cpu_item1,cpu_item2,...\n"
 "             Collect samples only on the selected cpus. cpu_item can be cpu\n"
 "             number like 1, or cpu range like 0-3.\n"
@@ -143,7 +147,7 @@ class RecordCommand : public Command {
         branch_sampling_(0),
         fp_callchain_sampling_(false),
         dwarf_callchain_sampling_(false),
-        dump_stack_size_in_dwarf_sampling_(8192),
+        dump_stack_size_in_dwarf_sampling_(MAX_DUMP_STACK_SIZE),
         unwind_dwarf_callchain_(true),
         post_unwind_(false),
         child_inherit_(true),
@@ -371,6 +375,12 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
           if ((size & 7) != 0) {
             LOG(ERROR) << "dump stack size " << size
                        << " is not 8-byte aligned.";
+            return false;
+          }
+          if (size >= MAX_DUMP_STACK_SIZE) {
+            LOG(ERROR) << "dump stack size " << size
+                       << " is bigger than max allowed size "
+                       << MAX_DUMP_STACK_SIZE << ".";
             return false;
           }
           dump_stack_size_in_dwarf_sampling_ = static_cast<uint32_t>(size);
