@@ -887,13 +887,13 @@ bool RecordCommand::UnwindRecord(Record* record) {
           thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
       RegSet regs =
           CreateRegSet(r.regs_user_data.reg_mask, r.regs_user_data.regs);
-      std::vector<char>& stack = r.stack_user_data.data;
       ArchType arch = GetArchForAbi(GetBuildArch(), r.regs_user_data.abi);
       // Normally do strict arch check when unwinding stack. But allow unwinding
       // 32-bit processes on 64-bit devices for system wide profiling.
       bool strict_arch_check = !system_wide_collection_;
       std::vector<uint64_t> unwind_ips =
-          UnwindCallChain(arch, *thread, regs, stack, strict_arch_check);
+          UnwindCallChain(arch, *thread, regs, r.stack_user_data.data.data(),
+                          r.GetValidStackSize(), strict_arch_check);
       r.callchain_data.ips.push_back(PERF_CONTEXT_USER);
       r.callchain_data.ips.insert(r.callchain_data.ips.end(),
                                   unwind_ips.begin(), unwind_ips.end());

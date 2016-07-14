@@ -107,13 +107,11 @@ class SampleTreeBuilder {
           (!r.stack_user_data.data.empty())) {
         RegSet regs =
             CreateRegSet(r.regs_user_data.reg_mask, r.regs_user_data.regs);
-        std::vector<char> stack(
-            r.stack_user_data.data.begin(),
-            r.stack_user_data.data.begin() + r.stack_user_data.data.size());
         ArchType arch = GetArchForAbi(ScopedCurrentArch::GetCurrentArch(),
                                       r.regs_user_data.abi);
-        std::vector<uint64_t> unwind_ips = UnwindCallChain(
-            arch, *thread, regs, stack, strict_unwind_arch_check_);
+        std::vector<uint64_t> unwind_ips =
+            UnwindCallChain(arch, *thread, regs, r.stack_user_data.data.data(),
+                            r.GetValidStackSize(), strict_unwind_arch_check_);
         if (!unwind_ips.empty()) {
           ips.push_back(PERF_CONTEXT_USER);
           ips.insert(ips.end(), unwind_ips.begin(), unwind_ips.end());
@@ -248,9 +246,10 @@ class SampleTreeBuilder {
                                 const std::vector<EntryT*>& callchain,
                                 const AccumulateInfoT& acc_info) {
     uint64_t period = GetPeriodForCallChain(acc_info);
-    sample->callchain.AddCallChain(callchain, period, [&](const EntryT* s1, const EntryT* s2) {
-      return sample_comparator_.IsSameSample(s1, s2);
-    });
+    sample->callchain.AddCallChain(
+        callchain, period, [&](const EntryT* s1, const EntryT* s2) {
+          return sample_comparator_.IsSameSample(s1, s2);
+        });
   }
 
   std::set<EntryT*, SampleComparator<EntryT>> sample_set_;
