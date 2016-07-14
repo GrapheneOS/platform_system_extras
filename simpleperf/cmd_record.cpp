@@ -65,6 +65,11 @@ constexpr uint64_t DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT = 1;
 // should be a multiply of 8, so MAX_DUMP_STACK_SIZE is 65528.
 constexpr uint32_t MAX_DUMP_STACK_SIZE = 65528;
 
+// The max allowed pages in mapped buffer is decided by rlimit(RLIMIT_MEMLOCK).
+// Here 1024 is a desired value for pages in mapped buffer. If mapped
+// successfully, the buffer size = 1024 * 4K (page size) = 4M.
+constexpr size_t DESIRED_PAGES_IN_MAPPED_BUFFER = 1024;
+
 class RecordCommand : public Command {
  public:
   RecordCommand()
@@ -117,9 +122,8 @@ class RecordCommand : public Command {
 "             This option requires at least one branch type among any, any_call,\n"
 "             any_ret, ind_call.\n"
 "-m mmap_pages   Set the size of the buffer used to receiving sample data from\n"
-"                the kernel. It should be a power of 2. The default value for\n"
-"                system wide profiling is 256. The default value for non system\n"
-"                wide profiling is 128.\n"
+"                the kernel. It should be a power of 2. If not set, the max\n"
+"                possible value <= 1024 will be used.\n"
 "--no-dump-kernel-symbols  Don't dump kernel symbols in perf.data. By default\n"
 "                          kernel symbols will be dumped when needed.\n"
 "--no-inherit  Don't record created child threads/processes.\n"
@@ -153,7 +157,7 @@ class RecordCommand : public Command {
         child_inherit_(true),
         can_dump_kernel_symbols_(true),
         dump_symbols_(false),
-        perf_mmap_pages_(0),
+        mmap_page_range_(std::make_pair(1, DESIRED_PAGES_IN_MAPPED_BUFFER)),
         record_filename_("perf.data"),
         sample_record_count_(0),
         lost_record_count_(0) {
@@ -206,8 +210,7 @@ class RecordCommand : public Command {
   std::vector<int> cpus_;
   EventSelectionSet event_selection_set_;
 
-  // mmap pages used by each perf event file, should be a power of 2.
-  size_t perf_mmap_pages_;
+  std::pair<size_t, size_t> mmap_page_range_;
 
   ThreadTree thread_tree_;
   std::string record_filename_;
@@ -254,7 +257,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
       event_selection_set_.SetEnableOnExec(true);
     } else {
       LOG(ERROR)
-          << "No threads to monitor. Try `simpleperf help record` for help\n";
+          << "No threads to monitor. Try `simpleperf help record` for help";
       return false;
     }
   }
@@ -272,7 +275,8 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     }
   }
   std::vector<pollfd> pollfds;
-  if (!event_selection_set_.MmapEventFiles(perf_mmap_pages_, &pollfds)) {
+  if (!event_selection_set_.MmapEventFiles(mmap_page_range_.first,
+                                           mmap_page_range_.second, &pollfds)) {
     return false;
   }
 
@@ -335,7 +339,6 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
 bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
                                  std::vector<std::string>* non_option_args) {
   std::set<pid_t> tid_set;
-  size_t mmap_pages = 0;
   size_t i;
   for (i = 0; i < args.size() && !args[i].empty() && args[i][0] == '-'; ++i) {
     if (args[i] == "-a") {
@@ -454,7 +457,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         LOG(ERROR) << "Invalid mmap_pages: '" << args[i] << "'";
         return false;
       }
-      mmap_pages = pages;
+      mmap_page_range_.first = mmap_page_range_.second = pages;
     } else if (args[i] == "--no-dump-kernel-symbols") {
       can_dump_kernel_symbols_ = false;
     } else if (args[i] == "--no-inherit") {
@@ -536,12 +539,6 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   if (dump_symbols_ && can_dump_kernel_symbols_) {
     // No need to dump kernel symbols as we will dump all required symbols.
     can_dump_kernel_symbols_ = false;
-  }
-
-  if (mmap_pages != 0) {
-    perf_mmap_pages_ = mmap_pages;
-  } else {
-    perf_mmap_pages_ = (system_wide_collection_ ? 256 : 128);
   }
 
   if (non_option_args != nullptr) {
