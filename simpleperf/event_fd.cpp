@@ -76,9 +76,7 @@ std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr, pid
 }
 
 EventFd::~EventFd() {
-  if (mmap_addr_ != nullptr) {
-    munmap(mmap_addr_, mmap_len_);
-  }
+  DestroyMappedBuffer();
   close(perf_event_fd_);
 }
 
@@ -115,19 +113,22 @@ bool EventFd::ReadCounter(PerfCounter* counter) const {
   return true;
 }
 
-bool EventFd::CreateMappedBuffer(size_t mmap_pages, pollfd* poll_fd) {
+bool EventFd::CreateMappedBuffer(size_t mmap_pages, pollfd* poll_fd, bool report_error) {
   CHECK(IsPowerOfTwo(mmap_pages));
   size_t page_size = sysconf(_SC_PAGE_SIZE);
   size_t mmap_len = (mmap_pages + 1) * page_size;
   void* mmap_addr = mmap(nullptr, mmap_len, PROT_READ | PROT_WRITE, MAP_SHARED, perf_event_fd_, 0);
   if (mmap_addr == MAP_FAILED) {
     bool is_perm_error = (errno == EPERM);
-    PLOG(ERROR) << "mmap() failed for " << Name();
-    if (is_perm_error) {
+    if (report_error) {
+      PLOG(ERROR) << "mmap(" << mmap_pages << ") failed for " << Name();
+    } else {
+      PLOG(DEBUG) << "mmap(" << mmap_pages << ") failed for " << Name();
+    }
+    if (report_error && is_perm_error) {
       LOG(ERROR) << "It seems the kernel doesn't allow allocating enough "
-          << "buffer for dumping samples, consider decreasing the number of "
-          << "monitored threads(-t), or decreasing mmap pages(-m), or "
-          << "decreasing the number of events(-e).";
+          << "buffer for dumping samples, consider decreasing mmap pages(-m), "
+          << "or decreasing the number of events(-e).";
     }
     return false;
   }
@@ -145,16 +146,29 @@ bool EventFd::CreateMappedBuffer(size_t mmap_pages, pollfd* poll_fd) {
   return true;
 }
 
-bool EventFd::ShareMappedBuffer(const EventFd& event_fd) {
+bool EventFd::ShareMappedBuffer(const EventFd& event_fd, bool report_error) {
   CHECK(!HasMappedBuffer());
   CHECK(event_fd.HasMappedBuffer());
   int result = ioctl(perf_event_fd_, PERF_EVENT_IOC_SET_OUTPUT, event_fd.perf_event_fd_);
   if (result != 0) {
-    PLOG(ERROR) << "failed to share mapped buffer of "
-        << event_fd.perf_event_fd_ << " with " << perf_event_fd_;
+    if (report_error) {
+      PLOG(ERROR) << "failed to share mapped buffer of "
+          << event_fd.perf_event_fd_ << " with " << perf_event_fd_;
+    }
     return false;
   }
   return true;
+}
+
+void EventFd::DestroyMappedBuffer() {
+  if (HasMappedBuffer()) {
+    munmap(mmap_addr_, mmap_len_);
+    mmap_addr_ = nullptr;
+    mmap_len_ = 0;
+    mmap_metadata_page_ = nullptr;
+    mmap_data_buffer_ = nullptr;
+    mmap_data_buffer_size_ = 0;
+  }
 }
 
 size_t EventFd::GetAvailableMmapData(char** pdata) {
