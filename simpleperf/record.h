@@ -376,6 +376,16 @@ struct SampleRecord : public Record {
   void AdjustSizeBasedOnData();
   uint64_t Timestamp() const override;
 
+  uint64_t GetValidStackSize() const {
+    // If stack_user_data.dyn_size == 0, it may be because the kernel misses
+    // the patch to update dyn_size, like in N9 (See b/22612370). So assume
+    // all stack data is valid if dyn_size == 0.
+    if (stack_user_data.dyn_size == 0) {
+      return stack_user_data.data.size();
+    }
+    return stack_user_data.dyn_size;
+  }
+
  protected:
   void DumpData(size_t indent) const override;
 };
@@ -500,7 +510,7 @@ std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(
 class RecordCache {
  public:
   explicit RecordCache(bool has_timestamp, size_t min_cache_size = 1000u,
-              uint64_t min_time_diff_in_ns = 1000000u);
+                       uint64_t min_time_diff_in_ns = 1000000u);
   ~RecordCache();
   void Push(std::unique_ptr<Record> record);
   void Push(std::vector<std::unique_ptr<Record>> records);
@@ -512,8 +522,7 @@ class RecordCache {
     uint32_t seq;
     Record* record;
 
-    RecordWithSeq(uint32_t seq, Record* record) : seq(seq), record(record) {
-    }
+    RecordWithSeq(uint32_t seq, Record* record) : seq(seq), record(record) {}
     bool IsHappensBefore(const RecordWithSeq& other) const;
   };
 

@@ -95,8 +95,8 @@ static ucontext_t BuildUContextFromRegs(const RegSet& regs __attribute__((unused
 }
 
 std::vector<uint64_t> UnwindCallChain(ArchType arch, const ThreadEntry& thread,
-                                      const RegSet& regs, const std::vector<char>& stack,
-                                      bool strict_arch_check) {
+                                      const RegSet& regs, const char* stack,
+                                      size_t stack_size, bool strict_arch_check) {
   std::vector<uint64_t> result;
   if (!IsArchTheSame(arch, GetBuildArch(), strict_arch_check)) {
     LOG(FATAL) << "simpleperf is built in arch " << GetArchString(GetBuildArch())
@@ -123,8 +123,8 @@ std::vector<uint64_t> UnwindCallChain(ArchType arch, const ThreadEntry& thread,
 
   backtrace_stackinfo_t stack_info;
   stack_info.start = stack_addr;
-  stack_info.end = stack_addr + stack.size();
-  stack_info.data = reinterpret_cast<const uint8_t*>(stack.data());
+  stack_info.end = stack_addr + stack_size;
+  stack_info.data = reinterpret_cast<const uint8_t*>(stack);
 
   std::unique_ptr<Backtrace> backtrace(
       Backtrace::CreateOffline(thread.pid, thread.tid, backtrace_map.get(), stack_info, true));
