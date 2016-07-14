@@ -803,6 +803,11 @@ bool RecordCommand::ProcessRecord(Record* record) {
       if (!DumpSymbolForRecord(r, false)) {
         return false;
       }
+      if (fp_callchain_sampling_) {
+        if (!DumpSymbolForRecord(r, true)) {
+          return false;
+        }
+      }
     }
   } else if (record->type() == PERF_RECORD_LOST) {
     lost_record_count_ += static_cast<LostRecord*>(record)->lost;
@@ -906,8 +911,10 @@ bool RecordCommand::UnwindRecord(Record* record) {
       r.stack_user_data.data.clear();
       r.stack_user_data.dyn_size = 0;
       r.AdjustSizeBasedOnData();
-      if (!DumpSymbolForRecord(r, true)) {
-        return false;
+      if (dump_symbols_) {
+        if (!DumpSymbolForRecord(r, true)) {
+          return false;
+        }
       }
     }
   }
