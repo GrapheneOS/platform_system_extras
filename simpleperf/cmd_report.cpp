@@ -276,7 +276,7 @@ class ReportCommand : public Command {
 "-g [callee|caller]    Print call graph. If callee mode is used, the graph\n"
 "                      shows how functions are called from others. Otherwise,\n"
 "                      the graph shows how functions call others.\n"
-"                      Default is callee mode.\n"
+"                      Default is caller mode.\n"
 "-i <file>  Specify path of record file, default is perf.data.\n"
 "-n         Print the sample count for each item.\n"
 "--no-demangle         Don't demangle symbol names.\n"
@@ -313,7 +313,7 @@ class ReportCommand : public Command {
         system_wide_collection_(false),
         accumulate_callchain_(false),
         print_callgraph_(false),
-        callgraph_show_callee_(true) {}
+        callgraph_show_callee_(false) {}
 
   bool Run(const std::vector<std::string>& args);
 
