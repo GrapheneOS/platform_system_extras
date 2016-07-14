@@ -16,9 +16,12 @@
 
 #include "thread_tree.h"
 
+#include <inttypes.h>
+
 #include <limits>
 
 #include <android-base/logging.h>
+#include <android-base/stringprintf.h>
 
 #include "environment.h"
 #include "perf_event.h"
@@ -207,21 +210,31 @@ const MapEntry* ThreadTree::FindMap(const ThreadEntry* thread, uint64_t ip) {
 const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip,
                                      uint64_t* pvaddr_in_file) {
   uint64_t vaddr_in_file;
-  if (map->dso == kernel_dso_.get()) {
+  Dso* dso = map->dso;
+  if (dso == kernel_dso_.get()) {
     vaddr_in_file = ip;
   } else {
     vaddr_in_file = ip - map->start_addr + map->dso->MinVirtualAddress();
   }
-  const Symbol* symbol = map->dso->FindSymbol(vaddr_in_file);
-  if (symbol == nullptr && map->in_kernel && map->dso != kernel_dso_.get()) {
+  const Symbol* symbol = dso->FindSymbol(vaddr_in_file);
+  if (symbol == nullptr && map->in_kernel && dso != kernel_dso_.get()) {
     // It is in a kernel module, but we can't find the kernel module file, or
     // the kernel module file contains no symbol. Try finding the symbol in
     // /proc/kallsyms.
     vaddr_in_file = ip;
-    symbol = kernel_dso_->FindSymbol(vaddr_in_file);
+    dso = kernel_dso_.get();
+    symbol = dso->FindSymbol(vaddr_in_file);
   }
   if (symbol == nullptr) {
-    symbol = &unknown_symbol_;
+    if (show_ip_for_unknown_symbol_) {
+      std::string name = android::base::StringPrintf(
+          "%s[+%" PRIx64 "]", dso->FileName().c_str(), vaddr_in_file);
+      dso->InsertSymbol(Symbol(name, vaddr_in_file, 1));
+      symbol = dso->FindSymbol(vaddr_in_file);
+      CHECK(symbol != nullptr);
+    } else {
+      symbol = &unknown_symbol_;
+    }
   }
   if (pvaddr_in_file != nullptr) {
     *pvaddr_in_file = vaddr_in_file;
