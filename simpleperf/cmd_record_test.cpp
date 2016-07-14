@@ -294,6 +294,15 @@ TEST(record_cmd, dump_symbols) {
   ASSERT_TRUE(RunRecordCmd({"--dump-symbols"}, tmpfile.path));
   CheckDsoSymbolRecords(tmpfile.path, true, &success);
   ASSERT_TRUE(success);
+  if (IsDwarfCallChainSamplingSupported()) {
+    ASSERT_TRUE(RunRecordCmd({"-g"}, tmpfile.path));
+    bool success;
+    CheckDsoSymbolRecords(tmpfile.path, false, &success);
+    ASSERT_TRUE(success);
+    ASSERT_TRUE(RunRecordCmd({"-g", "--dump-symbols"}, tmpfile.path));
+    CheckDsoSymbolRecords(tmpfile.path, true, &success);
+    ASSERT_TRUE(success);
+  }
 }
 
 TEST(record_cmd, group_option) {
