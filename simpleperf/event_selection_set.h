@@ -88,7 +88,7 @@ class EventSelectionSet {
   bool OpenEventFilesForCpus(const std::vector<int>& cpus);
   bool OpenEventFilesForThreadsOnCpus(const std::vector<pid_t>& threads, std::vector<int> cpus);
   bool ReadCounters(std::vector<CountersInfo>* counters);
-  bool MmapEventFiles(size_t mmap_pages, std::vector<pollfd>* pollfds);
+  bool MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pages, std::vector<pollfd>* pollfds);
   void PrepareToReadMmapEventData(std::function<bool (Record*)> callback);
   bool ReadMmapEventData();
   bool FinishReadMmapEventData();
@@ -98,6 +98,7 @@ class EventSelectionSet {
                                    EventSelection* selection);
   void UnionSampleType();
   bool OpenEventFiles(const std::vector<pid_t>& threads, const std::vector<int>& cpus);
+  bool MmapEventFiles(size_t mmap_pages, std::vector<pollfd>* pollfds, bool report_error);
   bool ReadMmapEventDataForFd(std::unique_ptr<EventFd>& event_fd, const perf_event_attr& attr,
                               bool* has_data);
 

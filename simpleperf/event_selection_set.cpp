@@ -335,7 +335,29 @@ bool EventSelectionSet::ReadCounters(std::vector<CountersInfo>* counters) {
   return true;
 }
 
-bool EventSelectionSet::MmapEventFiles(size_t mmap_pages, std::vector<pollfd>* pollfds) {
+bool EventSelectionSet::MmapEventFiles(size_t min_mmap_pages,
+                                       size_t max_mmap_pages,
+                                       std::vector<pollfd>* pollfds) {
+  for (size_t i = max_mmap_pages; i >= min_mmap_pages; i >>= 1) {
+    if (MmapEventFiles(i, pollfds, i == min_mmap_pages)) {
+      LOG(VERBOSE) << "Mapped buffer size is " << i << " pages.";
+      return true;
+    }
+    for (auto& group : groups_) {
+      for (auto& selection : group) {
+        for (auto& event_fd : selection.event_fds) {
+          event_fd->DestroyMappedBuffer();
+        }
+      }
+    }
+  }
+  return false;
+}
+
+bool EventSelectionSet::MmapEventFiles(size_t mmap_pages,
+                                       std::vector<pollfd>* pollfds,
+                                       bool report_error) {
+  pollfds->clear();
   for (auto& group : groups_) {
     for (auto& selection : group) {
       // For each event, allocate a mapped buffer for each cpu.
@@ -343,12 +365,13 @@ bool EventSelectionSet::MmapEventFiles(size_t mmap_pages, std::vector<pollfd>* p
       for (auto& event_fd : selection.event_fds) {
         auto it = cpu_map.find(event_fd->Cpu());
         if (it != cpu_map.end()) {
-          if (!event_fd->ShareMappedBuffer(*(it->second))) {
+          if (!event_fd->ShareMappedBuffer(*(it->second), report_error)) {
             return false;
           }
         } else {
           pollfd poll_fd;
-          if (!event_fd->CreateMappedBuffer(mmap_pages, &poll_fd)) {
+          if (!event_fd->CreateMappedBuffer(mmap_pages, &poll_fd,
+                                            report_error)) {
             return false;
           }
           pollfds->push_back(poll_fd);
