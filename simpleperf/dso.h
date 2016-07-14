@@ -86,6 +86,8 @@ struct Dso {
   const std::string& Path() const { return path_; }
   // Return the path containing symbol table and debug information.
   const std::string& GetDebugFilePath() const { return debug_file_path_; }
+  // Return the file name without directory info.
+  const std::string& FileName() const { return file_name_; }
 
   bool HasDumped() const { return has_dumped_; }
 
@@ -122,6 +124,8 @@ struct Dso {
   // path of the shared library having symbol table and debug information
   // It is the same as path_, or has the same build id as path_.
   std::string debug_file_path_;
+  // File name of the shared library, got by removing directories in path_.
+  std::string file_name_;
   uint64_t min_vaddr_;
   std::set<Symbol, SymbolComparator> symbols_;
   bool is_loaded_;
