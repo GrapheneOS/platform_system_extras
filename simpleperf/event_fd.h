@@ -65,15 +65,17 @@ class EventFd {
   // Create mapped buffer used to receive records sent by the kernel.
   // mmap_pages should be power of 2. If created successfully, fill pollfd,
   // which is used to poll() on available mapped data.
-  bool CreateMappedBuffer(size_t mmap_pages, pollfd* poll_fd);
+  bool CreateMappedBuffer(size_t mmap_pages, pollfd* poll_fd, bool report_error);
 
   // Share the mapped buffer used by event_fd. The two EventFds should monitor
   // the same event on the same cpu, but have different thread ids.
-  bool ShareMappedBuffer(const EventFd& event_fd);
+  bool ShareMappedBuffer(const EventFd& event_fd, bool report_error);
 
   bool HasMappedBuffer() const {
     return mmap_data_buffer_size_ != 0;
   }
+
+  void DestroyMappedBuffer();
 
   // When the kernel writes new sampled records to the mapped area, we can get them by returning
   // the start address and size of the data.
