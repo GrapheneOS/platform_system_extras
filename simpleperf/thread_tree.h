@@ -68,7 +68,8 @@ struct ThreadEntry {
 class ThreadTree {
  public:
   ThreadTree()
-      : unknown_symbol_("unknown", 0,
+      : show_ip_for_unknown_symbol_(false),
+        unknown_symbol_("unknown", 0,
                         std::numeric_limits<unsigned long long>::max()) {
     unknown_dso_ = Dso::CreateDso(DSO_ELF_FILE, "unknown");
     unknown_map_ = MapEntry(0, std::numeric_limits<unsigned long long>::max(),
@@ -92,6 +93,7 @@ class ThreadTree {
   const Symbol* FindKernelSymbol(uint64_t ip);
   const Symbol* UnknownSymbol() const { return &unknown_symbol_; }
 
+  void ShowIpForUnknownSymbol() { show_ip_for_unknown_symbol_ = true; }
   // Clear thread and map information, but keep loaded dso information. It saves
   // the time to reload dso information.
   void ClearThreadAndMap();
@@ -117,6 +119,7 @@ class ThreadTree {
   std::unordered_map<std::string, std::unique_ptr<Dso>> module_dso_tree_;
   std::unordered_map<std::string, std::unique_ptr<Dso>> user_dso_tree_;
   std::unique_ptr<Dso> unknown_dso_;
+  bool show_ip_for_unknown_symbol_;
   Symbol unknown_symbol_;
   std::unordered_map<uint64_t, Dso*> dso_id_to_dso_map_;
 };

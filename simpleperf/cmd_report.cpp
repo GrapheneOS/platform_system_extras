@@ -280,6 +280,7 @@ class ReportCommand : public Command {
 "-i <file>  Specify path of record file, default is perf.data.\n"
 "-n         Print the sample count for each item.\n"
 "--no-demangle         Don't demangle symbol names.\n"
+"--no-show-ip          Don't show vaddr in file for unknown symbols.\n"
 "-o report_file_name   Set report file name, default is stdout.\n"
 "--pids pid1,pid2,...  Report only for selected pids.\n"
 "--sort key1,key2,...  Select keys used to sort and print the report. The\n"
@@ -379,6 +380,7 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
 
 bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   bool demangle = true;
+  bool show_ip_for_unknown_symbol = true;
   std::string symfs_dir;
   std::string vmlinux;
   bool print_sample_count = false;
@@ -428,6 +430,8 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
 
     } else if (args[i] == "--no-demangle") {
       demangle = false;
+    } else if (args[i] == "--no-show-ip") {
+      show_ip_for_unknown_symbol = false;
     } else if (args[i] == "-o") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -486,6 +490,10 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   }
   if (!vmlinux.empty()) {
     Dso::SetVmlinux(vmlinux);
+  }
+
+  if (show_ip_for_unknown_symbol) {
+    thread_tree_.ShowIpForUnknownSymbol();
   }
 
   SampleDisplayer<SampleEntry, SampleTree> displayer;

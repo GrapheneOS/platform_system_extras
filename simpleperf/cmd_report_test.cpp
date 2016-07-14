@@ -340,6 +340,15 @@ TEST_F(ReportCommandTest, check_build_id) {
       testing::ExitedWithCode(0), "build id.*mismatch");
 }
 
+TEST_F(ReportCommandTest, no_show_ip_option) {
+  Report(PERF_DATA);
+  ASSERT_TRUE(success);
+  ASSERT_EQ(content.find("unknown"), std::string::npos);
+  Report(PERF_DATA, {"--no-show-ip"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("unknown"), std::string::npos);
+}
+
 #if defined(__linux__)
 
 static std::unique_ptr<Command> RecordCmd() {
