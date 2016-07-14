@@ -28,6 +28,6 @@ struct ThreadEntry;
 using ThreadEntry = simpleperf::ThreadEntry;
 
 std::vector<uint64_t> UnwindCallChain(ArchType arch, const ThreadEntry& thread, const RegSet& regs,
-                                      const std::vector<char>& stack, bool strict_arch_check);
+                                      const char* stack, size_t stack_size, bool strict_arch_check);
 
 #endif  // SIMPLE_PERF_DWARF_UNWIND_H_
