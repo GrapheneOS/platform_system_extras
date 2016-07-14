@@ -154,6 +154,12 @@ Dso::Dso(DsoType type, uint64_t id, const std::string& path)
       debug_file_path_ = path_in_symfs;
     }
   }
+  size_t pos = path.find_last_of("/\\");
+  if (pos != std::string::npos) {
+    file_name_ = path.substr(pos + 1);
+  } else {
+    file_name_ = path;
+  }
   dso_count_++;
 }
 
