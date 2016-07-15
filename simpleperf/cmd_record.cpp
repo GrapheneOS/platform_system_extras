@@ -17,6 +17,7 @@
 #include <libgen.h>
 #include <poll.h>
 #include <signal.h>
+#include <sys/prctl.h>
 #include <sys/utsname.h>
 #include <unistd.h>
 #include <set>
@@ -161,6 +162,8 @@ class RecordCommand : public Command {
         record_filename_("perf.data"),
         sample_record_count_(0),
         lost_record_count_(0) {
+    // Die if parent exits.
+    prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
     signaled = false;
     scoped_signal_handler_.reset(
         new ScopedSignalHandler({SIGCHLD, SIGINT, SIGTERM}, signal_handler));

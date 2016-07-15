@@ -18,6 +18,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/prctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -91,6 +92,8 @@ bool Workload::CreateNewProcess() {
 }
 
 static void ChildProcessFn(std::vector<std::string>& args, int start_signal_fd, int exec_child_fd) {
+  // Die if parent exits.
+  prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
   std::vector<char*> argv(args.size() + 1);
   for (size_t i = 0; i < args.size(); ++i) {
     argv[i] = &args[i][0];
