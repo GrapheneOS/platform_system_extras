@@ -18,6 +18,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/prctl.h>
 
 #include <algorithm>
 #include <chrono>
@@ -290,6 +291,8 @@ class StatCommand : public Command {
         system_wide_collection_(false),
         child_inherit_(true),
         csv_(false) {
+    // Die if parent exits.
+    prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
     signaled = false;
     scoped_signal_handler_.reset(
         new ScopedSignalHandler({SIGCHLD, SIGINT, SIGTERM}, signal_handler));
