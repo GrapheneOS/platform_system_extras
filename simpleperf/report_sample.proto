@@ -22,12 +22,13 @@ message Sample {
   }
 
   repeated CallChainEntry callchain = 2;
+  optional int32 thread_id = 3;
 }
 
 message Record {
   enum Type {
-    UNKOWN = 1;
-    SAMPLE = 2;
+    UNKOWN = 0;
+    SAMPLE = 1;
   }
 
   // Identifies which field is filled in.

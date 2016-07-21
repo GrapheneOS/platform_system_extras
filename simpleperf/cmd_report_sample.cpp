@@ -238,6 +238,7 @@ bool ReportSampleCommand::DumpProtobufReport(const std::string& filename) {
     static size_t sample_count = 0;
     PrintIndented(0, "sample %zu:\n", ++sample_count);
     PrintIndented(1, "time: %" PRIu64 "\n", sample.time());
+    PrintIndented(1, "thread_id: %d\n", sample.thread_id());
     PrintIndented(1, "callchain:\n");
     for (int j = 0; j < sample.callchain_size(); ++j) {
       const proto::Sample_CallChainEntry& callchain = sample.callchain(j);
@@ -269,6 +270,7 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
   proto_record.set_type(proto::Record_Type_SAMPLE);
   proto::Sample* sample = proto_record.mutable_sample();
   sample->set_time(r.time_data.time);
+  sample->set_thread_id(r.tid_data.tid);
   proto::Sample_CallChainEntry* callchain = sample->add_callchain();
   callchain->set_ip(r.ip_data.ip);
 
@@ -329,6 +331,7 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r) {
   const Symbol* symbol = thread_tree_.FindSymbol(map, r.ip_data.ip, nullptr);
   FprintIndented(report_fp_, 0, "sample:\n");
   FprintIndented(report_fp_, 1, "time: %" PRIu64 "\n", r.time_data.time);
+  FprintIndented(report_fp_, 1, "thread_id: %d\n", r.tid_data.tid);
   FprintIndented(report_fp_, 1, "ip: %" PRIx64 "\n", r.ip_data.ip);
   FprintIndented(report_fp_, 1, "dso: %s\n", map->dso->Path().c_str());
   FprintIndented(report_fp_, 1, "symbol: %s\n", symbol->DemangledName());
