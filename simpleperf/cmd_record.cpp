@@ -78,7 +78,8 @@ class RecordCommand : public Command {
             "record", "record sampling info in perf.data",
             // clang-format off
 "Usage: simpleperf record [options] [command [command-args]]\n"
-"       Gather sampling information when running [command].\n"
+"       Gather sampling information of running [command]. And -a/-p/-t option\n"
+"       can be used to change target of sampling information.\n"
 "-a     System-wide collection.\n"
 "-b     Enable take branch stack sampling. Same as '-j any'\n"
 "-c count     Set event sample period. It means recording one sample when\n"
@@ -94,6 +95,9 @@ class RecordCommand : public Command {
 "--dump-symbols  Dump symbols in perf.data. By default perf.data doesn't contain\n"
 "                symbol information for samples. This option is used when there\n"
 "                is no symbol information in report environment.\n"
+"--duration time_in_sec  Monitor for time_in_sec seconds instead of running\n"
+"                        [command]. Here time_in_sec may be any positive\n"
+"                        floating point number.\n"
 "-e event1[:modifier1],event2[:modifier2],...\n"
 "             Select the event list to sample. Use `simpleperf list` to find\n"
 "             all possible event names. Modifiers can be added to define how\n"
@@ -342,6 +346,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
 bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
                                  std::vector<std::string>* non_option_args) {
   std::set<pid_t> tid_set;
+  double duration_in_sec = 0;
   size_t i;
   for (i = 0; i < args.size() && !args[i].empty() && args[i][0] == '-'; ++i) {
     if (args[i] == "-a") {
@@ -403,6 +408,17 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       cpus_ = GetCpusFromString(args[i]);
     } else if (args[i] == "--dump-symbols") {
       dump_symbols_ = true;
+    } else if (args[i] == "--duration") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      errno = 0;
+      char* endptr;
+      duration_in_sec = strtod(args[i].c_str(), &endptr);
+      if (duration_in_sec <= 0 || *endptr != '\0' || errno == ERANGE) {
+        LOG(ERROR) << "Invalid duration: " << args[i].c_str();
+        return false;
+      }
     } else if (args[i] == "-e") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -544,11 +560,19 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     can_dump_kernel_symbols_ = false;
   }
 
-  if (non_option_args != nullptr) {
-    non_option_args->clear();
-    for (; i < args.size(); ++i) {
-      non_option_args->push_back(args[i]);
+  non_option_args->clear();
+  for (; i < args.size(); ++i) {
+    non_option_args->push_back(args[i]);
+  }
+  if (duration_in_sec != 0) {
+    if (!non_option_args->empty()) {
+      LOG(ERROR) << "Using --duration option while running a command is not "
+                    "supported.";
+      return false;
     }
+    non_option_args->insert(
+        non_option_args->end(),
+        {"sleep", android::base::StringPrintf("%f", duration_in_sec)});
   }
   return true;
 }
