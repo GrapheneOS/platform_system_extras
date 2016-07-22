@@ -109,3 +109,7 @@ TEST(stat_cmd, auto_generated_summary) {
   // Check if the summary of cpu-clock is generated.
   ASSERT_NE(s.npos, s.find("cpu-clock", pos));
 }
+
+TEST(stat_cmd, duration_option) {
+  ASSERT_TRUE(StatCmd()->Run({"--duration", "1.2"}));
+}
