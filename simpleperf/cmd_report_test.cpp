@@ -159,7 +159,7 @@ static bool CheckCallerMode(std::vector<std::string>& lines) {
 TEST_F(ReportCommandTest, callgraph_option) {
   Report(CALLGRAPH_FP_PERF_DATA, {"-g"});
   ASSERT_TRUE(success);
-  ASSERT_TRUE(CheckCalleeMode(lines));
+  ASSERT_TRUE(CheckCallerMode(lines));
   Report(CALLGRAPH_FP_PERF_DATA, {"-g", "callee"});
   ASSERT_TRUE(success);
   ASSERT_TRUE(CheckCalleeMode(lines));
