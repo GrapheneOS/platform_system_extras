@@ -311,3 +311,8 @@ TEST(record_cmd, group_option) {
 }
 
 TEST(record_cmd, symfs_option) { ASSERT_TRUE(RunRecordCmd({"--symfs", "/"})); }
+
+TEST(record_cmd, duration_option) {
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run({"--duration", "1.2", "-o", tmpfile.path}));
+}

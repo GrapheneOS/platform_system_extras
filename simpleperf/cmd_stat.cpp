@@ -125,7 +125,7 @@ struct CounterSummary {
 
 class CounterSummaries {
  public:
-  explicit CounterSummaries(bool csv): csv_(csv) {}
+  explicit CounterSummaries(bool csv) : csv_(csv) {}
   void AddSummary(const CounterSummary& summary) {
     summaries_.push_back(summary);
   }
@@ -153,7 +153,8 @@ class CounterSummaries {
         if (other != nullptr && other->IsMonitoredAtTheSameTime(s)) {
           if (FindSummary(s.type_name, "") == nullptr) {
             AddSummary(CounterSummary(s.type_name, "", s.group_id,
-                                      s.count + other->count, s.scale, true, csv_));
+                                      s.count + other->count, s.scale, true,
+                                      csv_));
           }
         }
       }
@@ -179,11 +180,9 @@ class CounterSummaries {
 
     for (auto& s : summaries_) {
       if (csv_) {
-        fprintf(fp, "%s,%s,%s,(%.0lf%%)%s\n",
-                s.readable_count.c_str(),
-                s.Name().c_str(),
-                s.comment.c_str(),
-                1.0 / s.scale * 100, (s.auto_generated ? " (generated)," : ","));
+        fprintf(fp, "%s,%s,%s,(%.0lf%%)%s\n", s.readable_count.c_str(),
+                s.Name().c_str(), s.comment.c_str(), 1.0 / s.scale * 100,
+                (s.auto_generated ? " (generated)," : ","));
       } else {
         fprintf(fp, "  %*s  %-*s   # %-*s  (%.0lf%%)%s\n",
                 static_cast<int>(count_column_width), s.readable_count.c_str(),
@@ -219,7 +218,8 @@ class CounterSummaries {
       const CounterSummary* other = FindSummary("cpu-cycles", s.modifier);
       if (other != nullptr && other->IsMonitoredAtTheSameTime(s)) {
         double cpi = static_cast<double>(other->count) / s.count;
-        return android::base::StringPrintf("%lf%ccycles per instruction", cpi, sap_mid);
+        return android::base::StringPrintf("%lf%ccycles per instruction", cpi,
+                                           sap_mid);
       }
     }
     if (android::base::EndsWith(s.type_name, "-misses")) {
@@ -236,7 +236,8 @@ class CounterSummaries {
       if (other != nullptr && other->IsMonitoredAtTheSameTime(s) &&
           other->count != 0) {
         double miss_rate = static_cast<double>(s.count) / other->count;
-        return android::base::StringPrintf("%lf%%%cmiss rate", miss_rate * 100, sap_mid);
+        return android::base::StringPrintf("%lf%%%cmiss rate", miss_rate * 100,
+                                           sap_mid);
       }
     }
     double rate = s.count / (duration_in_sec / s.scale);
@@ -260,16 +261,19 @@ class CounterSummaries {
 class StatCommand : public Command {
  public:
   StatCommand()
-      : Command(
-            "stat", "gather performance counter information",
-            // clang-format off
+      : Command("stat", "gather performance counter information",
+                // clang-format off
 "Usage: simpleperf stat [options] [command [command-args]]\n"
-"    Gather performance counter information of running [command].\n"
+"       Gather performance counter information of running [command].\n"
+"       And -a/-p/-t option can be used to change target of counter information.\n"
 "-a           Collect system-wide information.\n"
 "--cpu cpu_item1,cpu_item2,...\n"
 "                 Collect information only on the selected cpus. cpu_item can\n"
 "                 be a cpu number like 1, or a cpu range like 0-3.\n"
 "--csv            Write report in comma separate form.\n"
+"--duration time_in_sec  Monitor for time_in_sec seconds instead of running\n"
+"                        [command]. Here time_in_sec may be any positive\n"
+"                        floating point number.\n"
 "-e event1[:modifier1],event2[:modifier2],...\n"
 "                 Select the event list to count. Use `simpleperf list` to find\n"
 "                 all possible event names. Modifiers can be added to define\n"
@@ -285,8 +289,8 @@ class StatCommand : public Command {
 "-p pid1,pid2,... Stat events on existing processes. Mutually exclusive with -a.\n"
 "-t tid1,tid2,... Stat events on existing threads. Mutually exclusive with -a.\n"
 "--verbose        Show result in verbose mode.\n"
-            // clang-format on
-            ),
+                // clang-format on
+                ),
         verbose_mode_(false),
         system_wide_collection_(false),
         child_inherit_(true),
@@ -399,6 +403,7 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
 bool StatCommand::ParseOptions(const std::vector<std::string>& args,
                                std::vector<std::string>* non_option_args) {
   std::set<pid_t> tid_set;
+  double duration_in_sec = 0;
   size_t i;
   for (i = 0; i < args.size() && args[i].size() > 0 && args[i][0] == '-'; ++i) {
     if (args[i] == "-a") {
@@ -410,6 +415,17 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
       cpus_ = GetCpusFromString(args[i]);
     } else if (args[i] == "--csv") {
       csv_ = true;
+    } else if (args[i] == "--duration") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      errno = 0;
+      char* endptr;
+      duration_in_sec = strtod(args[i].c_str(), &endptr);
+      if (duration_in_sec <= 0 || *endptr != '\0' || errno == ERANGE) {
+        LOG(ERROR) << "Invalid duration: " << args[i].c_str();
+        return false;
+      }
     } else if (args[i] == "-e") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -464,12 +480,24 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
                   "used at the same time.";
     return false;
   }
+  if (system_wide_collection_ && !IsRoot()) {
+    LOG(ERROR) << "System wide profiling needs root privilege.";
+    return false;
+  }
 
-  if (non_option_args != nullptr) {
-    non_option_args->clear();
-    for (; i < args.size(); ++i) {
-      non_option_args->push_back(args[i]);
+  non_option_args->clear();
+  for (; i < args.size(); ++i) {
+    non_option_args->push_back(args[i]);
+  }
+  if (duration_in_sec != 0) {
+    if (!non_option_args->empty()) {
+      LOG(ERROR) << "Using --duration option while running a command is not "
+                    "supported.";
+      return false;
     }
+    non_option_args->insert(
+        non_option_args->end(),
+        {"sleep", android::base::StringPrintf("%f", duration_in_sec)});
   }
   return true;
 }
@@ -521,9 +549,8 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters,
           counters_info.selection->event_type_modifier;
       for (auto& counter_info : counters_info.counters) {
         if (csv_) {
-          fprintf(fp,
-                  "%s,tid,%d,cpu,%d,count,%" PRIu64 ",time_enabled,%" PRIu64
-                  ",time running,%" PRIu64 ",id,%" PRIu64 ",\n",
+          fprintf(fp, "%s,tid,%d,cpu,%d,count,%" PRIu64 ",time_enabled,%" PRIu64
+                      ",time running,%" PRIu64 ",id,%" PRIu64 ",\n",
                   event_type.name.c_str(), counter_info.tid, counter_info.cpu,
                   counter_info.counter.value, counter_info.counter.time_enabled,
                   counter_info.counter.time_running, counter_info.counter.id);
