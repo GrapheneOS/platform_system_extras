@@ -228,7 +228,9 @@ const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip,
   if (symbol == nullptr) {
     if (show_ip_for_unknown_symbol_) {
       std::string name = android::base::StringPrintf(
-          "%s[+%" PRIx64 "]", dso->FileName().c_str(), vaddr_in_file);
+          "%s%s[+%" PRIx64 "]",
+          (show_mark_for_unknown_symbol_ ? "*" : ""),
+          dso->FileName().c_str(), vaddr_in_file);
       dso->InsertSymbol(Symbol(name, vaddr_in_file, 1));
       symbol = dso->FindSymbol(vaddr_in_file);
       CHECK(symbol != nullptr);
