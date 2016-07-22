@@ -78,7 +78,10 @@ class ReportSampleCommand : public Command {
         use_protobuf_(false),
         report_fp_(nullptr),
         coded_os_(nullptr),
-        sample_count_(0) {}
+        sample_count_(0) {
+    thread_tree_.ShowMarkForUnknownSymbol();
+    thread_tree_.ShowIpForUnknownSymbol();
+  }
 
   bool Run(const std::vector<std::string>& args) override;
 
