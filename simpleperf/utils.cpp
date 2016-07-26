@@ -271,7 +271,7 @@ bool IsRoot() {
 }
 
 bool ProcessKernelSymbols(std::string& symbol_data,
-                          std::function<bool(const KernelSymbol&)> callback) {
+                          const std::function<bool(const KernelSymbol&)>& callback) {
   char* p = &symbol_data[0];
   char* data_end = p + symbol_data.size();
   while (p < data_end) {
@@ -332,4 +332,11 @@ uint64_t ConvertBytesToValue(const char* bytes, uint32_t size) {
   }
   LOG(FATAL) << "unexpected size " << size << " in ConvertBytesToValue";
   return 0;
+}
+
+timeval SecondToTimeval(double time_in_sec) {
+  timeval tv;
+  tv.tv_sec = static_cast<time_t>(time_in_sec);
+  tv.tv_usec = static_cast<int>((time_in_sec - tv.tv_sec) * 1000000);
+  return tv;
 }
