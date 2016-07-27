@@ -349,7 +349,7 @@ static int parse_table(fec_handle *f, uint64_t offset, uint32_t size)
 
     auto tokens = android::base::Split(table.get(), " ");
 
-    for (const auto token : tokens) {
+    for (const auto& token : tokens) {
         switch (i++) {
         case 0: /* version */
             if (token != stringify(VERITY_TABLE_VERSION)) {
