@@ -27,10 +27,16 @@ message Sample {
   optional int32 thread_id = 3;
 }
 
+message LostSituation {
+  optional uint64 sample_count = 1;
+  optional uint64 lost_count = 2;
+}
+
 message Record {
   enum Type {
     UNKOWN = 0;
     SAMPLE = 1;
+    LOST_SITUATION = 2;
   }
 
   // Identifies which field is filled in.
@@ -38,4 +44,5 @@ message Record {
 
   // One of the following will be filled in.
   optional Sample sample = 2;
+  optional LostSituation lost = 3;
 }
