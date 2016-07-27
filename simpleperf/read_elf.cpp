@@ -249,7 +249,7 @@ bool IsArmMappingSymbol(const char* name) {
 
 void ReadSymbolTable(llvm::object::symbol_iterator sym_begin,
                      llvm::object::symbol_iterator sym_end,
-                     std::function<void(const ElfFileSymbol&)> callback,
+                     const std::function<void(const ElfFileSymbol&)>& callback,
                      bool is_arm) {
   for (; sym_begin != sym_end; ++sym_begin) {
     ElfFileSymbol symbol;
@@ -302,7 +302,7 @@ void ReadSymbolTable(llvm::object::symbol_iterator sym_begin,
 
 template <class ELFT>
 void AddSymbolForPltSection(const llvm::object::ELFObjectFile<ELFT>* elf,
-                            std::function<void(const ElfFileSymbol&)> callback) {
+                            const std::function<void(const ElfFileSymbol&)>& callback) {
   // We may sample instructions in .plt section if the program
   // calls functions from shared libraries. Different architectures use
   // different formats to store .plt section, so it needs a lot of work to match
@@ -335,7 +335,7 @@ void AddSymbolForPltSection(const llvm::object::ELFObjectFile<ELFT>* elf,
 
 template <class ELFT>
 void ParseSymbolsFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf,
-                             std::function<void(const ElfFileSymbol&)> callback) {
+                             const std::function<void(const ElfFileSymbol&)>& callback) {
   auto machine = elf->getELFFile()->getHeader()->e_machine;
   bool is_arm = (machine == llvm::ELF::EM_ARM || machine == llvm::ELF::EM_AARCH64);
   if (elf->symbol_begin() != elf->symbol_end()) {
@@ -383,7 +383,7 @@ bool MatchBuildId(llvm::object::ObjectFile* obj, const BuildId& expected_build_i
 }
 
 bool ParseSymbolsFromElfFile(const std::string& filename, const BuildId& expected_build_id,
-                             std::function<void(const ElfFileSymbol&)> callback) {
+                             const std::function<void(const ElfFileSymbol&)>& callback) {
   if (!IsValidElfPath(filename)) {
     return false;
   }
@@ -392,7 +392,7 @@ bool ParseSymbolsFromElfFile(const std::string& filename, const BuildId& expecte
 
 bool ParseSymbolsFromEmbeddedElfFile(const std::string& filename, uint64_t file_offset,
                                      uint32_t file_size, const BuildId& expected_build_id,
-                                     std::function<void(const ElfFileSymbol&)> callback) {
+                                     const std::function<void(const ElfFileSymbol&)>& callback) {
   LOG(VERBOSE) << "Parse symbols from file " << filename;
   BinaryRet ret = OpenObjectFile(filename, file_offset, file_size);
   if (ret.obj == nullptr || !MatchBuildId(ret.obj, expected_build_id, filename)) {
