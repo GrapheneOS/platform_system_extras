@@ -25,6 +25,8 @@ For a simpleperf runtest like one_function test, it contains following steps:
 The information of all runtests is stored in runtest.conf.
 """
 
+import os
+import os.path
 import re
 import subprocess
 import sys
@@ -314,6 +316,11 @@ class DeviceRunner(Runner):
 
   """Run perf test on device."""
 
+  def __init__(self, perf_path):
+    self._download(os.environ['OUT'] + '/system/xbin/' + perf_path,
+                   '/data/local/tmp')
+    self.perf_path = '/data/local/tmp/' + perf_path
+
   def _call(self, args, output_file=None):
     output_fh = None
     if output_file is not None:
@@ -324,6 +331,15 @@ class DeviceRunner(Runner):
     if output_fh is not None:
       output_fh.close()
 
+  def _download(self, file, to_dir):
+    args = ['adb', 'push', file, to_dir]
+    subprocess.check_call(args)
+
+  def record(self, test_executable_name, record_file, additional_options=[]):
+    self._download(os.environ['OUT'] + '/system/bin/' + test_executable_name,
+                   '/data/local/tmp')
+    super(DeviceRunner, self).record('/data/local/tmp/' + test_executable_name,
+                                     record_file, additional_options)
 
 class ReportAnalyzer(object):
 
@@ -497,7 +513,8 @@ class ReportAnalyzer(object):
 
 
 def runtest(host, device, normal, callgraph, selected_tests):
-  tests = load_config_file('runtest.conf')
+  tests = load_config_file(os.path.dirname(os.path.realpath(__file__)) + \
+                           '/runtest.conf')
   host_runner = HostRunner('simpleperf')
   device_runner = DeviceRunner('simpleperf')
   report_analyzer = ReportAnalyzer()
@@ -530,11 +547,11 @@ def runtest(host, device, normal, callgraph, selected_tests):
       host_runner.record(
           test.executable_name,
           'perf_g.data',
-          additional_options=['-g'])
+          additional_options=['-g', '-f', '1000'])
       host_runner.report(
           'perf_g.data',
           'perf_g.report',
-          additional_options=['-g'] + test.report_options)
+          additional_options=['-g', 'callee'] + test.report_options)
       result = report_analyzer.check_report_file(test, 'perf_g.report', True)
       print 'call-graph test %s on host %s' % (
           test.test_name, 'Succeeded' if result else 'Failed')
@@ -542,14 +559,16 @@ def runtest(host, device, normal, callgraph, selected_tests):
         exit(1)
 
     if device and callgraph:
+      # Decrease sampling frequency by -f 1000 to avoid losing records
+      # while recording call-graph.
       device_runner.record(
           test.executable_name,
           '/data/perf_g.data',
-          additional_options=['-g'])
+          additional_options=['-g', '-f', '1000'])
       device_runner.report(
           '/data/perf_g.data',
           'perf_g.report',
-          additional_options=['-g'] + test.report_options)
+          additional_options=['-g', 'callee'] + test.report_options)
       result = report_analyzer.check_report_file(test, 'perf_g.report', True)
       print 'call-graph test %s on device %s' % (
           test.test_name, 'Succeeded' if result else 'Failed')
