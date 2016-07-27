@@ -96,7 +96,7 @@ bool GetBuildIdFromApkFile(const std::string& apk_path, const std::string& elf_f
 
 bool ParseSymbolsFromApkFile(const std::string& apk_path, const std::string& elf_filename,
                              const BuildId& expected_build_id,
-                             std::function<void(const ElfFileSymbol&)> callback);
+                             const std::function<void(const ElfFileSymbol&)>& callback);
 
 
 #endif  // SIMPLE_PERF_READ_APK_H_
