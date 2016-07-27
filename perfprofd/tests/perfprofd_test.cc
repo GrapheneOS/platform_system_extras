@@ -103,7 +103,7 @@ class PerfProfdTest : public testing::Test {
     if (test_dir == "") {
       ASSERT_TRUE(executable_path != nullptr);
       std::string s(executable_path);
-      auto found = s.find_last_of("/");
+      auto found = s.find_last_of('/');
       test_dir = s.substr(0,found);
       dest_dir = test_dir;
       dest_dir += "/tmp";
