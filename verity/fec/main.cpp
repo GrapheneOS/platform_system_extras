@@ -189,7 +189,7 @@ static int encode(image& ctx, const std::vector<std::string>& inp_filenames,
 
     size_t n = 1;
 
-    for (auto fn : inp_filenames) {
+    for (const auto& fn : inp_filenames) {
         INFO("\t%zu: '%s'\n", n++, fn.c_str());
     }
 
