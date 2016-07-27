@@ -290,7 +290,7 @@ bool image_load(const std::vector<std::string>& filenames, image *ctx,
 
     std::vector<int> fds;
 
-    for (auto fn : filenames) {
+    for (const auto& fn : filenames) {
         int fd = TEMP_FAILURE_RETRY(open(fn.c_str(), flags | O_LARGEFILE));
 
         if (fd < 0) {
