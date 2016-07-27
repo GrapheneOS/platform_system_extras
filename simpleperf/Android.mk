@@ -48,6 +48,7 @@ simpleperf_static_libraries_target := \
   libLLVMCore \
   libLLVMSupport \
   libprotobuf-cpp-lite \
+  libevent \
   libc \
 
 simpleperf_static_libraries_host := \
@@ -70,6 +71,7 @@ simpleperf_static_libraries_host_linux := \
   libbacktrace \
   libunwind \
   libcutils \
+  libevent \
 
 simpleperf_ldlibs_host_linux := -lrt
 
@@ -103,6 +105,7 @@ libsimpleperf_src_files_linux := \
   environment.cpp \
   event_fd.cpp \
   event_selection_set.cpp \
+  IOEventLoop.cpp \
   record_file_writer.cpp \
   workload.cpp \
 
@@ -218,6 +221,7 @@ simpleperf_unit_test_src_files_linux := \
   cmd_record_test.cpp \
   cmd_stat_test.cpp \
   environment_test.cpp \
+  IOEventLoop_test.cpp \
   record_file_test.cpp \
   workload_test.cpp \
 

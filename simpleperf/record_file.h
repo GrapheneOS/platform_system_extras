@@ -114,7 +114,8 @@ class RecordFileReader {
   }
   bool ReadFeatureSection(int feature, std::vector<char>* data);
   // If sorted is true, sort records before passing them to callback function.
-  bool ReadDataSection(std::function<bool(std::unique_ptr<Record>)> callback, bool sorted = true);
+  bool ReadDataSection(const std::function<bool(std::unique_ptr<Record>)>& callback,
+                       bool sorted = true);
   std::vector<std::string> ReadCmdlineFeature();
   std::vector<BuildIdRecord> ReadBuildIdFeature();
   std::string ReadFeatureString(int feature);

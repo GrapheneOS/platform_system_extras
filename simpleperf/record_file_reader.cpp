@@ -80,7 +80,7 @@ bool RecordFileReader::ReadAttrSection() {
     return false;
   }
   if (fseek(record_fp_, header_.attrs.offset, SEEK_SET) != 0) {
-    PLOG(ERROR) << "failed to fseek()";
+    PLOG(ERROR) << "fseek() failed";
     return false;
   }
   for (size_t i = 0; i < attr_count; ++i) {
@@ -132,7 +132,7 @@ bool RecordFileReader::ReadFeatureSectionDescriptors() {
   }
   uint64_t feature_section_offset = header_.data.offset + header_.data.size;
   if (fseek(record_fp_, feature_section_offset, SEEK_SET) != 0) {
-    PLOG(ERROR) << "failed to fseek()";
+    PLOG(ERROR) << "fseek() failed";
     return false;
   }
   for (const auto& id : features) {
@@ -148,7 +148,7 @@ bool RecordFileReader::ReadFeatureSectionDescriptors() {
 bool RecordFileReader::ReadIdsForAttr(const FileAttr& attr, std::vector<uint64_t>* ids) {
   size_t id_count = attr.ids.size / sizeof(uint64_t);
   if (fseek(record_fp_, attr.ids.offset, SEEK_SET) != 0) {
-    PLOG(ERROR) << "failed to fseek()";
+    PLOG(ERROR) << "fseek() failed";
     return false;
   }
   ids->resize(id_count);
@@ -158,10 +158,10 @@ bool RecordFileReader::ReadIdsForAttr(const FileAttr& attr, std::vector<uint64_t
   return true;
 }
 
-bool RecordFileReader::ReadDataSection(std::function<bool(std::unique_ptr<Record>)> callback,
-                                       bool sorted) {
+bool RecordFileReader::ReadDataSection(
+    const std::function<bool(std::unique_ptr<Record>)>& callback, bool sorted) {
   if (fseek(record_fp_, header_.data.offset, SEEK_SET) != 0) {
-    PLOG(ERROR) << "failed to fseek()";
+    PLOG(ERROR) << "fseek() failed";
     return false;
   }
   bool has_timestamp = true;
@@ -283,7 +283,7 @@ bool RecordFileReader::ReadFeatureSection(int feature, std::vector<char>* data) 
     return true;
   }
   if (fseek(record_fp_, section.offset, SEEK_SET) != 0) {
-    PLOG(ERROR) << "failed to fseek()";
+    PLOG(ERROR) << "fseek() failed";
     return false;
   }
   if (!Read(data->data(), data->size())) {

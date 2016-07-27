@@ -48,7 +48,7 @@ static std::map<std::string, callback_t>& CommandMap() {
 }
 
 void RegisterCommand(const std::string& cmd_name,
-                     std::function<std::unique_ptr<Command>(void)> callback) {
+                     const std::function<std::unique_ptr<Command>(void)>& callback) {
   CommandMap().insert(std::make_pair(cmd_name, callback));
 }
 
