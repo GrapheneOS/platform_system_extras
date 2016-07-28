@@ -25,22 +25,23 @@
 
 #include <android-base/macros.h>
 
+#include "IOEventLoop.h"
 #include "perf_event.h"
 
 struct PerfCounter {
-  uint64_t value;         // The value of the event specified by the perf_event_file.
+  uint64_t value;  // The value of the event specified by the perf_event_file.
   uint64_t time_enabled;  // The enabled time.
   uint64_t time_running;  // The running time.
   uint64_t id;            // The id of the perf_event_file.
 };
 
-struct pollfd;
-
 // EventFd represents an opened perf_event_file.
 class EventFd {
  public:
-  static std::unique_ptr<EventFd> OpenEventFile(const perf_event_attr& attr, pid_t tid, int cpu,
-                                                EventFd* group_event_fd, bool report_error = true);
+  static std::unique_ptr<EventFd> OpenEventFile(const perf_event_attr& attr,
+                                                pid_t tid, int cpu,
+                                                EventFd* group_event_fd,
+                                                bool report_error = true);
 
   ~EventFd();
 
@@ -49,41 +50,41 @@ class EventFd {
 
   uint64_t Id() const;
 
-  pid_t ThreadId() const {
-    return tid_;
-  }
+  pid_t ThreadId() const { return tid_; }
 
-  int Cpu() const {
-    return cpu_;
-  }
+  int Cpu() const { return cpu_; }
 
-  // It tells the kernel to start counting and recording events specified by this file.
+  int fd() const { return perf_event_fd_; }
+
+  const perf_event_attr& attr() const { return attr_; }
+
+  // It tells the kernel to start counting and recording events specified by
+  // this file.
   bool EnableEvent();
 
   bool ReadCounter(PerfCounter* counter) const;
 
   // Create mapped buffer used to receive records sent by the kernel.
-  // mmap_pages should be power of 2. If created successfully, fill pollfd,
-  // which is used to poll() on available mapped data.
-  bool CreateMappedBuffer(size_t mmap_pages, pollfd* poll_fd, bool report_error);
+  // mmap_pages should be power of 2.
+  bool CreateMappedBuffer(size_t mmap_pages, bool report_error);
 
   // Share the mapped buffer used by event_fd. The two EventFds should monitor
   // the same event on the same cpu, but have different thread ids.
   bool ShareMappedBuffer(const EventFd& event_fd, bool report_error);
 
-  bool HasMappedBuffer() const {
-    return mmap_data_buffer_size_ != 0;
-  }
+  bool HasMappedBuffer() const { return mmap_data_buffer_size_ != 0; }
 
   void DestroyMappedBuffer();
 
-  // When the kernel writes new sampled records to the mapped area, we can get them by returning
-  // the start address and size of the data.
-  size_t GetAvailableMmapData(char** pdata);
+  // When the kernel writes new sampled records to the mapped area, we can get
+  // them by returning the start address and size of the data.
+  size_t GetAvailableMmapData(const char** pdata);
 
  private:
-  EventFd(int perf_event_fd, const std::string& event_name, pid_t tid, int cpu)
-      : perf_event_fd_(perf_event_fd),
+  EventFd(const perf_event_attr& attr, int perf_event_fd,
+          const std::string& event_name, pid_t tid, int cpu)
+      : attr_(attr),
+        perf_event_fd_(perf_event_fd),
         id_(0),
         event_name_(event_name),
         tid_(tid),
@@ -92,13 +93,13 @@ class EventFd {
         mmap_len_(0),
         mmap_metadata_page_(nullptr),
         mmap_data_buffer_(nullptr),
-        mmap_data_buffer_size_(0) {
-  }
+        mmap_data_buffer_size_(0) {}
 
-  // Discard how much data we have read, so the kernel can reuse this part of mapped area to store
-  // new data.
+  // Discard how much data we have read, so the kernel can reuse this part of
+  // mapped area to store new data.
   void DiscardMmapData(size_t discard_size);
 
+  const perf_event_attr attr_;
   int perf_event_fd_;
   mutable uint64_t id_;
   const std::string event_name_;
@@ -108,13 +109,13 @@ class EventFd {
   void* mmap_addr_;
   size_t mmap_len_;
   perf_event_mmap_page* mmap_metadata_page_;  // The first page of mmap_area.
-  char* mmap_data_buffer_;  // Starts from the second page of mmap_area, containing records written
-                            // by then kernel.
+  char* mmap_data_buffer_;  // Starting from the second page of mmap_area,
+                            // containing records written by then kernel.
   size_t mmap_data_buffer_size_;
 
-  // As mmap_data_buffer is a ring buffer, it is possible that one record is wrapped at the
-  // end of the buffer. So we need to copy records from mmap_data_buffer to data_process_buffer
-  // before processing them.
+  // As mmap_data_buffer is a ring buffer, it is possible that one record is
+  // wrapped at the end of the buffer. So we need to copy records from
+  // mmap_data_buffer to data_process_buffer before processing them.
   static std::vector<char> data_process_buffer_;
 
   DISALLOW_COPY_AND_ASSIGN(EventFd);
