@@ -35,7 +35,7 @@
 #include "event_fd.h"
 #include "event_selection_set.h"
 #include "event_type.h"
-#include "scoped_signal_handler.h"
+#include "IOEventLoop.h"
 #include "utils.h"
 #include "workload.h"
 
@@ -46,9 +46,6 @@ static std::vector<std::string> default_measured_event_types{
     "instructions", "branch-instructions",     "branch-misses",
     "task-clock",   "context-switches",        "page-faults",
 };
-
-static volatile bool signaled;
-static void signal_handler(int) { signaled = true; }
 
 struct CounterSummary {
   std::string type_name;
@@ -294,12 +291,10 @@ class StatCommand : public Command {
         verbose_mode_(false),
         system_wide_collection_(false),
         child_inherit_(true),
+        duration_in_sec_(0),
         csv_(false) {
     // Die if parent exits.
     prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
-    signaled = false;
-    scoped_signal_handler_.reset(
-        new ScopedSignalHandler({SIGCHLD, SIGINT, SIGTERM}, signal_handler));
   }
 
   bool Run(const std::vector<std::string>& args);
@@ -315,13 +310,12 @@ class StatCommand : public Command {
   bool verbose_mode_;
   bool system_wide_collection_;
   bool child_inherit_;
+  double duration_in_sec_;
   std::vector<pid_t> monitored_threads_;
   std::vector<int> cpus_;
   EventSelectionSet event_selection_set_;
   std::string output_filename_;
   bool csv_;
-
-  std::unique_ptr<ScopedSignalHandler> scoped_signal_handler_;
 };
 
 bool StatCommand::Run(const std::vector<std::string>& args) {
@@ -375,17 +369,30 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
     }
   }
 
-  // 4. Count events while workload running.
+  // 4. Create IOEventLoop and add signal/periodic Events.
+  IOEventLoop loop;
+  if (!loop.AddSignalEvents({SIGCHLD, SIGINT, SIGTERM},
+                            [&]() { return loop.ExitLoop(); })) {
+    return false;
+  }
+  if (duration_in_sec_ != 0) {
+    if (!loop.AddPeriodicEvent(SecondToTimeval(duration_in_sec_),
+                           [&]() { return loop.ExitLoop(); })) {
+      return false;
+    }
+  }
+
+  // 5. Count events while workload running.
   auto start_time = std::chrono::steady_clock::now();
   if (workload != nullptr && !workload->Start()) {
     return false;
   }
-  while (!signaled) {
-    sleep(1);
+  if (!loop.RunLoop()) {
+    return false;
   }
   auto end_time = std::chrono::steady_clock::now();
 
-  // 5. Read and print counters.
+  // 6. Read and print counters.
   std::vector<CountersInfo> counters;
   if (!event_selection_set_.ReadCounters(&counters)) {
     return false;
@@ -403,7 +410,6 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
 bool StatCommand::ParseOptions(const std::vector<std::string>& args,
                                std::vector<std::string>* non_option_args) {
   std::set<pid_t> tid_set;
-  double duration_in_sec = 0;
   size_t i;
   for (i = 0; i < args.size() && args[i].size() > 0 && args[i][0] == '-'; ++i) {
     if (args[i] == "-a") {
@@ -421,8 +427,8 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
       }
       errno = 0;
       char* endptr;
-      duration_in_sec = strtod(args[i].c_str(), &endptr);
-      if (duration_in_sec <= 0 || *endptr != '\0' || errno == ERANGE) {
+      duration_in_sec_ = strtod(args[i].c_str(), &endptr);
+      if (duration_in_sec_ <= 0 || *endptr != '\0' || errno == ERANGE) {
         LOG(ERROR) << "Invalid duration: " << args[i].c_str();
         return false;
       }
@@ -489,15 +495,12 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
   for (; i < args.size(); ++i) {
     non_option_args->push_back(args[i]);
   }
-  if (duration_in_sec != 0) {
+  if (duration_in_sec_ != 0) {
     if (!non_option_args->empty()) {
       LOG(ERROR) << "Using --duration option while running a command is not "
                     "supported.";
       return false;
     }
-    non_option_args->insert(
-        non_option_args->end(),
-        {"sleep", android::base::StringPrintf("%f", duration_in_sec)});
   }
   return true;
 }

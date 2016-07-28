@@ -42,10 +42,10 @@ struct ElfFileSymbol {
 };
 
 bool ParseSymbolsFromElfFile(const std::string& filename, const BuildId& expected_build_id,
-                             std::function<void(const ElfFileSymbol&)> callback);
+                             const std::function<void(const ElfFileSymbol&)>& callback);
 bool ParseSymbolsFromEmbeddedElfFile(const std::string& filename, uint64_t file_offset,
                                      uint32_t file_size, const BuildId& expected_build_id,
-                                     std::function<void(const ElfFileSymbol&)> callback);
+                                     const std::function<void(const ElfFileSymbol&)>& callback);
 
 bool ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
                                                 const BuildId& expected_build_id,
