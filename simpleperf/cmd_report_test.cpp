@@ -37,13 +37,13 @@ static std::unique_ptr<Command> ReportCmd() {
 class ReportCommandTest : public ::testing::Test {
  protected:
   void Report(
-      const std::string perf_data,
+      const std::string& perf_data,
       const std::vector<std::string>& add_args = std::vector<std::string>()) {
     ReportRaw(GetTestData(perf_data), add_args);
   }
 
   void ReportRaw(
-      const std::string perf_data,
+      const std::string& perf_data,
       const std::vector<std::string>& add_args = std::vector<std::string>()) {
     success = false;
     std::vector<std::string> args = {
@@ -134,7 +134,7 @@ static bool CheckCalleeMode(std::vector<std::string>& lines) {
   bool found = false;
   for (size_t i = 0; i + 2 < lines.size(); ++i) {
     if (lines[i].find("GlobalFunc") != std::string::npos &&
-        lines[i + 1].find("|") != std::string::npos &&
+        lines[i + 1].find('|') != std::string::npos &&
         lines[i + 2].find("main") != std::string::npos) {
       found = true;
       break;
@@ -147,7 +147,7 @@ static bool CheckCallerMode(std::vector<std::string>& lines) {
   bool found = false;
   for (size_t i = 0; i + 2 < lines.size(); ++i) {
     if (lines[i].find("main") != std::string::npos &&
-        lines[i + 1].find("|") != std::string::npos &&
+        lines[i + 1].find('|') != std::string::npos &&
         lines[i + 2].find("GlobalFunc") != std::string::npos) {
       found = true;
       break;
