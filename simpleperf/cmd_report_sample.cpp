@@ -78,7 +78,8 @@ class ReportSampleCommand : public Command {
         use_protobuf_(false),
         report_fp_(nullptr),
         coded_os_(nullptr),
-        sample_count_(0) {
+        sample_count_(0),
+        lost_count_(0) {
     thread_tree_.ShowMarkForUnknownSymbol();
     thread_tree_.ShowIpForUnknownSymbol();
   }
@@ -90,7 +91,9 @@ class ReportSampleCommand : public Command {
   bool DumpProtobufReport(const std::string& filename);
   bool ProcessRecord(std::unique_ptr<Record> record);
   bool PrintSampleRecordInProtobuf(const SampleRecord& record);
+  bool PrintLostSituationInProtobuf();
   bool PrintSampleRecord(const SampleRecord& record);
+  void PrintLostSituation();
 
   std::string record_filename_;
   std::unique_ptr<RecordFileReader> record_file_reader_;
@@ -102,6 +105,7 @@ class ReportSampleCommand : public Command {
   FILE* report_fp_;
   google::protobuf::io::CodedOutputStream* coded_os_;
   size_t sample_count_;
+  size_t lost_count_;
 };
 
 bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
@@ -152,9 +156,11 @@ bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
           })) {
     return false;
   }
-  LOG(INFO) << "report " << sample_count_ << " samples in all.";
 
   if (use_protobuf_) {
+    if (!PrintLostSituationInProtobuf()) {
+      return false;
+    }
     coded_os_->WriteLittleEndian32(0);
     if (coded_os_->HadError()) {
       LOG(ERROR) << "print protobuf report failed";
@@ -163,6 +169,7 @@ bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
     protobuf_coded_os.reset(nullptr);
     google::protobuf::ShutdownProtobufLibrary();
   } else {
+    PrintLostSituation();
     fflush(report_fp_);
   }
   if (ferror(report_fp_) != 0) {
@@ -233,21 +240,27 @@ bool ReportSampleCommand::DumpProtobufReport(const std::string& filename) {
       return false;
     }
     coded_is.PopLimit(limit);
-    if (proto_record.type() != proto::Record_Type_SAMPLE) {
+    if (proto_record.type() == proto::Record_Type_SAMPLE) {
+      auto& sample = proto_record.sample();
+      static size_t sample_count = 0;
+      PrintIndented(0, "sample %zu:\n", ++sample_count);
+      PrintIndented(1, "time: %" PRIu64 "\n", sample.time());
+      PrintIndented(1, "thread_id: %d\n", sample.thread_id());
+      PrintIndented(1, "callchain:\n");
+      for (int j = 0; j < sample.callchain_size(); ++j) {
+        const proto::Sample_CallChainEntry& callchain = sample.callchain(j);
+        PrintIndented(2, "ip: %" PRIx64 "\n", callchain.ip());
+        PrintIndented(2, "dso: %s\n", callchain.file().c_str());
+        PrintIndented(2, "symbol: %s\n", callchain.symbol().c_str());
+      }
+    } else if (proto_record.type() == proto::Record_Type_LOST_SITUATION) {
+      auto& lost = proto_record.lost();
+      PrintIndented(0, "lost_situation:\n");
+      PrintIndented(1, "sample_count: %" PRIu64 "\n", lost.sample_count());
+      PrintIndented(1, "lost_count: %" PRIu64 "\n", lost.lost_count());
+    } else {
       LOG(ERROR) << "unexpected record type " << proto_record.type();
       return false;
-    }
-    auto& sample = proto_record.sample();
-    static size_t sample_count = 0;
-    PrintIndented(0, "sample %zu:\n", ++sample_count);
-    PrintIndented(1, "time: %" PRIu64 "\n", sample.time());
-    PrintIndented(1, "thread_id: %d\n", sample.thread_id());
-    PrintIndented(1, "callchain:\n");
-    for (int j = 0; j < sample.callchain_size(); ++j) {
-      const proto::Sample_CallChainEntry& callchain = sample.callchain(j);
-      PrintIndented(2, "ip: %" PRIx64 "\n", callchain.ip());
-      PrintIndented(2, "dso: %s\n", callchain.file().c_str());
-      PrintIndented(2, "symbol: %s\n", callchain.symbol().c_str());
     }
   }
   google::protobuf::ShutdownProtobufLibrary();
@@ -264,6 +277,8 @@ bool ReportSampleCommand::ProcessRecord(std::unique_ptr<Record> record) {
     } else {
       return PrintSampleRecord(r);
     }
+  } else if (record->type() == PERF_RECORD_LOST) {
+    lost_count_ += static_cast<const LostRecord*>(record.get())->lost;
   }
   return true;
 }
@@ -326,6 +341,20 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
   return true;
 }
 
+bool ReportSampleCommand::PrintLostSituationInProtobuf() {
+  proto::Record proto_record;
+  proto_record.set_type(proto::Record_Type_LOST_SITUATION);
+  proto::LostSituation* lost = proto_record.mutable_lost();
+  lost->set_sample_count(sample_count_);
+  lost->set_lost_count(lost_count_);
+  coded_os_->WriteLittleEndian32(proto_record.ByteSize());
+  if (!proto_record.SerializeToCodedStream(coded_os_)) {
+    LOG(ERROR) << "failed to write lost situation to protobuf";
+    return false;
+  }
+  return true;
+}
+
 bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r) {
   bool in_kernel = r.InKernel();
   const ThreadEntry* thread =
@@ -373,6 +402,12 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r) {
     }
   }
   return true;
+}
+
+void ReportSampleCommand::PrintLostSituation() {
+  FprintIndented(report_fp_, 0, "lost_situation:\n");
+  FprintIndented(report_fp_, 1, "sample_count: %" PRIu64 "\n", sample_count_);
+  FprintIndented(report_fp_, 1, "lost_count: %" PRIu64 "\n", sample_count_);
 }
 
 }  // namespace
