@@ -34,6 +34,10 @@ class IOEventLoop {
   IOEventLoop();
   ~IOEventLoop();
 
+  // Register a read Event, so [callback] is called when [fd] can be read
+  // without blocking.
+  bool AddReadEvent(int fd, const std::function<bool()>& callback);
+
   // Register a signal Event, so [callback] is called each time signal [sig]
   // happens.
   bool AddSignalEvent(int sig, const std::function<bool()>& callback);

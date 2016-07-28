@@ -48,29 +48,30 @@ struct CountersInfo {
   std::vector<CounterInfo> counters;
 };
 
-struct pollfd;
+class IOEventLoop;
 
-// EventSelectionSet helps to monitor events.
-// Firstly, the user creates an EventSelectionSet, and adds the specific event types to monitor.
-// Secondly, the user defines how to monitor the events (by setting enable_on_exec flag,
-// sample frequency, etc).
-// Then, the user can start monitoring by ordering the EventSelectionSet to open perf event files
-// and enable events (if enable_on_exec flag isn't used).
-// After that, the user can read counters or read mapped event records.
-// At last, the EventSelectionSet will clean up resources at destruction automatically.
+// EventSelectionSet helps to monitor events. It is used in following steps:
+// 1. Create an EventSelectionSet, and add event types to monitor by calling
+//    AddEventType() or AddEventGroup().
+// 2. Define how to monitor events by calling SetEnableOnExec(), SampleIdAll(),
+//    SetSampleFreq(), etc.
+// 3. Start monitoring by calling OpenEventFilesForCpus() or
+//    OpenEventFilesForThreadsOnCpus(). If SetEnableOnExec() has been called
+//    in step 2, monitor will be delayed until the monitored thread calls
+//    exec().
+// 4. Read counters by calling ReadCounters(), or read mapped event records
+//    by calling MmapEventFiles(), PrepareToReadMmapEventData() and
+//    FinishReadMmapEventData().
+// 5. Stop monitoring automatically in the destructor of EventSelectionSet by
+//    closing perf event files.
 
 class EventSelectionSet {
  public:
-  EventSelectionSet() {
-  }
+  EventSelectionSet() {}
 
-  bool empty() const {
-    return groups_.empty();
-  }
+  bool empty() const { return groups_.empty(); }
 
-  const std::vector<EventSelectionGroup>& groups() {
-    return groups_;
-  }
+  const std::vector<EventSelectionGroup>& groups() { return groups_; }
 
   bool AddEventType(const std::string& event_name);
   bool AddEventGroup(const std::vector<std::string>& event_names);
@@ -86,27 +87,27 @@ class EventSelectionSet {
   void SetInherit(bool enable);
 
   bool OpenEventFilesForCpus(const std::vector<int>& cpus);
-  bool OpenEventFilesForThreadsOnCpus(const std::vector<pid_t>& threads, std::vector<int> cpus);
+  bool OpenEventFilesForThreadsOnCpus(const std::vector<pid_t>& threads,
+                                      std::vector<int> cpus);
   bool ReadCounters(std::vector<CountersInfo>* counters);
-  bool MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pages, std::vector<pollfd>* pollfds);
-  void PrepareToReadMmapEventData(const std::function<bool (Record*)>& callback);
-  bool ReadMmapEventData();
+  bool MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pages);
+  bool PrepareToReadMmapEventData(IOEventLoop& loop,
+                                  const std::function<bool(Record*)>& callback);
   bool FinishReadMmapEventData();
 
  private:
   bool BuildAndCheckEventSelection(const std::string& event_name,
                                    EventSelection* selection);
   void UnionSampleType();
-  bool OpenEventFiles(const std::vector<pid_t>& threads, const std::vector<int>& cpus);
-  bool MmapEventFiles(size_t mmap_pages, std::vector<pollfd>* pollfds, bool report_error);
-  bool ReadMmapEventDataForFd(std::unique_ptr<EventFd>& event_fd, const perf_event_attr& attr,
-                              bool* has_data);
+  bool OpenEventFiles(const std::vector<pid_t>& threads,
+                      const std::vector<int>& cpus);
+  bool MmapEventFiles(size_t mmap_pages, bool report_error);
+  bool ReadMmapEventDataForFd(std::unique_ptr<EventFd>& event_fd);
 
   std::vector<EventSelectionGroup> groups_;
 
-  std::function<bool (Record*)> record_callback_;
+  std::function<bool(Record*)> record_callback_;
   std::unique_ptr<RecordCache> record_cache_;
-  std::unordered_map<uint64_t, const perf_event_attr*> event_id_to_attr_map_;
 
   DISALLOW_COPY_AND_ASSIGN(EventSelectionSet);
 };

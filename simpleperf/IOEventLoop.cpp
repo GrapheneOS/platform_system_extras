@@ -63,6 +63,20 @@ void IOEventLoop::EventCallbackFn(int, short, void* arg) {
   }
 }
 
+static bool MakeFdNonBlocking(int fd) {
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags == -1 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+    PLOG(ERROR) << "fcntl() failed";
+    return false;
+  }
+  return true;
+}
+
+bool IOEventLoop::AddReadEvent(int fd, const std::function<bool()>& callback) {
+  return MakeFdNonBlocking(fd) &&
+         AddEvent(fd, EV_READ | EV_PERSIST, nullptr, callback);
+}
+
 bool IOEventLoop::AddSignalEvent(int sig,
                                  const std::function<bool()>& callback) {
   return AddEvent(sig, EV_SIGNAL | EV_PERSIST, nullptr, callback);
