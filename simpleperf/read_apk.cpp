@@ -181,7 +181,7 @@ bool GetBuildIdFromApkFile(const std::string& apk_path, const std::string& elf_f
 
 bool ParseSymbolsFromApkFile(const std::string& apk_path, const std::string& elf_filename,
                              const BuildId& expected_build_id,
-                             std::function<void(const ElfFileSymbol&)> callback) {
+                             const std::function<void(const ElfFileSymbol&)>& callback) {
   std::unique_ptr<EmbeddedElf> ee = ApkInspector::FindElfInApkByName(apk_path, elf_filename);
   if (ee == nullptr) {
     return false;

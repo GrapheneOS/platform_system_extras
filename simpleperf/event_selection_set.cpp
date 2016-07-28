@@ -384,7 +384,7 @@ bool EventSelectionSet::MmapEventFiles(size_t mmap_pages,
 }
 
 void EventSelectionSet::PrepareToReadMmapEventData(
-    std::function<bool(Record*)> callback) {
+    const std::function<bool(Record*)>& callback) {
   record_callback_ = callback;
   bool has_timestamp = true;
   for (const auto& group : groups_) {

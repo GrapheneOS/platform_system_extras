@@ -18,6 +18,7 @@
 #define SIMPLE_PERF_UTILS_H_
 
 #include <stddef.h>
+#include <time.h>
 
 #include <string>
 #include <vector>
@@ -136,10 +137,12 @@ struct KernelSymbol {
 };
 
 bool ProcessKernelSymbols(std::string& symbol_data,
-                          std::function<bool(const KernelSymbol&)> callback);
+                          const std::function<bool(const KernelSymbol&)>& callback);
 
 size_t GetPageSize();
 
 uint64_t ConvertBytesToValue(const char* bytes, uint32_t size);
+
+timeval SecondToTimeval(double time_in_sec);
 
 #endif  // SIMPLE_PERF_UTILS_H_
