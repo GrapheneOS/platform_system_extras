@@ -21,6 +21,47 @@
 #include <chrono>
 #include <thread>
 
+TEST(IOEventLoop, read) {
+  int fd[2];
+  ASSERT_EQ(0, pipe(fd));
+  IOEventLoop loop;
+  static int count;
+  static int retry_count;
+  count = 0;
+  retry_count = 0;
+  ASSERT_TRUE(loop.AddReadEvent(fd[0], [&]() {
+    while (true) {
+      char c;
+      int ret = read(fd[0], &c, 1);
+      if (ret == 1) {
+        if (++count == 100) {
+          return loop.ExitLoop();
+        }
+      } else if (ret == -1 && errno == EAGAIN) {
+        retry_count++;
+        break;
+      } else {
+        return false;
+      }
+    }
+    return true;
+  }));
+  std::thread thread([&]() {
+    for (int i = 0; i < 100; ++i) {
+      usleep(1000);
+      char c;
+      write(fd[1], &c, 1);
+    }
+  });
+  ASSERT_TRUE(loop.RunLoop());
+  thread.join();
+  ASSERT_EQ(100, count);
+  // Test retry_count to make sure we are not doing blocking read.
+  ASSERT_GT(retry_count, 0);
+  close(fd[0]);
+  close(fd[1]);
+}
+
 TEST(IOEventLoop, signal) {
   IOEventLoop loop;
   static int count;
