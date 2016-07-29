@@ -337,7 +337,7 @@ TEST_F(ReportCommandTest, check_build_id) {
         }
         exit(0);
       },
-      testing::ExitedWithCode(0), "build id.*mismatch");
+      testing::ExitedWithCode(0), "Build id mismatch");
 }
 
 TEST_F(ReportCommandTest, no_show_ip_option) {
@@ -347,6 +347,38 @@ TEST_F(ReportCommandTest, no_show_ip_option) {
   Report(PERF_DATA, {"--no-show-ip"});
   ASSERT_TRUE(success);
   ASSERT_NE(content.find("unknown"), std::string::npos);
+}
+
+TEST_F(ReportCommandTest, no_symbol_table_warning) {
+  ASSERT_EXIT(
+      {
+        Report(PERF_DATA,
+               {"--symfs", GetTestData(SYMFS_FOR_NO_SYMBOL_TABLE_WARNING)});
+        if (!success) {
+          exit(1);
+        }
+        if (content.find("GlobalFunc") != std::string::npos) {
+          exit(2);
+        }
+        exit(0);
+      },
+      testing::ExitedWithCode(0), "elf doesn't contain symbol table");
+}
+
+TEST_F(ReportCommandTest, read_elf_file_warning) {
+  ASSERT_EXIT(
+      {
+        Report(PERF_DATA,
+               {"--symfs", GetTestData(SYMFS_FOR_READ_ELF_FILE_WARNING)});
+        if (!success) {
+          exit(1);
+        }
+        if (content.find("GlobalFunc") != std::string::npos) {
+          exit(2);
+        }
+        exit(0);
+      },
+      testing::ExitedWithCode(0), "elf: Read failed");
 }
 
 #if defined(__linux__)

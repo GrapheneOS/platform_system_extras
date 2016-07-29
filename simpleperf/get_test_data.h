@@ -88,4 +88,6 @@ static const std::string PERF_DATA_FOR_BUILD_ID_CHECK = "perf_for_build_id_check
 static const std::string CORRECT_SYMFS_FOR_BUILD_ID_CHECK = "data/correct_symfs_for_build_id_check";
 static const std::string WRONG_SYMFS_FOR_BUILD_ID_CHECK = "data/wrong_symfs_for_build_id_check";
 
+static const std::string SYMFS_FOR_NO_SYMBOL_TABLE_WARNING = "data/symfs_for_no_symbol_table_warning";
+static const std::string SYMFS_FOR_READ_ELF_FILE_WARNING = "data/symfs_for_read_elf_file_warning";
 #endif  // SIMPLE_PERF_GET_TEST_DATA_H_
