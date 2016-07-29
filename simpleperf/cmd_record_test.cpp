@@ -314,5 +314,6 @@ TEST(record_cmd, symfs_option) { ASSERT_TRUE(RunRecordCmd({"--symfs", "/"})); }
 
 TEST(record_cmd, duration_option) {
   TemporaryFile tmpfile;
-  ASSERT_TRUE(RecordCmd()->Run({"--duration", "1.2", "-o", tmpfile.path}));
+  ASSERT_TRUE(RecordCmd()->Run({"--duration", "1.2", "-p",
+                                std::to_string(getpid()), "-o", tmpfile.path}));
 }

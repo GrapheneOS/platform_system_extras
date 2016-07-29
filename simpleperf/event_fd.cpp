@@ -17,7 +17,6 @@
 #include "event_fd.h"
 
 #include <fcntl.h>
-#include <poll.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -38,41 +37,47 @@
 
 std::vector<char> EventFd::data_process_buffer_;
 
-static int perf_event_open(perf_event_attr* attr, pid_t pid, int cpu, int group_fd,
-                           unsigned long flags) {  // NOLINT
-  return syscall(__NR_perf_event_open, attr, pid, cpu, group_fd, flags);
+static int perf_event_open(const perf_event_attr& attr, pid_t pid, int cpu,
+                           int group_fd, unsigned long flags) {  // NOLINT
+  return syscall(__NR_perf_event_open, &attr, pid, cpu, group_fd, flags);
 }
 
-std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr, pid_t tid, int cpu,
-                                                EventFd* group_event_fd, bool report_error) {
-  perf_event_attr perf_attr = attr;
+std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr,
+                                                pid_t tid, int cpu,
+                                                EventFd* group_event_fd,
+                                                bool report_error) {
   std::string event_name = GetEventNameByAttr(attr);
   int group_fd = -1;
   if (group_event_fd != nullptr) {
     group_fd = group_event_fd->perf_event_fd_;
   }
-  int perf_event_fd = perf_event_open(&perf_attr, tid, cpu, group_fd, 0);
+  int perf_event_fd = perf_event_open(attr, tid, cpu, group_fd, 0);
   if (perf_event_fd == -1) {
     if (report_error) {
-      PLOG(ERROR) << "open perf_event_file (event " << event_name << ", tid " << tid << ", cpu "
-                  << cpu << ", group_fd " << group_fd << ") failed";
+      PLOG(ERROR) << "open perf_event_file (event " << event_name << ", tid "
+                  << tid << ", cpu " << cpu << ", group_fd " << group_fd
+                  << ") failed";
     } else {
-      PLOG(DEBUG) << "open perf_event_file (event " << event_name << ", tid " << tid << ", cpu "
-                  << cpu << ", group_fd " << group_fd << ") failed";
+      PLOG(DEBUG) << "open perf_event_file (event " << event_name << ", tid "
+                  << tid << ", cpu " << cpu << ", group_fd " << group_fd
+                  << ") failed";
     }
     return nullptr;
   }
   if (fcntl(perf_event_fd, F_SETFD, FD_CLOEXEC) == -1) {
     if (report_error) {
-      PLOG(ERROR) << "fcntl(FD_CLOEXEC) for perf_event_file (event " << event_name << ", tid "
-                  << tid << ", cpu " << cpu << ", group_fd " << group_fd << ") failed";
+      PLOG(ERROR) << "fcntl(FD_CLOEXEC) for perf_event_file (event "
+                  << event_name << ", tid " << tid << ", cpu " << cpu
+                  << ", group_fd " << group_fd << ") failed";
     } else {
-      PLOG(DEBUG) << "fcntl(FD_CLOEXEC) for perf_event_file (event " << event_name << ", tid "
-                  << tid << ", cpu " << cpu << ", group_fd " << group_fd << ") failed";
+      PLOG(DEBUG) << "fcntl(FD_CLOEXEC) for perf_event_file (event "
+                  << event_name << ", tid " << tid << ", cpu " << cpu
+                  << ", group_fd " << group_fd << ") failed";
     }
     return nullptr;
   }
-  return std::unique_ptr<EventFd>(new EventFd(perf_event_fd, event_name, tid, cpu));
+  return std::unique_ptr<EventFd>(
+      new EventFd(attr, perf_event_fd, event_name, tid, cpu));
 }
 
 EventFd::~EventFd() {
@@ -81,8 +86,9 @@ EventFd::~EventFd() {
 }
 
 std::string EventFd::Name() const {
-  return android::base::StringPrintf("perf_event_file(event %s, tid %d, cpu %d)",
-                                     event_name_.c_str(), tid_, cpu_);
+  return android::base::StringPrintf(
+      "perf_event_file(event %s, tid %d, cpu %d)", event_name_.c_str(), tid_,
+      cpu_);
 }
 
 uint64_t EventFd::Id() const {
@@ -113,11 +119,12 @@ bool EventFd::ReadCounter(PerfCounter* counter) const {
   return true;
 }
 
-bool EventFd::CreateMappedBuffer(size_t mmap_pages, pollfd* poll_fd, bool report_error) {
+bool EventFd::CreateMappedBuffer(size_t mmap_pages, bool report_error) {
   CHECK(IsPowerOfTwo(mmap_pages));
   size_t page_size = sysconf(_SC_PAGE_SIZE);
   size_t mmap_len = (mmap_pages + 1) * page_size;
-  void* mmap_addr = mmap(nullptr, mmap_len, PROT_READ | PROT_WRITE, MAP_SHARED, perf_event_fd_, 0);
+  void* mmap_addr = mmap(nullptr, mmap_len, PROT_READ | PROT_WRITE, MAP_SHARED,
+                         perf_event_fd_, 0);
   if (mmap_addr == MAP_FAILED) {
     bool is_perm_error = (errno == EPERM);
     if (report_error) {
@@ -126,7 +133,8 @@ bool EventFd::CreateMappedBuffer(size_t mmap_pages, pollfd* poll_fd, bool report
       PLOG(DEBUG) << "mmap(" << mmap_pages << ") failed for " << Name();
     }
     if (report_error && is_perm_error) {
-      LOG(ERROR) << "It seems the kernel doesn't allow allocating enough "
+      LOG(ERROR)
+          << "It seems the kernel doesn't allow allocating enough "
           << "buffer for dumping samples, consider decreasing mmap pages(-m), "
           << "or decreasing the number of events(-e).";
     }
@@ -140,20 +148,18 @@ bool EventFd::CreateMappedBuffer(size_t mmap_pages, pollfd* poll_fd, bool report
   if (data_process_buffer_.size() < mmap_data_buffer_size_) {
     data_process_buffer_.resize(mmap_data_buffer_size_);
   }
-  memset(poll_fd, 0, sizeof(pollfd));
-  poll_fd->fd = perf_event_fd_;
-  poll_fd->events = POLLIN;
   return true;
 }
 
 bool EventFd::ShareMappedBuffer(const EventFd& event_fd, bool report_error) {
   CHECK(!HasMappedBuffer());
   CHECK(event_fd.HasMappedBuffer());
-  int result = ioctl(perf_event_fd_, PERF_EVENT_IOC_SET_OUTPUT, event_fd.perf_event_fd_);
+  int result =
+      ioctl(perf_event_fd_, PERF_EVENT_IOC_SET_OUTPUT, event_fd.perf_event_fd_);
   if (result != 0) {
     if (report_error) {
       PLOG(ERROR) << "failed to share mapped buffer of "
-          << event_fd.perf_event_fd_ << " with " << perf_event_fd_;
+                  << event_fd.perf_event_fd_ << " with " << perf_event_fd_;
     }
     return false;
   }
@@ -171,24 +177,28 @@ void EventFd::DestroyMappedBuffer() {
   }
 }
 
-size_t EventFd::GetAvailableMmapData(char** pdata) {
+size_t EventFd::GetAvailableMmapData(const char** pdata) {
   if (!HasMappedBuffer()) {
     return 0;
   }
-  // The mmap_data_buffer is used as a ring buffer like below. The kernel continuously writes
-  // records to the buffer, and the user continuously read records out.
+  // The mmap_data_buffer is used as a ring buffer between the kernel and
+  // simpleperf. The kernel continuously writes records to the buffer, and
+  // simpleperf continuously read records out.
   //         _________________________________________
   // buffer | can write   |   can read   |  can write |
   //                      ^              ^
   //                    read_head       write_head
   //
-  // So the user can read records in [read_head, write_head), and the kernel can write records
-  // in [write_head, read_head). The kernel is responsible for updating write_head, and the user
-  // is responsible for updating read_head.
+  // So simpleperf can read records in [read_head, write_head), and the kernel
+  // can write records in [write_head, read_head). The kernel is responsible
+  // for updating write_head, and simpleperf is responsible for updating
+  // read_head.
 
   size_t buf_mask = mmap_data_buffer_size_ - 1;
-  size_t write_head = static_cast<size_t>(mmap_metadata_page_->data_head & buf_mask);
-  size_t read_head = static_cast<size_t>(mmap_metadata_page_->data_tail & buf_mask);
+  size_t write_head =
+      static_cast<size_t>(mmap_metadata_page_->data_head & buf_mask);
+  size_t read_head =
+      static_cast<size_t>(mmap_metadata_page_->data_tail & buf_mask);
 
   if (read_head == write_head) {
     // No available data.
@@ -198,8 +208,8 @@ size_t EventFd::GetAvailableMmapData(char** pdata) {
   // Make sure we can see the data after the fence.
   std::atomic_thread_fence(std::memory_order_acquire);
 
-  // Copy records from mapped buffer to data_process_buffer. Note that records can be wrapped
-  // at the end of the mapped buffer.
+  // Copy records from mapped buffer to data_process_buffer. Note that records
+  // can be wrapped at the end of the mapped buffer.
   char* to = data_process_buffer_.data();
   if (read_head < write_head) {
     char* from = mmap_data_buffer_ + read_head;

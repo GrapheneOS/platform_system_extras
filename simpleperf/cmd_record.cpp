@@ -15,7 +15,6 @@
  */
 
 #include <libgen.h>
-#include <poll.h>
 #include <signal.h>
 #include <sys/prctl.h>
 #include <sys/utsname.h>
@@ -35,11 +34,11 @@
 #include "environment.h"
 #include "event_selection_set.h"
 #include "event_type.h"
+#include "IOEventLoop.h"
 #include "read_apk.h"
 #include "read_elf.h"
 #include "record.h"
 #include "record_file.h"
-#include "scoped_signal_handler.h"
 #include "thread_tree.h"
 #include "tracing.h"
 #include "utils.h"
@@ -55,9 +54,6 @@ static std::unordered_map<std::string, uint64_t> branch_sampling_type_map = {
     {"any_ret", PERF_SAMPLE_BRANCH_ANY_RETURN},
     {"ind_call", PERF_SAMPLE_BRANCH_IND_CALL},
 };
-
-static volatile bool signaled;
-static void signal_handler(int) { signaled = true; }
 
 constexpr uint64_t DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT = 4000;
 constexpr uint64_t DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT = 1;
@@ -160,6 +156,7 @@ class RecordCommand : public Command {
         unwind_dwarf_callchain_(true),
         post_unwind_(false),
         child_inherit_(true),
+        duration_in_sec_(0),
         can_dump_kernel_symbols_(true),
         dump_symbols_(false),
         mmap_page_range_(std::make_pair(1, DESIRED_PAGES_IN_MAPPED_BUFFER)),
@@ -168,9 +165,6 @@ class RecordCommand : public Command {
         lost_record_count_(0) {
     // Die if parent exits.
     prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
-    signaled = false;
-    scoped_signal_handler_.reset(
-        new ScopedSignalHandler({SIGCHLD, SIGINT, SIGTERM}, signal_handler));
   }
 
   bool Run(const std::vector<std::string>& args);
@@ -211,6 +205,7 @@ class RecordCommand : public Command {
   bool unwind_dwarf_callchain_;
   bool post_unwind_;
   bool child_inherit_;
+  double duration_in_sec_;
   bool can_dump_kernel_symbols_;
   bool dump_symbols_;
   std::vector<pid_t> monitored_threads_;
@@ -226,7 +221,6 @@ class RecordCommand : public Command {
   std::set<std::string> hit_kernel_modules_;
   std::set<std::string> hit_user_files_;
 
-  std::unique_ptr<ScopedSignalHandler> scoped_signal_handler_;
   uint64_t sample_record_count_;
   uint64_t lost_record_count_;
 };
@@ -269,8 +263,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     }
   }
 
-  // 3. Open perf_event_files, create memory mapped buffers for
-  //    perf_event_files, add prepare poll for perf_event_files.
+  // 3. Open perf_event_files, create mapped buffers for perf_event_files.
   if (system_wide_collection_) {
     if (!event_selection_set_.OpenEventFilesForCpus(cpus_)) {
       return false;
@@ -281,9 +274,8 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   }
-  std::vector<pollfd> pollfds;
   if (!event_selection_set_.MmapEventFiles(mmap_page_range_.first,
-                                           mmap_page_range_.second, &pollfds)) {
+                                           mmap_page_range_.second)) {
     return false;
   }
 
@@ -292,26 +284,37 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     return false;
   }
 
-  // 5. Write records in mmap buffers of perf_event_files to output file while
+  // 5. Create IOEventLoop and add read/signal/periodic Events.
+  IOEventLoop loop;
+  auto callback =
+      std::bind(&RecordCommand::ProcessRecord, this, std::placeholders::_1);
+  if (!event_selection_set_.PrepareToReadMmapEventData(loop, callback)) {
+    return false;
+  }
+  if (!loop.AddSignalEvents({SIGCHLD, SIGINT, SIGTERM},
+                            [&]() { return loop.ExitLoop(); })) {
+    return false;
+  }
+  if (duration_in_sec_ != 0) {
+    if (!loop.AddPeriodicEvent(SecondToTimeval(duration_in_sec_),
+                               [&]() { return loop.ExitLoop(); })) {
+      return false;
+    }
+  }
+
+  // 6. Write records in mapped buffers of perf_event_files to output file while
   //    workload is running.
   if (workload != nullptr && !workload->Start()) {
     return false;
   }
-  auto callback =
-      std::bind(&RecordCommand::ProcessRecord, this, std::placeholders::_1);
-  event_selection_set_.PrepareToReadMmapEventData(callback);
-  while (true) {
-    if (!event_selection_set_.ReadMmapEventData()) {
-      return false;
-    }
-    if (signaled) {
-      break;
-    }
-    poll(&pollfds[0], pollfds.size(), -1);
+  if (!loop.RunLoop()) {
+    return false;
   }
-  event_selection_set_.FinishReadMmapEventData();
+  if (!event_selection_set_.FinishReadMmapEventData()) {
+    return false;
+  }
 
-  // 6. Dump additional features, and close record file.
+  // 7. Dump additional features, and close record file.
   if (!DumpAdditionalFeatures(args)) {
     return false;
   }
@@ -319,14 +322,14 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     return false;
   }
 
-  // 7. Unwind dwarf callchain.
+  // 8. Unwind dwarf callchain.
   if (post_unwind_) {
     if (!PostUnwind(args)) {
       return false;
     }
   }
 
-  // 8. Show brief record result.
+  // 9. Show brief record result.
   LOG(INFO) << "Samples recorded: " << sample_record_count_
             << ". Samples lost: " << lost_record_count_ << ".";
   if (sample_record_count_ + lost_record_count_ != 0) {
@@ -346,7 +349,6 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
 bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
                                  std::vector<std::string>* non_option_args) {
   std::set<pid_t> tid_set;
-  double duration_in_sec = 0;
   size_t i;
   for (i = 0; i < args.size() && !args[i].empty() && args[i][0] == '-'; ++i) {
     if (args[i] == "-a") {
@@ -414,8 +416,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       }
       errno = 0;
       char* endptr;
-      duration_in_sec = strtod(args[i].c_str(), &endptr);
-      if (duration_in_sec <= 0 || *endptr != '\0' || errno == ERANGE) {
+      duration_in_sec_ = strtod(args[i].c_str(), &endptr);
+      if (duration_in_sec_ <= 0 || *endptr != '\0' || errno == ERANGE) {
         LOG(ERROR) << "Invalid duration: " << args[i].c_str();
         return false;
       }
@@ -564,15 +566,12 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   for (; i < args.size(); ++i) {
     non_option_args->push_back(args[i]);
   }
-  if (duration_in_sec != 0) {
+  if (duration_in_sec_ != 0) {
     if (!non_option_args->empty()) {
       LOG(ERROR) << "Using --duration option while running a command is not "
                     "supported.";
       return false;
     }
-    non_option_args->insert(
-        non_option_args->end(),
-        {"sleep", android::base::StringPrintf("%f", duration_in_sec)});
   }
   return true;
 }
