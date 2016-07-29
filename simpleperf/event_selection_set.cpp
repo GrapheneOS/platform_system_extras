@@ -16,14 +16,13 @@
 
 #include "event_selection_set.h"
 
-#include <poll.h>
-
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 
 #include "environment.h"
 #include "event_attr.h"
 #include "event_type.h"
+#include "IOEventLoop.h"
 #include "perf_regs.h"
 
 bool IsBranchSamplingSupported() {
@@ -106,8 +105,7 @@ bool EventSelectionSet::AddEventGroup(
 }
 
 // Union the sample type of different event attrs can make reading sample
-// records in perf.data
-// easier.
+// records in perf.data easier.
 void EventSelectionSet::UnionSampleType() {
   uint64_t sample_type = 0;
   for (const auto& group : groups_) {
@@ -126,11 +124,10 @@ void EventSelectionSet::SetEnableOnExec(bool enable) {
   for (auto& group : groups_) {
     for (auto& selection : group) {
       // If sampling is enabled on exec, then it is disabled at startup,
-      // otherwise
-      // it should be enabled at startup. Don't use ioctl(PERF_EVENT_IOC_ENABLE)
-      // to enable it after perf_event_open(). Because some android kernels
-      // can't
-      // handle ioctl() well when cpu-hotplug happens. See http://b/25193162.
+      // otherwise it should be enabled at startup. Don't use
+      // ioctl(PERF_EVENT_IOC_ENABLE) to enable it after perf_event_open().
+      // Because some android kernels can't handle ioctl() well when cpu-hotplug
+      // happens. See http://b/25193162.
       if (enable) {
         selection.event_attr.enable_on_exec = 1;
         selection.event_attr.disabled = 1;
@@ -299,9 +296,8 @@ bool EventSelectionSet::OpenEventFiles(const std::vector<pid_t>& threads,
         }
       }
       // As the online cpus can be enabled or disabled at runtime, we may not
-      // open event file for
-      // all cpus successfully. But we should open at least one cpu
-      // successfully.
+      // open event file for all cpus successfully. But we should open at least
+      // one cpu successfully.
       if (open_per_thread == 0) {
         PLOG(ERROR) << "failed to open perf event file for event_type "
                     << failed_event_type << " for "
@@ -336,10 +332,9 @@ bool EventSelectionSet::ReadCounters(std::vector<CountersInfo>* counters) {
 }
 
 bool EventSelectionSet::MmapEventFiles(size_t min_mmap_pages,
-                                       size_t max_mmap_pages,
-                                       std::vector<pollfd>* pollfds) {
+                                       size_t max_mmap_pages) {
   for (size_t i = max_mmap_pages; i >= min_mmap_pages; i >>= 1) {
-    if (MmapEventFiles(i, pollfds, i == min_mmap_pages)) {
+    if (MmapEventFiles(i, i == min_mmap_pages)) {
       LOG(VERBOSE) << "Mapped buffer size is " << i << " pages.";
       return true;
     }
@@ -354,10 +349,7 @@ bool EventSelectionSet::MmapEventFiles(size_t min_mmap_pages,
   return false;
 }
 
-bool EventSelectionSet::MmapEventFiles(size_t mmap_pages,
-                                       std::vector<pollfd>* pollfds,
-                                       bool report_error) {
-  pollfds->clear();
+bool EventSelectionSet::MmapEventFiles(size_t mmap_pages, bool report_error) {
   for (auto& group : groups_) {
     for (auto& selection : group) {
       // For each event, allocate a mapped buffer for each cpu.
@@ -369,12 +361,9 @@ bool EventSelectionSet::MmapEventFiles(size_t mmap_pages,
             return false;
           }
         } else {
-          pollfd poll_fd;
-          if (!event_fd->CreateMappedBuffer(mmap_pages, &poll_fd,
-                                            report_error)) {
+          if (!event_fd->CreateMappedBuffer(mmap_pages, report_error)) {
             return false;
           }
-          pollfds->push_back(poll_fd);
           cpu_map.insert(std::make_pair(event_fd->Cpu(), event_fd.get()));
         }
       }
@@ -383,8 +372,24 @@ bool EventSelectionSet::MmapEventFiles(size_t mmap_pages,
   return true;
 }
 
-void EventSelectionSet::PrepareToReadMmapEventData(
-    const std::function<bool(Record*)>& callback) {
+bool EventSelectionSet::PrepareToReadMmapEventData(
+    IOEventLoop& loop, const std::function<bool(Record*)>& callback) {
+  // Add read Events for perf event files having mapped buffer.
+  for (auto& group : groups_) {
+    for (auto& selection : group) {
+      for (auto& event_fd : selection.event_fds) {
+        if (event_fd->HasMappedBuffer()) {
+          if (!loop.AddReadEvent(event_fd->fd(), [&]() {
+                return ReadMmapEventDataForFd(event_fd);
+              })) {
+            return false;
+          }
+        }
+      }
+    }
+  }
+
+  // Prepare record callback function and record cache.
   record_callback_ = callback;
   bool has_timestamp = true;
   for (const auto& group : groups_) {
@@ -396,60 +401,48 @@ void EventSelectionSet::PrepareToReadMmapEventData(
     }
   }
   record_cache_.reset(new RecordCache(has_timestamp));
-
-  for (const auto& group : groups_) {
-    for (const auto& selection : group) {
-      for (const auto& event_fd : selection.event_fds) {
-        int event_id = event_fd->Id();
-        event_id_to_attr_map_[event_id] = &selection.event_attr;
-      }
-    }
-  }
+  return true;
 }
 
-bool EventSelectionSet::ReadMmapEventData() {
+bool EventSelectionSet::ReadMmapEventDataForFd(
+    std::unique_ptr<EventFd>& event_fd) {
+  const char* data;
+  // Call GetAvailableMmapData() only once instead of calling in a loop, because
+  // 1) A mapped buffer caches data before needing to be read again. By default
+  //    it raises read Event when half full.
+  // 2) Spinning on one mapped buffer can make other mapped buffers overflow.
+  size_t size = event_fd->GetAvailableMmapData(&data);
+  if (size == 0) {
+    return true;
+  }
+  std::vector<std::unique_ptr<Record>> records =
+      ReadRecordsFromBuffer(event_fd->attr(), data, size);
+  record_cache_->Push(std::move(records));
+  std::unique_ptr<Record> r = record_cache_->Pop();
+  while (r != nullptr) {
+    if (!record_callback_(r.get())) {
+      return false;
+    }
+    r = record_cache_->Pop();
+  }
+  return true;
+}
+
+bool EventSelectionSet::FinishReadMmapEventData() {
+  // Read each mapped buffer once, because some data may exist in the buffers
+  // but is not much enough to raise read Events.
   for (auto& group : groups_) {
     for (auto& selection : group) {
       for (auto& event_fd : selection.event_fds) {
-        bool has_data = true;
-        while (has_data) {
-          if (!ReadMmapEventDataForFd(event_fd, selection.event_attr,
-                                      &has_data)) {
+        if (event_fd->HasMappedBuffer()) {
+          if (!ReadMmapEventDataForFd(event_fd)) {
             return false;
           }
         }
       }
     }
   }
-  return true;
-}
-
-bool EventSelectionSet::ReadMmapEventDataForFd(
-    std::unique_ptr<EventFd>& event_fd, const perf_event_attr& attr,
-    bool* has_data) {
-  *has_data = false;
-  while (true) {
-    char* data;
-    size_t size = event_fd->GetAvailableMmapData(&data);
-    if (size == 0) {
-      break;
-    }
-    std::vector<std::unique_ptr<Record>> records =
-        ReadRecordsFromBuffer(attr, data, size);
-    record_cache_->Push(std::move(records));
-    std::unique_ptr<Record> r = record_cache_->Pop();
-    while (r != nullptr) {
-      if (!record_callback_(r.get())) {
-        return false;
-      }
-      r = record_cache_->Pop();
-    }
-    *has_data = true;
-  }
-  return true;
-}
-
-bool EventSelectionSet::FinishReadMmapEventData() {
+  // Clean up record cache.
   std::vector<std::unique_ptr<Record>> records = record_cache_->PopAll();
   for (auto& r : records) {
     if (!record_callback_(r.get())) {
