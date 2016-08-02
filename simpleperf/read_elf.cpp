@@ -43,23 +43,58 @@
 #define ELF_NOTE_GNU "GNU"
 #define NT_GNU_BUILD_ID 3
 
-
-bool IsValidElfFile(int fd) {
-  static const char elf_magic[] = {0x7f, 'E', 'L', 'F'};
-  char buf[4];
-  return android::base::ReadFully(fd, buf, 4) && memcmp(buf, elf_magic, 4) == 0;
+std::ostream& operator<<(std::ostream& os, const ElfStatus& status) {
+  switch (status) {
+    case ElfStatus::NO_ERROR:
+      os << "No error";
+      break;
+    case ElfStatus::FILE_NOT_FOUND:
+      os << "File not found";
+      break;
+    case ElfStatus::READ_FAILED:
+      os << "Read failed";
+      break;
+    case ElfStatus::FILE_MALFORMED:
+      os << "Malformed file";
+      break;
+    case ElfStatus::NO_SYMBOL_TABLE:
+      os << "No symbol table";
+      break;
+    case ElfStatus::NO_BUILD_ID:
+      os << "No build id";
+      break;
+    case ElfStatus::BUILD_ID_MISMATCH:
+      os << "Build id mismatch";
+      break;
+    case ElfStatus::SECTION_NOT_FOUND:
+      os << "Section not found";
+      break;
+  }
+  return os;
 }
 
-bool IsValidElfPath(const std::string& filename) {
+ElfStatus IsValidElfFile(int fd) {
+  static const char elf_magic[] = {0x7f, 'E', 'L', 'F'};
+  char buf[4];
+  if (!android::base::ReadFully(fd, buf, 4)) {
+    return ElfStatus::READ_FAILED;
+  }
+  if (memcmp(buf, elf_magic, 4) != 0) {
+    return ElfStatus::FILE_MALFORMED;
+  }
+  return ElfStatus::NO_ERROR;
+}
+
+ElfStatus IsValidElfPath(const std::string& filename) {
   if (!IsRegularFile(filename)) {
-    return false;
+    return ElfStatus::FILE_NOT_FOUND;
   }
   std::string mode = std::string("rb") + CLOSE_ON_EXEC_MODE;
   FILE* fp = fopen(filename.c_str(), mode.c_str());
   if (fp == nullptr) {
-    return false;
+    return ElfStatus::READ_FAILED;
   }
-  bool result = IsValidElfFile(fileno(fp));
+  ElfStatus result = IsValidElfFile(fileno(fp));
   fclose(fp);
   return result;
 }
@@ -87,137 +122,117 @@ static bool GetBuildIdFromNoteSection(const char* section, size_t section_size, 
   return false;
 }
 
-bool GetBuildIdFromNoteFile(const std::string& filename, BuildId* build_id) {
+ElfStatus GetBuildIdFromNoteFile(const std::string& filename, BuildId* build_id) {
   std::string content;
   if (!android::base::ReadFileToString(filename, &content)) {
-    LOG(DEBUG) << "can't read note file " << filename;
-    return false;
+    return ElfStatus::READ_FAILED;
   }
-  if (GetBuildIdFromNoteSection(content.c_str(), content.size(), build_id) == false) {
-    LOG(DEBUG) << "can't read build_id from note file " << filename;
-    return false;
+  if (!GetBuildIdFromNoteSection(content.c_str(), content.size(), build_id)) {
+    return ElfStatus::NO_BUILD_ID;
   }
-  return true;
+  return ElfStatus::NO_ERROR;
 }
 
 template <class ELFT>
-bool GetBuildIdFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf, BuildId* build_id) {
+ElfStatus GetBuildIdFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf, BuildId* build_id) {
   for (auto it = elf->section_begin(); it != elf->section_end(); ++it) {
     const llvm::object::ELFSectionRef& section_ref = *it;
     if (section_ref.getType() == llvm::ELF::SHT_NOTE) {
       llvm::StringRef data;
       if (it->getContents(data)) {
-        LOG(DEBUG) << "read note section error";
-        continue;
+        return ElfStatus::READ_FAILED;
       }
       if (GetBuildIdFromNoteSection(reinterpret_cast<const char*>(data.data()),
                                     data.size(), build_id)) {
-        return true;
+        return ElfStatus::NO_ERROR;
       }
     }
   }
-  return false;
+  return ElfStatus::NO_BUILD_ID;
 }
 
-static bool GetBuildIdFromObjectFile(llvm::object::ObjectFile* obj, BuildId* build_id) {
-  bool result = false;
+static ElfStatus GetBuildIdFromObjectFile(llvm::object::ObjectFile* obj, BuildId* build_id) {
   if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(obj)) {
-    result = GetBuildIdFromELFFile(elf, build_id);
+    return GetBuildIdFromELFFile(elf, build_id);
   } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(obj)) {
-    result = GetBuildIdFromELFFile(elf, build_id);
-  } else {
-    LOG(ERROR) << "unknown elf format in file " << obj->getFileName().data();
-    return false;
+    return GetBuildIdFromELFFile(elf, build_id);
   }
-  if (!result) {
-    LOG(DEBUG) << "no build id present in file " << obj->getFileName().data();
-  }
-  return result;
+  return ElfStatus::FILE_MALFORMED;
 }
 
-struct BinaryRet {
+struct BinaryWrapper {
   llvm::object::OwningBinary<llvm::object::Binary> binary;
   llvm::object::ObjectFile* obj;
 
-  BinaryRet() : obj(nullptr) {
+  BinaryWrapper() : obj(nullptr) {
   }
 };
 
-static BinaryRet OpenObjectFile(const std::string& filename, uint64_t file_offset = 0,
-                                uint64_t file_size = 0) {
-  BinaryRet ret;
+static ElfStatus OpenObjectFile(const std::string& filename, uint64_t file_offset,
+                                uint64_t file_size, BinaryWrapper* wrapper) {
   FileHelper fhelper = FileHelper::OpenReadOnly(filename);
   if (!fhelper) {
-    PLOG(DEBUG) << "failed to open " << filename;
-    return ret;
+    return ElfStatus::READ_FAILED;
   }
   if (file_size == 0) {
     file_size = GetFileSize(filename);
     if (file_size == 0) {
-      PLOG(ERROR) << "failed to get size of file " << filename;
-      return ret;
+      return ElfStatus::READ_FAILED;
     }
   }
   auto buffer_or_err = llvm::MemoryBuffer::getOpenFileSlice(fhelper.fd(), filename, file_size, file_offset);
   if (!buffer_or_err) {
-    LOG(ERROR) << "failed to read " << filename << " [" << file_offset << "-" << (file_offset + file_size)
-        << "]: " << buffer_or_err.getError().message();
-    return ret;
+    return ElfStatus::READ_FAILED;
   }
   auto binary_or_err = llvm::object::createBinary(buffer_or_err.get()->getMemBufferRef());
   if (!binary_or_err) {
-    LOG(ERROR) << filename << " [" << file_offset << "-" << (file_offset + file_size)
-        << "] is not a binary file: " << binary_or_err.getError().message();
-    return ret;
+    return ElfStatus::READ_FAILED;
   }
-  ret.binary = llvm::object::OwningBinary<llvm::object::Binary>(std::move(binary_or_err.get()),
-                                                                std::move(buffer_or_err.get()));
-  ret.obj = llvm::dyn_cast<llvm::object::ObjectFile>(ret.binary.getBinary());
-  if (ret.obj == nullptr) {
-    LOG(ERROR) << filename << " [" << file_offset << "-" << (file_offset + file_size)
-        << "] is not an object file";
+  wrapper->binary = llvm::object::OwningBinary<llvm::object::Binary>(std::move(binary_or_err.get()),
+                                                                        std::move(buffer_or_err.get()));
+  wrapper->obj = llvm::dyn_cast<llvm::object::ObjectFile>(wrapper->binary.getBinary());
+  if (wrapper->obj == nullptr) {
+    return ElfStatus::FILE_MALFORMED;
   }
-  return ret;
+  return ElfStatus::NO_ERROR;
 }
 
-static BinaryRet OpenObjectFileFromString(const std::string& s, const std::string& content_name) {
-  BinaryRet ret;
+static ElfStatus OpenObjectFileFromString(const std::string& s, BinaryWrapper* wrapper) {
   auto buffer = llvm::MemoryBuffer::getMemBuffer(s);
   auto binary_or_err = llvm::object::createBinary(buffer->getMemBufferRef());
   if (!binary_or_err) {
-    LOG(ERROR) << content_name << " is not a binary file: " << binary_or_err.getError().message();
-    return ret;
+    return ElfStatus::FILE_MALFORMED;
   }
-  ret.binary = llvm::object::OwningBinary<llvm::object::Binary>(std::move(binary_or_err.get()),
+  wrapper->binary = llvm::object::OwningBinary<llvm::object::Binary>(std::move(binary_or_err.get()),
                                                                 std::move(buffer));
-  ret.obj = llvm::dyn_cast<llvm::object::ObjectFile>(ret.binary.getBinary());
-  if (ret.obj == nullptr) {
-    LOG(ERROR) << content_name << " is not an object file";
+  wrapper->obj = llvm::dyn_cast<llvm::object::ObjectFile>(wrapper->binary.getBinary());
+  if (wrapper->obj == nullptr) {
+    return ElfStatus::FILE_MALFORMED;
   }
-  return ret;
+  return ElfStatus::NO_ERROR;
 }
 
-bool GetBuildIdFromElfFile(const std::string& filename, BuildId* build_id) {
-  if (!IsValidElfPath(filename)) {
-    return false;
+ElfStatus GetBuildIdFromElfFile(const std::string& filename, BuildId* build_id) {
+  ElfStatus result = IsValidElfPath(filename);
+  if (result != ElfStatus::NO_ERROR) {
+    return result;
   }
-  bool result = GetBuildIdFromEmbeddedElfFile(filename, 0, 0, build_id);
-  LOG(VERBOSE) << "GetBuildIdFromElfFile(" << filename << ") => " << build_id->ToString();
-  return result;
+  return GetBuildIdFromEmbeddedElfFile(filename, 0, 0, build_id);
 }
 
-bool GetBuildIdFromEmbeddedElfFile(const std::string& filename, uint64_t file_offset,
-                                   uint32_t file_size, BuildId* build_id) {
-  BinaryRet ret = OpenObjectFile(filename, file_offset, file_size);
-  if (ret.obj == nullptr) {
-    return false;
+ElfStatus GetBuildIdFromEmbeddedElfFile(const std::string& filename, uint64_t file_offset,
+                                        uint32_t file_size, BuildId* build_id) {
+  BinaryWrapper wrapper;
+  ElfStatus result = OpenObjectFile(filename, file_offset, file_size, &wrapper);
+  if (result != ElfStatus::NO_ERROR) {
+    return result;
   }
-  return GetBuildIdFromObjectFile(ret.obj, build_id);
+  return GetBuildIdFromObjectFile(wrapper.obj, build_id);
 }
 
 template <class ELFT>
-bool ReadSectionFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf, const std::string& section_name,
-                            std::string* content, bool report_error = true) {
+ElfStatus ReadSectionFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf, const std::string& section_name,
+                                 std::string* content) {
   for (llvm::object::section_iterator it = elf->section_begin(); it != elf->section_end(); ++it) {
     llvm::StringRef name;
     if (it->getName(name) || name != section_name) {
@@ -226,18 +241,12 @@ bool ReadSectionFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf, const 
     llvm::StringRef data;
     std::error_code err = it->getContents(data);
     if (err) {
-      if (report_error) {
-        LOG(ERROR) << "failed to read section " << section_name << ": " << err;
-      }
-      return false;
+      return ElfStatus::READ_FAILED;
     }
     *content = data;
-    return true;
+    return ElfStatus::NO_ERROR;
   }
-  if (report_error) {
-    LOG(ERROR) << "can't find section " << section_name;
-  }
-  return false;
+  return ElfStatus::SECTION_NOT_FOUND;
 }
 
 bool IsArmMappingSymbol(const char* name) {
@@ -332,85 +341,88 @@ void AddSymbolForPltSection(const llvm::object::ELFObjectFile<ELFT>* elf,
   }
 }
 
-
 template <class ELFT>
-void ParseSymbolsFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf,
-                             const std::function<void(const ElfFileSymbol&)>& callback) {
+ElfStatus ParseSymbolsFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf,
+                                  const std::function<void(const ElfFileSymbol&)>& callback) {
   auto machine = elf->getELFFile()->getHeader()->e_machine;
   bool is_arm = (machine == llvm::ELF::EM_ARM || machine == llvm::ELF::EM_AARCH64);
+  AddSymbolForPltSection(elf, callback);
   if (elf->symbol_begin() != elf->symbol_end()) {
     ReadSymbolTable(elf->symbol_begin(), elf->symbol_end(), callback, is_arm);
+    return ElfStatus::NO_ERROR;
   } else if (elf->dynamic_symbol_begin()->getRawDataRefImpl() != llvm::object::DataRefImpl()) {
     ReadSymbolTable(elf->dynamic_symbol_begin(), elf->dynamic_symbol_end(), callback, is_arm);
   }
-  AddSymbolForPltSection(elf, callback);
   std::string debugdata;
-  if (ReadSectionFromELFFile(elf, ".gnu_debugdata", &debugdata, false)) {
-    LOG(VERBOSE) << "Read .gnu_debugdata from " << elf->getFileName().str();
+  ElfStatus result = ReadSectionFromELFFile(elf, ".gnu_debugdata", &debugdata);
+  if (result == ElfStatus::SECTION_NOT_FOUND) {
+    return ElfStatus::NO_SYMBOL_TABLE;
+  } else if (result == ElfStatus::NO_ERROR) {
     std::string decompressed_data;
     if (XzDecompress(debugdata, &decompressed_data)) {
-      std::string content_name = std::string(".gnu_debugdata in ") + elf->getFileName().str();
-      BinaryRet ret = OpenObjectFileFromString(decompressed_data, content_name);
-      if (ret.obj != nullptr) {
-        if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(ret.obj)) {
-          ParseSymbolsFromELFFile(elf, callback);
-        } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(ret.obj)) {
-          ParseSymbolsFromELFFile(elf, callback);
+      BinaryWrapper wrapper;
+      result = OpenObjectFileFromString(decompressed_data, &wrapper);
+      if (result == ElfStatus::NO_ERROR) {
+        if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(wrapper.obj)) {
+          return ParseSymbolsFromELFFile(elf, callback);
+        } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(wrapper.obj)) {
+          return ParseSymbolsFromELFFile(elf, callback);
+        } else {
+          return ElfStatus::FILE_MALFORMED;
         }
       }
     }
   }
+  return result;
 }
 
-bool MatchBuildId(llvm::object::ObjectFile* obj, const BuildId& expected_build_id,
-                  const std::string& debug_filename) {
+ElfStatus MatchBuildId(llvm::object::ObjectFile* obj, const BuildId& expected_build_id) {
   if (expected_build_id.IsEmpty()) {
-    return true;
+    return ElfStatus::NO_ERROR;
   }
   BuildId real_build_id;
-  if (!GetBuildIdFromObjectFile(obj, &real_build_id)) {
-    return false;
+  ElfStatus result = GetBuildIdFromObjectFile(obj, &real_build_id);
+  if (result != ElfStatus::NO_ERROR) {
+    return result;
   }
   if (expected_build_id != real_build_id) {
-    LOG(WARNING) << "build id for " << debug_filename << " mismatch: "
-               << "expected " << expected_build_id.ToString()
-               << ", real " << real_build_id.ToString();
-    return false;
+    return ElfStatus::BUILD_ID_MISMATCH;
   }
-  LOG(VERBOSE) << "build id for " << debug_filename << " match: "
-               << "expected " << expected_build_id.ToString();
-  return true;
+  return ElfStatus::NO_ERROR;
 }
 
-bool ParseSymbolsFromElfFile(const std::string& filename, const BuildId& expected_build_id,
-                             const std::function<void(const ElfFileSymbol&)>& callback) {
-  if (!IsValidElfPath(filename)) {
-    return false;
+ElfStatus ParseSymbolsFromElfFile(const std::string& filename,
+                                  const BuildId& expected_build_id,
+                                  const std::function<void(const ElfFileSymbol&)>& callback) {
+  ElfStatus result = IsValidElfPath(filename);
+  if (result != ElfStatus::NO_ERROR) {
+    return result;
   }
   return ParseSymbolsFromEmbeddedElfFile(filename, 0, 0, expected_build_id, callback);
 }
 
-bool ParseSymbolsFromEmbeddedElfFile(const std::string& filename, uint64_t file_offset,
+ElfStatus ParseSymbolsFromEmbeddedElfFile(const std::string& filename, uint64_t file_offset,
                                      uint32_t file_size, const BuildId& expected_build_id,
                                      const std::function<void(const ElfFileSymbol&)>& callback) {
-  LOG(VERBOSE) << "Parse symbols from file " << filename;
-  BinaryRet ret = OpenObjectFile(filename, file_offset, file_size);
-  if (ret.obj == nullptr || !MatchBuildId(ret.obj, expected_build_id, filename)) {
-    return false;
+  BinaryWrapper wrapper;
+  ElfStatus result = OpenObjectFile(filename, file_offset, file_size, &wrapper);
+  if (result != ElfStatus::NO_ERROR) {
+    return result;
   }
-  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(ret.obj)) {
-    ParseSymbolsFromELFFile(elf, callback);
-  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(ret.obj)) {
-    ParseSymbolsFromELFFile(elf, callback);
-  } else {
-    LOG(ERROR) << "unknown elf format in file " << filename;
-    return false;
+  result = MatchBuildId(wrapper.obj, expected_build_id);
+  if (result != ElfStatus::NO_ERROR) {
+    return result;
   }
-  return true;
+  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(wrapper.obj)) {
+    return ParseSymbolsFromELFFile(elf, callback);
+  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(wrapper.obj)) {
+    return ParseSymbolsFromELFFile(elf, callback);
+  }
+  return ElfStatus::FILE_MALFORMED;
 }
 
 template <class ELFT>
-bool ReadMinExecutableVirtualAddress(const llvm::object::ELFFile<ELFT>* elf, uint64_t* p_vaddr) {
+ElfStatus ReadMinExecutableVirtualAddress(const llvm::object::ELFFile<ELFT>* elf, uint64_t* p_vaddr) {
   bool has_vaddr = false;
   uint64_t min_addr = std::numeric_limits<uint64_t>::max();
   for (auto it = elf->program_header_begin(); it != elf->program_header_end(); ++it) {
@@ -421,56 +433,55 @@ bool ReadMinExecutableVirtualAddress(const llvm::object::ELFFile<ELFT>* elf, uin
       }
     }
   }
-  if (has_vaddr) {
-    *p_vaddr = min_addr;
+  if (!has_vaddr) {
+    return ElfStatus::FILE_MALFORMED;
   }
-  return has_vaddr;
+  *p_vaddr = min_addr;
+  return ElfStatus::NO_ERROR;
 }
 
-bool ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
-                                                const BuildId& expected_build_id,
-                                                uint64_t* min_vaddr) {
-  if (!IsValidElfPath(filename)) {
-    return false;
+ElfStatus ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
+                                                     const BuildId& expected_build_id,
+                                                     uint64_t* min_vaddr) {
+  ElfStatus result = IsValidElfPath(filename);
+  if (result != ElfStatus::NO_ERROR) {
+    return result;
   }
-  BinaryRet ret = OpenObjectFile(filename);
-  if (ret.obj == nullptr || !MatchBuildId(ret.obj, expected_build_id, filename)) {
-    return false;
+  BinaryWrapper wrapper;
+  result = OpenObjectFile(filename, 0, 0, &wrapper);
+  if (result != ElfStatus::NO_ERROR) {
+    return result;
+  }
+  result = MatchBuildId(wrapper.obj, expected_build_id);
+  if (result != ElfStatus::NO_ERROR) {
+    return result;
   }
 
-  bool result = false;
-  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(ret.obj)) {
-    result = ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr);
-  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(ret.obj)) {
-    result = ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr);
+  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(wrapper.obj)) {
+    return ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr);
+  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(wrapper.obj)) {
+    return ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr);
   } else {
-    LOG(ERROR) << "unknown elf format in file" << filename;
-    return false;
+    return ElfStatus::FILE_MALFORMED;
   }
-
-  if (!result) {
-    LOG(ERROR) << "no program header in file " << filename;
-  }
-  return result;
 }
 
-bool ReadSectionFromElfFile(const std::string& filename, const std::string& section_name,
-                            std::string* content) {
-  if (!IsValidElfPath(filename)) {
-    return false;
+ElfStatus ReadSectionFromElfFile(const std::string& filename, const std::string& section_name,
+                                 std::string* content) {
+  ElfStatus result = IsValidElfPath(filename);
+  if (result != ElfStatus::NO_ERROR) {
+    return result;
   }
-  BinaryRet ret = OpenObjectFile(filename);
-  if (ret.obj == nullptr) {
-    return false;
+  BinaryWrapper wrapper;
+  result = OpenObjectFile(filename, 0, 0, &wrapper);
+  if (result != ElfStatus::NO_ERROR) {
+    return result;
   }
-  bool result = false;
-  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(ret.obj)) {
-    result = ReadSectionFromELFFile(elf, section_name, content);
-  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(ret.obj)) {
-    result = ReadSectionFromELFFile(elf, section_name, content);
+  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(wrapper.obj)) {
+    return ReadSectionFromELFFile(elf, section_name, content);
+  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(wrapper.obj)) {
+    return ReadSectionFromELFFile(elf, section_name, content);
   } else {
-    LOG(ERROR) << "unknown elf format in file" << filename;
-    return false;
+    return ElfStatus::FILE_MALFORMED;
   }
-  return result;
 }
