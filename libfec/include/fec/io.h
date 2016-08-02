@@ -123,7 +123,7 @@ namespace fec {
     public:
         io() : handle_(nullptr, fec_close) {}
 
-        io(const std::string& fn, int mode = O_RDONLY, int flags = 0,
+        explicit io(const std::string& fn, int mode = O_RDONLY, int flags = 0,
                 int roots = FEC_DEFAULT_ROOTS) : handle_(nullptr, fec_close) {
             open(fn, mode, flags, roots);
         }
