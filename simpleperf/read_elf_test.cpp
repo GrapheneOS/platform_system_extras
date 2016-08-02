@@ -19,18 +19,22 @@
 #include <gtest/gtest.h>
 
 #include <map>
+
+#include <android-base/file.h>
+#include <android-base/test_utils.h>
+
 #include "get_test_data.h"
 #include "test_util.h"
 
 TEST(read_elf, GetBuildIdFromElfFile) {
   BuildId build_id;
-  ASSERT_TRUE(GetBuildIdFromElfFile(GetTestData(ELF_FILE), &build_id));
+  ASSERT_EQ(ElfStatus::NO_ERROR, GetBuildIdFromElfFile(GetTestData(ELF_FILE), &build_id));
   ASSERT_EQ(build_id, BuildId(elf_file_build_id));
 }
 
 TEST(read_elf, GetBuildIdFromEmbeddedElfFile) {
   BuildId build_id;
-  ASSERT_TRUE(GetBuildIdFromEmbeddedElfFile(GetTestData(APK_FILE), NATIVELIB_OFFSET_IN_APK,
+  ASSERT_EQ(ElfStatus::NO_ERROR, GetBuildIdFromEmbeddedElfFile(GetTestData(APK_FILE), NATIVELIB_OFFSET_IN_APK,
                                             NATIVELIB_SIZE_IN_APK, &build_id));
   ASSERT_EQ(build_id, native_lib_build_id);
 }
@@ -59,14 +63,14 @@ void CheckElfFileSymbols(const std::map<std::string, ElfFileSymbol>& symbols) {
 
 TEST(read_elf, parse_symbols_from_elf_file_with_correct_build_id) {
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_TRUE(ParseSymbolsFromElfFile(GetTestData(ELF_FILE), elf_file_build_id,
+  ASSERT_EQ(ElfStatus::NO_ERROR, ParseSymbolsFromElfFile(GetTestData(ELF_FILE), elf_file_build_id,
                                       std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   CheckElfFileSymbols(symbols);
 }
 
 TEST(read_elf, parse_symbols_from_elf_file_without_build_id) {
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_TRUE(ParseSymbolsFromElfFile(GetTestData(ELF_FILE), BuildId(),
+  ASSERT_EQ(ElfStatus::NO_ERROR, ParseSymbolsFromElfFile(GetTestData(ELF_FILE), BuildId(),
                                       std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   CheckElfFileSymbols(symbols);
 }
@@ -74,13 +78,13 @@ TEST(read_elf, parse_symbols_from_elf_file_without_build_id) {
 TEST(read_elf, parse_symbols_from_elf_file_with_wrong_build_id) {
   BuildId build_id("01010101010101010101");
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_FALSE(ParseSymbolsFromElfFile(GetTestData(ELF_FILE), build_id,
+  ASSERT_EQ(ElfStatus::BUILD_ID_MISMATCH, ParseSymbolsFromElfFile(GetTestData(ELF_FILE), build_id,
                                        std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
 }
 
 TEST(read_elf, ParseSymbolsFromEmbeddedElfFile) {
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_TRUE(ParseSymbolsFromEmbeddedElfFile(GetTestData(APK_FILE), NATIVELIB_OFFSET_IN_APK,
+  ASSERT_EQ(ElfStatus::NO_SYMBOL_TABLE, ParseSymbolsFromEmbeddedElfFile(GetTestData(APK_FILE), NATIVELIB_OFFSET_IN_APK,
                                               NATIVELIB_SIZE_IN_APK, native_lib_build_id,
                                               std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   CheckElfFileSymbols(symbols);
@@ -88,7 +92,7 @@ TEST(read_elf, ParseSymbolsFromEmbeddedElfFile) {
 
 TEST(read_elf, ParseSymbolFromMiniDebugInfoElfFile) {
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_TRUE(ParseSymbolsFromElfFile(GetTestData(ELF_FILE_WITH_MINI_DEBUG_INFO), BuildId(),
+  ASSERT_EQ(ElfStatus::NO_ERROR, ParseSymbolsFromElfFile(GetTestData(ELF_FILE_WITH_MINI_DEBUG_INFO), BuildId(),
                                       std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   CheckFunctionSymbols(symbols);
 }
@@ -101,14 +105,17 @@ TEST(read_elf, arm_mapping_symbol) {
 }
 
 TEST(read_elf, IsValidElfPath) {
-  ASSERT_FALSE(IsValidElfPath("/dev/zero"));
-  ASSERT_FALSE(IsValidElfPath("/sys/devices/system/cpu/online"));
-  ASSERT_TRUE(IsValidElfPath(GetTestData(ELF_FILE)));
+  ASSERT_NE(ElfStatus::NO_ERROR, IsValidElfPath("/dev/zero"));
+  TemporaryFile tmp_file;
+  ASSERT_EQ(ElfStatus::READ_FAILED, IsValidElfPath(tmp_file.path));
+  ASSERT_TRUE(android::base::WriteStringToFile("wrong format for elf", tmp_file.path));
+  ASSERT_EQ(ElfStatus::FILE_MALFORMED, IsValidElfPath(tmp_file.path));
+  ASSERT_EQ(ElfStatus::NO_ERROR, IsValidElfPath(GetTestData(ELF_FILE)));
 }
 
 TEST(read_elf, check_symbol_for_plt_section) {
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_TRUE(ParseSymbolsFromElfFile(GetTestData(ELF_FILE), BuildId(),
+  ASSERT_EQ(ElfStatus::NO_ERROR, ParseSymbolsFromElfFile(GetTestData(ELF_FILE), BuildId(),
                                       std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   ASSERT_NE(symbols.find("@plt"), symbols.end());
 }
