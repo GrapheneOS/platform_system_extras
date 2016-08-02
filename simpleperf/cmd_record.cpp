@@ -1033,7 +1033,6 @@ bool RecordCommand::DumpBuildIdFeature() {
   for (const auto& filename : hit_kernel_modules_) {
     if (filename == DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID) {
       if (!GetKernelBuildId(&build_id)) {
-        LOG(DEBUG) << "can't read build_id for kernel";
         continue;
       }
       build_id_records.push_back(BuildIdRecord::Create(
@@ -1059,14 +1058,18 @@ bool RecordCommand::DumpBuildIdFeature() {
     }
     auto tuple = SplitUrlInApk(filename);
     if (std::get<0>(tuple)) {
-      if (!GetBuildIdFromApkFile(std::get<1>(tuple), std::get<2>(tuple),
-                                 &build_id)) {
-        LOG(DEBUG) << "can't read build_id from file " << filename;
+      ElfStatus result = GetBuildIdFromApkFile(std::get<1>(tuple),
+                                               std::get<2>(tuple), &build_id);
+      if (result != ElfStatus::NO_ERROR) {
+        LOG(DEBUG) << "can't read build_id from file " << filename << ": "
+                   << result;
         continue;
       }
     } else {
-      if (!GetBuildIdFromElfFile(filename, &build_id)) {
-        LOG(DEBUG) << "can't read build_id from file " << filename;
+      ElfStatus result = GetBuildIdFromElfFile(filename, &build_id);
+      if (result != ElfStatus::NO_ERROR) {
+        LOG(DEBUG) << "can't read build_id from file " << filename << ": "
+                   << result;
         continue;
       }
     }
