@@ -61,8 +61,8 @@ TEST_F(RecordFileTest, smoke) {
   ASSERT_TRUE(writer->WriteAttrSection(attr_ids_));
 
   // Write data section.
-  MmapRecord mmap_record = MmapRecord::Create(*(attr_ids_[0].attr), true, 1, 1, 0x1000, 0x2000,
-                                              0x3000, "mmap_record_example", attr_ids_[0].ids[0]);
+  MmapRecord mmap_record(*(attr_ids_[0].attr), true, 1, 1, 0x1000, 0x2000,
+                         0x3000, "mmap_record_example", attr_ids_[0].ids[0]);
   ASSERT_TRUE(writer->WriteRecord(mmap_record));
 
   // Write feature section.
@@ -72,8 +72,9 @@ TEST_F(RecordFileTest, smoke) {
     p[i] = i;
   }
   BuildId build_id(p);
-  BuildIdRecord build_id_record = BuildIdRecord::Create(false, getpid(), build_id, "init");
-  ASSERT_TRUE(writer->WriteBuildIdFeature({build_id_record}));
+  std::vector<BuildIdRecord> build_id_records;
+  build_id_records.push_back(BuildIdRecord(false, getpid(), build_id, "init"));
+  ASSERT_TRUE(writer->WriteBuildIdFeature(build_id_records));
   ASSERT_TRUE(writer->Close());
 
   // Read from a record file.
@@ -90,9 +91,9 @@ TEST_F(RecordFileTest, smoke) {
   CheckRecordEqual(mmap_record, *records[0]);
 
   // Read and check feature section.
-  std::vector<BuildIdRecord> build_id_records = reader->ReadBuildIdFeature();
-  ASSERT_EQ(1u, build_id_records.size());
-  CheckRecordEqual(build_id_record, build_id_records[0]);
+  std::vector<BuildIdRecord> read_build_id_records = reader->ReadBuildIdFeature();
+  ASSERT_EQ(1u, read_build_id_records.size());
+  CheckRecordEqual(read_build_id_records[0], build_id_records[0]);
 
   ASSERT_TRUE(reader->Close());
 }
@@ -109,14 +110,12 @@ TEST_F(RecordFileTest, records_sorted_by_time) {
   ASSERT_TRUE(writer->WriteAttrSection(attr_ids_));
 
   // Write data section.
-  MmapRecord r1 =
-      MmapRecord::Create(*(attr_ids_[0].attr), true, 1, 1, 0x100, 0x2000, 0x3000, "mmap_record1",
-                       attr_ids_[0].ids[0]);
-  MmapRecord r2 = r1;
-  MmapRecord r3 = r1;
-  r1.sample_id.time_data.time = 2;
-  r2.sample_id.time_data.time = 1;
-  r3.sample_id.time_data.time = 3;
+  MmapRecord r1(*(attr_ids_[0].attr), true, 1, 1, 0x100, 0x2000, 0x3000, "mmap_record1",
+                attr_ids_[0].ids[0], 2);
+  MmapRecord r2(*(attr_ids_[0].attr), true, 1, 1, 0x100, 0x2000, 0x3000, "mmap_record1",
+                attr_ids_[0].ids[0], 1);
+  MmapRecord r3(*(attr_ids_[0].attr), true, 1, 1, 0x100, 0x2000, 0x3000, "mmap_record1",
+                attr_ids_[0].ids[0], 3);
   ASSERT_TRUE(writer->WriteRecord(r1));
   ASSERT_TRUE(writer->WriteRecord(r2));
   ASSERT_TRUE(writer->WriteRecord(r3));
