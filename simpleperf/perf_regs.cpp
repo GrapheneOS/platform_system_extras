@@ -156,7 +156,7 @@ std::string GetRegName(size_t regno, ArchType arch) {
   }
 }
 
-RegSet CreateRegSet(uint64_t valid_mask, const std::vector<uint64_t>& valid_regs) {
+RegSet CreateRegSet(uint64_t valid_mask, const uint64_t* valid_regs) {
   RegSet regs;
   regs.valid_mask = valid_mask;
   for (int i = 0, j = 0; i < 64; ++i) {
