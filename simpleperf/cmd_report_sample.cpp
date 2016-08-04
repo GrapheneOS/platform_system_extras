@@ -301,9 +301,9 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
   callchain->set_file(map->dso->Path());
 
   if (show_callchain_) {
-    const std::vector<uint64_t>& ips = r.callchain_data.ips;
     bool first_ip = true;
-    for (auto& ip : ips) {
+    for (uint64_t i = 0; i < r.callchain_data.ip_nr; ++i) {
+      uint64_t ip = r.callchain_data.ips[i];
       if (ip >= PERF_CONTEXT_MAX) {
         switch (ip) {
           case PERF_CONTEXT_KERNEL:
@@ -370,9 +370,9 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r) {
 
   if (show_callchain_) {
     FprintIndented(report_fp_, 1, "callchain:\n");
-    const std::vector<uint64_t>& ips = r.callchain_data.ips;
     bool first_ip = true;
-    for (auto& ip : ips) {
+    for (uint64_t i = 0; i < r.callchain_data.ip_nr; ++i) {
+      uint64_t ip = r.callchain_data.ips[i];
       if (ip >= PERF_CONTEXT_MAX) {
         switch (ip) {
           case PERF_CONTEXT_KERNEL:

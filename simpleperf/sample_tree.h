@@ -79,7 +79,8 @@ class SampleTreeBuilder {
 
   void ProcessSampleRecord(const SampleRecord& r) {
     if (use_branch_address_ && (r.sample_type & PERF_SAMPLE_BRANCH_STACK)) {
-      for (auto& item : r.branch_stack_data.stack) {
+      for (uint64_t i = 0; i < r.branch_stack_data.stack_nr; ++i) {
+        auto& item = r.branch_stack_data.stack[i];
         if (item.from != 0 && item.to != 0) {
           CreateBranchSample(r, item);
         }
@@ -95,8 +96,8 @@ class SampleTreeBuilder {
     if (accumulate_callchain_) {
       std::vector<uint64_t> ips;
       if (r.sample_type & PERF_SAMPLE_CALLCHAIN) {
-        ips.insert(ips.end(), r.callchain_data.ips.begin(),
-                   r.callchain_data.ips.end());
+        ips.insert(ips.end(), r.callchain_data.ips,
+                   r.callchain_data.ips + r.callchain_data.ip_nr);
       }
       const ThreadEntry* thread = GetThreadOfSample(sample);
       // Use stack_user_data.data.size() instead of stack_user_data.dyn_size, to
@@ -104,13 +105,13 @@ class SampleTreeBuilder {
       if (thread != nullptr && (r.sample_type & PERF_SAMPLE_REGS_USER) &&
           (r.regs_user_data.reg_mask != 0) &&
           (r.sample_type & PERF_SAMPLE_STACK_USER) &&
-          (!r.stack_user_data.data.empty())) {
+          (r.GetValidStackSize() > 0)) {
         RegSet regs =
             CreateRegSet(r.regs_user_data.reg_mask, r.regs_user_data.regs);
         ArchType arch = GetArchForAbi(ScopedCurrentArch::GetCurrentArch(),
                                       r.regs_user_data.abi);
         std::vector<uint64_t> unwind_ips =
-            UnwindCallChain(arch, *thread, regs, r.stack_user_data.data.data(),
+            UnwindCallChain(arch, *thread, regs, r.stack_user_data.data,
                             r.GetValidStackSize(), strict_unwind_arch_check_);
         if (!unwind_ips.empty()) {
           ips.push_back(PERF_CONTEXT_USER);

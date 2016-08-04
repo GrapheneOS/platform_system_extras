@@ -189,6 +189,15 @@ size_t SampleId::Size() const {
   return size;
 }
 
+Record::Record(Record&& other) {
+  header = other.header;
+  sample_id = other.sample_id;
+  binary_ = other.binary_;
+  own_binary_ = other.own_binary_;
+  other.binary_ = nullptr;
+  other.own_binary_ = false;
+}
+
 void Record::Dump(size_t indent) const {
   PrintIndented(indent, "record %s: type %u, misc %u, size %u\n",
                 RecordTypeToString(type()).c_str(), type(), misc(), size());
@@ -198,57 +207,64 @@ void Record::Dump(size_t indent) const {
 
 uint64_t Record::Timestamp() const { return sample_id.time_data.time; }
 
+void Record::UpdateBinary(const char* new_binary) {
+  if (own_binary_) {
+    delete[] binary_;
+  }
+  own_binary_ = true;
+  binary_ = new_binary;
+}
+
 MmapRecord::MmapRecord(const perf_event_attr& attr, const char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
-  MoveFromBinaryFormat(data, p);
+  data = reinterpret_cast<const MmapRecordDataType*>(p);
+  p += sizeof(*data);
   filename = p;
-  p += Align(filename.size() + 1, 8);
+  p += Align(strlen(filename) + 1, 8);
   CHECK_LE(p, end);
   sample_id.ReadFromBinaryFormat(attr, p, end);
 }
 
-std::vector<char> MmapRecord::BinaryFormat() const {
-  std::vector<char> buf(size());
-  char* p = buf.data();
+MmapRecord::MmapRecord(const perf_event_attr& attr, bool in_kernel,
+                       uint32_t pid, uint32_t tid, uint64_t addr, uint64_t len,
+                       uint64_t pgoff, const std::string& filename,
+                       uint64_t event_id, uint64_t time) {
+  SetTypeAndMisc(PERF_RECORD_MMAP,
+                 in_kernel ? PERF_RECORD_MISC_KERNEL : PERF_RECORD_MISC_USER);
+  sample_id.CreateContent(attr, event_id);
+  sample_id.time_data.time = time;
+  MmapRecordDataType data;
+  data.pid = pid;
+  data.tid = tid;
+  data.addr = addr;
+  data.len = len;
+  data.pgoff = pgoff;
+  SetDataAndFilename(data, filename);
+}
+
+void MmapRecord::SetDataAndFilename(const MmapRecordDataType& data,
+                                    const std::string& filename) {
+  SetSize(header_size() + sizeof(data) + Align(filename.size() + 1, 8) +
+          sample_id.Size());
+  char* new_binary = new char[size()];
+  char* p = new_binary;
   MoveToBinaryFormat(header, p);
+  this->data = reinterpret_cast<MmapRecordDataType*>(p);
   MoveToBinaryFormat(data, p);
+  this->filename = p;
   strcpy(p, filename.c_str());
   p += Align(filename.size() + 1, 8);
   sample_id.WriteToBinaryFormat(p);
-  return buf;
-}
-
-void MmapRecord::AdjustSizeBasedOnData() {
-  SetSize(header_size() + sizeof(data) + Align(filename.size() + 1, 8) +
-          sample_id.Size());
+  UpdateBinary(new_binary);
 }
 
 void MmapRecord::DumpData(size_t indent) const {
   PrintIndented(indent,
                 "pid %u, tid %u, addr 0x%" PRIx64 ", len 0x%" PRIx64 "\n",
-                data.pid, data.tid, data.addr, data.len);
-  PrintIndented(indent, "pgoff 0x%" PRIx64 ", filename %s\n", data.pgoff,
-                filename.c_str());
-}
-
-MmapRecord MmapRecord::Create(const perf_event_attr& attr, bool in_kernel,
-                              uint32_t pid, uint32_t tid, uint64_t addr,
-                              uint64_t len, uint64_t pgoff,
-                              const std::string& filename, uint64_t event_id) {
-  MmapRecord record;
-  record.SetTypeAndMisc(PERF_RECORD_MMAP, in_kernel ? PERF_RECORD_MISC_KERNEL
-                                                    : PERF_RECORD_MISC_USER);
-  record.data.pid = pid;
-  record.data.tid = tid;
-  record.data.addr = addr;
-  record.data.len = len;
-  record.data.pgoff = pgoff;
-  record.filename = filename;
-  size_t sample_id_size = record.sample_id.CreateContent(attr, event_id);
-  record.SetSize(record.header_size() + sizeof(record.data) +
-                 Align(record.filename.size() + 1, 8) + sample_id_size);
-  return record;
+                data->pid, data->tid, data->addr, data->len);
+  PrintIndented(indent, "pgoff 0x%" PRIx64 ", filename %s\n", data->pgoff,
+                filename);
 }
 
 Mmap2Record::Mmap2Record(const perf_event_attr& attr, const char* p)
@@ -257,114 +273,109 @@ Mmap2Record::Mmap2Record(const perf_event_attr& attr, const char* p)
   p += header_size();
   MoveFromBinaryFormat(data, p);
   filename = p;
-  p += Align(filename.size() + 1, 8);
+  p += Align(strlen(filename) + 1, 8);
   CHECK_LE(p, end);
   sample_id.ReadFromBinaryFormat(attr, p, end);
 }
 
-std::vector<char> Mmap2Record::BinaryFormat() const {
-  std::vector<char> buf(size());
-  char* p = buf.data();
+void Mmap2Record::SetDataAndFilename(const Mmap2RecordDataType& data,
+                                     const std::string& filename) {
+  SetSize(header_size() + sizeof(data) + Align(filename.size() + 1, 8) +
+          sample_id.Size());
+  char* new_binary = new char[size()];
+  char* p = new_binary;
   MoveToBinaryFormat(header, p);
+  this->data = reinterpret_cast<Mmap2RecordDataType*>(p);
   MoveToBinaryFormat(data, p);
+  this->filename = p;
   strcpy(p, filename.c_str());
   p += Align(filename.size() + 1, 8);
   sample_id.WriteToBinaryFormat(p);
-  return buf;
-}
-
-void Mmap2Record::AdjustSizeBasedOnData() {
-  SetSize(header_size() + sizeof(data) + Align(filename.size() + 1, 8) +
-          sample_id.Size());
+  UpdateBinary(new_binary);
 }
 
 void Mmap2Record::DumpData(size_t indent) const {
   PrintIndented(indent,
                 "pid %u, tid %u, addr 0x%" PRIx64 ", len 0x%" PRIx64 "\n",
-                data.pid, data.tid, data.addr, data.len);
+                data->pid, data->tid, data->addr, data->len);
   PrintIndented(indent, "pgoff 0x" PRIx64 ", maj %u, min %u, ino %" PRId64
                         ", ino_generation %" PRIu64 "\n",
-                data.pgoff, data.maj, data.min, data.ino, data.ino_generation);
-  PrintIndented(indent, "prot %u, flags %u, filenames %s\n", data.prot,
-                data.flags, filename.c_str());
+                data->pgoff, data->maj, data->min, data->ino,
+                data->ino_generation);
+  PrintIndented(indent, "prot %u, flags %u, filenames %s\n", data->prot,
+                data->flags, filename);
 }
 
 CommRecord::CommRecord(const perf_event_attr& attr, const char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
-  MoveFromBinaryFormat(data, p);
+  data = reinterpret_cast<const CommRecordDataType*>(p);
+  p += sizeof(*data);
   comm = p;
   p += Align(strlen(p) + 1, 8);
   CHECK_LE(p, end);
   sample_id.ReadFromBinaryFormat(attr, p, end);
 }
 
-std::vector<char> CommRecord::BinaryFormat() const {
-  std::vector<char> buf(size());
-  char* p = buf.data();
+CommRecord::CommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
+                       const std::string& comm, uint64_t event_id) {
+  SetTypeAndMisc(PERF_RECORD_COMM, 0);
+  CommRecordDataType data;
+  data.pid = pid;
+  data.tid = tid;
+  size_t sample_id_size = sample_id.CreateContent(attr, event_id);
+  SetSize(header_size() + sizeof(data) + Align(comm.size() + 1, 8) +
+          sample_id_size);
+  char* new_binary = new char[size()];
+  char* p = new_binary;
   MoveToBinaryFormat(header, p);
+  this->data = reinterpret_cast<CommRecordDataType*>(p);
   MoveToBinaryFormat(data, p);
+  this->comm = p;
   strcpy(p, comm.c_str());
   p += Align(comm.size() + 1, 8);
   sample_id.WriteToBinaryFormat(p);
-  return buf;
+  UpdateBinary(new_binary);
 }
 
 void CommRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "pid %u, tid %u, comm %s\n", data.pid, data.tid,
-                comm.c_str());
-}
-
-CommRecord CommRecord::Create(const perf_event_attr& attr, uint32_t pid,
-                              uint32_t tid, const std::string& comm,
-                              uint64_t event_id) {
-  CommRecord record;
-  record.SetTypeAndMisc(PERF_RECORD_COMM, 0);
-  record.data.pid = pid;
-  record.data.tid = tid;
-  record.comm = comm;
-  size_t sample_id_size = record.sample_id.CreateContent(attr, event_id);
-  record.SetSize(record.header_size() + sizeof(record.data) +
-                 Align(record.comm.size() + 1, 8) + sample_id_size);
-  return record;
+  PrintIndented(indent, "pid %u, tid %u, comm %s\n", data->pid, data->tid,
+                comm);
 }
 
 ExitOrForkRecord::ExitOrForkRecord(const perf_event_attr& attr, const char* p)
     : Record(p) {
   const char* end = p + size();
   p += header_size();
-  MoveFromBinaryFormat(data, p);
+  data = reinterpret_cast<const ExitOrForkRecordDataType*>(p);
+  p += sizeof(*data);
   CHECK_LE(p, end);
   sample_id.ReadFromBinaryFormat(attr, p, end);
 }
 
-std::vector<char> ExitOrForkRecord::BinaryFormat() const {
-  std::vector<char> buf(size());
-  char* p = buf.data();
+void ExitOrForkRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "pid %u, ppid %u, tid %u, ptid %u\n", data->pid,
+                data->ppid, data->tid, data->ptid);
+}
+
+ForkRecord::ForkRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
+                       uint32_t ppid, uint32_t ptid, uint64_t event_id) {
+  SetTypeAndMisc(PERF_RECORD_FORK, 0);
+  ExitOrForkRecordDataType data;
+  data.pid = pid;
+  data.ppid = ppid;
+  data.tid = tid;
+  data.ptid = ptid;
+  data.time = 0;
+  size_t sample_id_size = sample_id.CreateContent(attr, event_id);
+  SetSize(header_size() + sizeof(data) + sample_id_size);
+  char* new_binary = new char[size()];
+  char* p = new_binary;
   MoveToBinaryFormat(header, p);
+  this->data = reinterpret_cast<ExitOrForkRecordDataType*>(p);
   MoveToBinaryFormat(data, p);
   sample_id.WriteToBinaryFormat(p);
-  return buf;
-}
-
-void ExitOrForkRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "pid %u, ppid %u, tid %u, ptid %u\n", data.pid,
-                data.ppid, data.tid, data.ptid);
-}
-
-ForkRecord ForkRecord::Create(const perf_event_attr& attr, uint32_t pid,
-                              uint32_t tid, uint32_t ppid, uint32_t ptid,
-                              uint64_t event_id) {
-  ForkRecord record;
-  record.SetTypeAndMisc(PERF_RECORD_FORK, 0);
-  record.data.pid = pid;
-  record.data.ppid = ppid;
-  record.data.tid = tid;
-  record.data.ptid = ptid;
-  record.data.time = 0;
-  size_t sample_id_size = record.sample_id.CreateContent(attr, event_id);
-  record.SetSize(record.header_size() + sizeof(record.data) + sample_id_size);
-  return record;
+  UpdateBinary(new_binary);
 }
 
 LostRecord::LostRecord(const perf_event_attr& attr, const char* p) : Record(p) {
@@ -374,16 +385,6 @@ LostRecord::LostRecord(const perf_event_attr& attr, const char* p) : Record(p) {
   MoveFromBinaryFormat(lost, p);
   CHECK_LE(p, end);
   sample_id.ReadFromBinaryFormat(attr, p, end);
-}
-
-std::vector<char> LostRecord::BinaryFormat() const {
-  std::vector<char> buf(size());
-  char* p = buf.data();
-  MoveToBinaryFormat(header, p);
-  MoveToBinaryFormat(id, p);
-  MoveToBinaryFormat(lost, p);
-  sample_id.WriteToBinaryFormat(p);
-  return buf;
 }
 
 void LostRecord::DumpData(size_t indent) const {
@@ -424,22 +425,19 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, const char* p)
     MoveFromBinaryFormat(period_data, p);
   }
   if (sample_type & PERF_SAMPLE_CALLCHAIN) {
-    uint64_t nr;
-    MoveFromBinaryFormat(nr, p);
-    callchain_data.ips.resize(nr);
-    MoveFromBinaryFormat(callchain_data.ips.data(), nr, p);
+    MoveFromBinaryFormat(callchain_data.ip_nr, p);
+    callchain_data.ips = reinterpret_cast<const uint64_t*>(p);
+    p += callchain_data.ip_nr * sizeof(uint64_t);
   }
   if (sample_type & PERF_SAMPLE_RAW) {
-    uint32_t size;
-    MoveFromBinaryFormat(size, p);
-    raw_data.data.resize(size);
-    MoveFromBinaryFormat(raw_data.data.data(), size, p);
+    MoveFromBinaryFormat(raw_data.size, p);
+    raw_data.data = p;
+    p += raw_data.size;
   }
   if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
-    uint64_t nr;
-    MoveFromBinaryFormat(nr, p);
-    branch_stack_data.stack.resize(nr);
-    MoveFromBinaryFormat(branch_stack_data.stack.data(), nr, p);
+    MoveFromBinaryFormat(branch_stack_data.stack_nr, p);
+    branch_stack_data.stack = reinterpret_cast<const BranchStackItemType*>(p);
+    p += branch_stack_data.stack_nr * sizeof(BranchStackItemType);
   }
   if (sample_type & PERF_SAMPLE_REGS_USER) {
     MoveFromBinaryFormat(regs_user_data.abi, p);
@@ -453,18 +451,18 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, const char* p)
           bit_nr++;
         }
       }
-      regs_user_data.regs.resize(bit_nr);
-      MoveFromBinaryFormat(regs_user_data.regs.data(), bit_nr, p);
+      regs_user_data.reg_nr = bit_nr;
+      regs_user_data.regs = reinterpret_cast<const uint64_t*>(p);
+      p += bit_nr * sizeof(uint64_t);
     }
   }
   if (sample_type & PERF_SAMPLE_STACK_USER) {
-    uint64_t size;
-    MoveFromBinaryFormat(size, p);
-    if (size == 0) {
+    MoveFromBinaryFormat(stack_user_data.size, p);
+    if (stack_user_data.size == 0) {
       stack_user_data.dyn_size = 0;
     } else {
-      stack_user_data.data.resize(size);
-      MoveFromBinaryFormat(stack_user_data.data.data(), size, p);
+      stack_user_data.data = p;
+      p += stack_user_data.size;
       MoveFromBinaryFormat(stack_user_data.dyn_size, p);
     }
   }
@@ -475,80 +473,48 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, const char* p)
   }
 }
 
-std::vector<char> SampleRecord::BinaryFormat() const {
-  std::vector<char> buf(size());
-  char* p = buf.data();
+void SampleRecord::ReplaceRegAndStackWithCallChain(
+    const std::vector<uint64_t>& ips) {
+  uint32_t size_added_in_callchain = sizeof(uint64_t) * (ips.size() + 1);
+  uint32_t size_reduced_in_reg_stack =
+      regs_user_data.reg_nr * sizeof(uint64_t) + stack_user_data.size +
+      sizeof(uint64_t);
+  CHECK_LE(size_added_in_callchain, size_reduced_in_reg_stack);
+  uint32_t size_reduced = size_reduced_in_reg_stack - size_added_in_callchain;
+  SetSize(size() - size_reduced);
+  char* p = const_cast<char*>(binary_);
   MoveToBinaryFormat(header, p);
-  if (sample_type & PERF_SAMPLE_IDENTIFIER) {
-    MoveToBinaryFormat(id_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_IP) {
-    MoveToBinaryFormat(ip_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_TID) {
-    MoveToBinaryFormat(tid_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_TIME) {
-    MoveToBinaryFormat(time_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_ADDR) {
-    MoveToBinaryFormat(addr_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_ID) {
-    MoveToBinaryFormat(id_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_STREAM_ID) {
-    MoveToBinaryFormat(stream_id_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_CPU) {
-    MoveToBinaryFormat(cpu_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_PERIOD) {
-    MoveToBinaryFormat(period_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_CALLCHAIN) {
-    uint64_t nr = callchain_data.ips.size();
-    MoveToBinaryFormat(nr, p);
-    MoveToBinaryFormat(callchain_data.ips.data(), nr, p);
+  p = const_cast<char*>(stack_user_data.data + stack_user_data.size +
+                        sizeof(uint64_t)) -
+      (size_reduced_in_reg_stack - size_added_in_callchain);
+  stack_user_data.size = 0;
+  regs_user_data.abi = 0;
+  p -= sizeof(uint64_t);
+  *reinterpret_cast<uint64_t*>(p) = stack_user_data.size;
+  p -= sizeof(uint64_t);
+  *reinterpret_cast<uint64_t*>(p) = regs_user_data.abi;
+  if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
+    p -= branch_stack_data.stack_nr * sizeof(BranchStackItemType);
+    memmove(p, branch_stack_data.stack,
+            branch_stack_data.stack_nr * sizeof(BranchStackItemType));
+    p -= sizeof(uint64_t);
+    *reinterpret_cast<uint64_t*>(p) = branch_stack_data.stack_nr;
   }
   if (sample_type & PERF_SAMPLE_RAW) {
-    uint32_t size = raw_data.data.size();
-    MoveToBinaryFormat(size, p);
-    MoveToBinaryFormat(raw_data.data.data(), size, p);
+    p -= raw_data.size;
+    memmove(p, raw_data.data, raw_data.size);
+    p -= sizeof(uint32_t);
+    *reinterpret_cast<uint32_t*>(p) = raw_data.size;
   }
-  if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
-    uint64_t nr = branch_stack_data.stack.size();
-    MoveToBinaryFormat(nr, p);
-    MoveToBinaryFormat(branch_stack_data.stack.data(), nr, p);
-  }
-  if (sample_type & PERF_SAMPLE_REGS_USER) {
-    MoveToBinaryFormat(regs_user_data.abi, p);
-    if (regs_user_data.abi != 0) {
-      MoveToBinaryFormat(regs_user_data.regs.data(), regs_user_data.regs.size(),
-                         p);
-    }
-  }
-  if (sample_type & PERF_SAMPLE_STACK_USER) {
-    uint64_t size = stack_user_data.data.size();
-    MoveToBinaryFormat(size, p);
-    if (size != 0) {
-      MoveToBinaryFormat(stack_user_data.data.data(), size, p);
-      MoveToBinaryFormat(stack_user_data.dyn_size, p);
-    }
-  }
-
-  // If record command does stack unwinding, sample records' size may be
-  // decreased. So we can't trust header.size here, and should adjust buffer
-  // size based on real need.
-  buf.resize(p - buf.data());
-  return buf;
-}
-
-void SampleRecord::AdjustSizeBasedOnData() {
-  size_t size = BinaryFormat().size();
-  LOG(DEBUG) << "Record (type " << RecordTypeToString(type())
-             << ") size is changed from " << this->size() << " to " << size;
-  SetSize(size);
+  p -= ips.size() * sizeof(uint64_t);
+  memcpy(p, ips.data(), ips.size() * sizeof(uint64_t));
+  p -= sizeof(uint64_t);
+  *reinterpret_cast<uint64_t*>(p) = PERF_CONTEXT_USER;
+  p -= sizeof(uint64_t) * (callchain_data.ip_nr);
+  callchain_data.ips = reinterpret_cast<uint64_t*>(p);
+  callchain_data.ip_nr += ips.size() + 1;
+  p -= sizeof(uint64_t);
+  *reinterpret_cast<uint64_t*>(p) = callchain_data.ip_nr;
 }
 
 void SampleRecord::DumpData(size_t indent) const {
@@ -578,25 +544,24 @@ void SampleRecord::DumpData(size_t indent) const {
     PrintIndented(indent, "period %" PRId64 "\n", period_data.period);
   }
   if (sample_type & PERF_SAMPLE_CALLCHAIN) {
-    PrintIndented(indent, "callchain nr=%" PRIu64 "\n",
-                  callchain_data.ips.size());
-    for (auto& ip : callchain_data.ips) {
-      PrintIndented(indent + 1, "0x%" PRIx64 "\n", ip);
+    PrintIndented(indent, "callchain nr=%" PRIu64 "\n", callchain_data.ip_nr);
+    for (uint64_t i = 0; i < callchain_data.ip_nr; ++i) {
+      PrintIndented(indent + 1, "0x%" PRIx64 "\n", callchain_data.ips[i]);
     }
   }
   if (sample_type & PERF_SAMPLE_RAW) {
-    PrintIndented(indent, "raw size=%zu\n", raw_data.data.size());
-    const uint32_t* data =
-        reinterpret_cast<const uint32_t*>(raw_data.data.data());
-    size_t size = raw_data.data.size() / sizeof(uint32_t);
+    PrintIndented(indent, "raw size=%zu\n", raw_data.size);
+    const uint32_t* data = reinterpret_cast<const uint32_t*>(raw_data.data);
+    size_t size = raw_data.size / sizeof(uint32_t);
     for (size_t i = 0; i < size; ++i) {
       PrintIndented(indent + 1, "0x%08x (%zu)\n", data[i], data[i]);
     }
   }
   if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
     PrintIndented(indent, "branch_stack nr=%" PRIu64 "\n",
-                  branch_stack_data.stack.size());
-    for (auto& item : branch_stack_data.stack) {
+                  branch_stack_data.stack_nr);
+    for (uint64_t i = 0; i < branch_stack_data.stack_nr; ++i) {
+      auto& item = branch_stack_data.stack[i];
       PrintIndented(indent + 1, "from 0x%" PRIx64 ", to 0x%" PRIx64
                                 ", flags 0x%" PRIx64 "\n",
                     item.from, item.to, item.flags);
@@ -615,10 +580,9 @@ void SampleRecord::DumpData(size_t indent) const {
   }
   if (sample_type & PERF_SAMPLE_STACK_USER) {
     PrintIndented(indent, "user stack: size %zu dyn_size %" PRIu64 "\n",
-                  stack_user_data.data.size(), stack_user_data.dyn_size);
-    const uint64_t* p =
-        reinterpret_cast<const uint64_t*>(stack_user_data.data.data());
-    const uint64_t* end = p + (stack_user_data.data.size() / sizeof(uint64_t));
+                  stack_user_data.size, stack_user_data.dyn_size);
+    const uint64_t* p = reinterpret_cast<const uint64_t*>(stack_user_data.data);
+    const uint64_t* end = p + (stack_user_data.size / sizeof(uint64_t));
     while (p < end) {
       PrintIndented(indent + 1, "");
       for (size_t i = 0; i < 4 && p < end; ++i, ++p) {
@@ -639,76 +603,60 @@ BuildIdRecord::BuildIdRecord(const char* p) : Record(p) {
   build_id = BuildId(p, BUILD_ID_SIZE);
   p += Align(build_id.Size(), 8);
   filename = p;
-  p += Align(filename.size() + 1, 64);
+  p += Align(strlen(filename) + 1, 64);
   CHECK_EQ(p, end);
-}
-
-std::vector<char> BuildIdRecord::BinaryFormat() const {
-  std::vector<char> buf(size());
-  char* p = buf.data();
-  MoveToBinaryFormat(header, p);
-  MoveToBinaryFormat(pid, p);
-  memcpy(p, build_id.Data(), build_id.Size());
-  p += Align(build_id.Size(), 8);
-  strcpy(p, filename.c_str());
-  return buf;
 }
 
 void BuildIdRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "pid %u\n", pid);
   PrintIndented(indent, "build_id %s\n", build_id.ToString().c_str());
-  PrintIndented(indent, "filename %s\n", filename.c_str());
+  PrintIndented(indent, "filename %s\n", filename);
 }
 
-BuildIdRecord BuildIdRecord::Create(bool in_kernel, pid_t pid,
-                                    const BuildId& build_id,
-                                    const std::string& filename) {
-  BuildIdRecord record;
-  record.SetTypeAndMisc(PERF_RECORD_BUILD_ID, in_kernel
-                                                  ? PERF_RECORD_MISC_KERNEL
-                                                  : PERF_RECORD_MISC_USER);
-  record.pid = pid;
-  record.build_id = build_id;
-  record.filename = filename;
-  record.SetSize(record.header_size() + sizeof(record.pid) +
-                 Align(record.build_id.Size(), 8) +
-                 Align(filename.size() + 1, 64));
-  return record;
+BuildIdRecord::BuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id,
+                             const std::string& filename) {
+  SetTypeAndMisc(PERF_RECORD_BUILD_ID,
+                 in_kernel ? PERF_RECORD_MISC_KERNEL : PERF_RECORD_MISC_USER);
+  this->pid = pid;
+  this->build_id = build_id;
+  SetSize(header_size() + sizeof(pid) + Align(build_id.Size(), 8) +
+          Align(filename.size() + 1, 64));
+  char* new_binary = new char[size()];
+  char* p = new_binary;
+  MoveToBinaryFormat(header, p);
+  MoveToBinaryFormat(pid, p);
+  memcpy(p, build_id.Data(), build_id.Size());
+  p += Align(build_id.Size(), 8);
+  this->filename = p;
+  strcpy(p, filename.c_str());
+  UpdateBinary(new_binary);
 }
 
 KernelSymbolRecord::KernelSymbolRecord(const char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
-  uint32_t size;
-  MoveFromBinaryFormat(size, p);
-  kallsyms.resize(size);
-  if (size != 0u) {
-    memcpy(&kallsyms[0], p, size);
-  }
-  p += Align(size, 8);
+  MoveFromBinaryFormat(kallsyms_size, p);
+  kallsyms = p;
+  p += Align(kallsyms_size, 8);
   CHECK_EQ(p, end);
 }
 
-std::vector<char> KernelSymbolRecord::BinaryFormat() const {
-  std::vector<char> buf(size());
-  char* p = buf.data();
-  MoveToBinaryFormat(header, p);
-  uint32_t size = static_cast<uint32_t>(kallsyms.size());
-  MoveToBinaryFormat(size, p);
-  memcpy(p, kallsyms.data(), size);
-  return buf;
-}
-
 void KernelSymbolRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "kallsyms: %s\n", kallsyms.c_str());
+  PrintIndented(indent, "kallsyms: %s\n",
+                std::string(kallsyms, kallsyms + kallsyms_size).c_str());
 }
 
-KernelSymbolRecord KernelSymbolRecord::Create(std::string kallsyms) {
-  KernelSymbolRecord r;
-  r.SetTypeAndMisc(SIMPLE_PERF_RECORD_KERNEL_SYMBOL, 0);
-  r.kallsyms = std::move(kallsyms);
-  r.SetSize(r.header_size() + 4 + Align(r.kallsyms.size(), 8));
-  return r;
+KernelSymbolRecord::KernelSymbolRecord(const std::string& kallsyms) {
+  SetTypeAndMisc(SIMPLE_PERF_RECORD_KERNEL_SYMBOL, 0);
+  kallsyms_size = kallsyms.size();
+  SetSize(header_size() + 4 + Align(kallsyms.size(), 8));
+  char* new_binary = new char[size()];
+  char* p = new_binary;
+  MoveToBinaryFormat(header, p);
+  MoveToBinaryFormat(kallsyms_size, p);
+  this->kallsyms = p;
+  memcpy(p, kallsyms.data(), kallsyms_size);
+  UpdateBinary(new_binary);
 }
 
 DsoRecord::DsoRecord(const char* p) : Record(p) {
@@ -718,19 +666,26 @@ DsoRecord::DsoRecord(const char* p) : Record(p) {
   MoveFromBinaryFormat(dso_id, p);
   MoveFromBinaryFormat(min_vaddr, p);
   dso_name = p;
-  p += Align(dso_name.size() + 1, 8);
+  p += Align(strlen(dso_name) + 1, 8);
   CHECK_EQ(p, end);
 }
 
-std::vector<char> DsoRecord::BinaryFormat() const {
-  std::vector<char> buf(size());
-  char* p = buf.data();
+DsoRecord::DsoRecord(uint64_t dso_type, uint64_t dso_id,
+                     const std::string& dso_name, uint64_t min_vaddr) {
+  SetTypeAndMisc(SIMPLE_PERF_RECORD_DSO, 0);
+  this->dso_type = dso_type;
+  this->dso_id = dso_id;
+  this->min_vaddr = min_vaddr;
+  SetSize(header_size() + 3 * sizeof(uint64_t) + Align(dso_name.size() + 1, 8));
+  char* new_binary = new char[size()];
+  char* p = new_binary;
   MoveToBinaryFormat(header, p);
   MoveToBinaryFormat(dso_type, p);
   MoveToBinaryFormat(dso_id, p);
   MoveToBinaryFormat(min_vaddr, p);
+  this->dso_name = p;
   strcpy(p, dso_name.c_str());
-  return buf;
+  UpdateBinary(new_binary);
 }
 
 void DsoRecord::DumpData(size_t indent) const {
@@ -738,20 +693,7 @@ void DsoRecord::DumpData(size_t indent) const {
                 DsoTypeToString(static_cast<DsoType>(dso_type)), dso_type);
   PrintIndented(indent, "dso_id: %" PRIu64 "\n", dso_id);
   PrintIndented(indent, "min_vaddr: 0x%" PRIx64 "\n", min_vaddr);
-  PrintIndented(indent, "dso_name: %s\n", dso_name.c_str());
-}
-
-DsoRecord DsoRecord::Create(uint64_t dso_type, uint64_t dso_id,
-                            const std::string& dso_name, uint64_t min_vaddr) {
-  DsoRecord record;
-  record.SetTypeAndMisc(SIMPLE_PERF_RECORD_DSO, 0);
-  record.dso_type = dso_type;
-  record.dso_id = dso_id;
-  record.min_vaddr = min_vaddr;
-  record.dso_name = dso_name;
-  record.SetSize(record.header_size() + 3 * sizeof(uint64_t) +
-                 Align(record.dso_name.size() + 1, 8));
-  return record;
+  PrintIndented(indent, "dso_name: %s\n", dso_name);
 }
 
 SymbolRecord::SymbolRecord(const char* p) : Record(p) {
@@ -761,86 +703,65 @@ SymbolRecord::SymbolRecord(const char* p) : Record(p) {
   MoveFromBinaryFormat(len, p);
   MoveFromBinaryFormat(dso_id, p);
   name = p;
-  p += Align(name.size() + 1, 8);
+  p += Align(strlen(name) + 1, 8);
   CHECK_EQ(p, end);
 }
 
-std::vector<char> SymbolRecord::BinaryFormat() const {
-  std::vector<char> buf(size());
-  char* p = buf.data();
+SymbolRecord::SymbolRecord(uint64_t addr, uint64_t len, const std::string& name,
+                           uint64_t dso_id) {
+  SetTypeAndMisc(SIMPLE_PERF_RECORD_SYMBOL, 0);
+  this->addr = addr;
+  this->len = len;
+  this->dso_id = dso_id;
+  SetSize(header_size() + 3 * sizeof(uint64_t) + Align(name.size() + 1, 8));
+  char* new_binary = new char[size()];
+  char* p = new_binary;
   MoveToBinaryFormat(header, p);
   MoveToBinaryFormat(addr, p);
   MoveToBinaryFormat(len, p);
   MoveToBinaryFormat(dso_id, p);
+  this->name = p;
   strcpy(p, name.c_str());
-  return buf;
+  UpdateBinary(new_binary);
 }
 
 void SymbolRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "name: %s\n", name.c_str());
+  PrintIndented(indent, "name: %s\n", name);
   PrintIndented(indent, "addr: 0x%" PRIx64 "\n", addr);
   PrintIndented(indent, "len: 0x%" PRIx64 "\n", len);
   PrintIndented(indent, "dso_id: %" PRIu64 "\n", dso_id);
 }
 
-SymbolRecord SymbolRecord::Create(uint64_t addr, uint64_t len,
-                                  const std::string& name, uint64_t dso_id) {
-  SymbolRecord record;
-  record.SetTypeAndMisc(SIMPLE_PERF_RECORD_SYMBOL, 0);
-  record.addr = addr;
-  record.len = len;
-  record.dso_id = dso_id;
-  record.name = name;
-  record.SetSize(record.header_size() + 3 * sizeof(uint64_t) +
-                 Align(record.name.size() + 1, 8));
-  return record;
-}
-
 TracingDataRecord::TracingDataRecord(const char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
-  uint32_t size;
-  MoveFromBinaryFormat(size, p);
-  data.resize(size);
-  memcpy(data.data(), p, size);
-  p += Align(size, 64);
+  MoveFromBinaryFormat(data_size, p);
+  data = p;
+  p += Align(data_size, 64);
   CHECK_EQ(p, end);
 }
 
-std::vector<char> TracingDataRecord::BinaryFormat() const {
-  std::vector<char> buf(size());
-  char* p = buf.data();
+TracingDataRecord::TracingDataRecord(const std::vector<char>& tracing_data) {
+  SetTypeAndMisc(PERF_RECORD_TRACING_DATA, 0);
+  data_size = tracing_data.size();
+  SetSize(header_size() + sizeof(uint32_t) + Align(tracing_data.size(), 64));
+  char* new_binary = new char[size()];
+  char* p = new_binary;
   MoveToBinaryFormat(header, p);
-  uint32_t size = static_cast<uint32_t>(data.size());
-  MoveToBinaryFormat(size, p);
-  memcpy(p, data.data(), size);
-  return buf;
+  MoveToBinaryFormat(data_size, p);
+  data = p;
+  memcpy(p, tracing_data.data(), data_size);
+  UpdateBinary(new_binary);
 }
 
 void TracingDataRecord::DumpData(size_t indent) const {
-  Tracing tracing(data);
+  Tracing tracing(std::vector<char>(data, data + data_size));
   tracing.Dump(indent);
 }
 
-TracingDataRecord TracingDataRecord::Create(std::vector<char> tracing_data) {
-  TracingDataRecord record;
-  record.SetTypeAndMisc(PERF_RECORD_TRACING_DATA, 0);
-  record.data = std::move(tracing_data);
-  record.SetSize(record.header_size() + sizeof(uint32_t) +
-                 Align(record.data.size(), 64));
-  return record;
-}
-
 UnknownRecord::UnknownRecord(const char* p) : Record(p) {
-  data.insert(data.end(), p + header_size(), p + size());
-}
-
-std::vector<char> UnknownRecord::BinaryFormat() const {
-  std::vector<char> buf(size());
-  char* p = buf.data();
-  MoveToBinaryFormat(header, p);
-  MoveToBinaryFormat(data.data(), data.size(), p);
-  return buf;
+  p += header_size();
+  data = p;
 }
 
 void UnknownRecord::DumpData(size_t) const {}
@@ -875,6 +796,18 @@ std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
   }
 }
 
+std::unique_ptr<Record> ReadRecordFromOwnedBuffer(const perf_event_attr& attr,
+                                                  uint32_t type,
+                                                  const char* p) {
+  std::unique_ptr<Record> record = ReadRecordFromBuffer(attr, type, p);
+  if (record != nullptr) {
+    record->OwnBinary();
+  } else {
+    delete[] p;
+  }
+  return record;
+}
+
 std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(
     const perf_event_attr& attr, const char* buf, size_t buf_size) {
   std::vector<std::unique_ptr<Record>> result;
@@ -884,7 +817,9 @@ std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(
     RecordHeader header(p);
     CHECK_LE(p + header.size, end);
     CHECK_NE(0u, header.size);
-    result.push_back(ReadRecordFromBuffer(attr, header.type, p));
+    char* binary = new char[header.size];
+    memcpy(binary, p, header.size);
+    result.push_back(ReadRecordFromOwnedBuffer(attr, header.type, binary));
     p += header.size;
   }
   return result;

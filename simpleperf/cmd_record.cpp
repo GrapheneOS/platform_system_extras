@@ -681,7 +681,7 @@ bool RecordCommand::DumpKernelSymbol() {
         return false;
       }
     }
-    KernelSymbolRecord r = KernelSymbolRecord::Create(std::move(kallsyms));
+    KernelSymbolRecord r(kallsyms);
     if (!ProcessRecord(&r)) {
       return false;
     }
@@ -707,7 +707,7 @@ bool RecordCommand::DumpTracingData() {
   if (!GetTracingData(tracepoint_event_types, &tracing_data)) {
     return false;
   }
-  TracingDataRecord record = TracingDataRecord::Create(std::move(tracing_data));
+  TracingDataRecord record(tracing_data);
   if (!ProcessRecord(&record)) {
     return false;
   }
@@ -720,15 +720,13 @@ bool RecordCommand::DumpKernelAndModuleMmaps(const perf_event_attr& attr,
   std::vector<KernelMmap> module_mmaps;
   GetKernelAndModuleMmaps(&kernel_mmap, &module_mmaps);
 
-  MmapRecord mmap_record =
-      MmapRecord::Create(attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
+  MmapRecord mmap_record(attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
                          kernel_mmap.len, 0, kernel_mmap.filepath, event_id);
   if (!ProcessRecord(&mmap_record)) {
     return false;
   }
   for (auto& module_mmap : module_mmaps) {
-    MmapRecord mmap_record =
-        MmapRecord::Create(attr, true, UINT_MAX, 0, module_mmap.start_addr,
+    MmapRecord mmap_record(attr, true, UINT_MAX, 0, module_mmap.start_addr,
                            module_mmap.len, 0, module_mmap.filepath, event_id);
     if (!ProcessRecord(&mmap_record)) {
       return false;
@@ -765,8 +763,7 @@ bool RecordCommand::DumpThreadCommAndMmaps(
         dump_processes.find(thread.pid) == dump_processes.end()) {
       continue;
     }
-    CommRecord record =
-        CommRecord::Create(attr, thread.pid, thread.tid, thread.comm, event_id);
+    CommRecord record(attr, thread.pid, thread.tid, thread.comm, event_id);
     if (!ProcessRecord(&record)) {
       return false;
     }
@@ -779,9 +776,9 @@ bool RecordCommand::DumpThreadCommAndMmaps(
       if (thread_mmap.executable == 0) {
         continue;  // No need to dump non-executable mmap info.
       }
-      MmapRecord record = MmapRecord::Create(
-          attr, false, thread.pid, thread.tid, thread_mmap.start_addr,
-          thread_mmap.len, thread_mmap.pgoff, thread_mmap.name, event_id);
+      MmapRecord record(attr, false, thread.pid, thread.tid,
+                        thread_mmap.start_addr, thread_mmap.len,
+                        thread_mmap.pgoff, thread_mmap.name, event_id);
       if (!ProcessRecord(&record)) {
         return false;
       }
@@ -796,13 +793,12 @@ bool RecordCommand::DumpThreadCommAndMmaps(
     if (!all_threads && dump_threads.find(thread.tid) == dump_threads.end()) {
       continue;
     }
-    ForkRecord fork_record = ForkRecord::Create(
-        attr, thread.pid, thread.tid, thread.pid, thread.pid, event_id);
+    ForkRecord fork_record(attr, thread.pid, thread.tid, thread.pid, thread.pid,
+                           event_id);
     if (!ProcessRecord(&fork_record)) {
       return false;
     }
-    CommRecord comm_record =
-        CommRecord::Create(attr, thread.pid, thread.tid, thread.comm, event_id);
+    CommRecord comm_record(attr, thread.pid, thread.tid, thread.comm, event_id);
     if (!ProcessRecord(&comm_record)) {
       return false;
     }
@@ -843,28 +839,30 @@ bool RecordCommand::DumpSymbolForRecord(const SampleRecord& r,
                                         bool for_callchain) {
   const ThreadEntry* thread =
       thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-  const std::vector<uint64_t>& ips = for_callchain
-                                         ? r.callchain_data.ips
-                                         : std::vector<uint64_t>{r.ip_data.ip};
-  for (auto& ip : ips) {
-    const MapEntry* map = thread_tree_.FindMap(thread, ip, r.InKernel());
-    const Symbol* symbol = thread_tree_.FindSymbol(map, ip, nullptr);
+  uint64_t ip_nr = 1;
+  const uint64_t* ips = &r.ip_data.ip;
+  if (for_callchain) {
+    ip_nr = r.callchain_data.ip_nr;
+    ips = r.callchain_data.ips;
+  }
+  for (uint64_t i = 0; i < ip_nr; ++i) {
+    const MapEntry* map = thread_tree_.FindMap(thread, ips[i], r.InKernel());
+    const Symbol* symbol = thread_tree_.FindSymbol(map, ips[i], nullptr);
     if (symbol == thread_tree_.UnknownSymbol()) {
       continue;
     }
     if (!map->dso->HasDumped()) {
       map->dso->SetDumped();
-      DsoRecord dso_record =
-          DsoRecord::Create(map->dso->type(), map->dso->id(), map->dso->Path(),
-                            map->dso->MinVirtualAddress());
+      DsoRecord dso_record(map->dso->type(), map->dso->id(), map->dso->Path(),
+                           map->dso->MinVirtualAddress());
       if (!record_file_writer_->WriteRecord(dso_record)) {
         return false;
       }
     }
     if (!symbol->HasDumped()) {
       symbol->SetDumped();
-      SymbolRecord symbol_record = SymbolRecord::Create(
-          symbol->addr, symbol->len, symbol->Name(), map->dso->id());
+      SymbolRecord symbol_record(symbol->addr, symbol->len, symbol->Name(),
+                                 map->dso->id());
       if (!record_file_writer_->WriteRecord(symbol_record)) {
         return false;
       }
@@ -876,7 +874,7 @@ bool RecordCommand::DumpSymbolForRecord(const SampleRecord& r,
 template <class RecordType>
 void UpdateMmapRecordForEmbeddedElfPath(RecordType* record) {
   RecordType& r = *record;
-  if (!r.InKernel() && r.data.pgoff != 0) {
+  if (!r.InKernel() && r.data->pgoff != 0) {
     // For the case of a shared library "foobar.so" embedded
     // inside an APK, we rewrite the original MMAP from
     // ["path.apk" offset=X] to ["path.apk!/foobar.so" offset=W]
@@ -888,12 +886,12 @@ void UpdateMmapRecordForEmbeddedElfPath(RecordType* record) {
     // calculated to be with respect to the start of foobar.so,
     // not to the start of path.apk.
     EmbeddedElf* ee =
-        ApkInspector::FindElfInApkByOffset(r.filename, r.data.pgoff);
+        ApkInspector::FindElfInApkByOffset(r.filename, r.data->pgoff);
     if (ee != nullptr) {
       // Compute new offset relative to start of elf in APK.
-      r.data.pgoff -= ee->entry_offset();
-      r.filename = GetUrlInApk(r.filename, ee->entry_name());
-      r.AdjustSizeBasedOnData();
+      auto data = *r.data;
+      data.pgoff -= ee->entry_offset();
+      r.SetDataAndFilename(data, GetUrlInApk(r.filename, ee->entry_name()));
     }
   }
 }
@@ -913,7 +911,7 @@ bool RecordCommand::UnwindRecord(Record* record) {
         (r.sample_type & PERF_SAMPLE_REGS_USER) &&
         (r.regs_user_data.reg_mask != 0) &&
         (r.sample_type & PERF_SAMPLE_STACK_USER) &&
-        (!r.stack_user_data.data.empty())) {
+        (r.GetValidStackSize() > 0)) {
       ThreadEntry* thread =
           thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
       RegSet regs =
@@ -923,17 +921,9 @@ bool RecordCommand::UnwindRecord(Record* record) {
       // 32-bit processes on 64-bit devices for system wide profiling.
       bool strict_arch_check = !system_wide_collection_;
       std::vector<uint64_t> unwind_ips =
-          UnwindCallChain(arch, *thread, regs, r.stack_user_data.data.data(),
+          UnwindCallChain(arch, *thread, regs, r.stack_user_data.data,
                           r.GetValidStackSize(), strict_arch_check);
-      r.callchain_data.ips.push_back(PERF_CONTEXT_USER);
-      r.callchain_data.ips.insert(r.callchain_data.ips.end(),
-                                  unwind_ips.begin(), unwind_ips.end());
-      r.regs_user_data.abi = 0;
-      r.regs_user_data.reg_mask = 0;
-      r.regs_user_data.regs.clear();
-      r.stack_user_data.data.clear();
-      r.stack_user_data.dyn_size = 0;
-      r.AdjustSizeBasedOnData();
+      r.ReplaceRegAndStackWithCallChain(unwind_ips);
       if (dump_symbols_) {
         if (!DumpSymbolForRecord(r, true)) {
           return false;
@@ -1035,7 +1025,7 @@ bool RecordCommand::DumpBuildIdFeature() {
       if (!GetKernelBuildId(&build_id)) {
         continue;
       }
-      build_id_records.push_back(BuildIdRecord::Create(
+      build_id_records.push_back(BuildIdRecord(
           true, UINT_MAX, build_id, DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID));
     } else {
       std::string path = filename;
@@ -1048,7 +1038,7 @@ bool RecordCommand::DumpBuildIdFeature() {
         continue;
       }
       build_id_records.push_back(
-          BuildIdRecord::Create(true, UINT_MAX, build_id, filename));
+          BuildIdRecord(true, UINT_MAX, build_id, filename));
     }
   }
   // Add build_ids for user elf files.
@@ -1074,7 +1064,7 @@ bool RecordCommand::DumpBuildIdFeature() {
       }
     }
     build_id_records.push_back(
-        BuildIdRecord::Create(false, UINT_MAX, build_id, filename));
+        BuildIdRecord(false, UINT_MAX, build_id, filename));
   }
   if (!record_file_writer_->WriteBuildIdFeature(build_id_records)) {
     return false;
@@ -1084,7 +1074,7 @@ bool RecordCommand::DumpBuildIdFeature() {
 
 void RecordCommand::CollectHitFileInfo(Record* record) {
   if (record->type() == PERF_RECORD_SAMPLE) {
-    auto r = *static_cast<SampleRecord*>(record);
+    const auto& r = *static_cast<SampleRecord*>(record);
     bool in_kernel = r.InKernel();
     const ThreadEntry* thread =
         thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
