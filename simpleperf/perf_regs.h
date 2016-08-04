@@ -84,7 +84,7 @@ struct RegSet {
   uint64_t data[64];
 };
 
-RegSet CreateRegSet(uint64_t valid_mask, const std::vector<uint64_t>& valid_regs);
+RegSet CreateRegSet(uint64_t valid_mask, const uint64_t* valid_regs);
 
 bool GetRegValue(const RegSet& regs, size_t regno, uint64_t* value);
 bool GetSpRegValue(const RegSet& regs, ArchType arch, uint64_t* value);
