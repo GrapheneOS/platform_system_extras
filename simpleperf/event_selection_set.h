@@ -85,6 +85,7 @@ class EventSelectionSet {
   void EnableFpCallChainSampling();
   bool EnableDwarfCallChainSampling(uint32_t dump_stack_size);
   void SetInherit(bool enable);
+  void SetLowWatermark();
 
   bool OpenEventFilesForCpus(const std::vector<int>& cpus);
   bool OpenEventFilesForThreadsOnCpus(const std::vector<pid_t>& threads,
@@ -107,7 +108,6 @@ class EventSelectionSet {
   std::vector<EventSelectionGroup> groups_;
 
   std::function<bool(Record*)> record_callback_;
-  std::unique_ptr<RecordCache> record_cache_;
 
   DISALLOW_COPY_AND_ASSIGN(EventSelectionSet);
 };

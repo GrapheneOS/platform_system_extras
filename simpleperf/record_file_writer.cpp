@@ -22,11 +22,14 @@
 #include <unistd.h>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/test_utils.h>
 
+#include "event_attr.h"
 #include "perf_event.h"
 #include "record.h"
 #include "utils.h"
@@ -167,6 +170,126 @@ bool RecordFileWriter::Write(const void* buf, size_t len) {
   if (fwrite(buf, len, 1, record_fp_) != 1) {
     PLOG(ERROR) << "failed to write to record file '" << filename_ << "'";
     return false;
+  }
+  return true;
+}
+
+std::unique_ptr<Record> RecordFileWriter::ReadRecordFromFile(FILE* fp, std::vector<char>& buf) {
+  if (buf.size() < sizeof(perf_event_header)) {
+    buf.resize(sizeof(perf_event_header));
+  }
+  auto pheader = reinterpret_cast<perf_event_header*>(buf.data());
+  if (fread(pheader, sizeof(*pheader), 1, fp) != 1) {
+    PLOG(ERROR) << "read failed";
+    return nullptr;
+  }
+  if (pheader->size > sizeof(*pheader)) {
+    if (pheader->size > buf.size()) {
+      buf.resize(pheader->size);
+    }
+    pheader = reinterpret_cast<perf_event_header*>(buf.data());
+    if (fread(pheader + 1, pheader->size - sizeof(*pheader), 1, fp) != 1) {
+      PLOG(ERROR) << "read failed";
+      return nullptr;
+    }
+  }
+  return ReadRecordFromBuffer(event_attr_, pheader->type, buf.data());
+}
+
+bool RecordFileWriter::WriteRecordToFile(FILE* fp, std::unique_ptr<Record> r) {
+  if (fwrite(r->Binary(), r->size(), 1, fp) != 1) {
+    PLOG(ERROR) << "write failed";
+    return false;
+  }
+  return true;
+}
+
+// SortDataSection() sorts records in data section in time order.
+// This method is suitable for the situation that there is only one buffer
+// between kernel and simpleperf for each cpu. The order of records in each
+// cpu buffer is already sorted, so we only need to merge records from different
+// cpu buffers.
+// 1. Create one temporary file for each cpu, and write records to different
+//    temporary files according to their cpu value.
+// 2. Use RecordCache to merge records from different temporary files.
+bool RecordFileWriter::SortDataSection() {
+  if (!IsTimestampSupported(event_attr_) || !IsCpuSupported(event_attr_)) {
+    // Omit the sort if either timestamp or cpu is not recorded.
+    return true;
+  }
+  struct CpuData {
+    TemporaryFile tmpfile;
+    FILE* fp;
+    std::vector<char> buf;
+    uint64_t data_size;
+
+    CpuData() : data_size(0) {
+      fp = fdopen(tmpfile.fd, "web+");
+    }
+    ~CpuData() {
+      fclose(fp);
+    }
+  };
+  std::unordered_map<uint32_t, CpuData> cpu_map;
+  if (fseek(record_fp_, data_section_offset_, SEEK_SET) == -1) {
+    PLOG(ERROR) << "fseek() failed";
+    return false;
+  }
+  uint64_t cur_size = 0;
+  std::vector<char> global_buf;
+  while (cur_size < data_section_size_) {
+    std::unique_ptr<Record> r = ReadRecordFromFile(record_fp_, global_buf);
+    if (r == nullptr) {
+      return false;
+    }
+    cur_size += r->size();
+    CpuData& cpu_data = cpu_map[r->Cpu()];
+    if (cpu_data.fp == nullptr) {
+      PLOG(ERROR) << "failed to open tmpfile";
+      return false;
+    }
+    cpu_data.data_size += r->size();
+    if (!WriteRecordToFile(cpu_data.fp, std::move(r))) {
+      return false;
+    }
+  }
+  if (fseek(record_fp_, data_section_offset_, SEEK_SET) == -1) {
+    PLOG(ERROR) << "fseek() failed";
+    return false;
+  }
+  RecordCache global_cache(true);
+  for (auto it = cpu_map.begin(); it != cpu_map.end(); ++it) {
+    if (fseek(it->second.fp, 0, SEEK_SET) == -1) {
+      PLOG(ERROR) << "fseek() failed";
+      return false;
+    }
+    std::unique_ptr<Record> r = ReadRecordFromFile(it->second.fp, it->second.buf);
+    if (r == nullptr) {
+      return false;
+    }
+    it->second.data_size -= r->size();
+    global_cache.Push(std::move(r));
+  }
+  while (true) {
+    std::unique_ptr<Record> r = global_cache.ForcedPop();
+    if (r == nullptr) {
+      break;
+    }
+    uint32_t cpu = r->Cpu();
+    if (!WriteRecordToFile(record_fp_, std::move(r))) {
+      return false;
+    }
+    // Each time writing one record of a cpu, push the next record from the
+    // temporary file belong to that cpu into the record cache.
+    CpuData& cpu_data = cpu_map[cpu];
+    if (cpu_data.data_size > 0) {
+      r = ReadRecordFromFile(cpu_data.fp, cpu_data.buf);
+      if (r == nullptr) {
+        return false;
+      }
+      cpu_data.data_size -= r->size();
+      global_cache.Push(std::move(r));
+    }
   }
   return true;
 }
