@@ -228,8 +228,7 @@ const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip,
   if (symbol == nullptr) {
     if (show_ip_for_unknown_symbol_) {
       std::string name = android::base::StringPrintf(
-          "%s%s[+%" PRIx64 "]",
-          (show_mark_for_unknown_symbol_ ? "*" : ""),
+          "%s%s[+%" PRIx64 "]", (show_mark_for_unknown_symbol_ ? "*" : ""),
           dso->FileName().c_str(), vaddr_in_file);
       dso->InsertSymbol(Symbol(name, vaddr_in_file, 1));
       symbol = dso->FindSymbol(vaddr_in_file);
@@ -260,30 +259,30 @@ void ThreadTree::Update(const Record& record) {
   if (record.type() == PERF_RECORD_MMAP) {
     const MmapRecord& r = *static_cast<const MmapRecord*>(&record);
     if (r.InKernel()) {
-      AddKernelMap(r.data.addr, r.data.len, r.data.pgoff,
+      AddKernelMap(r.data->addr, r.data->len, r.data->pgoff,
                    r.sample_id.time_data.time, r.filename);
     } else {
-      AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len,
-                   r.data.pgoff, r.sample_id.time_data.time, r.filename);
+      AddThreadMap(r.data->pid, r.data->tid, r.data->addr, r.data->len,
+                   r.data->pgoff, r.sample_id.time_data.time, r.filename);
     }
   } else if (record.type() == PERF_RECORD_MMAP2) {
     const Mmap2Record& r = *static_cast<const Mmap2Record*>(&record);
     if (r.InKernel()) {
-      AddKernelMap(r.data.addr, r.data.len, r.data.pgoff,
+      AddKernelMap(r.data->addr, r.data->len, r.data->pgoff,
                    r.sample_id.time_data.time, r.filename);
     } else {
       std::string filename = (r.filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP)
                                  ? "[unknown]"
                                  : r.filename;
-      AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len,
-                   r.data.pgoff, r.sample_id.time_data.time, filename);
+      AddThreadMap(r.data->pid, r.data->tid, r.data->addr, r.data->len,
+                   r.data->pgoff, r.sample_id.time_data.time, filename);
     }
   } else if (record.type() == PERF_RECORD_COMM) {
     const CommRecord& r = *static_cast<const CommRecord*>(&record);
-    AddThread(r.data.pid, r.data.tid, r.comm);
+    AddThread(r.data->pid, r.data->tid, r.comm);
   } else if (record.type() == PERF_RECORD_FORK) {
     const ForkRecord& r = *static_cast<const ForkRecord*>(&record);
-    ForkThread(r.data.pid, r.data.tid, r.data.ppid, r.data.ptid);
+    ForkThread(r.data->pid, r.data->tid, r.data->ppid, r.data->ptid);
   } else if (record.type() == SIMPLE_PERF_RECORD_KERNEL_SYMBOL) {
     const auto& r = *static_cast<const KernelSymbolRecord*>(&record);
     Dso::SetKallsyms(std::move(r.kallsyms));

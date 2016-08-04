@@ -169,7 +169,7 @@ class SlabSampleTreeBuilder
     if (it == event_id_to_format_map_.end()) {
       return nullptr;
     }
-    const char* raw_data = r.raw_data.data.data();
+    const char* raw_data = r.raw_data.data;
     SlabFormat* format = it->second;
     if (format->type == SlabFormat::KMEM_ALLOC) {
       uint64_t call_site = format->call_site.ReadFromData(raw_data);
@@ -609,7 +609,7 @@ bool KmemCommand::ProcessRecord(std::unique_ptr<Record> record) {
     }
   } else if (record->type() == PERF_RECORD_TRACING_DATA) {
     const auto& r = *static_cast<TracingDataRecord*>(record.get());
-    ProcessTracingData(r.data);
+    ProcessTracingData(std::vector<char>(r.data, r.data + r.data_size));
   }
   return true;
 }

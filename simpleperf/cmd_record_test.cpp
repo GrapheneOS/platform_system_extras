@@ -87,7 +87,7 @@ TEST(record_cmd, dump_kernel_mmap) {
     if (record->type() == PERF_RECORD_MMAP) {
       const MmapRecord* mmap_record =
           static_cast<const MmapRecord*>(record.get());
-      if (mmap_record->filename == DEFAULT_KERNEL_MMAP_NAME) {
+      if (strcmp(mmap_record->filename, DEFAULT_KERNEL_MMAP_NAME) == 0) {
         have_kernel_mmap = true;
         break;
       }
