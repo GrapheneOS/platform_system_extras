@@ -201,14 +201,15 @@ bool RecordFileReader::ReadDataSection(
 }
 
 std::unique_ptr<Record> RecordFileReader::ReadRecord(size_t* nbytes_read) {
-  std::vector<char> buf(Record::header_size());
-  if (!Read(buf.data(), buf.size())) {
+  char header_buf[Record::header_size()];
+  if (!Read(header_buf, Record::header_size())) {
     return nullptr;
   }
-  RecordHeader header(buf.data());
+  RecordHeader header(header_buf);
+  std::unique_ptr<char[]> p;
   if (header.type == SIMPLE_PERF_RECORD_SPLIT) {
     // Read until meeting a RECORD_SPLIT_END record.
-    buf.clear();
+    std::vector<char> buf;
     size_t cur_size = 0;
     char header_buf[Record::header_size()];
     while (header.type == SIMPLE_PERF_RECORD_SPLIT) {
@@ -230,10 +231,15 @@ std::unique_ptr<Record> RecordFileReader::ReadRecord(size_t* nbytes_read) {
     }
     *nbytes_read += header.size;
     header = RecordHeader(buf.data());
-  } else if (Record::header_size() < header.size) {
-    buf.resize(header.size);
-    if (!Read(&buf[Record::header_size()], header.size - Record::header_size())) {
-      return nullptr;
+    p.reset(new char[header.size]);
+    memcpy(p.get(), buf.data(), buf.size());
+  } else {
+    p.reset(new char[header.size]);
+    memcpy(p.get(), header_buf, Record::header_size());
+    if (header.size > Record::header_size()) {
+      if (!Read(p.get() + Record::header_size(), header.size - Record::header_size())) {
+        return nullptr;
+      }
     }
     *nbytes_read += header.size;
   }
@@ -245,12 +251,12 @@ std::unique_ptr<Record> RecordFileReader::ReadRecord(size_t* nbytes_read) {
     if (header.type == PERF_RECORD_SAMPLE) {
       if (header.size > event_id_pos_in_sample_records_ + sizeof(uint64_t)) {
         has_event_id = true;
-        event_id = *reinterpret_cast<uint64_t*>(&buf[event_id_pos_in_sample_records_]);
+        event_id = *reinterpret_cast<uint64_t*>(p.get() + event_id_pos_in_sample_records_);
       }
     } else {
       if (header.size > event_id_reverse_pos_in_non_sample_records_) {
         has_event_id = true;
-        event_id = *reinterpret_cast<uint64_t*>(&buf[header.size - event_id_reverse_pos_in_non_sample_records_]);
+        event_id = *reinterpret_cast<uint64_t*>(p.get() + header.size - event_id_reverse_pos_in_non_sample_records_);
       }
     }
     if (has_event_id) {
@@ -260,7 +266,7 @@ std::unique_ptr<Record> RecordFileReader::ReadRecord(size_t* nbytes_read) {
       }
     }
   }
-  return ReadRecordFromBuffer(*attr, header.type, buf.data());
+  return ReadRecordFromOwnedBuffer(*attr, header.type, p.release());
 }
 
 bool RecordFileReader::Read(void* buf, size_t len) {
@@ -325,9 +331,9 @@ std::vector<BuildIdRecord> RecordFileReader::ReadBuildIdFeature() {
     BuildIdRecord record(p);
     // Set type explicitly as the perf.data produced by perf doesn't set it.
     record.SetTypeAndMisc(PERF_RECORD_BUILD_ID, record.misc());
-    result.push_back(record);
     CHECK_LE(p + record.size(), end);
     p += record.size();
+    result.push_back(std::move(record));
   }
   return result;
 }

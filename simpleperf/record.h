@@ -98,11 +98,13 @@ struct PerfSamplePeriodType {
 };
 
 struct PerfSampleCallChainType {
-  std::vector<uint64_t> ips;
+  uint64_t ip_nr;
+  const uint64_t* ips;
 };
 
 struct PerfSampleRawType {
-  std::vector<char> data;
+  uint32_t size;
+  const char* data;
 };
 
 struct BranchStackItemType {
@@ -112,17 +114,20 @@ struct BranchStackItemType {
 };
 
 struct PerfSampleBranchStackType {
-  std::vector<BranchStackItemType> stack;
+  uint64_t stack_nr;
+  const BranchStackItemType* stack;
 };
 
 struct PerfSampleRegsUserType {
   uint64_t abi;
   uint64_t reg_mask;
-  std::vector<uint64_t> regs;
+  uint64_t reg_nr;
+  const uint64_t* regs;
 };
 
 struct PerfSampleStackUserType {
-  std::vector<char> data;
+  uint64_t size;
+  const char* data;
   uint64_t dyn_size;
 };
 
@@ -207,10 +212,17 @@ struct Record {
   RecordHeader header;
   SampleId sample_id;
 
-  Record() {}
-  explicit Record(const char* p) : header(p) {}
+  Record() : binary_(nullptr), own_binary_(false) {}
+  explicit Record(const char* p) : header(p), binary_(p), own_binary_(false) {}
+  Record(Record&& other);
 
-  virtual ~Record() {}
+  virtual ~Record() {
+    if (own_binary_) {
+      delete[] binary_;
+    }
+  }
+
+  void OwnBinary() { own_binary_ = true; }
 
   uint32_t type() const { return header.type; }
 
@@ -233,11 +245,19 @@ struct Record {
   void SetSize(uint32_t size) { header.size = size; }
 
   void Dump(size_t indent = 0) const;
-  virtual std::vector<char> BinaryFormat() const = 0;
+
+  const char* Binary() const { return binary_; }
+
   virtual uint64_t Timestamp() const;
 
  protected:
+  void UpdateBinary(const char* new_binary);
   virtual void DumpData(size_t) const = 0;
+
+  const char* binary_;
+  bool own_binary_;
+
+  DISALLOW_COPY_AND_ASSIGN(Record);
 };
 
 struct MmapRecord : public Record {
@@ -246,20 +266,18 @@ struct MmapRecord : public Record {
     uint64_t addr;
     uint64_t len;
     uint64_t pgoff;
-  } data;
-  std::string filename;
-
-  MmapRecord() {  // For CreateMmapRecord.
-  }
+  };
+  const MmapRecordDataType* data;
+  const char* filename;
 
   MmapRecord(const perf_event_attr& attr, const char* p);
-  std::vector<char> BinaryFormat() const override;
-  void AdjustSizeBasedOnData();
 
-  static MmapRecord Create(const perf_event_attr& attr, bool in_kernel,
-                           uint32_t pid, uint32_t tid, uint64_t addr,
-                           uint64_t len, uint64_t pgoff,
-                           const std::string& filename, uint64_t event_id);
+  MmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_t pid,
+             uint32_t tid, uint64_t addr, uint64_t len, uint64_t pgoff,
+             const std::string& filename, uint64_t event_id, uint64_t time = 0);
+
+  void SetDataAndFilename(const MmapRecordDataType& data,
+                          const std::string& filename);
 
  protected:
   void DumpData(size_t indent) const override;
@@ -276,14 +294,14 @@ struct Mmap2Record : public Record {
     uint64_t ino;
     uint64_t ino_generation;
     uint32_t prot, flags;
-  } data;
-  std::string filename;
-
-  Mmap2Record() {}
+  };
+  const Mmap2RecordDataType* data;
+  const char* filename;
 
   Mmap2Record(const perf_event_attr& attr, const char* p);
-  std::vector<char> BinaryFormat() const override;
-  void AdjustSizeBasedOnData();
+
+  void SetDataAndFilename(const Mmap2RecordDataType& data,
+                          const std::string& filename);
 
  protected:
   void DumpData(size_t indent) const override;
@@ -292,17 +310,14 @@ struct Mmap2Record : public Record {
 struct CommRecord : public Record {
   struct CommRecordDataType {
     uint32_t pid, tid;
-  } data;
-  std::string comm;
-
-  CommRecord() {}
+  };
+  const CommRecordDataType* data;
+  const char* comm;
 
   CommRecord(const perf_event_attr& attr, const char* p);
-  std::vector<char> BinaryFormat() const override;
 
-  static CommRecord Create(const perf_event_attr& attr, uint32_t pid,
-                           uint32_t tid, const std::string& comm,
-                           uint64_t event_id);
+  CommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
+             const std::string& comm, uint64_t event_id);
 
  protected:
   void DumpData(size_t indent) const override;
@@ -313,11 +328,12 @@ struct ExitOrForkRecord : public Record {
     uint32_t pid, ppid;
     uint32_t tid, ptid;
     uint64_t time;
-  } data;
+  };
+  const ExitOrForkRecordDataType* data;
 
-  ExitOrForkRecord() {}
   ExitOrForkRecord(const perf_event_attr& attr, const char* p);
-  std::vector<char> BinaryFormat() const override;
+
+  ExitOrForkRecord() : data(nullptr) {}
 
  protected:
   void DumpData(size_t indent) const override;
@@ -329,23 +345,18 @@ struct ExitRecord : public ExitOrForkRecord {
 };
 
 struct ForkRecord : public ExitOrForkRecord {
-  ForkRecord() {}
   ForkRecord(const perf_event_attr& attr, const char* p)
       : ExitOrForkRecord(attr, p) {}
 
-  static ForkRecord Create(const perf_event_attr& attr, uint32_t pid,
-                           uint32_t tid, uint32_t ppid, uint32_t ptid,
-                           uint64_t event_id);
+  ForkRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
+             uint32_t ppid, uint32_t ptid, uint64_t event_id);
 };
 
 struct LostRecord : public Record {
   uint64_t id;
   uint64_t lost;
 
-  LostRecord() {}
-
   LostRecord(const perf_event_attr& attr, const char* p);
-  std::vector<char> BinaryFormat() const override;
 
  protected:
   void DumpData(size_t indent) const override;
@@ -372,8 +383,7 @@ struct SampleRecord : public Record {
   PerfSampleStackUserType stack_user_data;  // Valid if PERF_SAMPLE_STACK_USER.
 
   SampleRecord(const perf_event_attr& attr, const char* p);
-  std::vector<char> BinaryFormat() const override;
-  void AdjustSizeBasedOnData();
+  void ReplaceRegAndStackWithCallChain(const std::vector<uint64_t>& ips);
   uint64_t Timestamp() const override;
 
   uint64_t GetValidStackSize() const {
@@ -381,7 +391,7 @@ struct SampleRecord : public Record {
     // the patch to update dyn_size, like in N9 (See b/22612370). So assume
     // all stack data is valid if dyn_size == 0.
     if (stack_user_data.dyn_size == 0) {
-      return stack_user_data.data.size();
+      return stack_user_data.size;
     }
     return stack_user_data.dyn_size;
   }
@@ -395,30 +405,24 @@ struct SampleRecord : public Record {
 struct BuildIdRecord : public Record {
   uint32_t pid;
   BuildId build_id;
-  std::string filename;
-
-  BuildIdRecord() {}
+  const char* filename;
 
   explicit BuildIdRecord(const char* p);
-  std::vector<char> BinaryFormat() const override;
 
-  static BuildIdRecord Create(bool in_kernel, pid_t pid,
-                              const BuildId& build_id,
-                              const std::string& filename);
+  BuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id,
+                const std::string& filename);
 
  protected:
   void DumpData(size_t indent) const override;
 };
 
 struct KernelSymbolRecord : public Record {
-  std::string kallsyms;
-
-  KernelSymbolRecord() {}
+  uint32_t kallsyms_size;
+  const char* kallsyms;
 
   explicit KernelSymbolRecord(const char* p);
-  std::vector<char> BinaryFormat() const override;
 
-  static KernelSymbolRecord Create(std::string kallsyms);
+  KernelSymbolRecord(const std::string& kallsyms);
 
  protected:
   void DumpData(size_t indent) const override;
@@ -428,15 +432,12 @@ struct DsoRecord : public Record {
   uint64_t dso_type;
   uint64_t dso_id;
   uint64_t min_vaddr;
-  std::string dso_name;
-
-  DsoRecord() {}
+  const char* dso_name;
 
   explicit DsoRecord(const char* p);
-  std::vector<char> BinaryFormat() const override;
 
-  static DsoRecord Create(uint64_t dso_type, uint64_t dso_id,
-                          const std::string& dso_name, uint64_t min_vaddr);
+  DsoRecord(uint64_t dso_type, uint64_t dso_id, const std::string& dso_name,
+            uint64_t min_vaddr);
 
  protected:
   void DumpData(size_t indent) const override;
@@ -446,29 +447,24 @@ struct SymbolRecord : public Record {
   uint64_t addr;
   uint64_t len;
   uint64_t dso_id;
-  std::string name;
-
-  SymbolRecord() {}
+  const char* name;
 
   explicit SymbolRecord(const char* p);
-  std::vector<char> BinaryFormat() const override;
 
-  static SymbolRecord Create(uint64_t addr, uint64_t len,
-                             const std::string& name, uint64_t dso_id);
+  SymbolRecord(uint64_t addr, uint64_t len, const std::string& name,
+               uint64_t dso_id);
 
  protected:
   void DumpData(size_t indent) const override;
 };
 
 struct TracingDataRecord : public Record {
-  std::vector<char> data;
-
-  TracingDataRecord() {}
+  uint32_t data_size;
+  const char* data;
 
   explicit TracingDataRecord(const char* p);
-  std::vector<char> BinaryFormat() const override;
 
-  static TracingDataRecord Create(std::vector<char> tracing_data);
+  TracingDataRecord(const std::vector<char>& tracing_data);
 
  protected:
   void DumpData(size_t indent) const override;
@@ -477,17 +473,25 @@ struct TracingDataRecord : public Record {
 // UnknownRecord is used for unknown record types, it makes sure all unknown
 // records are not changed when modifying perf.data.
 struct UnknownRecord : public Record {
-  std::vector<char> data;
+  const char* data;
 
   explicit UnknownRecord(const char* p);
-  std::vector<char> BinaryFormat() const override;
 
  protected:
   void DumpData(size_t indent) const override;
 };
 
+// Read record from the buffer pointed by [p]. But the record doesn't own
+// the buffer.
 std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
                                              uint32_t type, const char* p);
+
+// Read record from the buffer pointed by [p]. And the record owns the buffer.
+std::unique_ptr<Record> ReadRecordFromOwnedBuffer(const perf_event_attr& attr,
+                                                  uint32_t type, const char* p);
+
+// Read records from the buffer pointed by [buf]. None of the records own
+// the buffer.
 std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(
     const perf_event_attr& attr, const char* buf, size_t buf_size);
 

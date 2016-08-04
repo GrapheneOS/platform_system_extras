@@ -686,7 +686,7 @@ bool ReportCommand::ProcessRecord(std::unique_ptr<Record> record) {
         *static_cast<const SampleRecord*>(record.get()));
   } else if (record->type() == PERF_RECORD_TRACING_DATA) {
     const auto& r = *static_cast<TracingDataRecord*>(record.get());
-    if (!ProcessTracingData(r.data)) {
+    if (!ProcessTracingData(std::vector<char>(r.data, r.data + r.data_size))) {
       return false;
     }
   }

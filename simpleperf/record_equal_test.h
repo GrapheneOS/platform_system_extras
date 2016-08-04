@@ -15,19 +15,19 @@
  */
 
 static void CheckMmapRecordDataEqual(const MmapRecord& r1, const MmapRecord& r2) {
-  ASSERT_EQ(0, memcmp(&r1.data, &r2.data, sizeof(r1.data)));
-  ASSERT_EQ(r1.filename, r2.filename);
+  ASSERT_EQ(0, memcmp(r1.data, r2.data, sizeof(*r1.data)));
+  ASSERT_STREQ(r1.filename, r2.filename);
 }
 
 static void CheckCommRecordDataEqual(const CommRecord& r1, const CommRecord& r2) {
-  ASSERT_EQ(0, memcmp(&r1.data, &r2.data, sizeof(r1.data)));
-  ASSERT_EQ(r1.comm, r2.comm);
+  ASSERT_EQ(0, memcmp(r1.data, r2.data, sizeof(*r1.data)));
+  ASSERT_STREQ(r1.comm, r2.comm);
 }
 
 static void CheckBuildIdRecordDataEqual(const BuildIdRecord& r1, const BuildIdRecord& r2) {
   ASSERT_EQ(r1.pid, r2.pid);
   ASSERT_EQ(r1.build_id, r2.build_id);
-  ASSERT_EQ(r1.filename, r2.filename);
+  ASSERT_STREQ(r1.filename, r2.filename);
 }
 
 static void CheckRecordEqual(const Record& r1, const Record& r2) {
