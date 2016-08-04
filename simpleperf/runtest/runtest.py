@@ -317,9 +317,9 @@ class DeviceRunner(Runner):
   """Run perf test on device."""
 
   def __init__(self, perf_path):
-    self._download(os.environ['OUT'] + '/system/xbin/' + perf_path,
-                   '/data/local/tmp')
-    self.perf_path = '/data/local/tmp/' + perf_path
+    self.tmpdir = '/data/local/tmp/'
+    self._download(os.environ['OUT'] + '/system/xbin/' + perf_path, self.tmpdir)
+    self.perf_path = self.tmpdir + perf_path
 
   def _call(self, args, output_file=None):
     output_fh = None
@@ -337,9 +337,15 @@ class DeviceRunner(Runner):
 
   def record(self, test_executable_name, record_file, additional_options=[]):
     self._download(os.environ['OUT'] + '/system/bin/' + test_executable_name,
-                   '/data/local/tmp')
-    super(DeviceRunner, self).record('/data/local/tmp/' + test_executable_name,
-                                     record_file, additional_options)
+                   self.tmpdir)
+    super(DeviceRunner, self).record(self.tmpdir + test_executable_name,
+                                     self.tmpdir + record_file,
+                                     additional_options)
+
+  def report(self, record_file, report_file, additional_options=[]):
+    super(DeviceRunner, self).report(self.tmpdir + record_file,
+                                     report_file,
+                                     additional_options)
 
 class ReportAnalyzer(object):
 
@@ -534,8 +540,8 @@ def runtest(host, device, normal, callgraph, selected_tests):
         exit(1)
 
     if device and normal:
-      device_runner.record(test.executable_name, '/data/perf.data')
-      device_runner.report('/data/perf.data', 'perf.report',
+      device_runner.record(test.executable_name, 'perf.data')
+      device_runner.report('perf.data', 'perf.report',
                            additional_options = test.report_options)
       result = report_analyzer.check_report_file(test, 'perf.report', False)
       print 'test %s on device %s' % (
@@ -563,10 +569,10 @@ def runtest(host, device, normal, callgraph, selected_tests):
       # while recording call-graph.
       device_runner.record(
           test.executable_name,
-          '/data/perf_g.data',
+          'perf_g.data',
           additional_options=['-g', '-f', '1000'])
       device_runner.report(
-          '/data/perf_g.data',
+          'perf_g.data',
           'perf_g.report',
           additional_options=['-g', 'callee'] + test.report_options)
       result = report_analyzer.check_report_file(test, 'perf_g.report', True)
