@@ -234,6 +234,14 @@ void EventSelectionSet::SetInherit(bool enable) {
   }
 }
 
+void EventSelectionSet::SetLowWatermark() {
+  for (auto& group : groups_) {
+    for (auto& selection : group) {
+      selection.event_attr.wakeup_events = 1;
+    }
+  }
+}
+
 static bool CheckIfCpusOnline(const std::vector<int>& cpus) {
   std::vector<int> online_cpus = GetOnlineCpus();
   for (const auto& cpu : cpus) {
@@ -389,18 +397,8 @@ bool EventSelectionSet::PrepareToReadMmapEventData(
     }
   }
 
-  // Prepare record callback function and record cache.
+  // Prepare record callback function.
   record_callback_ = callback;
-  bool has_timestamp = true;
-  for (const auto& group : groups_) {
-    for (const auto& selection : group) {
-      if (!IsTimestampSupported(selection.event_attr)) {
-        has_timestamp = false;
-        break;
-      }
-    }
-  }
-  record_cache_.reset(new RecordCache(has_timestamp));
   return true;
 }
 
@@ -417,13 +415,10 @@ bool EventSelectionSet::ReadMmapEventDataForFd(
   }
   std::vector<std::unique_ptr<Record>> records =
       ReadRecordsFromBuffer(event_fd->attr(), data, size);
-  record_cache_->Push(std::move(records));
-  std::unique_ptr<Record> r = record_cache_->Pop();
-  while (r != nullptr) {
+  for (auto& r : records) {
     if (!record_callback_(r.get())) {
       return false;
     }
-    r = record_cache_->Pop();
   }
   return true;
 }
@@ -440,13 +435,6 @@ bool EventSelectionSet::FinishReadMmapEventData() {
           }
         }
       }
-    }
-  }
-  // Clean up record cache.
-  std::vector<std::unique_ptr<Record>> records = record_cache_->PopAll();
-  for (auto& r : records) {
-    if (!record_callback_(r.get())) {
-      return false;
     }
   }
   return true;
