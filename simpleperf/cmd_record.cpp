@@ -67,6 +67,8 @@ constexpr uint32_t MAX_DUMP_STACK_SIZE = 65528;
 // successfully, the buffer size = 1024 * 4K (page size) = 4M.
 constexpr size_t DESIRED_PAGES_IN_MAPPED_BUFFER = 1024;
 
+constexpr double PERIOD_TO_DETECT_CPU_HOTPLUG_EVENTS_IN_SEC = 0.5;
+
 class RecordCommand : public Command {
  public:
   RecordCommand()
@@ -190,7 +192,7 @@ class RecordCommand : public Command {
   bool DumpAdditionalFeatures(const std::vector<std::string>& args);
   bool DumpBuildIdFeature();
   void CollectHitFileInfo(Record* record);
-  std::pair<std::string, uint64_t> TestForEmbeddedElf(Dso* dso, uint64_t pgoff);
+  bool DetectCpuHotplugEvents();
 
   bool use_sample_freq_;
   uint64_t sample_freq_;  // Sample 'sample_freq_' times per second.
@@ -223,6 +225,8 @@ class RecordCommand : public Command {
 
   uint64_t sample_record_count_;
   uint64_t lost_record_count_;
+
+  std::vector<int> online_cpus_;
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
@@ -300,6 +304,12 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
                                [&]() { return loop.ExitLoop(); })) {
       return false;
     }
+  }
+  online_cpus_ = GetOnlineCpus();
+  if (!loop.AddPeriodicEvent(
+          SecondToTimeval(PERIOD_TO_DETECT_CPU_HOTPLUG_EVENTS_IN_SEC),
+          [&]() { return DetectCpuHotplugEvents(); })) {
+    return false;
   }
 
   // 6. Write records in mapped buffers of perf_event_files to output file while
@@ -1085,6 +1095,23 @@ void RecordCommand::CollectHitFileInfo(Record* record) {
       hit_user_files_.insert(map->dso->Path());
     }
   }
+}
+
+bool RecordCommand::DetectCpuHotplugEvents() {
+  std::vector<int> new_cpus = GetOnlineCpus();
+  for (auto& cpu : online_cpus_) {
+    if (std::find(new_cpus.begin(), new_cpus.end(), cpu) == new_cpus.end()) {
+      LOG(INFO) << "Cpu " << cpu << " is offlined";
+    }
+  }
+  for (auto& cpu : new_cpus) {
+    if (std::find(online_cpus_.begin(), online_cpus_.end(), cpu) ==
+        online_cpus_.end()) {
+      LOG(INFO) << "Cpu " << cpu << " is onlined";
+    }
+  }
+  online_cpus_ = new_cpus;
+  return true;
 }
 
 void RegisterRecordCommand() {
