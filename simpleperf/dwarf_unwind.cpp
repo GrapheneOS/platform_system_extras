@@ -131,6 +131,10 @@ std::vector<uint64_t> UnwindCallChain(ArchType arch, const ThreadEntry& thread,
   ucontext_t ucontext = BuildUContextFromRegs(regs);
   if (backtrace->Unwind(0, &ucontext)) {
     for (auto it = backtrace->begin(); it != backtrace->end(); ++it) {
+      // Unwinding in arm architecture can return 0 pc address.
+      if (it->pc == 0) {
+        break;
+      }
       result.push_back(it->pc);
     }
   }
