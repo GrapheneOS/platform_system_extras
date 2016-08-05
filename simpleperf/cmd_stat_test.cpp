@@ -109,4 +109,5 @@ TEST(stat_cmd, auto_generated_summary) {
 TEST(stat_cmd, duration_option) {
   ASSERT_TRUE(
       StatCmd()->Run({"--duration", "1.2", "-p", std::to_string(getpid())}));
+  ASSERT_TRUE(StatCmd()->Run({"--duration", "1", "sleep", "2"}));
 }

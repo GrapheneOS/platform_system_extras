@@ -495,13 +495,6 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
   for (; i < args.size(); ++i) {
     non_option_args->push_back(args[i]);
   }
-  if (duration_in_sec_ != 0) {
-    if (!non_option_args->empty()) {
-      LOG(ERROR) << "Using --duration option while running a command is not "
-                    "supported.";
-      return false;
-    }
-  }
   return true;
 }
 
