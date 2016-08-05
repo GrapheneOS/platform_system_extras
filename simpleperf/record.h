@@ -249,6 +249,7 @@ struct Record {
   const char* Binary() const { return binary_; }
 
   virtual uint64_t Timestamp() const;
+  virtual uint32_t Cpu() const;
 
  protected:
   void UpdateBinary(const char* new_binary);
@@ -385,6 +386,7 @@ struct SampleRecord : public Record {
   SampleRecord(const perf_event_attr& attr, const char* p);
   void ReplaceRegAndStackWithCallChain(const std::vector<uint64_t>& ips);
   uint64_t Timestamp() const override;
+  uint32_t Cpu() const override;
 
   uint64_t GetValidStackSize() const {
     // If stack_user_data.dyn_size == 0, it may be because the kernel misses
@@ -520,6 +522,7 @@ class RecordCache {
   void Push(std::vector<std::unique_ptr<Record>> records);
   std::unique_ptr<Record> Pop();
   std::vector<std::unique_ptr<Record>> PopAll();
+  std::unique_ptr<Record> ForcedPop();
 
  private:
   struct RecordWithSeq {
