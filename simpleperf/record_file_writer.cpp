@@ -27,7 +27,6 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
-#include <android-base/test_utils.h>
 
 #include "event_attr.h"
 #include "perf_event.h"
@@ -218,19 +217,20 @@ bool RecordFileWriter::SortDataSection() {
     return true;
   }
   struct CpuData {
-    TemporaryFile tmpfile;
+    std::string path;
     FILE* fp;
     std::vector<char> buf;
     uint64_t data_size;
 
-    CpuData() : data_size(0) {
-      fp = fdopen(tmpfile.fd, "web+");
+    CpuData(const std::string& path) : path(path), fp(nullptr), data_size(0) {
+      fp = fopen(path.c_str(), "web+");
     }
     ~CpuData() {
       fclose(fp);
+      unlink(path.c_str());
     }
   };
-  std::unordered_map<uint32_t, CpuData> cpu_map;
+  std::unordered_map<uint32_t, std::unique_ptr<CpuData>> cpu_map;
   if (fseek(record_fp_, data_section_offset_, SEEK_SET) == -1) {
     PLOG(ERROR) << "fseek() failed";
     return false;
@@ -243,13 +243,18 @@ bool RecordFileWriter::SortDataSection() {
       return false;
     }
     cur_size += r->size();
-    CpuData& cpu_data = cpu_map[r->Cpu()];
-    if (cpu_data.fp == nullptr) {
-      PLOG(ERROR) << "failed to open tmpfile";
-      return false;
+    std::unique_ptr<CpuData>& cpu_data = cpu_map[r->Cpu()];
+    if (cpu_data == nullptr) {
+      // Create temporary file in the same directory as filename_, because we
+      // may not have permission to create temporary file in other directories.
+      cpu_data.reset(new CpuData(filename_ + "." + std::to_string(r->Cpu())));
+      if (cpu_data->fp == nullptr) {
+        PLOG(ERROR) << "failed to open tmpfile " << cpu_data->path;
+        return false;
+      }
     }
-    cpu_data.data_size += r->size();
-    if (!WriteRecordToFile(cpu_data.fp, std::move(r))) {
+    cpu_data->data_size += r->size();
+    if (!WriteRecordToFile(cpu_data->fp, std::move(r))) {
       return false;
     }
   }
@@ -259,15 +264,15 @@ bool RecordFileWriter::SortDataSection() {
   }
   RecordCache global_cache(true);
   for (auto it = cpu_map.begin(); it != cpu_map.end(); ++it) {
-    if (fseek(it->second.fp, 0, SEEK_SET) == -1) {
+    if (fseek(it->second->fp, 0, SEEK_SET) == -1) {
       PLOG(ERROR) << "fseek() failed";
       return false;
     }
-    std::unique_ptr<Record> r = ReadRecordFromFile(it->second.fp, it->second.buf);
+    std::unique_ptr<Record> r = ReadRecordFromFile(it->second->fp, it->second->buf);
     if (r == nullptr) {
       return false;
     }
-    it->second.data_size -= r->size();
+    it->second->data_size -= r->size();
     global_cache.Push(std::move(r));
   }
   while (true) {
@@ -281,13 +286,13 @@ bool RecordFileWriter::SortDataSection() {
     }
     // Each time writing one record of a cpu, push the next record from the
     // temporary file belong to that cpu into the record cache.
-    CpuData& cpu_data = cpu_map[cpu];
-    if (cpu_data.data_size > 0) {
-      r = ReadRecordFromFile(cpu_data.fp, cpu_data.buf);
+    std::unique_ptr<CpuData>& cpu_data = cpu_map[cpu];
+    if (cpu_data->data_size > 0) {
+      r = ReadRecordFromFile(cpu_data->fp, cpu_data->buf);
       if (r == nullptr) {
         return false;
       }
-      cpu_data.data_size -= r->size();
+      cpu_data->data_size -= r->size();
       global_cache.Push(std::move(r));
     }
   }
