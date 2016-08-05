@@ -204,11 +204,6 @@ TEST(record_cmd, more_than_one_event_types) {
   ASSERT_TRUE(RunRecordCmd({"-e", "cpu-cycles", "-e", "cpu-clock"}));
 }
 
-TEST(record_cmd, cpu_option) {
-  ASSERT_TRUE(RunRecordCmd({"--cpu", "0"}));
-  TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"--cpu", "0", "-a"})));
-}
-
 TEST(record_cmd, mmap_page_option) {
   ASSERT_TRUE(RunRecordCmd({"-m", "1"}));
   ASSERT_FALSE(RunRecordCmd({"-m", "0"}));
