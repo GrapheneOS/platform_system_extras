@@ -46,6 +46,7 @@ class RecordFileWriter {
 
   bool WriteAttrSection(const std::vector<AttrWithId>& attr_ids);
   bool WriteRecord(const Record& record);
+  bool SortDataSection();
 
   bool WriteFeatureHeader(size_t feature_count);
   bool WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records);
@@ -66,6 +67,8 @@ class RecordFileWriter {
   bool WriteFileHeader();
   bool WriteData(const void* buf, size_t len);
   bool Write(const void* buf, size_t len);
+  std::unique_ptr<Record> ReadRecordFromFile(FILE* fp, std::vector<char>& buf);
+  bool WriteRecordToFile(FILE* fp, std::unique_ptr<Record> r);
   bool SeekFileEnd(uint64_t* file_end);
   bool WriteFeatureBegin(uint64_t* start_offset);
   bool WriteFeatureEnd(int feature, uint64_t start_offset);

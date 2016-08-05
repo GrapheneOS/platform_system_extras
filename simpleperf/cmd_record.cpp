@@ -313,6 +313,9 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   if (!event_selection_set_.FinishReadMmapEventData()) {
     return false;
   }
+  if (!record_file_writer_->SortDataSection()) {
+    return false;
+  }
 
   // 7. Dump additional features, and close record file.
   if (!DumpAdditionalFeatures(args)) {
@@ -608,6 +611,11 @@ bool RecordCommand::SetEventSelectionFlags() {
     }
   }
   event_selection_set_.SetInherit(child_inherit_);
+  // If Unwinding while recording, records are used before being sorted.
+  // By using low watermark, records are almost sorted when read from kernel.
+  if (dwarf_callchain_sampling_ && unwind_dwarf_callchain_ && !post_unwind_) {
+    event_selection_set_.SetLowWatermark();
+  }
   return true;
 }
 

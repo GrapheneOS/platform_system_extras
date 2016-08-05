@@ -222,6 +222,10 @@ bool IsTimestampSupported(const perf_event_attr& attr) {
   return attr.sample_id_all && (attr.sample_type & PERF_SAMPLE_TIME);
 }
 
+bool IsCpuSupported(const perf_event_attr& attr) {
+  return attr.sample_id_all && (attr.sample_type & PERF_SAMPLE_CPU);
+}
+
 std::string GetEventNameByAttr(const perf_event_attr& attr) {
   for (const auto& event_type : GetAllEventTypes()) {
     if (event_type.type == attr.type && event_type.config == attr.config) {

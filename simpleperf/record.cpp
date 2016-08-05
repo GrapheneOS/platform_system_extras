@@ -206,6 +206,7 @@ void Record::Dump(size_t indent) const {
 }
 
 uint64_t Record::Timestamp() const { return sample_id.time_data.time; }
+uint32_t Record::Cpu() const { return sample_id.cpu_data.cpu; }
 
 void Record::UpdateBinary(const char* new_binary) {
   if (own_binary_) {
@@ -595,6 +596,7 @@ void SampleRecord::DumpData(size_t indent) const {
 }
 
 uint64_t SampleRecord::Timestamp() const { return time_data.time; }
+uint32_t SampleRecord::Cpu() const { return cpu_data.cpu; }
 
 BuildIdRecord::BuildIdRecord(const char* p) : Record(p) {
   const char* end = p + size();
@@ -817,9 +819,7 @@ std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(
     RecordHeader header(p);
     CHECK_LE(p + header.size, end);
     CHECK_NE(0u, header.size);
-    char* binary = new char[header.size];
-    memcpy(binary, p, header.size);
-    result.push_back(ReadRecordFromOwnedBuffer(attr, header.type, binary));
+    result.push_back(ReadRecordFromBuffer(attr, header.type, p));
     p += header.size;
   }
   return result;
@@ -895,4 +895,13 @@ std::vector<std::unique_ptr<Record>> RecordCache::PopAll() {
     queue_.pop();
   }
   return result;
+}
+
+std::unique_ptr<Record> RecordCache::ForcedPop() {
+  if (queue_.empty()) {
+    return nullptr;
+  }
+  Record* r = queue_.top().record;
+  queue_.pop();
+  return std::unique_ptr<Record>(r);
 }
