@@ -20,7 +20,7 @@ PID=$(echo "$PID" | awk '{ print $2 }')
 adb $DEVICE shell "kill -s SIGUSR1 $PID"
 
 TRACE_FILE=$(adb $DEVICE shell "ls $TRACE_DIR \
-    grep $TRACE_FILE_PATTEN | tail -n1" | tr -d '\r')
+    | grep $TRACE_FILE_PATTEN | tail -n1" | tr -d '\r')
 
 # Wiat the trace file generation to complete
 adb $DEVICE shell "lsof $PID" | grep $TRACE_FILE > /dev/null
