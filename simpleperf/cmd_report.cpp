@@ -439,22 +439,21 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       report_filename_ = args[i];
 
     } else if (args[i] == "--pids" || args[i] == "--tids") {
+      const std::string& option = args[i];
+      std::unordered_set<int>& filter =
+          (option == "--pids" ? pid_filter : tid_filter);
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
       std::vector<std::string> strs = android::base::Split(args[i], ",");
-      std::vector<int> ids;
       for (const auto& s : strs) {
         int id;
         if (!android::base::ParseInt(s.c_str(), &id, 0)) {
-          LOG(ERROR) << "invalid id in " << args[i] << " option: " << s;
+          LOG(ERROR) << "invalid id in " << option << " option: " << s;
           return false;
         }
-        ids.push_back(id);
+        filter.insert(id);
       }
-      std::unordered_set<int>& filter =
-          (args[i] == "--pids" ? pid_filter : tid_filter);
-      filter.insert(ids.begin(), ids.end());
 
     } else if (args[i] == "--sort") {
       if (!NextArgumentOrError(args, &i)) {
