@@ -424,7 +424,7 @@ struct KernelSymbolRecord : public Record {
 
   explicit KernelSymbolRecord(const char* p);
 
-  KernelSymbolRecord(const std::string& kallsyms);
+  explicit KernelSymbolRecord(const std::string& kallsyms);
 
  protected:
   void DumpData(size_t indent) const override;
@@ -466,7 +466,7 @@ struct TracingDataRecord : public Record {
 
   explicit TracingDataRecord(const char* p);
 
-  TracingDataRecord(const std::vector<char>& tracing_data);
+  explicit TracingDataRecord(const std::vector<char>& tracing_data);
 
  protected:
   void DumpData(size_t indent) const override;

@@ -222,7 +222,7 @@ bool RecordFileWriter::SortDataSection() {
     std::vector<char> buf;
     uint64_t data_size;
 
-    CpuData(const std::string& path) : path(path), fp(nullptr), data_size(0) {
+    explicit CpuData(const std::string& path) : path(path), fp(nullptr), data_size(0) {
       fp = fopen(path.c_str(), "web+");
     }
     ~CpuData() {
