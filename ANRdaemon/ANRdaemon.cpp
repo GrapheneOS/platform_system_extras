@@ -143,6 +143,7 @@ static void get_cpu_stat(cpu_stat_t *cpu) {
              * is_heavy_loaded() will return false.
              */
             ALOGE("Error in getting cpu status. Skipping this check.");
+            fclose(fp);
             return;
         }
 
