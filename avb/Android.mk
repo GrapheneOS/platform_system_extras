@@ -115,12 +115,11 @@ LOCAL_CLANG := true
 LOCAL_CFLAGS := $(avb_common_cflags) -DAVB_ENABLE_DEBUG -DAVB_COMPILATION
 LOCAL_CPPFLAGS := $(avb_common_cppflags)
 LOCAL_LDFLAGS := $(avb_common_ldflags)
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/libavb external/gtest/include
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/libavb
 LOCAL_STATIC_LIBRARIES := \
     libavb_host \
     libavb_host_sysdeps \
-    libgmock_host \
-    libgtest_host
+    libgmock_host
 LOCAL_SHARED_LIBRARIES := \
     libchrome
 LOCAL_SRC_FILES := \
