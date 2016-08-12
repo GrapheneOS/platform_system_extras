@@ -44,7 +44,6 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := $(cts_executable)_list
 LOCAL_MODULE_TAGS := optional
 LOCAL_CFLAGS := $(test_c_flags)
-LOCAL_C_INCLUDES := external/gtest/include
 LOCAL_SRC_FILES := $(cts_src_files)
 LOCAL_MULTILIB := both
 LOCAL_MODULE_STEM_32 := $(LOCAL_MODULE)
