@@ -25,7 +25,7 @@ public:
     // Opens properties folder on named device.
     // If folder does not exist, OK will return false, all
     // getters will return default properties and setters will fail.
-    UnencryptedProperties(const char* device);
+    explicit UnencryptedProperties(const char* device);
 
     // Get named object. Return default if object does not exist or error.
     template<typename t> t Get(const char* name, t default_value = t()) const;
