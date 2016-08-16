@@ -204,6 +204,13 @@ include $(BUILD_HOST_EXECUTABLE)
 $(call dist-for-goals,sdk,$(LOCAL_BUILT_MODULE):simpleperf_host)
 $(call dist-for-goals,win_sdk,$(ALL_MODULES.host_cross_simpleperf.BUILT))
 
+# simpleperf report script
+include $(CLEAR_VARS)
+LOCAL_PREBUILT_EXECUTABLES := simpleperf_report.py
+include $(BUILD_HOST_PREBUILT)
+
+$(call dist-for-goals,sdk,$(ALL_MODULES.simpleperf_report.BUILT))
+
 # simpleperf_unit_test
 # =========================================================
 simpleperf_unit_test_src_files := \
