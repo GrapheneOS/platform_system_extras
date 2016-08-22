@@ -116,8 +116,8 @@ void FprintIndented(FILE* fp, size_t indent, const char* fmt, ...);
 
 bool IsPowerOfTwo(uint64_t value);
 
-void GetEntriesInDir(const std::string& dirpath, std::vector<std::string>* files,
-                     std::vector<std::string>* subdirs);
+std::vector<std::string> GetEntriesInDir(const std::string& dirpath);
+std::vector<std::string> GetSubDirs(const std::string& dirpath);
 bool IsDir(const std::string& dirpath);
 bool IsRegularFile(const std::string& filename);
 uint64_t GetFileSize(const std::string& filename);
