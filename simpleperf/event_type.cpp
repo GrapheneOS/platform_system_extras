@@ -35,14 +35,14 @@ static const std::vector<EventType> static_event_type_array = {
 
 static const std::vector<EventType> GetTracepointEventTypes() {
   std::vector<EventType> result;
+  if (!IsRoot()) {
+    // Not having permission to profile tracing events.
+    return result;
+  }
   const std::string tracepoint_dirname = "/sys/kernel/debug/tracing/events";
-  std::vector<std::string> system_dirs;
-  GetEntriesInDir(tracepoint_dirname, nullptr, &system_dirs);
-  for (auto& system_name : system_dirs) {
+  for (const auto& system_name : GetSubDirs(tracepoint_dirname)) {
     std::string system_path = tracepoint_dirname + "/" + system_name;
-    std::vector<std::string> event_dirs;
-    GetEntriesInDir(system_path, nullptr, &event_dirs);
-    for (auto& event_name : event_dirs) {
+    for (const auto& event_name : GetSubDirs(system_path)) {
       std::string id_path = system_path + "/" + event_name + "/id";
       std::string id_content;
       if (!android::base::ReadFileToString(id_path, &id_content)) {

@@ -95,10 +95,7 @@ bool Dso::SetSymFsDir(const std::string& symfs_dir) {
     if (dirname.back() != '/') {
       dirname.push_back('/');
     }
-    std::vector<std::string> files;
-    std::vector<std::string> subdirs;
-    GetEntriesInDir(symfs_dir, &files, &subdirs);
-    if (files.empty() && subdirs.empty()) {
+    if (GetEntriesInDir(symfs_dir).empty()) {
       LOG(ERROR) << "Invalid symfs_dir '" << symfs_dir << "'";
       return false;
     }

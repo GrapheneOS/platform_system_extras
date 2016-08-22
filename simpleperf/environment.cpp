@@ -158,18 +158,15 @@ static std::string GetLinuxVersion() {
 
 static void GetAllModuleFiles(const std::string& path,
                               std::unordered_map<std::string, std::string>* module_file_map) {
-  std::vector<std::string> files;
-  std::vector<std::string> subdirs;
-  GetEntriesInDir(path, &files, &subdirs);
-  for (auto& name : files) {
-    if (android::base::EndsWith(name, ".ko")) {
+  for (const auto& name : GetEntriesInDir(path)) {
+    std::string entry_path = path + "/" + name;
+    if (IsRegularFile(entry_path) && android::base::EndsWith(name, ".ko")) {
       std::string module_name = name.substr(0, name.size() - 3);
       std::replace(module_name.begin(), module_name.end(), '-', '_');
-      module_file_map->insert(std::make_pair(module_name, path + "/" + name));
+      module_file_map->insert(std::make_pair(module_name, entry_path));
+    } else if (IsDir(entry_path)) {
+      GetAllModuleFiles(entry_path, module_file_map);
     }
-  }
-  for (auto& name : subdirs) {
-    GetAllModuleFiles(path + "/" + name, module_file_map);
   }
 }
 
@@ -252,9 +249,7 @@ static bool ReadThreadNameAndTgid(const std::string& status_file, std::string* c
 static std::vector<pid_t> GetThreadsInProcess(pid_t pid) {
   std::vector<pid_t> result;
   std::string task_dirname = android::base::StringPrintf("/proc/%d/task", pid);
-  std::vector<std::string> subdirs;
-  GetEntriesInDir(task_dirname, nullptr, &subdirs);
-  for (const auto& name : subdirs) {
+  for (const auto& name : GetSubDirs(task_dirname)) {
     int tid;
     if (!android::base::ParseInt(name.c_str(), &tid, 0)) {
       continue;
@@ -286,9 +281,7 @@ static bool GetThreadComm(pid_t pid, std::vector<ThreadComm>* thread_comms) {
 
 bool GetThreadComms(std::vector<ThreadComm>* thread_comms) {
   thread_comms->clear();
-  std::vector<std::string> subdirs;
-  GetEntriesInDir("/proc", nullptr, &subdirs);
-  for (auto& name : subdirs) {
+  for (const auto& name : GetSubDirs("/proc")) {
     int pid;
     if (!android::base::ParseInt(name.c_str(), &pid, 0)) {
       continue;
