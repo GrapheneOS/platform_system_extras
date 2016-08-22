@@ -112,35 +112,33 @@ bool IsPowerOfTwo(uint64_t value) {
   return (value != 0 && ((value & (value - 1)) == 0));
 }
 
-void GetEntriesInDir(const std::string& dirpath, std::vector<std::string>* files,
-                     std::vector<std::string>* subdirs) {
-  if (files != nullptr) {
-    files->clear();
-  }
-  if (subdirs != nullptr) {
-    subdirs->clear();
-  }
+std::vector<std::string> GetEntriesInDir(const std::string& dirpath) {
+  std::vector<std::string> result;
   DIR* dir = opendir(dirpath.c_str());
   if (dir == nullptr) {
     PLOG(DEBUG) << "can't open dir " << dirpath;
-    return;
+    return result;
   }
   dirent* entry;
   while ((entry = readdir(dir)) != nullptr) {
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
       continue;
     }
-    if (IsDir(dirpath + std::string("/") + entry->d_name)) {
-      if (subdirs != nullptr) {
-        subdirs->push_back(entry->d_name);
-      }
-    } else {
-      if (files != nullptr) {
-        files->push_back(entry->d_name);
-      }
-    }
+    result.push_back(entry->d_name);
   }
   closedir(dir);
+  return result;
+}
+
+std::vector<std::string> GetSubDirs(const std::string& dirpath) {
+  std::vector<std::string> entries = GetEntriesInDir(dirpath);
+  std::vector<std::string> result;
+  for (size_t i = 0; i < entries.size(); ++i) {
+    if (IsDir(dirpath + "/" + entries[i])) {
+      result.push_back(std::move(entries[i]));
+    }
+  }
+  return result;
 }
 
 bool IsDir(const std::string& dirpath) {
