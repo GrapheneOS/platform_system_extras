@@ -163,6 +163,7 @@ class RecordCommand : public Command {
         dump_symbols_(false),
         mmap_page_range_(std::make_pair(1, DESIRED_PAGES_IN_MAPPED_BUFFER)),
         record_filename_("perf.data"),
+        start_sampling_time_in_ns_(0),
         sample_record_count_(0),
         lost_record_count_(0) {
     // Die if parent exits.
@@ -219,6 +220,8 @@ class RecordCommand : public Command {
   ThreadTree thread_tree_;
   std::string record_filename_;
   std::unique_ptr<RecordFileWriter> record_file_writer_;
+
+  uint64_t start_sampling_time_in_ns_;  // nanoseconds from machine starting
 
   std::set<std::string> hit_kernel_modules_;
   std::set<std::string> hit_user_files_;
@@ -314,6 +317,12 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
 
   // 6. Write records in mapped buffers of perf_event_files to output file while
   //    workload is running.
+  timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+    PLOG(ERROR) << "clock_gettime failed";
+    return false;
+  }
+  start_sampling_time_in_ns_ = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
   if (workload != nullptr && !workload->Start()) {
     return false;
   }
@@ -818,6 +827,13 @@ bool RecordCommand::DumpThreadCommAndMmaps(
 }
 
 bool RecordCommand::ProcessRecord(Record* record) {
+  if (record->type() == PERF_RECORD_SAMPLE) {
+    auto& r = *static_cast<SampleRecord*>(record);
+    // Omit samples get before start sampling time.
+    if (r.time_data.time < start_sampling_time_in_ns_) {
+      return true;
+    }
+  }
   UpdateRecordForEmbeddedElfPath(record);
   thread_tree_.Update(*record);
   CollectHitFileInfo(record);
