@@ -1,8 +1,28 @@
+/*
+ * Copyright (C) 2016 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #define TAG "ext4_utils"
 
 #include "ext4_crypt_init_extensions.h"
+#include "ext4_crypt.h"
+
+#include <android-base/logging.h>
 
 #include <string>
+#include <vector>
 
 #include <dirent.h>
 #include <errno.h>
@@ -10,116 +30,57 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <android-base/file.h>
+
 #include <cutils/klog.h>
 #include <cutils/properties.h>
 #include <cutils/sockets.h>
-#include <poll.h>
+#include <logwrap/logwrap.h>
 
 #include "key_control.h"
-#include "unencrypted_properties.h"
 
 static const std::string arbitrary_sequence_number = "42";
 static const int vold_command_timeout_ms = 60 * 1000;
 
-static std::string vold_command(std::string const& command)
-{
-    KLOG_INFO(TAG, "Running command %s\n", command.c_str());
-    int sock = -1;
-
-    while (true) {
-        sock = socket_local_client("cryptd",
-                                   ANDROID_SOCKET_NAMESPACE_RESERVED,
-                                   SOCK_STREAM);
-        if (sock >= 0) {
-            break;
-        }
-        usleep(10000);
+static void kernel_logger(android::base::LogId, android::base::LogSeverity severity, const char*,
+        const char*, unsigned int, const char* message) {
+    if (severity == android::base::ERROR || severity == android::base::FATAL) {
+        KLOG_ERROR(TAG, "%s\n", message);
+    } else if (severity == android::base::WARNING) {
+        KLOG_WARNING(TAG, "%s\n", message);
+    } else {
+        KLOG_INFO(TAG, "%s\n", message);
     }
+}
 
-    if (sock < 0) {
-        KLOG_INFO(TAG, "Cannot open vold, failing command (%s)\n", strerror(errno));
-        return "";
-    }
-
-    class CloseSocket
-    {
-        int sock_;
-    public:
-        explicit CloseSocket(int sock) : sock_(sock) {}
-        ~CloseSocket() { close(sock_); }
-    };
-
-    CloseSocket cs(sock);
-
-    // Use arbitrary sequence number. This should only be used when the
-    // framework is down, so this is (mostly) OK.
-    std::string actual_command = arbitrary_sequence_number + " " + command;
-    if (write(sock, actual_command.c_str(), actual_command.size() + 1) < 0) {
-        KLOG_ERROR(TAG, "Cannot write command (%s)\n", strerror(errno));
-        return "";
-    }
-
-    struct pollfd poll_sock = {sock, POLLIN, 0};
-
-    int rc = TEMP_FAILURE_RETRY(poll(&poll_sock, 1, vold_command_timeout_ms));
-    if (rc < 0) {
-        KLOG_ERROR(TAG, "Error in poll (%s)\n", strerror(errno));
-        return "";
-    }
-
-    if (!(poll_sock.revents & POLLIN)) {
-        KLOG_ERROR(TAG, "Timeout\n");
-        return "";
-    }
-    char buffer[4096];
-    memset(buffer, 0, sizeof(buffer));
-    rc = TEMP_FAILURE_RETRY(read(sock, buffer, sizeof(buffer)));
-    if (rc <= 0) {
-        if (rc == 0) {
-            KLOG_ERROR(TAG, "Lost connection to Vold - did it crash?\n");
-        } else {
-            KLOG_ERROR(TAG, "Error reading data (%s)\n", strerror(errno));
-        }
-        return "";
-    }
-
-    // We don't truly know that this is the correct result. However,
-    // since this will only be used when the framework is down,
-    // it should be OK unless someone is running vdc at the same time.
-    // Worst case we force a reboot in the very rare synchronization
-    // error
-    return std::string(buffer, rc);
+static void init_logging() {
+    android::base::SetLogger(kernel_logger);
 }
 
 int e4crypt_create_device_key(const char* dir,
                               int ensure_dir_exists(const char*))
 {
-    // Already encrypted with password? If so bail
-    std::string temp_folder = std::string() + dir + "/tmp_mnt";
-    DIR* temp_dir = opendir(temp_folder.c_str());
-    if (temp_dir) {
-        closedir(temp_dir);
-        return 0;
-    }
+    init_logging();
 
     // Make sure folder exists. Use make_dir to set selinux permissions.
-    if (ensure_dir_exists(UnencryptedProperties::GetPath(dir).c_str())) {
+    std::string unencrypted_dir = std::string(dir) + e4crypt_unencrypted_folder;
+    if (ensure_dir_exists(unencrypted_dir.c_str())) {
         KLOG_ERROR(TAG, "Failed to create %s (%s)\n",
-                   UnencryptedProperties::GetPath(dir).c_str(),
+                   unencrypted_dir.c_str(),
                    strerror(errno));
         return -1;
     }
 
-    auto result = vold_command("cryptfs enablefilecrypto");
-    // ext4enc:TODO proper error handling
-    KLOG_INFO(TAG, "enablefilecrypto returned with result %s\n",
-              result.c_str());
-
-    return 0;
+    const char* argv[] = { "/system/bin/vdc", "--wait", "cryptfs", "enablefilecrypto" };
+    int rc = android_fork_execvp(4, (char**) argv, NULL, false, true);
+    LOG(INFO) << "enablefilecrypto result: " << rc;
+    return rc;
 }
 
 int e4crypt_install_keyring()
 {
+    init_logging();
+
     key_serial_t device_keyring = add_key("keyring", "e4crypt", 0, 0,
                                           KEY_SPEC_SESSION_KEYRING);
 
@@ -128,14 +89,26 @@ int e4crypt_install_keyring()
         return -1;
     }
 
-    KLOG_INFO(TAG, "Keyring created wth id %d in process %d\n",
+    KLOG_INFO(TAG, "Keyring created with id %d in process %d\n",
               device_keyring, getpid());
 
     return 0;
 }
 
+int e4crypt_do_init_user0()
+{
+    init_logging();
+
+    const char* argv[] = { "/system/bin/vdc", "--wait", "cryptfs", "init_user0" };
+    int rc = android_fork_execvp(4, (char**) argv, NULL, false, true);
+    LOG(INFO) << "init_user0 result: " << rc;
+    return rc;
+}
+
 int e4crypt_set_directory_policy(const char* dir)
 {
+    init_logging();
+
     // Only set policy on first level /data directories
     // To make this less restrictive, consider using a policy file.
     // However this is overkill for as long as the policy is simply
@@ -144,40 +117,37 @@ int e4crypt_set_directory_policy(const char* dir)
         return 0;
     }
 
-    // Don't encrypt lost+found - ext4 doesn't like it
-    if (!strcmp(dir, "/data/lost+found")) {
-        return 0;
+    // Special case various directories that must not be encrypted,
+    // often because their subdirectories must be encrypted.
+    // This isn't a nice way to do this, see b/26641735
+    std::vector<std::string> directories_to_exclude = {
+        "lost+found",
+        "system_ce", "system_de",
+        "misc_ce", "misc_de",
+        "media",
+        "data", "user", "user_de",
+    };
+    std::string prefix = "/data/";
+    for (auto d: directories_to_exclude) {
+        if ((prefix + d) == dir) {
+            KLOG_INFO(TAG, "Not setting policy on %s\n", dir);
+            return 0;
+        }
     }
 
-    // ext4enc:TODO exclude /data/user with a horrible special case.
-    if (!strcmp(dir, "/data/user")) {
-        return 0;
+    std::string ref_filename = std::string("/data") + e4crypt_key_ref;
+    std::string policy;
+    if (!android::base::ReadFileToString(ref_filename, &policy)) {
+        KLOG_ERROR(TAG, "Unable to read system policy to set on %s\n", dir);
+        return -1;
     }
-
-    UnencryptedProperties props("/data");
-    std::string policy = props.Get<std::string>(properties::ref);
-    if (policy.empty()) {
-        // ext4enc:TODO why is this OK?
-        return 0;
-    }
-
     KLOG_INFO(TAG, "Setting policy on %s\n", dir);
-    int result = do_policy_set(dir, policy.c_str(), policy.size());
+    int result = e4crypt_policy_ensure(dir, policy.c_str(), policy.size());
     if (result) {
         KLOG_ERROR(TAG, "Setting %02x%02x%02x%02x policy on %s failed!\n",
                    policy[0], policy[1], policy[2], policy[3], dir);
         return -1;
     }
 
-    return 0;
-}
-
-int e4crypt_set_user_crypto_policies(const char* dir)
-{
-    auto command = std::string() + "cryptfs setusercryptopolicies " + dir;
-    auto result = vold_command(command);
-    // ext4enc:TODO proper error handling
-    KLOG_INFO(TAG, "setusercryptopolicies returned with result %s\n",
-              result.c_str());
     return 0;
 }

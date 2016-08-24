@@ -1,3 +1,4 @@
+#include "benchmark/benchmark_api.h"
 #include <string>
 #include <cstring>
 #include <cstdlib>
@@ -12,7 +13,9 @@
 #include <sys/mman.h>
 
 using namespace std;
-static const size_t pageSize = 4096;
+static const size_t pageSize = PAGE_SIZE;
+static size_t fsize = 1024 * (1ull << 20);
+static size_t pagesTotal = fsize / pageSize;
 
 class Fd {
     int m_fd = -1;
@@ -54,17 +57,16 @@ public:
     FileMap(const string &name, size_t size, Hint hint = FILE_MAP_HINT_NONE) : m_name{name}, m_size{size} {
         int fd = open(name.c_str(), O_CREAT | O_RDWR, S_IRWXU);
         if (fd < 0) {
-            cerr << "open failed: " << fd << endl;
-            return;
+            cout << "Error: open failed for " << name << ": " << strerror(errno) << endl;
+            exit(1);
         }
         m_fileFd.set(fd);
         fallocate(m_fileFd.get(), 0, 0, size);
         unlink(name.c_str());
         m_ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, m_fileFd.get(), 0);
         if ((int)(uintptr_t)m_ptr == -1) {
-            cerr << "mmap failed: " << (int)(uintptr_t)m_ptr << endl;
-            m_ptr = nullptr;
-            return;
+            cout << "Error: mmap failed: " << (int)(uintptr_t)m_ptr << ": " << strerror(errno) << endl;
+            exit(1);
         }
         switch (hint) {
         case FILE_MAP_HINT_NONE: break;
@@ -80,50 +82,21 @@ public:
             fillPageJunk(targetPtr);
         }
     }
-    void benchRandom(bool write) {
-        size_t pagesTotal = m_size / pageSize;
-        size_t pagesToHit = pagesTotal / 128;
-        uint64_t nsTotal = 0;
-
-        chrono::time_point<chrono::high_resolution_clock> start, end;
-        start = chrono::high_resolution_clock::now();
-        for (int j = 0; j < pagesToHit; j++) {
-            int targetPage = rand() % pagesTotal;
-            uint8_t *targetPtr = (uint8_t*)m_ptr + 4096ull * targetPage;
-            if (write) {
-                *targetPtr = dummy;
-            }
-            else {
-                dummy += *targetPtr;
-            }
-        }
-        end = chrono::high_resolution_clock::now();
-        nsTotal += chrono::duration_cast<chrono::nanoseconds>(end - start).count();
-        //cout << "random: " << nsTotal / 1000.0 / (pagesToHit) << "us/page" << endl;
-        cout << "random " << (write ? "write" : "read") << ": " << ((4096.0 * pagesToHit) / (1 << 20)) / (nsTotal / 1.0E9) << "MB/s" << endl;
+    void benchRandomRead(unsigned int targetPage) {
+        uint8_t *targetPtr = (uint8_t*)m_ptr + pageSize * targetPage;
+        dummy += *targetPtr;
     }
-    void benchLinear(bool write) {
-        int pagesTotal = m_size / pageSize;
-        int iterations = 4;
-        uint64_t nsTotal = 0;
-
-        chrono::time_point<chrono::high_resolution_clock> start, end;
-        start = chrono::high_resolution_clock::now();
-        for (int i = 0; i < iterations; i++) {
-            for (int j = 0; j < pagesTotal; j++) {
-                uint8_t *targetPtr = (uint8_t*)m_ptr + 4096ull * j;
-                if (write) {
-                    *targetPtr = dummy;
-                }
-                else {
-                    dummy += *targetPtr;
-                }
-            }
-        }
-        end = chrono::high_resolution_clock::now();
-        nsTotal += chrono::duration_cast<chrono::nanoseconds>(end - start).count();
-        //cout << "linear: " << nsTotal / 1000.0 / (pagesTotal * iterations) << "us/page" << endl;
-        cout << "linear " << (write ? "write" : "read") << ": " << ((4096.0 * pagesTotal * iterations) / (1 << 20)) / (nsTotal / 1.0E9 ) << "MB/s" << endl;
+    void benchRandomWrite(unsigned int targetPage) {
+        uint8_t *targetPtr = (uint8_t*)m_ptr + pageSize * targetPage;
+        *targetPtr = dummy;
+    }
+    void benchLinearRead(unsigned int j) {
+        uint8_t *targetPtr = (uint8_t*)m_ptr + pageSize * j;
+        dummy += *targetPtr;
+    }
+    void benchLinearWrite(unsigned int j) {
+        uint8_t *targetPtr = (uint8_t*)m_ptr + pageSize * j;
+        *targetPtr = dummy;
     }
     void dropCache() {
         int ret1 = msync(m_ptr, m_size, MS_SYNC | MS_INVALIDATE);
@@ -137,27 +110,46 @@ public:
 
 };
 
-int main(int argc, char *argv[])
-{
-    (void)argc;
-    (void)argv;
-    srand(0);
-
-    {
-        FileMap file{"/data/local/tmp/mmap_test", 16000 * (1ull << 20)};
-        file.benchRandom(false);
+static void benchRandomRead(benchmark::State& state) {
+    FileMap file{"/data/local/tmp/mmap_test", fsize};
+    while (state.KeepRunning()) {
+        unsigned int targetPage = rand() % pagesTotal;
+        file.benchRandomRead(targetPage);
     }
-    {
-        FileMap file{"/data/local/tmp/mmap_test", 16000 * (1ull << 20)};
-        file.benchLinear(false);
-    }
-    {
-        FileMap file{"/data/local/tmp/mmap_test", 16000 * (1ull << 20)};
-        file.benchRandom(true);
-    }
-    {
-        FileMap file{"/data/local/tmp/mmap_test", 16000 * (1ull << 20)};
-        file.benchLinear(true);
-    }
-    return 0;
+    state.SetBytesProcessed(state.iterations() * pageSize);
 }
+BENCHMARK(benchRandomRead);
+
+static void benchRandomWrite(benchmark::State& state) {
+    FileMap file{"/data/local/tmp/mmap_test", fsize};
+    while (state.KeepRunning()) {
+        unsigned int targetPage = rand() % pagesTotal;
+        file.benchRandomWrite(targetPage);
+    }
+    state.SetBytesProcessed(state.iterations() * pageSize);
+}
+BENCHMARK(benchRandomWrite);
+
+static void benchLinearRead(benchmark::State& state) {
+   FileMap file{"/data/local/tmp/mmap_test", fsize};
+   unsigned int j = 0;
+   while (state.KeepRunning()) {
+       file.benchLinearRead(j);
+       j = (j + 1) % pagesTotal;
+   }
+   state.SetBytesProcessed(state.iterations() * pageSize);
+}
+BENCHMARK(benchLinearRead);
+
+static void benchLinearWrite(benchmark::State& state) {
+   FileMap file{"/data/local/tmp/mmap_test", fsize};
+   unsigned int j = 0;
+   while (state.KeepRunning()) {
+       file.benchLinearWrite(j);
+       j = (j + 1) % pagesTotal;
+   }
+   state.SetBytesProcessed(state.iterations() * pageSize);
+}
+BENCHMARK(benchLinearWrite);
+
+BENCHMARK_MAIN()

@@ -48,6 +48,13 @@ LOCAL_CFLAGS_darwin := -DHOST
 LOCAL_CFLAGS_linux := -DHOST
 include $(BUILD_HOST_EXECUTABLE)
 
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := blk_alloc_to_base_fs.c
+LOCAL_MODULE := blk_alloc_to_base_fs
+LOCAL_SHARED_LIBRARIES += libcutils
+LOCAL_CFLAGS_darwin := -DHOST
+LOCAL_CFLAGS_linux := -DHOST
+include $(BUILD_HOST_EXECUTABLE)
 
 #
 # -- All host/targets excluding windows
@@ -55,8 +62,7 @@ include $(BUILD_HOST_EXECUTABLE)
 
 libext4_utils_src_files += \
     key_control.cpp \
-    ext4_crypt.cpp \
-    unencrypted_properties.cpp
+    ext4_crypt.cpp
 
 ifneq ($(HOST_OS),windows)
 
@@ -67,6 +73,7 @@ LOCAL_C_INCLUDES += system/core/logwrapper/include
 # Various instances of dereferencing a type-punned pointer in extent.c
 LOCAL_CFLAGS += -fno-strict-aliasing
 LOCAL_SHARED_LIBRARIES := \
+    libbase \
     libcutils \
     libext2_uuid \
     libselinux \
@@ -83,8 +90,11 @@ LOCAL_MODULE := libext4_utils_static
 # Various instances of dereferencing a type-punned pointer in extent.c
 LOCAL_CFLAGS += -fno-strict-aliasing
 LOCAL_STATIC_LIBRARIES := \
+    libbase \
+    liblogwrap \
     libsparse_static \
-    libselinux
+    libselinux \
+    libbase
 include $(BUILD_STATIC_LIBRARY)
 
 
