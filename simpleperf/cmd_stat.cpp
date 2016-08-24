@@ -360,17 +360,20 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   } else {
-    if (cpus_.empty()) {
-      cpus_ = {-1};
-    }
-    if (!event_selection_set_.OpenEventFilesForThreadsOnCpus(monitored_threads_,
-                                                             cpus_)) {
+    std::vector<int> all_cpus = {-1};
+    if (!event_selection_set_.OpenEventFilesForThreadsOnCpus(
+            monitored_threads_, cpus_.empty() ? all_cpus : cpus_)) {
       return false;
     }
   }
 
   // 4. Create IOEventLoop and add signal/periodic Events.
   IOEventLoop loop;
+  if (system_wide_collection_ || !cpus_.empty()) {
+    if (!event_selection_set_.HandleCpuHotplugEvents(loop, cpus_)) {
+      return false;
+    }
+  }
   if (!loop.AddSignalEvents({SIGCHLD, SIGINT, SIGTERM},
                             [&]() { return loop.ExitLoop(); })) {
     return false;
