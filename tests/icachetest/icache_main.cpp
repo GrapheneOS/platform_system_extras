@@ -33,9 +33,8 @@ static void printUsage(char* name) {
             "Options:\n"
             "   --help, -h\n"
             "       print this message\n\n"
-            "   --affinity=[big|little], -a [big|little]\n"
-            "       Specify which CPU the test should run on.\n"
-            "       (assumes \"little\" is the first CPU, and \"big\" the last one)\n\n"
+            "   --affinity=N, -a N\n"
+            "       Specify which CPU the test should run on.\n\n"
     );
     const std::string from("ICACHE");
     for (size_t pos = usage.find(from); pos != std::string::npos; pos = usage.find(from, pos)) {
@@ -62,12 +61,11 @@ static int handleCommandLineArgments(int argc, char* argv[]) {
                 exit(0);
                 break;
             case 'a':
-                if (arg == "big" || arg == "gold") {
-                    CPU_SET(std::thread::hardware_concurrency()-1, &g_cpu_set);
-                } else if (arg == "little" || arg == "silver") {
-                    CPU_SET(0, &g_cpu_set);
+                size_t cpu = std::stoi(arg);
+                if (cpu < std::thread::hardware_concurrency()) {
+                    CPU_SET(cpu, &g_cpu_set);
                 } else {
-                    std::cerr << "affinity must be either \"big\" or \"little\"" << std::endl;
+                    std::cerr << "N must be < " << std::thread::hardware_concurrency() << std::endl;
                     exit(0);
                 }
                 break;
@@ -99,7 +97,7 @@ int main(int argc, char* argv[]) {
 
     std::cout << std::fixed << std::setprecision(2);
 
-    printf("[KiB]\t[cyc]\t[refs]\t[hit%%]\t[ns]\n");
+    printf("[KiB]\t[cyc]\t[refs]\t[MPKI]\t[ns]\n");
 
     Profiler::Counters counters;
 
@@ -117,7 +115,7 @@ int main(int argc, char* argv[]) {
         std::cout << ((i*CACHE_LINE_SIZE)/1024) << "\t"
             << counters.getCpuCycles()/double(REPETITIONS) << "\t"
             << counters.getL1IReferences()/double(REPETITIONS) << "\t"
-            << counters.getL1IHitRate()*100 << "\t"
+            << counters.getMPKI(counters.getL1IMisses()) << "\t"
             << duration.count()/double(REPETITIONS) << "\t"
             << std::endl;
     }
