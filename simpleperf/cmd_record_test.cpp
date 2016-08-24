@@ -314,3 +314,12 @@ TEST(record_cmd, duration_option) {
   ASSERT_TRUE(
       RecordCmd()->Run({"--duration", "1", "-o", tmpfile.path, "sleep", "2"}));
 }
+
+TEST(record_cmd, support_modifier_for_clock_events) {
+  for (const std::string& e : {"cpu-clock", "task-clock"}) {
+    for (const std::string& m : {"u", "k"}) {
+      ASSERT_TRUE(RunRecordCmd({"-e", e + ":" + m})) << "event " << e << ":"
+                                                     << m;
+    }
+  }
+}

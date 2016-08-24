@@ -159,6 +159,7 @@ class RecordCommand : public Command {
         duration_in_sec_(0),
         can_dump_kernel_symbols_(true),
         dump_symbols_(false),
+        event_selection_set_(false),
         mmap_page_range_(std::make_pair(1, DESIRED_PAGES_IN_MAPPED_BUFFER)),
         record_filename_("perf.data"),
         start_sampling_time_in_ns_(0),
