@@ -86,28 +86,37 @@ TEST(stat_cmd, no_monitored_threads) { ASSERT_FALSE(StatCmd()->Run({""})); }
 TEST(stat_cmd, group_option) {
   ASSERT_TRUE(
       StatCmd()->Run({"--group", "cpu-cycles,cpu-clock", "sleep", "1"}));
-  ASSERT_TRUE(StatCmd()->Run({"--group", "cpu-cycles,cpu-clock", "--group",
-                              "cpu-cycles:u,cpu-clock:u", "--group",
-                              "cpu-cycles:k,cpu-clock:k", "sleep", "1"}));
+  ASSERT_TRUE(StatCmd()->Run({"--group", "cpu-cycles,instructions", "--group",
+                              "cpu-cycles:u,instructions:u", "--group",
+                              "cpu-cycles:k,instructions:k", "sleep", "1"}));
 }
 
 TEST(stat_cmd, auto_generated_summary) {
   TemporaryFile tmp_file;
-  ASSERT_TRUE(StatCmd()->Run({"--group", "cpu-clock:u,cpu-clock:k", "-o",
+  ASSERT_TRUE(StatCmd()->Run({"--group", "instructions:u,instructions:k", "-o",
                               tmp_file.path, "sleep", "1"}));
   std::string s;
   ASSERT_TRUE(android::base::ReadFileToString(tmp_file.path, &s));
-  size_t pos = s.find("cpu-clock:u");
+  size_t pos = s.find("instructions:u");
   ASSERT_NE(s.npos, pos);
-  pos = s.find("cpu-clock:k", pos);
+  pos = s.find("instructions:k", pos);
   ASSERT_NE(s.npos, pos);
-  pos += strlen("cpu-clock:k");
-  // Check if the summary of cpu-clock is generated.
-  ASSERT_NE(s.npos, s.find("cpu-clock", pos));
+  pos += strlen("instructions:k");
+  // Check if the summary of instructions is generated.
+  ASSERT_NE(s.npos, s.find("instructions", pos));
 }
 
 TEST(stat_cmd, duration_option) {
   ASSERT_TRUE(
       StatCmd()->Run({"--duration", "1.2", "-p", std::to_string(getpid())}));
   ASSERT_TRUE(StatCmd()->Run({"--duration", "1", "sleep", "2"}));
+}
+
+TEST(stat_cmd, no_modifier_for_clock_events) {
+  for (const std::string& e : {"cpu-clock", "task-clock"}) {
+    for (const std::string& m : {"u", "k"}) {
+      ASSERT_FALSE(StatCmd()->Run({"-e", e + ":" + m, "sleep", "0.1"}))
+          << "event " << e << ":" << m;
+    }
+  }
 }
