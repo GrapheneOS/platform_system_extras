@@ -19,6 +19,7 @@
 
 #include <functional>
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -28,6 +29,8 @@
 #include "event_type.h"
 #include "perf_event.h"
 #include "record.h"
+
+constexpr double DEFAULT_PERIOD_TO_DETECT_CPU_HOTPLUG_EVENTS_IN_SEC = 0.5;
 
 struct EventSelection {
   uint32_t group_id;
@@ -96,6 +99,12 @@ class EventSelectionSet {
                                   const std::function<bool(Record*)>& callback);
   bool FinishReadMmapEventData();
 
+  // If monitored_cpus is empty, monitor all cpus.
+  bool HandleCpuHotplugEvents(
+      IOEventLoop& loop, const std::vector<int>& monitored_cpus,
+      double check_interval_in_sec =
+          DEFAULT_PERIOD_TO_DETECT_CPU_HOTPLUG_EVENTS_IN_SEC);
+
  private:
   bool BuildAndCheckEventSelection(const std::string& event_name,
                                    EventSelection* selection);
@@ -105,9 +114,14 @@ class EventSelectionSet {
   bool MmapEventFiles(size_t mmap_pages, bool report_error);
   bool ReadMmapEventDataForFd(std::unique_ptr<EventFd>& event_fd);
 
+  bool DetectCpuHotplugEvents();
+
   std::vector<EventSelectionGroup> groups_;
 
   std::function<bool(Record*)> record_callback_;
+
+  std::set<int> monitored_cpus_;
+  std::vector<int> online_cpus_;
 
   DISALLOW_COPY_AND_ASSIGN(EventSelectionSet);
 };
