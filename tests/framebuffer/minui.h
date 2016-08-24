@@ -26,9 +26,6 @@ void gr_flip(void);
 
 void gr_color(unsigned char r, unsigned char g, unsigned char b);
 void gr_fill(int x, int y, int w, int h);
-int gr_text(int x, int y, const char *s);
-int gr_measure(const char *s);
-
 
 typedef struct event event;
 
