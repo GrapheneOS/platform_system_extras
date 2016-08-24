@@ -24,6 +24,7 @@
 #include "event_type.h"
 #include "IOEventLoop.h"
 #include "perf_regs.h"
+#include "utils.h"
 
 bool IsBranchSamplingSupported() {
   const EventType* type = FindEventTypeByName("cpu-cycles");
@@ -437,5 +438,40 @@ bool EventSelectionSet::FinishReadMmapEventData() {
       }
     }
   }
+  return true;
+}
+
+bool EventSelectionSet::HandleCpuHotplugEvents(
+    IOEventLoop& loop, const std::vector<int>& monitored_cpus,
+    double check_interval_in_sec) {
+  monitored_cpus_.insert(monitored_cpus.begin(), monitored_cpus.end());
+  online_cpus_ = GetOnlineCpus();
+  if (!loop.AddPeriodicEvent(SecondToTimeval(check_interval_in_sec),
+                             [&]() { return DetectCpuHotplugEvents(); })) {
+    return false;
+  }
+  return true;
+}
+
+bool EventSelectionSet::DetectCpuHotplugEvents() {
+  std::vector<int> new_cpus = GetOnlineCpus();
+  for (const auto& cpu : online_cpus_) {
+    if (std::find(new_cpus.begin(), new_cpus.end(), cpu) == new_cpus.end()) {
+      if (monitored_cpus_.empty() ||
+          monitored_cpus_.find(cpu) != monitored_cpus_.end()) {
+        LOG(INFO) << "Cpu " << cpu << " is offlined";
+      }
+    }
+  }
+  for (const auto& cpu : new_cpus) {
+    if (std::find(online_cpus_.begin(), online_cpus_.end(), cpu) ==
+        online_cpus_.end()) {
+      if (monitored_cpus_.empty() ||
+          monitored_cpus_.find(cpu) != monitored_cpus_.end()) {
+        LOG(INFO) << "Cpu " << cpu << " is onlined";
+      }
+    }
+  }
+  online_cpus_ = new_cpus;
   return true;
 }
