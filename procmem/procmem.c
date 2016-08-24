@@ -206,14 +206,14 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "error getting flags for frame.\n");
                 }
 
-                if ((ws != WS_ONLY) || (flags & PM_PAGE_REFERENCED)) {
+                if ((ws != WS_ONLY) || (flags & KPF_REFERENCED)) {
                     if (count > 1) {
-                        if (flags & PM_PAGE_DIRTY)
+                        if (flags & KPF_DIRTY)
                             mi->shared_dirty++;
                         else
                             mi->shared_clean++;
                     } else {
-                        if (flags & PM_PAGE_DIRTY)
+                        if (flags & KPF_DIRTY)
                             mi->private_dirty++;
                         else
                             mi->private_clean++;
