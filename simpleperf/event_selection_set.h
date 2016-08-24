@@ -70,7 +70,7 @@ class IOEventLoop;
 
 class EventSelectionSet {
  public:
-  EventSelectionSet() {}
+  EventSelectionSet(bool for_stat_cmd) : for_stat_cmd_(for_stat_cmd) {}
 
   bool empty() const { return groups_.empty(); }
 
@@ -115,6 +115,8 @@ class EventSelectionSet {
   bool ReadMmapEventDataForFd(std::unique_ptr<EventFd>& event_fd);
 
   bool DetectCpuHotplugEvents();
+
+  const bool for_stat_cmd_;
 
   std::vector<EventSelectionGroup> groups_;
 
