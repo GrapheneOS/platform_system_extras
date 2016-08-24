@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 #if defined(__BIONIC__)
 #include <sys/system_properties.h>
@@ -35,6 +36,9 @@
 #include "event_fd.h"
 #include "event_type.h"
 #include "utils.h"
+
+static auto test_duration_for_long_tests = std::chrono::seconds(120);
+static auto cpu_hotplug_interval = std::chrono::microseconds(1000);
 
 #if defined(__BIONIC__)
 class ScopedMpdecisionKiller {
@@ -66,14 +70,14 @@ class ScopedMpdecisionKiller {
     int ret = __system_property_set("ctl.stop", "mpdecision");
     CHECK_EQ(0, ret);
     // Need to wait until mpdecision is actually stopped.
-    usleep(500000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     CHECK(!IsMpdecisionRunning());
   }
 
   void EnableMpdecision() {
     int ret = __system_property_set("ctl.start", "mpdecision");
     CHECK_EQ(0, ret);
-    usleep(500000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     CHECK(IsMpdecisionRunning());
   }
 
@@ -139,7 +143,7 @@ static bool SetCpuOnline(int cpu, bool online) {
       LOG(ERROR) << "setting cpu " << cpu << (online ? " online" : " offline") << " seems not to take effect";
       return false;
     }
-    usleep(1000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   return true;
 }
@@ -199,7 +203,9 @@ struct CpuToggleThreadArg {
 static void CpuToggleThread(CpuToggleThreadArg* arg) {
   while (!arg->end_flag) {
     CHECK(SetCpuOnline(arg->toggle_cpu, true));
+    std::this_thread::sleep_for(cpu_hotplug_interval);
     CHECK(SetCpuOnline(arg->toggle_cpu, false));
+    std::this_thread::sleep_for(cpu_hotplug_interval);
   }
 }
 
@@ -227,11 +233,21 @@ TEST(cpu_offline, offline_while_recording) {
   attr.disabled = 0;
   attr.enable_on_exec = 0;
 
-  const std::chrono::minutes test_duration(2);  // Test for 2 minutes.
-  auto end_time = std::chrono::steady_clock::now() + test_duration;
+  auto start_time = std::chrono::steady_clock::now();
+  auto cur_time = start_time;
+  auto end_time = std::chrono::steady_clock::now() + test_duration_for_long_tests;
+  auto report_step = std::chrono::seconds(15);
   size_t iterations = 0;
 
-  while (std::chrono::steady_clock::now() < end_time) {
+  while (cur_time < end_time) {
+    if (cur_time + report_step < std::chrono::steady_clock::now()) {
+      // Report test time.
+      auto diff = std::chrono::duration_cast<std::chrono::seconds>(
+          std::chrono::steady_clock::now() - start_time);
+      GTEST_LOG_(INFO) << "Have Tested " << (diff.count() / 60.0) << " minutes.";
+      cur_time = std::chrono::steady_clock::now();
+    }
+
     std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, -1, test_cpu, nullptr, false);
     if (event_fd == nullptr) {
       // Failed to open because the test_cpu is offline.
@@ -268,24 +284,119 @@ TEST(cpu_offline, offline_while_ioctl_enable) {
   attr.disabled = 1;
   attr.enable_on_exec = 0;
 
-  const std::chrono::minutes test_duration(2);  // Test for 2 minutes.
-  auto end_time = std::chrono::steady_clock::now() + test_duration;
+  auto start_time = std::chrono::steady_clock::now();
+  auto cur_time = start_time;
+  auto end_time = std::chrono::steady_clock::now() + test_duration_for_long_tests;
+  auto report_step = std::chrono::seconds(15);
   size_t iterations = 0;
 
-  while (std::chrono::steady_clock::now() < end_time) {
+  while (cur_time < end_time) {
+    if (cur_time + report_step < std::chrono::steady_clock::now()) {
+      // Report test time.
+      auto diff = std::chrono::duration_cast<std::chrono::seconds>(
+          std::chrono::steady_clock::now() - start_time);
+      GTEST_LOG_(INFO) << "Have Tested " << (diff.count() / 60.0) << " minutes.";
+      cur_time = std::chrono::steady_clock::now();
+
+    }
     std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, -1, test_cpu, nullptr, false);
     if (event_fd == nullptr) {
       // Failed to open because the test_cpu is offline.
       continue;
     }
     // Wait a little for the event to be installed on test_cpu's perf context.
-    usleep(1000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
     ASSERT_TRUE(event_fd->EnableEvent());
     iterations++;
     GTEST_LOG_(INFO) << "Test offline while ioctl(PERF_EVENT_IOC_ENABLE) for " << iterations << " times.";
   }
   cpu_toggle_arg.end_flag = true;
   cpu_toggle_thread.join();
+}
+
+struct CpuSpinThreadArg {
+  int spin_cpu;
+  std::atomic<pid_t> tid;
+  std::atomic<bool> end_flag;
+};
+
+static void CpuSpinThread(CpuSpinThreadArg* arg) {
+  arg->tid = syscall(__NR_gettid);
+  while (!arg->end_flag) {
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(arg->spin_cpu, &mask);
+    // If toggle_cpu is offline, setaffinity fails. So call it in a loop to
+    // make sure current thread mostly runs on toggle_cpu.
+    sched_setaffinity(arg->tid, sizeof(mask), &mask);
+  }
+}
+
+// http://b/28086229.
+TEST(cpu_offline, offline_while_user_process_profiling) {
+  ScopedMpdecisionKiller scoped_mpdecision_killer;
+  CpuOnlineRestorer cpuonline_restorer;
+  // Start cpu hotpluger.
+  int test_cpu;
+  if (!FindAHotpluggableCpu(&test_cpu)) {
+    return;
+  }
+  CpuToggleThreadArg cpu_toggle_arg;
+  cpu_toggle_arg.toggle_cpu = test_cpu;
+  cpu_toggle_arg.end_flag = false;
+  std::thread cpu_toggle_thread(CpuToggleThread, &cpu_toggle_arg);
+
+  // Start cpu spinner.
+  CpuSpinThreadArg cpu_spin_arg;
+  cpu_spin_arg.spin_cpu = test_cpu;
+  cpu_spin_arg.tid = 0;
+  cpu_spin_arg.end_flag = false;
+  std::thread cpu_spin_thread(CpuSpinThread, &cpu_spin_arg);
+  while (cpu_spin_arg.tid == 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType("cpu-cycles");
+  ASSERT_TRUE(event_type_modifier != nullptr);
+  perf_event_attr attr = CreateDefaultPerfEventAttr(event_type_modifier->event_type);
+  // Enable profiling in perf_event_open system call.
+  attr.disabled = 0;
+  attr.enable_on_exec = 0;
+
+  auto start_time = std::chrono::steady_clock::now();
+  auto cur_time = start_time;
+  auto end_time = start_time + test_duration_for_long_tests;
+  auto report_step = std::chrono::seconds(15);
+  size_t iterations = 0;
+
+  while (cur_time < end_time) {
+    if (cur_time + report_step < std::chrono::steady_clock::now()) {
+      auto diff = std::chrono::duration_cast<std::chrono::seconds>(
+          std::chrono::steady_clock::now() - start_time);
+      GTEST_LOG_(INFO) << "Have Tested " <<  (diff.count() / 60.0) << " minutes.";
+      cur_time = std::chrono::steady_clock::now();
+    }
+    // Test if the cpu pmu is still usable.
+    ASSERT_TRUE(EventFd::OpenEventFile(attr, 0, -1, nullptr, true) != nullptr);
+
+    std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, cpu_spin_arg.tid,
+                                                               test_cpu, nullptr, false);
+    if (event_fd == nullptr) {
+      // Failed to open because the test_cpu is offline.
+      continue;
+    }
+    // profile for a while.
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    iterations++;
+    GTEST_LOG_(INFO) << "Test offline while user process profiling for " << iterations << " times.";
+  }
+  cpu_toggle_arg.end_flag = true;
+  cpu_toggle_thread.join();
+  cpu_spin_arg.end_flag = true;
+  cpu_spin_thread.join();
+  // Check if the cpu-cycle event is still available on test_cpu.
+  ASSERT_TRUE(SetCpuOnline(test_cpu, true));
+  ASSERT_TRUE(EventFd::OpenEventFile(attr, -1, test_cpu, nullptr, true) != nullptr);
 }
 
 // http://b/19863147.
@@ -320,6 +431,32 @@ TEST(cpu_offline, offline_while_recording_on_another_cpu) {
 }
 
 int main(int argc, char** argv) {
+  for (int i = 1; i < argc; ++i) {
+    if (strcmp(argv[i], "--help") == 0) {
+      printf("--long_test_duration <second> Set test duration for long tests. Default is 120s.\n");
+      printf("--cpu_hotplug_interval <microseconds> Set cpu hotplug interval. Default is 1000us.\n");
+    } else if (strcmp(argv[i], "--long_test_duration") == 0) {
+      if (i + 1 < argc) {
+        int second_count = atoi(argv[i+1]);
+        if (second_count <= 0) {
+          fprintf(stderr, "Invalid arg for --long_test_duration.\n");
+          return 1;
+        }
+        test_duration_for_long_tests = std::chrono::seconds(second_count);
+        i++;
+      }
+    } else if (strcmp(argv[i], "--cpu_hotplug_interval") == 0) {
+      if (i + 1 < argc) {
+        int microsecond_count = atoi(argv[i+1]);
+        if (microsecond_count <= 0) {
+          fprintf(stderr, "Invalid arg for --cpu_hotplug_interval\n");
+          return 1;
+        }
+        cpu_hotplug_interval = std::chrono::microseconds(microsecond_count);
+        i++;
+      }
+    }
+  }
   InitLogging(argv, android::base::StderrLogger);
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
