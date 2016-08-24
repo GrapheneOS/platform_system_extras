@@ -197,9 +197,9 @@ int main(int argc, char *argv[]) {
         if (!strcmp(argv[arg], "-u")) { compfn = &sort_by_uss; continue; }
         if (!strcmp(argv[arg], "-s")) { compfn = &sort_by_swap; continue; }
         if (!strcmp(argv[arg], "-o")) { compfn = &sort_by_oomadj; oomadj = true; continue; }
-        if (!strcmp(argv[arg], "-c")) { required_flags = 0; flags_mask = PM_PAGE_SWAPBACKED; continue; }
-        if (!strcmp(argv[arg], "-C")) { required_flags = flags_mask = PM_PAGE_SWAPBACKED; continue; }
-        if (!strcmp(argv[arg], "-k")) { required_flags = flags_mask = PM_PAGE_KSM; continue; }
+        if (!strcmp(argv[arg], "-c")) { required_flags = 0; flags_mask = KPF_SWAPBACKED; continue; }
+        if (!strcmp(argv[arg], "-C")) { required_flags = flags_mask = KPF_SWAPBACKED; continue; }
+        if (!strcmp(argv[arg], "-k")) { required_flags = flags_mask = KPF_KSM; continue; }
         if (!strcmp(argv[arg], "-w")) { ws = WS_ONLY; continue; }
         if (!strcmp(argv[arg], "-W")) { ws = WS_RESET; continue; }
         if (!strcmp(argv[arg], "-R")) { order *= -1; continue; }
