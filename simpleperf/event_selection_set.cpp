@@ -57,6 +57,17 @@ bool EventSelectionSet::BuildAndCheckEventSelection(
   if (event_type == nullptr) {
     return false;
   }
+  if (for_stat_cmd_) {
+    if (event_type->event_type.name == "cpu-clock" ||
+        event_type->event_type.name == "task-clock") {
+      if (event_type->exclude_user || event_type->exclude_kernel) {
+        LOG(ERROR) << "Modifier u and modifier k used in event type "
+                   << event_type->event_type.name
+                   << " are not supported by the kernel.";
+        return false;
+      }
+    }
+  }
   selection->event_type_modifier = *event_type;
   selection->event_attr = CreateDefaultPerfEventAttr(event_type->event_type);
   selection->event_attr.exclude_user = event_type->exclude_user;

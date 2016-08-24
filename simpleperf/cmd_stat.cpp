@@ -292,6 +292,7 @@ class StatCommand : public Command {
         system_wide_collection_(false),
         child_inherit_(true),
         duration_in_sec_(0),
+        event_selection_set_(true),
         csv_(false) {
     // Die if parent exits.
     prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
@@ -380,7 +381,7 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   }
   if (duration_in_sec_ != 0) {
     if (!loop.AddPeriodicEvent(SecondToTimeval(duration_in_sec_),
-                           [&]() { return loop.ExitLoop(); })) {
+                               [&]() { return loop.ExitLoop(); })) {
       return false;
     }
   }
