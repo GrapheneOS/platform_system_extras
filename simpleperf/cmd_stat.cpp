@@ -572,13 +572,9 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters,
     uint64_t time_enabled_sum = 0;
     uint64_t time_running_sum = 0;
     for (auto& counter_info : counters_info.counters) {
-      // If time_running is 0, the program has never run on this event and we
-      // shouldn't summarize it.
-      if (counter_info.counter.time_running != 0) {
-        value_sum += counter_info.counter.value;
-        time_enabled_sum += counter_info.counter.time_enabled;
-        time_running_sum += counter_info.counter.time_running;
-      }
+      value_sum += counter_info.counter.value;
+      time_enabled_sum += counter_info.counter.time_enabled;
+      time_running_sum += counter_info.counter.time_running;
     }
     double scale = 1.0;
     if (time_running_sum < time_enabled_sum && time_running_sum != 0) {

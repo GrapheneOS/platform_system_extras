@@ -17,7 +17,6 @@
 #include "event_selection_set.h"
 
 #include <android-base/logging.h>
-#include <android-base/stringprintf.h>
 
 #include "environment.h"
 #include "event_attr.h"
@@ -283,50 +282,68 @@ bool EventSelectionSet::OpenEventFilesForThreadsOnCpus(
   return OpenEventFiles(threads, cpus);
 }
 
+static bool OpenEventFile(EventSelectionGroup& group, pid_t tid, int cpu,
+                          std::string* failed_event_type) {
+  std::vector<std::unique_ptr<EventFd>> event_fds;
+  // Given a tid and cpu, events on the same group should be all opened
+  // successfully or all failed to open.
+  for (auto& selection : group) {
+    EventFd* group_fd = nullptr;
+    if (selection.selection_id != 0) {
+      group_fd = event_fds[0].get();
+    }
+    std::unique_ptr<EventFd> event_fd =
+        EventFd::OpenEventFile(selection.event_attr, tid, cpu, group_fd);
+    if (event_fd != nullptr) {
+      LOG(VERBOSE) << "OpenEventFile for " << event_fd->Name();
+      event_fds.push_back(std::move(event_fd));
+    } else {
+      if (failed_event_type != nullptr) {
+        *failed_event_type = selection.event_type_modifier.name;
+        return false;
+      }
+    }
+  }
+  for (size_t i = 0; i < group.size(); ++i) {
+    group[i].event_fds.push_back(std::move(event_fds[i]));
+  }
+  return true;
+}
+
 bool EventSelectionSet::OpenEventFiles(const std::vector<pid_t>& threads,
                                        const std::vector<int>& cpus) {
   for (auto& group : groups_) {
     for (const auto& tid : threads) {
-      size_t open_per_thread = 0;
+      size_t success_cpu_count = 0;
       std::string failed_event_type;
       for (const auto& cpu : cpus) {
-        std::vector<std::unique_ptr<EventFd>> event_fds;
-        // Given a tid and cpu, events on the same group should be all opened
-        // successfully or all failed to open.
-        for (auto& selection : group) {
-          EventFd* group_fd = nullptr;
-          if (selection.selection_id != 0) {
-            group_fd = event_fds[0].get();
-          }
-          std::unique_ptr<EventFd> event_fd =
-              EventFd::OpenEventFile(selection.event_attr, tid, cpu, group_fd);
-          if (event_fd != nullptr) {
-            LOG(VERBOSE) << "OpenEventFile for " << event_fd->Name();
-            event_fds.push_back(std::move(event_fd));
-          } else {
-            failed_event_type = selection.event_type_modifier.name;
-            break;
-          }
-        }
-        if (event_fds.size() == group.size()) {
-          for (size_t i = 0; i < group.size(); ++i) {
-            group[i].event_fds.push_back(std::move(event_fds[i]));
-          }
-          ++open_per_thread;
+        if (OpenEventFile(group, tid, cpu, &failed_event_type)) {
+          success_cpu_count++;
         }
       }
       // As the online cpus can be enabled or disabled at runtime, we may not
       // open event file for all cpus successfully. But we should open at least
       // one cpu successfully.
-      if (open_per_thread == 0) {
+      if (success_cpu_count == 0) {
         PLOG(ERROR) << "failed to open perf event file for event_type "
                     << failed_event_type << " for "
-                    << (tid == -1 ? "all threads" : android::base::StringPrintf(
-                                                        " thread %d", tid));
+                    << (tid == -1 ? "all threads"
+                                  : "thread " + std::to_string(tid))
+                    << " on all cpus";
         return false;
       }
     }
   }
+  threads_.insert(threads_.end(), threads.begin(), threads.end());
+  return true;
+}
+
+static bool ReadCounter(const EventFd* event_fd, CounterInfo* counter) {
+  if (!event_fd->ReadCounter(&counter->counter)) {
+    return false;
+  }
+  counter->tid = event_fd->ThreadId();
+  counter->cpu = event_fd->Cpu();
   return true;
 }
 
@@ -336,14 +353,13 @@ bool EventSelectionSet::ReadCounters(std::vector<CountersInfo>* counters) {
     for (auto& selection : group) {
       CountersInfo counters_info;
       counters_info.selection = &selection;
+      counters_info.counters = selection.hotplugged_counters;
       for (auto& event_fd : selection.event_fds) {
-        CountersInfo::CounterInfo counter_info;
-        if (!event_fd->ReadCounter(&counter_info.counter)) {
+        CounterInfo counter;
+        if (!ReadCounter(event_fd.get(), &counter)) {
           return false;
         }
-        counter_info.tid = event_fd->ThreadId();
-        counter_info.cpu = event_fd->Cpu();
-        counters_info.counters.push_back(counter_info);
+        counters_info.counters.push_back(counter);
       }
       counters->push_back(counters_info);
     }
@@ -471,6 +487,9 @@ bool EventSelectionSet::DetectCpuHotplugEvents() {
       if (monitored_cpus_.empty() ||
           monitored_cpus_.find(cpu) != monitored_cpus_.end()) {
         LOG(INFO) << "Cpu " << cpu << " is offlined";
+        if (!HandleCpuOfflineEvent(cpu)) {
+          return false;
+        }
       }
     }
   }
@@ -480,9 +499,54 @@ bool EventSelectionSet::DetectCpuHotplugEvents() {
       if (monitored_cpus_.empty() ||
           monitored_cpus_.find(cpu) != monitored_cpus_.end()) {
         LOG(INFO) << "Cpu " << cpu << " is onlined";
+        if (!HandleCpuOnlineEvent(cpu)) {
+          return false;
+        }
       }
     }
   }
   online_cpus_ = new_cpus;
+  return true;
+}
+
+bool EventSelectionSet::HandleCpuOfflineEvent(int cpu) {
+  if (for_stat_cmd_) {
+    for (auto& group : groups_) {
+      for (auto& selection : group) {
+        for (auto it = selection.event_fds.begin();
+             it != selection.event_fds.end();) {
+          if ((*it)->Cpu() == cpu) {
+            CounterInfo counter;
+            if (!ReadCounter(it->get(), &counter)) {
+              return false;
+            }
+            selection.hotplugged_counters.push_back(counter);
+            it = selection.event_fds.erase(it);
+          } else {
+            ++it;
+          }
+        }
+      }
+    }
+  }
+  return true;
+}
+
+bool EventSelectionSet::HandleCpuOnlineEvent(int cpu) {
+  if (for_stat_cmd_) {
+    for (auto& group : groups_) {
+      for (const auto& tid : threads_) {
+        std::string failed_event_type;
+        if (!OpenEventFile(group, tid, cpu, &failed_event_type)) {
+          // If failed to open event files, maybe the cpu has been offlined.
+          PLOG(WARNING) << "failed to open perf event file for event_type "
+                        << failed_event_type << " for "
+                        << (tid == -1 ? "all threads"
+                                      : "thread " + std::to_string(tid))
+                        << " on cpu " << cpu;
+        }
+      }
+    }
+  }
   return true;
 }
