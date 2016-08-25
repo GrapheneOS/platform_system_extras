@@ -265,6 +265,7 @@ static void VmlinuxSymbolCallback(const ElfFileSymbol& elf_symbol, Dso* dso) {
 
 bool CheckReadSymbolResult(ElfStatus result, const std::string& filename) {
   if (result == ElfStatus::NO_ERROR) {
+    LOG(VERBOSE) << "Read symbols from " << filename << " successfully";
     return true;
   } else if (result == ElfStatus::NO_SYMBOL_TABLE) {
     // Lacking symbol table isn't considered as an error but worth reporting.
@@ -374,7 +375,7 @@ bool Dso::LoadElfFile() {
         std::bind(ElfFileSymbolCallback, std::placeholders::_1, this,
                   SymbolFilterForDso));
     if (result == ElfStatus::NO_ERROR) {
-      return true;
+      return CheckReadSymbolResult(result, "/usr/lib/debug" + path_);
     }
   }
   ElfStatus result = ParseSymbolsFromElfFile(
