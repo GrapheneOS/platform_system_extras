@@ -159,6 +159,10 @@ public:
             return 1.0 - getBranchMissRate();
         }
 
+        double getMPKI(uint64_t misses) const noexcept {
+            return (misses * 1000.0) / getInstructions();
+        }
+
     };
 
 #if defined(__linux__)
