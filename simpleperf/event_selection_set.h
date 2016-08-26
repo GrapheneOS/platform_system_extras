@@ -32,24 +32,30 @@
 
 constexpr double DEFAULT_PERIOD_TO_DETECT_CPU_HOTPLUG_EVENTS_IN_SEC = 0.5;
 
+struct CounterInfo {
+  pid_t tid;
+  int cpu;
+  PerfCounter counter;
+};
+
+struct EventSelection;
+
+struct CountersInfo {
+  const EventSelection* selection;
+  std::vector<CounterInfo> counters;
+};
+
 struct EventSelection {
   uint32_t group_id;
   uint32_t selection_id;
   EventTypeAndModifier event_type_modifier;
   perf_event_attr event_attr;
   std::vector<std::unique_ptr<EventFd>> event_fds;
+  // counters for event files closed for cpu hotplug events
+  std::vector<CounterInfo> hotplugged_counters;
 };
-typedef std::vector<EventSelection> EventSelectionGroup;
 
-struct CountersInfo {
-  const EventSelection* selection;
-  struct CounterInfo {
-    pid_t tid;
-    int cpu;
-    PerfCounter counter;
-  };
-  std::vector<CounterInfo> counters;
-};
+typedef std::vector<EventSelection> EventSelectionGroup;
 
 class IOEventLoop;
 
@@ -115,10 +121,13 @@ class EventSelectionSet {
   bool ReadMmapEventDataForFd(std::unique_ptr<EventFd>& event_fd);
 
   bool DetectCpuHotplugEvents();
+  bool HandleCpuOnlineEvent(int cpu);
+  bool HandleCpuOfflineEvent(int cpu);
 
   const bool for_stat_cmd_;
 
   std::vector<EventSelectionGroup> groups_;
+  std::vector<pid_t> threads_;
 
   std::function<bool(Record*)> record_callback_;
 
