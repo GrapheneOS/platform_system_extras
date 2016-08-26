@@ -55,7 +55,7 @@ simpleperf_static_libraries_target := \
   libc \
 
 simpleperf_static_libraries_host := \
-  libziparchive-host \
+  libziparchive \
   libbase \
   liblog \
   liblzma \
