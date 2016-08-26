@@ -25,6 +25,7 @@ simpleperf_cppflags_target := $(simpleperf_common_cppflags)
 
 simpleperf_cppflags_host := $(simpleperf_common_cppflags) \
                             -DUSE_BIONIC_UAPI_HEADERS -I bionic/libc/kernel \
+                            -fvisibility=hidden \
 
 simpleperf_cppflags_host_darwin := -I $(LOCAL_PATH)/nonlinux_support/include
 simpleperf_cppflags_host_windows := -I $(LOCAL_PATH)/nonlinux_support/include
@@ -210,6 +211,29 @@ LOCAL_PREBUILT_EXECUTABLES := simpleperf_report.py
 include $(BUILD_HOST_PREBUILT)
 
 $(call dist-for-goals,sdk,$(ALL_MODULES.simpleperf_report.BUILT))
+
+
+# libsimpleperf_report.so
+# It is the shared library used on host by python scripts
+# to report samples in different ways.
+# =========================================================
+include $(CLEAR_VARS)
+LOCAL_MODULE := libsimpleperf_report
+LOCAL_MODULE_HOST_OS := darwin linux windows
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
+LOCAL_CPPFLAGS_darwin := $(simpleperf_cppflags_host_darwin)
+LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
+LOCAL_CPPFLAGS_windows := $(simpleperf_cppflags_host_windows)
+LOCAL_SRC_FILES := report_lib_interface.cpp
+LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
+LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
+LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux) -Wl,--exclude-libs,ALL
+LOCAL_MULTILIB := first
+LOCAL_CXX_STL := libc++_static
+include $(LLVM_HOST_BUILD_MK)
+include $(BUILD_HOST_SHARED_LIBRARY)
+
 
 # simpleperf_unit_test
 # =========================================================

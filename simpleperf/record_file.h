@@ -116,9 +116,22 @@ class RecordFileReader {
     return feature_section_descriptors_.find(feature) != feature_section_descriptors_.end();
   }
   bool ReadFeatureSection(int feature, std::vector<char>* data);
+
+  // There are two ways to read records in data section: one is by calling
+  // ReadDataSection(), and [callback] is called for each Record. the other
+  // is by calling ReadRecord() in a loop.
+
   // If sorted is true, sort records before passing them to callback function.
   bool ReadDataSection(const std::function<bool(std::unique_ptr<Record>)>& callback,
                        bool sorted = true);
+
+  // Read next record. If read successfully, set [record] and return true.
+  // If there is no more records, set [record] to nullptr and return true.
+  // Otherwise return false.
+  bool ReadRecord(std::unique_ptr<Record>& record, bool sorted = true);
+
+  size_t GetAttrIndexOfRecord(const SampleRecord& record);
+
   std::vector<std::string> ReadCmdlineFeature();
   std::vector<BuildIdRecord> ReadBuildIdFeature();
   std::string ReadFeatureString(int feature);
@@ -133,7 +146,7 @@ class RecordFileReader {
   bool ReadAttrSection();
   bool ReadIdsForAttr(const PerfFileFormat::FileAttr& attr, std::vector<uint64_t>* ids);
   bool ReadFeatureSectionDescriptors();
-  std::unique_ptr<Record> ReadRecord(size_t* nbytes_read);
+  std::unique_ptr<Record> ReadRecord(uint64_t* nbytes_read);
   bool Read(void* buf, size_t len);
   void ProcessEventIdRecord(const EventIdRecord& r);
 
@@ -143,11 +156,14 @@ class RecordFileReader {
   PerfFileFormat::FileHeader header_;
   std::vector<PerfFileFormat::FileAttr> file_attrs_;
   std::vector<std::vector<uint64_t>> event_ids_for_file_attrs_;
-  std::unordered_map<uint64_t, perf_event_attr*> event_id_to_attr_map_;
+  std::unordered_map<uint64_t, size_t> event_id_to_attr_map_;
   std::map<int, PerfFileFormat::SectionDesc> feature_section_descriptors_;
 
   size_t event_id_pos_in_sample_records_;
   size_t event_id_reverse_pos_in_non_sample_records_;
+
+  std::unique_ptr<RecordCache> record_cache_;
+  uint64_t read_record_size_;
 
   DISALLOW_COPY_AND_ASSIGN(RecordFileReader);
 };
