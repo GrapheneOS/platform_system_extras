@@ -72,14 +72,17 @@ static bool MakeFdNonBlocking(int fd) {
   return true;
 }
 
-bool IOEventLoop::AddReadEvent(int fd, const std::function<bool()>& callback) {
-  return MakeFdNonBlocking(fd) &&
-         AddEvent(fd, EV_READ | EV_PERSIST, nullptr, callback);
+IOEventRef IOEventLoop::AddReadEvent(int fd,
+                                     const std::function<bool()>& callback) {
+  if (!MakeFdNonBlocking(fd)) {
+    return nullptr;
+  }
+  return AddEvent(fd, EV_READ | EV_PERSIST, nullptr, callback);
 }
 
 bool IOEventLoop::AddSignalEvent(int sig,
                                  const std::function<bool()>& callback) {
-  return AddEvent(sig, EV_SIGNAL | EV_PERSIST, nullptr, callback);
+  return AddEvent(sig, EV_SIGNAL | EV_PERSIST, nullptr, callback) != nullptr;
 }
 
 bool IOEventLoop::AddSignalEvents(std::vector<int> sigs,
@@ -94,26 +97,26 @@ bool IOEventLoop::AddSignalEvents(std::vector<int> sigs,
 
 bool IOEventLoop::AddPeriodicEvent(timeval duration,
                                    const std::function<bool()>& callback) {
-  return AddEvent(-1, EV_PERSIST, &duration, callback);
+  return AddEvent(-1, EV_PERSIST, &duration, callback) != nullptr;
 }
 
-bool IOEventLoop::AddEvent(int fd_or_sig, short events, timeval* timeout,
-                           const std::function<bool()>& callback) {
+IOEventRef IOEventLoop::AddEvent(int fd_or_sig, short events, timeval* timeout,
+                                 const std::function<bool()>& callback) {
   if (!EnsureInit()) {
-    return false;
+    return nullptr;
   }
   std::unique_ptr<IOEvent> e(new IOEvent(this, callback));
   e->e = event_new(ebase_, fd_or_sig, events, EventCallbackFn, e.get());
   if (e->e == nullptr) {
     LOG(ERROR) << "event_new() failed";
-    return false;
+    return nullptr;
   }
   if (event_add(e->e, timeout) != 0) {
     LOG(ERROR) << "event_add() failed";
-    return false;
+    return nullptr;
   }
   events_.push_back(std::move(e));
-  return true;
+  return events_.back().get();
 }
 
 bool IOEventLoop::RunLoop() {
@@ -131,6 +134,21 @@ bool IOEventLoop::ExitLoop() {
   if (event_base_loopbreak(ebase_) == -1) {
     LOG(ERROR) << "event_base_loopbreak() failed";
     return false;
+  }
+  return true;
+}
+
+bool IOEventLoop::DelEvent(IOEventRef ref) {
+  IOEventLoop* loop = ref->loop;
+  for (auto it = loop->events_.begin(); it != loop->events_.end(); ++it) {
+    if (it->get() == ref) {
+      if (event_del((*it)->e) != 0) {
+        LOG(ERROR) << "event_del() failed";
+        return false;
+      }
+      loop->events_.erase(it);
+      break;
+    }
   }
   return true;
 }

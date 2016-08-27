@@ -372,6 +372,7 @@ bool EventSelectionSet::MmapEventFiles(size_t min_mmap_pages,
   for (size_t i = max_mmap_pages; i >= min_mmap_pages; i >>= 1) {
     if (MmapEventFiles(i, i == min_mmap_pages)) {
       LOG(VERBOSE) << "Mapped buffer size is " << i << " pages.";
+      mmap_pages_ = i;
       return true;
     }
     for (auto& group : groups_) {
@@ -386,10 +387,10 @@ bool EventSelectionSet::MmapEventFiles(size_t min_mmap_pages,
 }
 
 bool EventSelectionSet::MmapEventFiles(size_t mmap_pages, bool report_error) {
+  // Allocate a mapped buffer for each cpu.
+  std::map<int, EventFd*> cpu_map;
   for (auto& group : groups_) {
     for (auto& selection : group) {
-      // For each event, allocate a mapped buffer for each cpu.
-      std::map<int, EventFd*> cpu_map;
       for (auto& event_fd : selection.event_fds) {
         auto it = cpu_map.find(event_fd->Cpu());
         if (it != cpu_map.end()) {
@@ -400,7 +401,7 @@ bool EventSelectionSet::MmapEventFiles(size_t mmap_pages, bool report_error) {
           if (!event_fd->CreateMappedBuffer(mmap_pages, report_error)) {
             return false;
           }
-          cpu_map.insert(std::make_pair(event_fd->Cpu(), event_fd.get()));
+          cpu_map[event_fd->Cpu()] = event_fd.get();
         }
       }
     }
@@ -415,8 +416,8 @@ bool EventSelectionSet::PrepareToReadMmapEventData(
     for (auto& selection : group) {
       for (auto& event_fd : selection.event_fds) {
         if (event_fd->HasMappedBuffer()) {
-          if (!loop.AddReadEvent(event_fd->fd(), [&]() {
-                return ReadMmapEventDataForFd(event_fd);
+          if (!event_fd->StartPolling(loop, [&]() {
+                return ReadMmapEventDataForFd(event_fd.get());
               })) {
             return false;
           }
@@ -424,14 +425,14 @@ bool EventSelectionSet::PrepareToReadMmapEventData(
       }
     }
   }
+  loop_ = &loop;
 
   // Prepare record callback function.
   record_callback_ = callback;
   return true;
 }
 
-bool EventSelectionSet::ReadMmapEventDataForFd(
-    std::unique_ptr<EventFd>& event_fd) {
+bool EventSelectionSet::ReadMmapEventDataForFd(EventFd* event_fd) {
   const char* data;
   // Call GetAvailableMmapData() only once instead of calling in a loop, because
   // 1) A mapped buffer caches data before needing to be read again. By default
@@ -458,7 +459,7 @@ bool EventSelectionSet::FinishReadMmapEventData() {
     for (auto& selection : group) {
       for (auto& event_fd : selection.event_fds) {
         if (event_fd->HasMappedBuffer()) {
-          if (!ReadMmapEventDataForFd(event_fd)) {
+          if (!ReadMmapEventDataForFd(event_fd.get())) {
             return false;
           }
         }
@@ -510,21 +511,30 @@ bool EventSelectionSet::DetectCpuHotplugEvents() {
 }
 
 bool EventSelectionSet::HandleCpuOfflineEvent(int cpu) {
-  if (for_stat_cmd_) {
-    for (auto& group : groups_) {
-      for (auto& selection : group) {
-        for (auto it = selection.event_fds.begin();
-             it != selection.event_fds.end();) {
-          if ((*it)->Cpu() == cpu) {
+  for (auto& group : groups_) {
+    for (auto& selection : group) {
+      for (auto it = selection.event_fds.begin();
+           it != selection.event_fds.end();) {
+        if ((*it)->Cpu() == cpu) {
+          if (for_stat_cmd_) {
             CounterInfo counter;
             if (!ReadCounter(it->get(), &counter)) {
               return false;
             }
             selection.hotplugged_counters.push_back(counter);
-            it = selection.event_fds.erase(it);
           } else {
-            ++it;
+            if ((*it)->HasMappedBuffer()) {
+              if (!ReadMmapEventDataForFd(it->get())) {
+                return false;
+              }
+              if (!(*it)->StopPolling()) {
+                return false;
+              }
+            }
           }
+          it = selection.event_fds.erase(it);
+        } else {
+          ++it;
         }
       }
     }
@@ -533,20 +543,75 @@ bool EventSelectionSet::HandleCpuOfflineEvent(int cpu) {
 }
 
 bool EventSelectionSet::HandleCpuOnlineEvent(int cpu) {
-  if (for_stat_cmd_) {
-    for (auto& group : groups_) {
-      for (const auto& tid : threads_) {
-        std::string failed_event_type;
-        if (!OpenEventFile(group, tid, cpu, &failed_event_type)) {
-          // If failed to open event files, maybe the cpu has been offlined.
-          PLOG(WARNING) << "failed to open perf event file for event_type "
-                        << failed_event_type << " for "
-                        << (tid == -1 ? "all threads"
-                                      : "thread " + std::to_string(tid))
-                        << " on cpu " << cpu;
+  // We need to start profiling when opening new event files.
+  SetEnableOnExec(false);
+  for (auto& group : groups_) {
+    for (const auto& tid : threads_) {
+      std::string failed_event_type;
+      if (!OpenEventFile(group, tid, cpu, &failed_event_type)) {
+        // If failed to open event files, maybe the cpu has been offlined.
+        PLOG(WARNING) << "failed to open perf event file for event_type "
+                      << failed_event_type << " for "
+                      << (tid == -1 ? "all threads"
+                                    : "thread " + std::to_string(tid))
+                      << " on cpu " << cpu;
+      }
+    }
+  }
+  if (!for_stat_cmd_) {
+    // Prepare mapped buffer.
+    if (!CreateMappedBufferForCpu(cpu)) {
+      return false;
+    }
+    // Send a EventIdRecord.
+    std::vector<uint64_t> event_id_data;
+    uint64_t attr_id = 0;
+    for (const auto& group : groups_) {
+      for (const auto& selection : group) {
+        for (const auto& event_fd : selection.event_fds) {
+          if (event_fd->Cpu() == cpu) {
+            event_id_data.push_back(attr_id);
+            event_id_data.push_back(event_fd->Id());
+          }
+        }
+        ++attr_id;
+      }
+    }
+    EventIdRecord r(event_id_data);
+    if (!record_callback_(&r)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool EventSelectionSet::CreateMappedBufferForCpu(int cpu) {
+  EventFd* fd_with_buffer = nullptr;
+  for (auto& group : groups_) {
+    for (auto& selection : group) {
+      for (auto& event_fd : selection.event_fds) {
+        if (event_fd->Cpu() != cpu) {
+          continue;
+        }
+        if (fd_with_buffer == nullptr) {
+          if (!event_fd->CreateMappedBuffer(mmap_pages_, true)) {
+            return false;
+          }
+          fd_with_buffer = event_fd.get();
+        } else {
+          if (!event_fd->ShareMappedBuffer(*fd_with_buffer, true)) {
+            fd_with_buffer->DestroyMappedBuffer();
+            return false;
+          }
         }
       }
     }
+  }
+  if (fd_with_buffer != nullptr &&
+      !fd_with_buffer->StartPolling(*loop_, [this, fd_with_buffer]() {
+        return ReadMmapEventDataForFd(fd_with_buffer);
+      })) {
+    return false;
   }
   return true;
 }
