@@ -46,6 +46,7 @@ static std::string RecordTypeToString(int record_type) {
       {SIMPLE_PERF_RECORD_KERNEL_SYMBOL, "kernel_symbol"},
       {SIMPLE_PERF_RECORD_DSO, "dso"},
       {SIMPLE_PERF_RECORD_SYMBOL, "symbol"},
+      {SIMPLE_PERF_RECORD_EVENT_ID, "event_id"},
   };
 
   auto it = record_type_names.find(record_type);
@@ -761,6 +762,38 @@ void TracingDataRecord::DumpData(size_t indent) const {
   tracing.Dump(indent);
 }
 
+EventIdRecord::EventIdRecord(const char* p) : Record(p) {
+  const char* end = p + size();
+  p += header_size();
+  MoveFromBinaryFormat(count, p);
+  data = reinterpret_cast<const EventIdData*>(p);
+  p += sizeof(data[0]) * count;
+  CHECK_EQ(p, end);
+}
+
+EventIdRecord::EventIdRecord(const std::vector<uint64_t>& data) {
+  SetTypeAndMisc(SIMPLE_PERF_RECORD_EVENT_ID, 0);
+  SetSize(header_size() + sizeof(uint64_t) * (1 + data.size()));
+  char* new_binary = new char[size()];
+  char* p = new_binary;
+  MoveToBinaryFormat(header, p);
+  count = data.size() / 2;
+  MoveToBinaryFormat(count, p);
+  this->data = reinterpret_cast<EventIdData*>(p);
+  memcpy(p, data.data(), sizeof(uint64_t) * data.size());
+  UpdateBinary(new_binary);
+}
+
+void EventIdRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "count: %" PRIu64 "\n", count);
+  for (size_t i = 0; i < count; ++i) {
+    PrintIndented(indent, "attr_id[%" PRIu64 "]: %" PRIu64 "\n", i,
+                  data[i].attr_id);
+    PrintIndented(indent, "event_id[%" PRIu64 "]: %" PRIu64 "\n", i,
+                  data[i].event_id);
+  }
+}
+
 UnknownRecord::UnknownRecord(const char* p) : Record(p) {
   p += header_size();
   data = p;
@@ -793,6 +826,8 @@ std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
       return std::unique_ptr<Record>(new DsoRecord(p));
     case SIMPLE_PERF_RECORD_SYMBOL:
       return std::unique_ptr<Record>(new SymbolRecord(p));
+    case SIMPLE_PERF_RECORD_EVENT_ID:
+      return std::unique_ptr<Record>(new EventIdRecord(p));
     default:
       return std::unique_ptr<Record>(new UnknownRecord(p));
   }
