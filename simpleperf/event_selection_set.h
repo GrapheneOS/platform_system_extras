@@ -76,7 +76,8 @@ class IOEventLoop;
 
 class EventSelectionSet {
  public:
-  EventSelectionSet(bool for_stat_cmd) : for_stat_cmd_(for_stat_cmd) {}
+  EventSelectionSet(bool for_stat_cmd)
+      : for_stat_cmd_(for_stat_cmd), mmap_pages_(0), loop_(nullptr) {}
 
   bool empty() const { return groups_.empty(); }
 
@@ -118,17 +119,20 @@ class EventSelectionSet {
   bool OpenEventFiles(const std::vector<pid_t>& threads,
                       const std::vector<int>& cpus);
   bool MmapEventFiles(size_t mmap_pages, bool report_error);
-  bool ReadMmapEventDataForFd(std::unique_ptr<EventFd>& event_fd);
+  bool ReadMmapEventDataForFd(EventFd* event_fd);
 
   bool DetectCpuHotplugEvents();
   bool HandleCpuOnlineEvent(int cpu);
   bool HandleCpuOfflineEvent(int cpu);
+  bool CreateMappedBufferForCpu(int cpu);
 
   const bool for_stat_cmd_;
 
   std::vector<EventSelectionGroup> groups_;
   std::vector<pid_t> threads_;
+  size_t mmap_pages_;
 
+  IOEventLoop* loop_;
   std::function<bool(Record*)> record_callback_;
 
   std::set<int> monitored_cpus_;

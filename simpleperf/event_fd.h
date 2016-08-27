@@ -54,8 +54,6 @@ class EventFd {
 
   int Cpu() const { return cpu_; }
 
-  int fd() const { return perf_event_fd_; }
-
   const perf_event_attr& attr() const { return attr_; }
 
   // It tells the kernel to start counting and recording events specified by
@@ -80,6 +78,10 @@ class EventFd {
   // them by returning the start address and size of the data.
   size_t GetAvailableMmapData(const char** pdata);
 
+  // [callback] is called when there is data available in the mapped buffer.
+  bool StartPolling(IOEventLoop& loop, const std::function<bool()>& callback);
+  bool StopPolling();
+
  private:
   EventFd(const perf_event_attr& attr, int perf_event_fd,
           const std::string& event_name, pid_t tid, int cpu)
@@ -93,7 +95,8 @@ class EventFd {
         mmap_len_(0),
         mmap_metadata_page_(nullptr),
         mmap_data_buffer_(nullptr),
-        mmap_data_buffer_size_(0) {}
+        mmap_data_buffer_size_(0),
+        ioevent_ref_(nullptr) {}
 
   // Discard how much data we have read, so the kernel can reuse this part of
   // mapped area to store new data.
@@ -117,6 +120,8 @@ class EventFd {
   // wrapped at the end of the buffer. So we need to copy records from
   // mmap_data_buffer to data_process_buffer before processing them.
   static std::vector<char> data_process_buffer_;
+
+  IOEventRef ioevent_ref_;
 
   DISALLOW_COPY_AND_ASSIGN(EventFd);
 };

@@ -24,6 +24,7 @@
 #include <vector>
 
 struct IOEvent;
+typedef IOEvent* IOEventRef;
 struct event_base;
 
 // IOEventLoop is a class wrapper of libevent, it monitors events happened,
@@ -35,8 +36,9 @@ class IOEventLoop {
   ~IOEventLoop();
 
   // Register a read Event, so [callback] is called when [fd] can be read
-  // without blocking.
-  bool AddReadEvent(int fd, const std::function<bool()>& callback);
+  // without blocking. If registered successfully, return the reference
+  // to control the Event, otherwise return nullptr.
+  IOEventRef AddReadEvent(int fd, const std::function<bool()>& callback);
 
   // Register a signal Event, so [callback] is called each time signal [sig]
   // happens.
@@ -58,10 +60,13 @@ class IOEventLoop {
   // Exit the loop started by RunLoop().
   bool ExitLoop();
 
+  // Unregister an Event.
+  static bool DelEvent(IOEventRef ref);
+
  private:
   bool EnsureInit();
-  bool AddEvent(int fd_or_sig, short events, timeval* timeout,
-                const std::function<bool()>& callback);
+  IOEventRef AddEvent(int fd_or_sig, short events, timeval* timeout,
+                      const std::function<bool()>& callback);
   static void EventCallbackFn(int, short, void*);
 
   event_base* ebase_;

@@ -29,7 +29,7 @@ TEST(IOEventLoop, read) {
   static int retry_count;
   count = 0;
   retry_count = 0;
-  ASSERT_TRUE(loop.AddReadEvent(fd[0], [&]() {
+  ASSERT_NE(nullptr, loop.AddReadEvent(fd[0], [&]() {
     while (true) {
       char c;
       int ret = read(fd[0], &c, 1);
@@ -107,4 +107,30 @@ TEST(IOEventLoop, periodic) {
   // a range [0.1, 0.15).
   ASSERT_GE(time_used, 0.1);
   ASSERT_LT(time_used, 0.15);
+}
+
+TEST(IOEventLoop, read_and_del_event) {
+  int fd[2];
+  ASSERT_EQ(0, pipe(fd));
+  IOEventLoop loop;
+  static int count;
+  count = 0;
+  IOEventRef ref = loop.AddReadEvent(fd[0], [&]() {
+    count++;
+    return IOEventLoop::DelEvent(ref);
+  });
+  ASSERT_NE(nullptr, ref);
+
+  std::thread thread([&]() {
+    for (int i = 0; i < 100; ++i) {
+      usleep(1000);
+      char c;
+      write(fd[1], &c, 1);
+    }
+  });
+  ASSERT_TRUE(loop.RunLoop());
+  thread.join();
+  ASSERT_EQ(1, count);
+  close(fd[0]);
+  close(fd[1]);
 }
