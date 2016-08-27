@@ -257,7 +257,6 @@ class ReportCmdCallgraphDisplayerWithVaddrInFile
 struct EventAttrWithName {
   perf_event_attr attr;
   std::string name;
-  std::vector<uint64_t> event_ids;
 };
 
 class ReportCommand : public Command {
@@ -587,7 +586,6 @@ bool ReportCommand::ReadEventAttrFromRecordFile() {
   for (const auto& attr_with_id : attrs) {
     EventAttrWithName attr;
     attr.attr = *attr_with_id.attr;
-    attr.event_ids = attr_with_id.ids;
     attr.name = GetEventNameByAttr(attr.attr);
     event_attrs_.push_back(attr);
   }
