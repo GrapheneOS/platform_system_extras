@@ -49,6 +49,7 @@ enum user_record_type {
   SIMPLE_PERF_RECORD_SYMBOL,
   SIMPLE_PERF_RECORD_SPLIT,
   SIMPLE_PERF_RECORD_SPLIT_END,
+  SIMPLE_PERF_RECORD_EVENT_ID,
 };
 
 // perf_event_header uses u16 to store record size. However, that is not
@@ -467,6 +468,21 @@ struct TracingDataRecord : public Record {
   explicit TracingDataRecord(const char* p);
 
   explicit TracingDataRecord(const std::vector<char>& tracing_data);
+
+ protected:
+  void DumpData(size_t indent) const override;
+};
+
+struct EventIdRecord : public Record {
+  uint64_t count;
+  struct EventIdData {
+    uint64_t attr_id;
+    uint64_t event_id;
+  } const* data;
+
+  explicit EventIdRecord(const char* p);
+
+  explicit EventIdRecord(const std::vector<uint64_t>& data);
 
  protected:
   void DumpData(size_t indent) const override;
