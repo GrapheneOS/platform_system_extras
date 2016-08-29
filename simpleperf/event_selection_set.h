@@ -97,9 +97,27 @@ class EventSelectionSet {
   void SetInherit(bool enable);
   void SetLowWatermark();
 
-  bool OpenEventFilesForCpus(const std::vector<int>& cpus);
-  bool OpenEventFilesForThreadsOnCpus(const std::vector<pid_t>& threads,
-                                      std::vector<int> cpus);
+  void AddMonitoredProcesses(const std::set<pid_t>& processes) {
+    processes_.insert(processes.begin(), processes.end());
+  }
+
+  void AddMonitoredThreads(const std::set<pid_t>& threads) {
+    threads_.insert(threads.begin(), threads.end());
+  }
+
+  const std::set<pid_t>& GetMonitoredProcesses() const {
+    return processes_;
+  }
+
+  const std::set<pid_t>& GetMonitoredThreads() const {
+    return threads_;
+  }
+
+  bool HasMonitoredTarget() const {
+    return !processes_.empty() || !threads_.empty();
+  }
+
+  bool OpenEventFiles(const std::vector<int>& on_cpus);
   bool ReadCounters(std::vector<CountersInfo>* counters);
   bool MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pages);
   bool PrepareToReadMmapEventData(IOEventLoop& loop,
@@ -116,8 +134,6 @@ class EventSelectionSet {
   bool BuildAndCheckEventSelection(const std::string& event_name,
                                    EventSelection* selection);
   void UnionSampleType();
-  bool OpenEventFiles(const std::vector<pid_t>& threads,
-                      const std::vector<int>& cpus);
   bool MmapEventFiles(size_t mmap_pages, bool report_error);
   bool ReadMmapEventDataForFd(EventFd* event_fd);
 
@@ -129,7 +145,8 @@ class EventSelectionSet {
   const bool for_stat_cmd_;
 
   std::vector<EventSelectionGroup> groups_;
-  std::vector<pid_t> threads_;
+  std::set<pid_t> processes_;
+  std::set<pid_t> threads_;
   size_t mmap_pages_;
 
   IOEventLoop* loop_;
