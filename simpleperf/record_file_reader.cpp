@@ -273,7 +273,7 @@ std::unique_ptr<Record> RecordFileReader::ReadRecord(size_t* nbytes_read) {
 }
 
 bool RecordFileReader::Read(void* buf, size_t len) {
-  if (fread(buf, len, 1, record_fp_) != 1) {
+  if (len != 0 && fread(buf, len, 1, record_fp_) != 1) {
     PLOG(FATAL) << "failed to read file " << filename_;
     return false;
   }
