@@ -76,6 +76,8 @@ class ThreadTree {
     unknown_map_ = MapEntry(0, std::numeric_limits<unsigned long long>::max(),
                             0, 0, unknown_dso_.get(), false);
     kernel_dso_ = Dso::CreateDso(DSO_KERNEL, DEFAULT_KERNEL_MMAP_NAME);
+    // We can't dump comm for pid 0 from /proc, so add it's name here.
+    AddThread(0, 0, "swapper");
   }
 
   void AddThread(int pid, int tid, const std::string& comm);

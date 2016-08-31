@@ -300,7 +300,7 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
   callchain->set_symbol(symbol->DemangledName());
   callchain->set_file(map->dso->Path());
 
-  if (show_callchain_) {
+  if (show_callchain_ && (r.sample_type & PERF_SAMPLE_CALLCHAIN)) {
     bool first_ip = true;
     for (uint64_t i = 0; i < r.callchain_data.ip_nr; ++i) {
       uint64_t ip = r.callchain_data.ips[i];
@@ -368,7 +368,7 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r) {
   FprintIndented(report_fp_, 1, "dso: %s\n", map->dso->Path().c_str());
   FprintIndented(report_fp_, 1, "symbol: %s\n", symbol->DemangledName());
 
-  if (show_callchain_) {
+  if (show_callchain_ && (r.sample_type & PERF_SAMPLE_CALLCHAIN)) {
     FprintIndented(report_fp_, 1, "callchain:\n");
     bool first_ip = true;
     for (uint64_t i = 0; i < r.callchain_data.ip_nr; ++i) {

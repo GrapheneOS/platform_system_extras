@@ -657,7 +657,6 @@ bool ReportCommand::ReadFeaturesFromRecordFile() {
 }
 
 bool ReportCommand::ReadSampleTreeFromRecordFile() {
-  thread_tree_.AddThread(0, 0, "swapper");
   sample_tree_builder_->SetBranchSampleOption(use_branch_address_);
   // Normally do strict arch check when unwinding stack. But allow unwinding
   // 32-bit processes on 64-bit devices for system wide profiling.
