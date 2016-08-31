@@ -273,7 +273,8 @@ Mmap2Record::Mmap2Record(const perf_event_attr& attr, const char* p)
     : Record(p) {
   const char* end = p + size();
   p += header_size();
-  MoveFromBinaryFormat(data, p);
+  data = reinterpret_cast<const Mmap2RecordDataType*>(p);
+  p += sizeof(*data);
   filename = p;
   p += Align(strlen(filename) + 1, 8);
   CHECK_LE(p, end);
