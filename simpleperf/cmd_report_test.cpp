@@ -411,6 +411,11 @@ TEST_F(ReportCommandTest, read_elf_file_warning) {
       testing::ExitedWithCode(0), "elf: Read failed");
 }
 
+TEST_F(ReportCommandTest, report_data_generated_by_linux_perf) {
+  Report(PERF_DATA_GENERATED_BY_LINUX_PERF);
+  ASSERT_TRUE(success);
+}
+
 #if defined(__linux__)
 
 static std::unique_ptr<Command> RecordCmd() {
