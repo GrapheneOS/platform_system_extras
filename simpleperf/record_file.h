@@ -135,6 +135,7 @@ class RecordFileReader {
   bool ReadFeatureSectionDescriptors();
   std::unique_ptr<Record> ReadRecord(size_t* nbytes_read);
   bool Read(void* buf, size_t len);
+  void ProcessEventIdRecord(const EventIdRecord& r);
 
   const std::string filename_;
   FILE* record_fp_;

@@ -177,6 +177,9 @@ bool RecordFileReader::ReadDataSection(
     if (record == nullptr) {
       return false;
     }
+    if (record->type() == SIMPLE_PERF_RECORD_EVENT_ID) {
+      ProcessEventIdRecord(*static_cast<EventIdRecord*>(record.get()));
+    }
     if (sorted) {
       cache.Push(std::move(record));
       record = cache.Pop();
@@ -275,6 +278,14 @@ bool RecordFileReader::Read(void* buf, size_t len) {
     return false;
   }
   return true;
+}
+
+void RecordFileReader::ProcessEventIdRecord(const EventIdRecord& r) {
+  for (size_t i = 0; i < r.count; ++i) {
+    event_ids_for_file_attrs_[r.data[i].attr_id].push_back(r.data[i].event_id);
+    event_id_to_attr_map_[r.data[i].event_id] =
+        &file_attrs_[r.data[i].attr_id].attr;
+  }
 }
 
 bool RecordFileReader::ReadFeatureSection(int feature, std::vector<char>* data) {

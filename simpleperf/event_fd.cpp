@@ -135,8 +135,7 @@ bool EventFd::CreateMappedBuffer(size_t mmap_pages, bool report_error) {
     if (report_error && is_perm_error) {
       LOG(ERROR)
           << "It seems the kernel doesn't allow allocating enough "
-          << "buffer for dumping samples, consider decreasing mmap pages(-m), "
-          << "or decreasing the number of events(-e).";
+          << "buffer for dumping samples, consider decreasing mmap pages(-m).";
     }
     return false;
   }
@@ -235,6 +234,14 @@ size_t EventFd::GetAvailableMmapData(const char** pdata) {
 void EventFd::DiscardMmapData(size_t discard_size) {
   mmap_metadata_page_->data_tail += discard_size;
 }
+
+bool EventFd::StartPolling(IOEventLoop& loop,
+                           const std::function<bool()>& callback) {
+  ioevent_ref_ = loop.AddReadEvent(perf_event_fd_, callback);
+  return ioevent_ref_ != nullptr;
+}
+
+bool EventFd::StopPolling() { return IOEventLoop::DelEvent(ioevent_ref_); }
 
 bool IsEventAttrSupportedByKernel(perf_event_attr attr) {
   auto event_fd = EventFd::OpenEventFile(attr, getpid(), -1, nullptr, false);
