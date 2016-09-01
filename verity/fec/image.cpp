@@ -33,9 +33,7 @@ extern "C" {
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#ifndef IMAGE_NO_SPARSE
 #include <sparse/sparse.h>
-#endif
 #include "image.h"
 
 #if defined(__linux__)
@@ -66,31 +64,6 @@ void image_free(image *ctx)
     image_init(ctx);
 }
 
-#ifdef IMAGE_NO_SPARSE
-static uint64_t get_size(int fd)
-{
-    struct stat st;
-
-    if (fstat(fd, &st) == -1) {
-        FATAL("failed to fstat: %s\n", strerror(errno));
-    }
-
-    uint64_t size = 0;
-
-    if (S_ISBLK(st.st_mode)) {
-        if (ioctl(fd, BLKGETSIZE64, &size) == -1) {
-            FATAL("failed to ioctl(BLKGETSIZE64): %s\n", strerror(errno));
-        }
-    } else if (S_ISREG(st.st_mode)) {
-        size = st.st_size;
-    } else {
-        FATAL("unknown file mode: %d\n", (int)st.st_mode);
-    }
-
-    return size;
-}
-#endif
-
 static void calculate_rounds(uint64_t size, image *ctx)
 {
     if (!size) {
@@ -105,7 +78,6 @@ static void calculate_rounds(uint64_t size, image *ctx)
     ctx->rounds = fec_div_round_up(ctx->blocks, ctx->rs_n);
 }
 
-#ifndef IMAGE_NO_SPARSE
 static int process_chunk(void *priv, const void *data, int len)
 {
     image *ctx = (image *)priv;
@@ -118,25 +90,14 @@ static int process_chunk(void *priv, const void *data, int len)
     ctx->pos += len;
     return 0;
 }
-#endif
 
 static void file_image_load(const std::vector<int>& fds, image *ctx)
 {
     uint64_t size = 0;
-#ifndef IMAGE_NO_SPARSE
     std::vector<struct sparse_file *> files;
-#endif
 
     for (auto fd : fds) {
         uint64_t len = 0;
-
-#ifdef IMAGE_NO_SPARSE
-        if (ctx->sparse) {
-            FATAL("sparse files not supported\n");
-        }
-
-        len = get_size(fd);
-#else
         struct sparse_file *file;
 
         if (ctx->sparse) {
@@ -151,7 +112,6 @@ static void file_image_load(const std::vector<int>& fds, image *ctx)
 
         len = sparse_file_len(file, false, false);
         files.push_back(file);
-#endif /* IMAGE_NO_SPARSE */
 
         size += len;
     }
@@ -172,18 +132,6 @@ static void file_image_load(const std::vector<int>& fds, image *ctx)
     ctx->output = ctx->input;
     ctx->pos = 0;
 
-#ifdef IMAGE_NO_SPARSE
-    for (auto fd : fds) {
-        uint64_t len = get_size(fd);
-
-        if (!android::base::ReadFully(fd, &ctx->input[ctx->pos], len)) {
-            FATAL("failed to read: %s\n", strerror(errno));
-        }
-
-        ctx->pos += len;
-        close(fd);
-    }
-#else
     for (auto file : files) {
         sparse_file_callback(file, false, false, process_chunk, ctx);
         sparse_file_destroy(file);
@@ -192,7 +140,6 @@ static void file_image_load(const std::vector<int>& fds, image *ctx)
     for (auto fd : fds) {
         close(fd);
     }
-#endif
 }
 
 bool image_load(const std::vector<std::string>& filenames, image *ctx)
