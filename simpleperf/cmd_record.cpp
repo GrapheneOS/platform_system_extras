@@ -181,9 +181,7 @@ class RecordCommand : public Command {
   bool DumpKernelSymbol();
   bool DumpTracingData();
   bool DumpKernelAndModuleMmaps(const perf_event_attr& attr, uint64_t event_id);
-  bool DumpThreadCommAndMmaps(const perf_event_attr& attr, uint64_t event_id,
-                              bool all_threads,
-                              const std::vector<pid_t>& selected_threads);
+  bool DumpThreadCommAndMmaps(const perf_event_attr& attr, uint64_t event_id);
   bool ProcessRecord(Record* record);
   bool DumpSymbolForRecord(const SampleRecord& r, bool for_callchain);
   void UpdateRecordForEmbeddedElfPath(Record* record);
@@ -209,7 +207,6 @@ class RecordCommand : public Command {
   double duration_in_sec_;
   bool can_dump_kernel_symbols_;
   bool dump_symbols_;
-  std::vector<pid_t> monitored_threads_;
   std::vector<int> cpus_;
   EventSelectionSet event_selection_set_;
 
@@ -255,9 +252,11 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   }
-  if (!system_wide_collection_ && monitored_threads_.empty()) {
+  if (system_wide_collection_) {
+    event_selection_set_.AddMonitoredThreads({-1});
+  } else if (!event_selection_set_.HasMonitoredTarget()) {
     if (workload != nullptr) {
-      monitored_threads_.push_back(workload->GetPid());
+      event_selection_set_.AddMonitoredProcesses({workload->GetPid()});
       event_selection_set_.SetEnableOnExec(true);
     } else {
       LOG(ERROR)
@@ -267,15 +266,8 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   }
 
   // 3. Open perf_event_files, create mapped buffers for perf_event_files.
-  if (system_wide_collection_) {
-    if (!event_selection_set_.OpenEventFilesForCpus(cpus_)) {
-      return false;
-    }
-  } else {
-    if (!event_selection_set_.OpenEventFilesForThreadsOnCpus(monitored_threads_,
-                                                             cpus_)) {
-      return false;
-    }
+  if (!event_selection_set_.OpenEventFiles(cpus_)) {
+    return false;
   }
   if (!event_selection_set_.MmapEventFiles(mmap_page_range_.first,
                                            mmap_page_range_.second)) {
@@ -363,7 +355,6 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
 
 bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
                                  std::vector<std::string>* non_option_args) {
-  std::set<pid_t> tid_set;
   size_t i;
   for (i = 0; i < args.size() && !args[i].empty() && args[i][0] == '-'; ++i) {
     if (args[i] == "-a") {
@@ -509,9 +500,11 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
-      if (!GetValidThreadsFromProcessString(args[i], &tid_set)) {
+      std::set<pid_t> pids;
+      if (!GetValidThreadsFromThreadString(args[i], &pids)) {
         return false;
       }
+      event_selection_set_.AddMonitoredProcesses(pids);
     } else if (args[i] == "--post-unwind") {
       post_unwind_ = true;
     } else if (args[i] == "--symfs") {
@@ -525,9 +518,11 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
-      if (!GetValidThreadsFromThreadString(args[i], &tid_set)) {
+      std::set<pid_t> tids;
+      if (!GetValidThreadsFromThreadString(args[i], &tids)) {
         return false;
       }
+      event_selection_set_.AddMonitoredThreads(tids);
     } else {
       ReportUnknownOption(args, i);
       return false;
@@ -559,9 +554,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     }
   }
 
-  monitored_threads_.insert(monitored_threads_.end(), tid_set.begin(),
-                            tid_set.end());
-  if (system_wide_collection_ && !monitored_threads_.empty()) {
+  if (system_wide_collection_ && event_selection_set_.HasMonitoredTarget()) {
     LOG(ERROR) << "Record system wide and existing processes/threads can't be "
                   "used at the same time.";
     return false;
@@ -643,8 +636,7 @@ bool RecordCommand::CreateAndInitRecordFile() {
   if (!DumpKernelAndModuleMmaps(attr, event_id)) {
     return false;
   }
-  if (!DumpThreadCommAndMmaps(attr, event_id, system_wide_collection_,
-                              monitored_threads_)) {
+  if (!DumpThreadCommAndMmaps(attr, event_id)) {
     return false;
   }
   return true;
@@ -748,19 +740,20 @@ bool RecordCommand::DumpKernelAndModuleMmaps(const perf_event_attr& attr,
   return true;
 }
 
-bool RecordCommand::DumpThreadCommAndMmaps(
-    const perf_event_attr& attr, uint64_t event_id, bool all_threads,
-    const std::vector<pid_t>& selected_threads) {
+bool RecordCommand::DumpThreadCommAndMmaps(const perf_event_attr& attr,
+                                           uint64_t event_id) {
   std::vector<ThreadComm> thread_comms;
   if (!GetThreadComms(&thread_comms)) {
     return false;
   }
   // Decide which processes and threads to dump.
-  std::set<pid_t> dump_processes;
-  std::set<pid_t> dump_threads;
-  for (auto& tid : selected_threads) {
-    dump_threads.insert(tid);
+  bool all_threads = system_wide_collection_;
+  std::set<pid_t> dump_threads = event_selection_set_.GetMonitoredThreads();
+  for (const auto& pid : event_selection_set_.GetMonitoredProcesses()) {
+    std::vector<pid_t> tids = GetThreadsInProcess(pid);
+    dump_threads.insert(tids.begin(), tids.end());
   }
+  std::set<pid_t> dump_processes;
   for (auto& thread : thread_comms) {
     if (dump_threads.find(thread.tid) != dump_threads.end()) {
       dump_processes.insert(thread.pid);
