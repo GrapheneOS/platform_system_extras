@@ -312,7 +312,6 @@ class StatCommand : public Command {
   bool system_wide_collection_;
   bool child_inherit_;
   double duration_in_sec_;
-  std::vector<pid_t> monitored_threads_;
   std::vector<int> cpus_;
   EventSelectionSet event_selection_set_;
   std::string output_filename_;
@@ -344,9 +343,11 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   }
-  if (!system_wide_collection_ && monitored_threads_.empty()) {
+  if (system_wide_collection_) {
+    event_selection_set_.AddMonitoredThreads({-1});
+  } else if (!event_selection_set_.HasMonitoredTarget()) {
     if (workload != nullptr) {
-      monitored_threads_.push_back(workload->GetPid());
+      event_selection_set_.AddMonitoredProcesses({workload->GetPid()});
       event_selection_set_.SetEnableOnExec(true);
     } else {
       LOG(ERROR)
@@ -356,21 +357,16 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   }
 
   // 3. Open perf_event_files.
-  if (system_wide_collection_) {
-    if (!event_selection_set_.OpenEventFilesForCpus(cpus_)) {
-      return false;
-    }
-  } else {
-    std::vector<int> all_cpus = {-1};
-    if (!event_selection_set_.OpenEventFilesForThreadsOnCpus(
-            monitored_threads_, cpus_.empty() ? all_cpus : cpus_)) {
-      return false;
-    }
+  if (!system_wide_collection_ && cpus_.empty()) {
+    cpus_.push_back(-1);  // Monitor on all cpus.
+  }
+  if (!event_selection_set_.OpenEventFiles(cpus_)) {
+    return false;
   }
 
   // 4. Create IOEventLoop and add signal/periodic Events.
   IOEventLoop loop;
-  if (system_wide_collection_ || !cpus_.empty()) {
+  if (system_wide_collection_ || (!cpus_.empty() && cpus_[0] != -1)) {
     if (!event_selection_set_.HandleCpuHotplugEvents(loop, cpus_)) {
       return false;
     }
@@ -465,16 +461,20 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
-      if (!GetValidThreadsFromProcessString(args[i], &tid_set)) {
+      std::set<pid_t> pids;
+      if (!GetValidThreadsFromThreadString(args[i], &pids)) {
         return false;
       }
+      event_selection_set_.AddMonitoredProcesses(pids);
     } else if (args[i] == "-t") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
-      if (!GetValidThreadsFromThreadString(args[i], &tid_set)) {
+      std::set<pid_t> tids;
+      if (!GetValidThreadsFromThreadString(args[i], &tids)) {
         return false;
       }
+      event_selection_set_.AddMonitoredThreads(tids);
     } else if (args[i] == "--verbose") {
       verbose_mode_ = true;
     } else {
@@ -483,9 +483,7 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
     }
   }
 
-  monitored_threads_.insert(monitored_threads_.end(), tid_set.begin(),
-                            tid_set.end());
-  if (system_wide_collection_ && !monitored_threads_.empty()) {
+  if (system_wide_collection_ && event_selection_set_.HasMonitoredTarget()) {
     LOG(ERROR) << "Stat system wide and existing processes/threads can't be "
                   "used at the same time.";
     return false;
