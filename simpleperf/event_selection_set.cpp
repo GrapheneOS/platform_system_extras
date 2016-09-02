@@ -265,23 +265,6 @@ static bool CheckIfCpusOnline(const std::vector<int>& cpus) {
   return true;
 }
 
-bool EventSelectionSet::OpenEventFilesForCpus(const std::vector<int>& cpus) {
-  return OpenEventFilesForThreadsOnCpus({-1}, cpus);
-}
-
-bool EventSelectionSet::OpenEventFilesForThreadsOnCpus(
-    const std::vector<pid_t>& threads, std::vector<int> cpus) {
-  if (!cpus.empty()) {
-    // cpus = {-1} means open an event file for all cpus.
-    if (!(cpus.size() == 1 && cpus[0] == -1) && !CheckIfCpusOnline(cpus)) {
-      return false;
-    }
-  } else {
-    cpus = GetOnlineCpus();
-  }
-  return OpenEventFiles(threads, cpus);
-}
-
 static bool OpenEventFile(EventSelectionGroup& group, pid_t tid, int cpu,
                           std::string* failed_event_type) {
   std::vector<std::unique_ptr<EventFd>> event_fds;
@@ -310,8 +293,27 @@ static bool OpenEventFile(EventSelectionGroup& group, pid_t tid, int cpu,
   return true;
 }
 
-bool EventSelectionSet::OpenEventFiles(const std::vector<pid_t>& threads,
-                                       const std::vector<int>& cpus) {
+static std::set<pid_t> PrepareThreads(const std::set<pid_t>& processes,
+                                      const std::set<pid_t>& threads) {
+  std::set<pid_t> result = threads;
+  for (const auto& pid : processes) {
+    std::vector<pid_t> tids = GetThreadsInProcess(pid);
+    result.insert(tids.begin(), tids.end());
+  }
+  return result;
+}
+
+bool EventSelectionSet::OpenEventFiles(const std::vector<int>& on_cpus) {
+  std::vector<int> cpus = on_cpus;
+  if (!cpus.empty()) {
+    // cpus = {-1} means open an event file for all cpus.
+    if (!(cpus.size() == 1 && cpus[0] == -1) && !CheckIfCpusOnline(cpus)) {
+      return false;
+    }
+  } else {
+    cpus = GetOnlineCpus();
+  }
+  std::set<pid_t> threads = PrepareThreads(processes_, threads_);
   for (auto& group : groups_) {
     for (const auto& tid : threads) {
       size_t success_cpu_count = 0;
@@ -334,7 +336,6 @@ bool EventSelectionSet::OpenEventFiles(const std::vector<pid_t>& threads,
       }
     }
   }
-  threads_.insert(threads_.end(), threads.begin(), threads.end());
   return true;
 }
 
@@ -545,8 +546,9 @@ bool EventSelectionSet::HandleCpuOfflineEvent(int cpu) {
 bool EventSelectionSet::HandleCpuOnlineEvent(int cpu) {
   // We need to start profiling when opening new event files.
   SetEnableOnExec(false);
+  std::set<pid_t> threads = PrepareThreads(processes_, threads_);
   for (auto& group : groups_) {
-    for (const auto& tid : threads_) {
+    for (const auto& tid : threads) {
       std::string failed_event_type;
       if (!OpenEventFile(group, tid, cpu, &failed_event_type)) {
         // If failed to open event files, maybe the cpu has been offlined.
