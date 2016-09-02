@@ -52,6 +52,7 @@ struct image {
     int rs_n;
     int threads;
     uint32_t fec_size;
+    uint32_t padding;
     uint64_t blocks;
     uint64_t inp_size;
     uint64_t pos;
