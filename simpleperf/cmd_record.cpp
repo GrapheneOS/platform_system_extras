@@ -1020,8 +1020,8 @@ bool RecordCommand::DumpAdditionalFeatures(
     return false;
   }
 
-  std::string exec_path = "simpleperf";
-  GetExecPath(&exec_path);
+  std::string exec_path = android::base::GetExecutablePath();
+  if (exec_path.empty()) exec_path = "simpleperf";
   std::vector<std::string> cmdline;
   cmdline.push_back(exec_path);
   cmdline.push_back("record");

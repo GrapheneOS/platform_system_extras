@@ -67,8 +67,6 @@ bool GetModuleBuildId(const std::string& module_name, BuildId* build_id);
 bool GetValidThreadsFromProcessString(const std::string& pid_str, std::set<pid_t>* tid_set);
 bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>* tid_set);
 
-bool GetExecPath(std::string* exec_path);
-
 bool CheckPerfEventLimit();
 bool CheckSampleFrequency(uint64_t sample_freq);
 bool CheckKernelSymbolAddresses();
