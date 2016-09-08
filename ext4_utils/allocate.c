@@ -233,7 +233,8 @@ static void free_blocks(struct block_group_info *bg, u32 block, u32 num_blocks)
 	for (i = 0; i < num_blocks; i++, block--)
 		bg->block_bitmap[block / 8] &= ~(1 << (block % 8));
 	bg->free_blocks += num_blocks;
-	for (i = bg->chunk_count - 1; i >= 0 ; i--) {
+	for (i = bg->chunk_count; i > 0 ;) {
+		--i;
 		if (bg->chunks[i].len >= num_blocks && bg->chunks[i].block <= block) {
 			if (bg->chunks[i].block == block) {
 				bg->chunks[i].block += num_blocks;
