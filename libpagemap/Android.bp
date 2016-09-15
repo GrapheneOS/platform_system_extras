@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_library_shared {
+cc_library {
     name: "libpagemap",
     srcs: [
         "pm_kernel.c",
@@ -29,4 +29,10 @@ cc_test {
     name: "pagemap_test",
     srcs: ["pagemap_test.cpp"],
     shared_libs: ["libpagemap"],
+}
+
+cc_test {
+    name: "pagemap_static_test",
+    srcs: ["pagemap_test.cpp"],
+    static_libs: ["libpagemap"],
 }
