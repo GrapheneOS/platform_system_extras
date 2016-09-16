@@ -35,6 +35,7 @@
 #include "event_selection_set.h"
 #include "event_type.h"
 #include "IOEventLoop.h"
+#include "perf_clock.h"
 #include "read_apk.h"
 #include "read_elf.h"
 #include "record.h"
@@ -229,6 +230,9 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   if (!CheckPerfEventLimit()) {
     return false;
   }
+  if (!InitPerfClock()) {
+    return false;
+  }
 
   // 1. Parse options, and use default measured event type if not given.
   std::vector<std::string> workload_args;
@@ -302,12 +306,11 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
 
   // 6. Write records in mapped buffers of perf_event_files to output file while
   //    workload is running.
-  timespec ts;
-  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
-    PLOG(ERROR) << "clock_gettime failed";
+  if (!GetPerfClock(&start_sampling_time_in_ns_)) {
     return false;
   }
-  start_sampling_time_in_ns_ = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+  LOG(VERBOSE) << "start_sampling_time is " << start_sampling_time_in_ns_
+               << " ns";
   if (workload != nullptr && !workload->Start()) {
     return false;
   }
