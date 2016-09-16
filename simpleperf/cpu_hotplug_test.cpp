@@ -198,13 +198,24 @@ bool FindAHotpluggableCpu(int* hotpluggable_cpu) {
 struct CpuToggleThreadArg {
   int toggle_cpu;
   std::atomic<bool> end_flag;
+  std::atomic<bool> cpu_hotplug_failed;
+
+  CpuToggleThreadArg(int cpu)
+      : toggle_cpu(cpu), end_flag(false), cpu_hotplug_failed(false) {
+  }
 };
 
 static void CpuToggleThread(CpuToggleThreadArg* arg) {
   while (!arg->end_flag) {
-    CHECK(SetCpuOnline(arg->toggle_cpu, true));
+    if (!SetCpuOnline(arg->toggle_cpu, true)) {
+      arg->cpu_hotplug_failed = true;
+      break;
+    }
     std::this_thread::sleep_for(cpu_hotplug_interval);
-    CHECK(SetCpuOnline(arg->toggle_cpu, false));
+    if (!SetCpuOnline(arg->toggle_cpu, false)) {
+      arg->cpu_hotplug_failed = true;
+      break;
+    }
     std::this_thread::sleep_for(cpu_hotplug_interval);
   }
 }
@@ -222,9 +233,7 @@ TEST(cpu_offline, offline_while_recording) {
   if (!FindAHotpluggableCpu(&test_cpu)) {
     return;
   }
-  CpuToggleThreadArg cpu_toggle_arg;
-  cpu_toggle_arg.toggle_cpu = test_cpu;
-  cpu_toggle_arg.end_flag = false;
+  CpuToggleThreadArg cpu_toggle_arg(test_cpu);
   std::thread cpu_toggle_thread(CpuToggleThread, &cpu_toggle_arg);
 
   std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType("cpu-cycles");
@@ -239,7 +248,7 @@ TEST(cpu_offline, offline_while_recording) {
   auto report_step = std::chrono::seconds(15);
   size_t iterations = 0;
 
-  while (cur_time < end_time) {
+  while (cur_time < end_time && !cpu_toggle_arg.cpu_hotplug_failed) {
     if (cur_time + report_step < std::chrono::steady_clock::now()) {
       // Report test time.
       auto diff = std::chrono::duration_cast<std::chrono::seconds>(
@@ -255,6 +264,9 @@ TEST(cpu_offline, offline_while_recording) {
     }
     iterations++;
     GTEST_LOG_(INFO) << "Test offline while recording for " << iterations << " times.";
+  }
+  if (cpu_toggle_arg.cpu_hotplug_failed) {
+    GTEST_LOG_(INFO) << "Test ends because of cpu hotplug failure.";
   }
   cpu_toggle_arg.end_flag = true;
   cpu_toggle_thread.join();
@@ -273,9 +285,7 @@ TEST(cpu_offline, offline_while_ioctl_enable) {
   if (!FindAHotpluggableCpu(&test_cpu)) {
     return;
   }
-  CpuToggleThreadArg cpu_toggle_arg;
-  cpu_toggle_arg.toggle_cpu = test_cpu;
-  cpu_toggle_arg.end_flag = false;
+  CpuToggleThreadArg cpu_toggle_arg(test_cpu);
   std::thread cpu_toggle_thread(CpuToggleThread, &cpu_toggle_arg);
 
   std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType("cpu-cycles");
@@ -290,7 +300,7 @@ TEST(cpu_offline, offline_while_ioctl_enable) {
   auto report_step = std::chrono::seconds(15);
   size_t iterations = 0;
 
-  while (cur_time < end_time) {
+  while (cur_time < end_time && !cpu_toggle_arg.cpu_hotplug_failed) {
     if (cur_time + report_step < std::chrono::steady_clock::now()) {
       // Report test time.
       auto diff = std::chrono::duration_cast<std::chrono::seconds>(
@@ -309,6 +319,9 @@ TEST(cpu_offline, offline_while_ioctl_enable) {
     ASSERT_TRUE(event_fd->EnableEvent());
     iterations++;
     GTEST_LOG_(INFO) << "Test offline while ioctl(PERF_EVENT_IOC_ENABLE) for " << iterations << " times.";
+  }
+  if (cpu_toggle_arg.cpu_hotplug_failed) {
+    GTEST_LOG_(INFO) << "Test ends because of cpu hotplug failure.";
   }
   cpu_toggle_arg.end_flag = true;
   cpu_toggle_thread.join();
@@ -341,9 +354,7 @@ TEST(cpu_offline, offline_while_user_process_profiling) {
   if (!FindAHotpluggableCpu(&test_cpu)) {
     return;
   }
-  CpuToggleThreadArg cpu_toggle_arg;
-  cpu_toggle_arg.toggle_cpu = test_cpu;
-  cpu_toggle_arg.end_flag = false;
+  CpuToggleThreadArg cpu_toggle_arg(test_cpu);
   std::thread cpu_toggle_thread(CpuToggleThread, &cpu_toggle_arg);
 
   // Start cpu spinner.
@@ -369,7 +380,7 @@ TEST(cpu_offline, offline_while_user_process_profiling) {
   auto report_step = std::chrono::seconds(15);
   size_t iterations = 0;
 
-  while (cur_time < end_time) {
+  while (cur_time < end_time && !cpu_toggle_arg.cpu_hotplug_failed) {
     if (cur_time + report_step < std::chrono::steady_clock::now()) {
       auto diff = std::chrono::duration_cast<std::chrono::seconds>(
           std::chrono::steady_clock::now() - start_time);
@@ -390,13 +401,17 @@ TEST(cpu_offline, offline_while_user_process_profiling) {
     iterations++;
     GTEST_LOG_(INFO) << "Test offline while user process profiling for " << iterations << " times.";
   }
+  if (cpu_toggle_arg.cpu_hotplug_failed) {
+    GTEST_LOG_(INFO) << "Test ends because of cpu hotplug failure.";
+  }
   cpu_toggle_arg.end_flag = true;
   cpu_toggle_thread.join();
   cpu_spin_arg.end_flag = true;
   cpu_spin_thread.join();
   // Check if the cpu-cycle event is still available on test_cpu.
-  ASSERT_TRUE(SetCpuOnline(test_cpu, true));
-  ASSERT_TRUE(EventFd::OpenEventFile(attr, -1, test_cpu, nullptr, true) != nullptr);
+  if (SetCpuOnline(test_cpu, true)) {
+    ASSERT_TRUE(EventFd::OpenEventFile(attr, -1, test_cpu, nullptr, true) != nullptr);
+  }
 }
 
 // http://b/19863147.
@@ -420,10 +435,14 @@ TEST(cpu_offline, offline_while_recording_on_another_cpu) {
   const size_t TEST_ITERATION_COUNT = 10u;
   for (size_t i = 0; i < TEST_ITERATION_COUNT; ++i) {
     int record_cpu = 0;
-    ASSERT_TRUE(SetCpuOnline(test_cpu, true));
+    if (!SetCpuOnline(test_cpu, true)) {
+      break;
+    }
     std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, getpid(), record_cpu, nullptr);
     ASSERT_TRUE(event_fd != nullptr);
-    ASSERT_TRUE(SetCpuOnline(test_cpu, false));
+    if (!SetCpuOnline(test_cpu, false)) {
+      break;
+    }
     event_fd = nullptr;
     event_fd = EventFd::OpenEventFile(attr, getpid(), record_cpu, nullptr);
     ASSERT_TRUE(event_fd != nullptr);
