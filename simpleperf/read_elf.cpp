@@ -263,7 +263,7 @@ void ReadSymbolTable(llvm::object::symbol_iterator sym_begin,
   for (; sym_begin != sym_end; ++sym_begin) {
     ElfFileSymbol symbol;
     auto symbol_ref = static_cast<const llvm::object::ELFSymbolRef*>(&*sym_begin);
-    llvm::ErrorOr<llvm::object::section_iterator> section_it_or_err = symbol_ref->getSection();
+    llvm::Expected<llvm::object::section_iterator> section_it_or_err = symbol_ref->getSection();
     if (!section_it_or_err) {
       continue;
     }
@@ -275,7 +275,7 @@ void ReadSymbolTable(llvm::object::symbol_iterator sym_begin,
     if (section_name == ".text") {
       symbol.is_in_text_section = true;
     }
-    llvm::ErrorOr<llvm::StringRef> symbol_name_or_err = symbol_ref->getName();
+    llvm::Expected<llvm::StringRef> symbol_name_or_err = symbol_ref->getName();
     if (!symbol_name_or_err || symbol_name_or_err.get().empty()) {
       continue;
     }
@@ -287,7 +287,7 @@ void ReadSymbolTable(llvm::object::symbol_iterator sym_begin,
       symbol.vaddr &= ~1;
     }
     symbol.len = symbol_ref->getSize();
-    llvm::object::SymbolRef::Type symbol_type = symbol_ref->getType();
+    llvm::object::SymbolRef::Type symbol_type = *symbol_ref->getType();
     if (symbol_type == llvm::object::SymbolRef::ST_Function) {
       symbol.is_func = true;
     } else if (symbol_type == llvm::object::SymbolRef::ST_Unknown) {
