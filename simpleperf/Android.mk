@@ -110,6 +110,7 @@ libsimpleperf_src_files_linux := \
   event_fd.cpp \
   event_selection_set.cpp \
   IOEventLoop.cpp \
+  perf_clock.cpp \
   record_file_writer.cpp \
   workload.cpp \
 
