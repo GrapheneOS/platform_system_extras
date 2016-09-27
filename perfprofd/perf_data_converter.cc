@@ -80,15 +80,15 @@ RawPerfDataToAndroidPerfProfile(const string &perf_file) {
       continue;
     }
     string dso_name = event.dso_and_offset.dso_name();
-    string program_name;
+    string program_name = event.command();
     const string kernel_name = "[kernel.kallsyms]";
     if (dso_name.substr(0, kernel_name.length()) == kernel_name) {
       dso_name = kernel_name;
-      program_name = "[kernel.kallsyms]";
-    } else if (event.command() == "") {
+      if (program_name == "") {
+        program_name = "kernel";
+      }
+    } else if (program_name == "") {
       program_name = "unknown_program";
-    } else {
-      program_name = event.command();
     }
     total_samples++;
     // We expect to see either all callchain events, all branch stack
