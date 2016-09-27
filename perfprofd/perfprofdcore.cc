@@ -97,6 +97,11 @@ static int running_in_emulator = -1;
 static int is_debug_build = -1;
 
 //
+// Path to the perf file to convert and exit? Empty value is the default, daemon mode.
+//
+static std::string perf_file_to_convert = "";
+
+//
 // Random number generator seed (set at startup time).
 //
 static unsigned short random_seed[3];
@@ -111,8 +116,11 @@ static void sig_hup(int /* signum */)
 }
 
 //
-// Parse command line args. Currently you can supply "-c P" to set
-// the path of the config file to P.
+// Parse command line args. Currently supported flags:
+// *  "-c PATH" sets the path of the config file to PATH.
+// *  "-x PATH" reads PATH as a perf data file and saves it as a file in
+//    perf_profile.proto format. ".encoded" suffix is appended to PATH to form
+//    the output file path.
 //
 static void parse_args(int argc, char** argv)
 {
@@ -125,6 +133,13 @@ static void parse_args(int argc, char** argv)
         continue;
       }
       ConfigReader::setConfigFilePath(argv[ac+1]);
+      ++ac;
+    } else if (!strcmp(argv[ac], "-x")) {
+      if (ac >= argc-1) {
+        W_ALOGE("malformed command line: -x option requires argument)");
+        continue;
+      }
+      perf_file_to_convert = argv[ac+1];
       ++ac;
     } else {
       W_ALOGE("malformed command line: unknown option or arg %s)", argv[ac]);
@@ -870,6 +885,12 @@ int perfprofd_main(int argc, char** argv)
 
   parse_args(argc, argv);
   init(config);
+
+  if (!perf_file_to_convert.empty()) {
+    std::string encoded_path = perf_file_to_convert + ".encoded";
+    encode_to_proto(perf_file_to_convert, encoded_path.c_str(), config, 0);
+    return 0;
+  }
 
   // Early exit if we're not supposed to run on this build flavor
   if (is_debug_build != 1 &&
