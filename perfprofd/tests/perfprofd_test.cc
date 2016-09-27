@@ -126,7 +126,7 @@ static std::string squeezeWhite(const std::string &str,
 {
   if (dump) { fprintf(stderr, "raw %s is %s\n", tag, str.c_str()); }
   std::string result(str);
-  std::replace( result.begin(), result.end(), '\n', ' ');
+  std::replace(result.begin(), result.end(), '\n', ' ');
   auto new_end = std::unique(result.begin(), result.end(), bothWhiteSpace);
   result.erase(new_end, result.end());
   while (result.begin() != result.end() && std::isspace(*result.rbegin())) {
@@ -134,6 +134,38 @@ static std::string squeezeWhite(const std::string &str,
   }
   if (dump) { fprintf(stderr, "squeezed %s is %s\n", tag, result.c_str()); }
   return result;
+}
+
+//
+// Replace all occurrences of a string with another string.
+//
+static std::string replaceAll(const std::string &str,
+                              const std::string &from,
+                              const std::string &to)
+{
+  std::string ret = "";
+  size_t pos = 0;
+  while (pos < str.size()) {
+    size_t found = str.find(from, pos);
+    if (found == std::string::npos) {
+      ret += str.substr(pos);
+      break;
+    }
+    ret += str.substr(pos, found - pos) + to;
+    pos = found + from.size();
+  }
+  return ret;
+}
+
+//
+// Replace occurrences of special variables in the string.
+//
+static std::string expandVars(const std::string &str) {
+#ifdef __LP64__
+  return replaceAll(str, "$NATIVE_TESTS", "/data/nativetest64");
+#else
+  return replaceAll(str, "$NATIVE_TESTS", "/data/nativetest");
+#endif
 }
 
 ///
@@ -293,6 +325,15 @@ static void compareLogMessages(const std::string &actual,
      }
      EXPECT_TRUE(wasFound);
    }
+}
+
+TEST_F(PerfProfdTest, TestUtil)
+{
+  EXPECT_EQ("", replaceAll("", "", ""));
+  EXPECT_EQ("zzbc", replaceAll("abc", "a", "zz"));
+  EXPECT_EQ("azzc", replaceAll("abc", "b", "zz"));
+  EXPECT_EQ("abzz", replaceAll("abc", "c", "zz"));
+  EXPECT_EQ("xxyyzz", replaceAll("abc", "abc", "xxyyzz"));
 }
 
 TEST_F(PerfProfdTest, MissingGMS)
@@ -523,8 +564,8 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
   readEncodedProfile("BasicRunWithCannedPerf",
                      encodedProfile);
 
-  // Expect 29 load modules
-  EXPECT_EQ(29, encodedProfile.programs_size());
+  // Expect 45 programs
+  EXPECT_EQ(45, encodedProfile.programs_size());
 
   // Check a couple of load modules
   { const auto &lm0 = encodedProfile.load_modules(0);
@@ -596,8 +637,8 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
                      encodedProfile);
 
 
-  // Expect 4 programs 8 load modules
-  EXPECT_EQ(4, encodedProfile.programs_size());
+  // Expect 3 programs 8 load modules
+  EXPECT_EQ(3, encodedProfile.programs_size());
   EXPECT_EQ(8, encodedProfile.load_modules_size());
 
   // Check a couple of load modules
@@ -634,7 +675,7 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
     std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
     EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
   }
-  { const auto &p4 = encodedProfile.programs(3);
+  { const auto &p4 = encodedProfile.programs(2);
     const auto &lm2 = p4.modules(1);
     std::string act_lm2 = encodedModuleSamplesToString(lm2);
     std::string sqact2 = squeezeWhite(act_lm2, "actual for lm2");
@@ -684,7 +725,7 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
   // Verify log contents
   const std::string expected = RAW_RESULT(
       I: starting Android Wide Profiling daemon
-      I: config file path set to /data/nativetest/perfprofd_test/perfprofd.conf
+      I: config file path set to $NATIVE_TESTS/perfprofd_test/perfprofd.conf
       I: random seed set to 12345678
       I: sleep 674 seconds
       I: initiating profile collection
@@ -694,7 +735,7 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
                                           );
   // check to make sure log excerpt matches
   compareLogMessages(mock_perfprofdutils_getlogged(),
-                     expected, "BasicRunWithLivePerf", true);
+                     expandVars(expected), "BasicRunWithLivePerf", true);
 }
 
 TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
@@ -740,7 +781,7 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
   // Verify log contents
   const std::string expected = RAW_RESULT(
       I: starting Android Wide Profiling daemon
-      I: config file path set to /data/nativetest/perfprofd_test/perfprofd.conf
+      I: config file path set to $NATIVE_TESTS/perfprofd_test/perfprofd.conf
       I: random seed set to 12345678
       I: sleep 674 seconds
       I: initiating profile collection
@@ -758,7 +799,7 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
                                           );
   // check to make sure log excerpt matches
   compareLogMessages(mock_perfprofdutils_getlogged(),
-                     expected, "BasicRunWithLivePerf", true);
+                     expandVars(expected), "BasicRunWithLivePerf", true);
 }
 
 TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
@@ -810,7 +851,7 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
   // Verify log contents
   const std::string expected = RAW_RESULT(
       I: starting Android Wide Profiling daemon
-      I: config file path set to /data/nativetest/perfprofd_test/perfprofd.conf
+      I: config file path set to $NATIVE_TESTS/perfprofd_test/perfprofd.conf
       I: random seed set to 12345678
       I: sleep 674 seconds
       I: initiating profile collection
@@ -820,7 +861,7 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
                                           );
   // check to make sure log excerpt matches
   compareLogMessages(mock_perfprofdutils_getlogged(),
-                     expected, "CallChainRunWithLivePerf", true);
+                     expandVars(expected), "CallChainRunWithLivePerf", true);
 }
 
 int main(int argc, char **argv) {
