@@ -50,7 +50,7 @@ LOCAL_SHARED_LIBRARIES := libprotobuf-cpp-lite
 LOCAL_C_INCLUDES += system/extras/perfprofd external/protobuf/src
 LOCAL_SRC_FILES := perfprofd_test.cc
 LOCAL_CPPFLAGS += $(perfprofd_test_cppflags)
-LOCAL_SHARED_LIBRARIES += libcutils
+LOCAL_SHARED_LIBRARIES += liblog libcutils
 LOCAL_MODULE := perfprofd_test
 include $(BUILD_NATIVE_TEST)
 
