@@ -415,6 +415,28 @@ TEST_F(ReportCommandTest, report_data_generated_by_linux_perf) {
   ASSERT_TRUE(success);
 }
 
+TEST_F(ReportCommandTest, max_stack_and_percent_limit_option) {
+  Report(PERF_DATA_MAX_STACK_AND_PERCENT_LIMIT, {"-g"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("89.03"), std::string::npos);
+
+  Report(PERF_DATA_MAX_STACK_AND_PERCENT_LIMIT, {"-g", "--max-stack", "0"});
+  ASSERT_TRUE(success);
+  ASSERT_EQ(content.find("89.03"), std::string::npos);
+  Report(PERF_DATA_MAX_STACK_AND_PERCENT_LIMIT, {"-g", "--max-stack", "1"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("89.03"), std::string::npos);
+
+  Report(PERF_DATA_MAX_STACK_AND_PERCENT_LIMIT,
+         {"-g", "--percent-limit", "90"});
+  ASSERT_TRUE(success);
+  ASSERT_EQ(content.find("89.03"), std::string::npos);
+  Report(PERF_DATA_MAX_STACK_AND_PERCENT_LIMIT,
+         {"-g", "--percent-limit", "70"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("89.03"), std::string::npos);
+}
+
 #if defined(__linux__)
 #include "event_selection_set.h"
 
