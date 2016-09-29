@@ -271,6 +271,9 @@ class StatCommand : public Command {
 "--duration time_in_sec  Monitor for time_in_sec seconds instead of running\n"
 "                        [command]. Here time_in_sec may be any positive\n"
 "                        floating point number.\n"
+"--interval time_in_ms   Print stat for every time_in_ms milliseconds.\n"
+"                        Here time_in_ms may be any positive floating point\n"
+"                        number.\n"
 "-e event1[:modifier1],event2[:modifier2],...\n"
 "                 Select the event list to count. Use `simpleperf list` to find\n"
 "                 all possible event names. Modifiers can be added to define\n"
@@ -292,6 +295,7 @@ class StatCommand : public Command {
         system_wide_collection_(false),
         child_inherit_(true),
         duration_in_sec_(0),
+        interval_in_ms_(0),
         event_selection_set_(true),
         csv_(false) {
     // Die if parent exits.
@@ -306,12 +310,13 @@ class StatCommand : public Command {
   bool AddDefaultMeasuredEventTypes();
   void SetEventSelectionFlags();
   bool ShowCounters(const std::vector<CountersInfo>& counters,
-                    double duration_in_sec);
+                    double duration_in_sec, FILE* fp);
 
   bool verbose_mode_;
   bool system_wide_collection_;
   bool child_inherit_;
   double duration_in_sec_;
+  double interval_in_ms_;
   std::vector<int> cpus_;
   EventSelectionSet event_selection_set_;
   std::string output_filename_;
@@ -356,16 +361,28 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
     }
   }
 
-  // 3. Open perf_event_files.
+  // 3. Open perf_event_files and output file if defined.
   if (!system_wide_collection_ && cpus_.empty()) {
     cpus_.push_back(-1);  // Monitor on all cpus.
   }
   if (!event_selection_set_.OpenEventFiles(cpus_)) {
     return false;
   }
+  std::unique_ptr<FILE, decltype(&fclose)> fp_holder(nullptr, fclose);
+  FILE* fp = stdout;
+  if (!output_filename_.empty()) {
+    fp_holder.reset(fopen(output_filename_.c_str(), "w"));
+    if (fp_holder == nullptr) {
+      PLOG(ERROR) << "failed to open " << output_filename_;
+      return false;
+    }
+    fp = fp_holder.get();
+  }
 
   // 4. Create IOEventLoop and add signal/periodic Events.
   IOEventLoop loop;
+  std::chrono::time_point<std::chrono::steady_clock> start_time;
+  std::vector<CountersInfo> counters;
   if (system_wide_collection_ || (!cpus_.empty() && cpus_[0] != -1)) {
     if (!event_selection_set_.HandleCpuHotplugEvents(loop, cpus_)) {
       return false;
@@ -381,30 +398,40 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   }
+  auto print_counters = [&]() {
+      auto end_time = std::chrono::steady_clock::now();
+      if (!event_selection_set_.ReadCounters(&counters)) {
+        return false;
+      }
+      double duration_in_sec =
+      std::chrono::duration_cast<std::chrono::duration<double>>(end_time -
+                                                                start_time)
+      .count();
+      if (!ShowCounters(counters, duration_in_sec, fp)) {
+        return false;
+      }
+      return true;
+  };
+
+  if (interval_in_ms_ != 0) {
+    if (!loop.AddPeriodicEvent(SecondToTimeval(interval_in_ms_ / 1000.0),
+                               print_counters)) {
+      return false;
+    }
+  }
 
   // 5. Count events while workload running.
-  auto start_time = std::chrono::steady_clock::now();
+  start_time = std::chrono::steady_clock::now();
   if (workload != nullptr && !workload->Start()) {
     return false;
   }
   if (!loop.RunLoop()) {
     return false;
   }
-  auto end_time = std::chrono::steady_clock::now();
 
   // 6. Read and print counters.
-  std::vector<CountersInfo> counters;
-  if (!event_selection_set_.ReadCounters(&counters)) {
-    return false;
-  }
-  double duration_in_sec =
-      std::chrono::duration_cast<std::chrono::duration<double>>(end_time -
-                                                                start_time)
-          .count();
-  if (!ShowCounters(counters, duration_in_sec)) {
-    return false;
-  }
-  return true;
+
+  return print_counters();
 }
 
 bool StatCommand::ParseOptions(const std::vector<std::string>& args,
@@ -430,6 +457,17 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
       duration_in_sec_ = strtod(args[i].c_str(), &endptr);
       if (duration_in_sec_ <= 0 || *endptr != '\0' || errno == ERANGE) {
         LOG(ERROR) << "Invalid duration: " << args[i].c_str();
+        return false;
+      }
+    } else if (args[i] == "--interval") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      errno = 0;
+      char* endptr;
+      interval_in_ms_ = strtod(args[i].c_str(), &endptr);
+      if (interval_in_ms_ <= 0 || *endptr != '\0' || errno == ERANGE) {
+        LOG(ERROR) << "Invalid interval: " << args[i].c_str();
         return false;
       }
     } else if (args[i] == "-e") {
@@ -524,17 +562,7 @@ void StatCommand::SetEventSelectionFlags() {
 }
 
 bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters,
-                               double duration_in_sec) {
-  std::unique_ptr<FILE, decltype(&fclose)> fp_holder(nullptr, fclose);
-  FILE* fp = stdout;
-  if (!output_filename_.empty()) {
-    fp_holder.reset(fopen(output_filename_.c_str(), "w"));
-    if (fp_holder == nullptr) {
-      PLOG(ERROR) << "failed to open " << output_filename_;
-      return false;
-    }
-    fp = fp_holder.get();
-  }
+                               double duration_in_sec, FILE* fp) {
   if (csv_) {
     fprintf(fp, "Performance counter statistics,\n");
   } else {
