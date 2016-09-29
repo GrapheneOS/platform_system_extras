@@ -35,6 +35,7 @@
 
 #include <fstream>
 
+#include <android-base/stringprintf.h>
 #include <gtest/gtest.h>
 #include <utils/Log.h>
 
@@ -136,12 +137,9 @@ int SockInfo::setup(uint64_t tag) {
  * Returns: true if tag found.
  */
 bool SockInfo::checkTag(uint64_t acct_tag, uid_t uid) {
-    char * buff;
     int res;
-    char *match_template;
     uint64_t k_tag;
     uint32_t k_uid;
-    uint64_t full_tag;
     long dummy_count;
     pid_t dummy_pid;
 
@@ -150,19 +148,13 @@ bool SockInfo::checkTag(uint64_t acct_tag, uid_t uid) {
         testPrintI("qtaguid ctrl open failed!");
     }
 
+    uint64_t full_tag = acct_tag | uid;
+    std::string buff = android::base::StringPrintf(" tag=0x%" PRIx64 " (uid=%u)", full_tag, uid);
     if (addr) {
-        assert(sizeof(void*) == sizeof(long int));  // Why does %p use 0x? grrr. %lx.
-        asprintf(&match_template, "sock=%" PRIxPTR " %s", (uintptr_t)addr, "tag=0x%" PRIx64" (uid=%u)");
-    }
-    else {
-        /* Allocate for symmetry */
-        asprintf(&match_template, "%s", " tag=0x%" PRIx64 " (uid=%u)");
+          buff = android::base::StringPrintf("sock=%" PRIxPTR, (uintptr_t)addr) + buff;
     }
 
-    full_tag = acct_tag | uid;
-
-    asprintf(&buff, match_template, full_tag | uid, uid);
-    testPrintI("looking for '%s'", buff);
+    testPrintI("looking for '%s'", buff.c_str());
     std::string ctrl_data;
     std::size_t pos = std::string::npos;
     while(std::getline(fctrl, ctrl_data)) {
@@ -171,7 +163,7 @@ bool SockInfo::checkTag(uint64_t acct_tag, uid_t uid) {
         if (pos != std::string::npos) {
             if(!addr) {
                 testPrintI("matched data : %s", ctrl_data.c_str());
-                assert(sizeof(void*) == sizeof(long int));  // Why does %p use 0x? grrr. %lx.
+                assert(sizeof(void*) == sizeof(long int));
                 res = sscanf(ctrl_data.c_str(),
                             "sock=%" SCNxPTR " tag=0x%" SCNx64 " (uid=%" SCNu32 ") pid=%u f_count=%lu",
                             (uintptr_t *)&addr, &k_tag, &k_uid, &dummy_pid, &dummy_count );
@@ -185,8 +177,6 @@ bool SockInfo::checkTag(uint64_t acct_tag, uid_t uid) {
             break;
         }
     }
-    free(buff);
-    free(match_template);
     return pos != std::string::npos;
 }
 
