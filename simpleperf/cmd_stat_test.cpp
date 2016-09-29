@@ -85,7 +85,7 @@ TEST(stat_cmd, no_monitored_threads) { ASSERT_FALSE(StatCmd()->Run({""})); }
 
 TEST(stat_cmd, group_option) {
   ASSERT_TRUE(
-      StatCmd()->Run({"--group", "cpu-cycles,cpu-clock", "sleep", "1"}));
+      StatCmd()->Run({"--group", "cpu-clock,page-faults", "sleep", "1"}));
   ASSERT_TRUE(StatCmd()->Run({"--group", "cpu-cycles,instructions", "--group",
                               "cpu-cycles:u,instructions:u", "--group",
                               "cpu-cycles:k,instructions:k", "sleep", "1"}));
@@ -110,6 +110,23 @@ TEST(stat_cmd, duration_option) {
   ASSERT_TRUE(
       StatCmd()->Run({"--duration", "1.2", "-p", std::to_string(getpid())}));
   ASSERT_TRUE(StatCmd()->Run({"--duration", "1", "sleep", "2"}));
+}
+
+TEST(stat_cmd, interval_option) {
+  TemporaryFile tmp_file;
+  ASSERT_TRUE(
+    StatCmd()->Run({"--interval", "500.0", "--duration", "1.2", "-o",
+          tmp_file.path, "sleep", "2"}));
+  std::string s;
+  ASSERT_TRUE(android::base::ReadFileToString(tmp_file.path, &s));
+  size_t count = 0;
+  size_t pos = 0;
+  std::string subs = "statistics:";
+  while((pos = s.find(subs, pos)) != s.npos) {
+    pos += subs.size();
+    ++count ;
+  }
+  ASSERT_EQ(count, 3UL);
 }
 
 TEST(stat_cmd, no_modifier_for_clock_events) {
