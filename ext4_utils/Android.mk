@@ -23,7 +23,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(libext4_utils_src_files)
 LOCAL_MODULE := libext4_utils_host
 # Various instances of dereferencing a type-punned pointer in extent.c
-LOCAL_CFLAGS += -fno-strict-aliasing
+LOCAL_CFLAGS += -fno-strict-aliasing -Werror
 LOCAL_STATIC_LIBRARIES := \
     libsparse_host \
     libz
@@ -44,7 +44,7 @@ LOCAL_STATIC_LIBRARIES += \
 LOCAL_LDLIBS_windows += -lws2_32
 LOCAL_SHARED_LIBRARIES_darwin += libselinux
 LOCAL_SHARED_LIBRARIES_linux += libselinux
-LOCAL_CFLAGS_darwin := -DHOST
+LOCAL_CFLAGS_darwin := -DHOST -Werror
 LOCAL_CFLAGS_linux := -DHOST
 include $(BUILD_HOST_EXECUTABLE)
 
@@ -52,6 +52,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := blk_alloc_to_base_fs.c
 LOCAL_MODULE := blk_alloc_to_base_fs
 LOCAL_SHARED_LIBRARIES += libcutils
+LOCAL_CFLAGS := -Werror
 LOCAL_CFLAGS_darwin := -DHOST
 LOCAL_CFLAGS_linux := -DHOST
 include $(BUILD_HOST_EXECUTABLE)
@@ -71,7 +72,7 @@ LOCAL_SRC_FILES := $(libext4_utils_src_files)
 LOCAL_MODULE := libext4_utils
 LOCAL_C_INCLUDES += system/core/logwrapper/include
 # Various instances of dereferencing a type-punned pointer in extent.c
-LOCAL_CFLAGS += -fno-strict-aliasing
+LOCAL_CFLAGS += -fno-strict-aliasing -Werror
 LOCAL_SHARED_LIBRARIES := \
     libbase \
     libcutils \
@@ -88,7 +89,7 @@ LOCAL_SRC_FILES := $(libext4_utils_src_files) \
     ext4_crypt_init_extensions.cpp
 LOCAL_MODULE := libext4_utils_static
 # Various instances of dereferencing a type-punned pointer in extent.c
-LOCAL_CFLAGS += -fno-strict-aliasing
+LOCAL_CFLAGS += -fno-strict-aliasing -Werror
 LOCAL_STATIC_LIBRARIES := \
     libbase \
     liblogwrap \
@@ -107,7 +108,7 @@ LOCAL_SHARED_LIBRARIES := \
     libext4_utils \
     libselinux \
     libz
-LOCAL_CFLAGS := -DREAL_UUID
+LOCAL_CFLAGS := -DREAL_UUID -Werror
 include $(BUILD_EXECUTABLE)
 
 
@@ -119,6 +120,7 @@ LOCAL_SHARED_LIBRARIES += \
     libselinux \
     libsparse \
     libz
+LOCAL_CFLAGS := -Werror
 include $(BUILD_EXECUTABLE)
 
 
@@ -131,6 +133,7 @@ LOCAL_STATIC_LIBRARIES += \
     libext4_utils_host \
     libsparse_host \
     libz
+LOCAL_CFLAGS := -Werror
 include $(BUILD_HOST_EXECUTABLE)
 
 
@@ -138,6 +141,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := setup_fs.c
 LOCAL_MODULE := setup_fs
 LOCAL_SHARED_LIBRARIES += libcutils
+LOCAL_CFLAGS := -Werror
 include $(BUILD_EXECUTABLE)
 
 
@@ -148,6 +152,7 @@ LOCAL_SHARED_LIBRARIES += \
     libext4_utils \
     libsparse \
     libz
+LOCAL_CFLAGS := -Werror
 include $(BUILD_EXECUTABLE)
 
 
@@ -158,6 +163,7 @@ LOCAL_STATIC_LIBRARIES += \
     libext4_utils_host \
     libsparse_host \
     libz
+LOCAL_CFLAGS := -Werror
 include $(BUILD_HOST_EXECUTABLE)
 
 
