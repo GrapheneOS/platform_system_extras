@@ -79,9 +79,7 @@
 
 #endif
 
-#ifndef MAX_PATH
 #define MAX_PATH 4096
-#endif
 #define MAX_BLK_MAPPING_STR 1000
 
 const int blk_file_major_ver = 1;
@@ -535,7 +533,7 @@ static int compare_chunks(const void* chunk1, const void* chunk2) {
 }
 
 static int get_block_group(u32 block) {
-	unsigned i, group = 0;
+	int i, group = 0;
 	for(i = 0; i < aux_info.groups; i++) {
 		if (block >= aux_info.bgs[i].first_block)
 			group = i;
@@ -556,8 +554,7 @@ static void extract_base_fs_allocations(const char *directory, const char *mount
 	char stored_file_name[MAX_PATH], real_file_name[MAX_PATH], file_map[MAX_BLK_MAPPING_STR];
 	struct block_allocation *fs_alloc;
 	struct block_group_info *bgs = aux_info.bgs;
-	unsigned i;
-	int major_version = 0, minor_version = 0;
+	int i, major_version = 0, minor_version = 0;
 	char *base_file_line = NULL;
 	size_t base_file_line_len = 0;
 
@@ -628,8 +625,8 @@ static void extract_base_fs_allocations(const char *directory, const char *mount
 				}
 				block_range = strtok_r(NULL, ",", &end_string);
 				int bg_first_block = bgs[block_group].first_block;
-				unsigned min_bg_bound = bgs[block_group].chunks[0].block + bgs[block_group].chunks[0].len;
-				unsigned max_bg_bound = bgs[block_group].chunks[bgs[block_group].chunk_count - 1].block;
+				int min_bg_bound = bgs[block_group].chunks[0].block + bgs[block_group].chunks[0].len;
+				int max_bg_bound = bgs[block_group].chunks[bgs[block_group].chunk_count - 1].block;
 
 				if (min_bg_bound >= start_block - bg_first_block ||
 					max_bg_bound <= end_block - bg_first_block) {
