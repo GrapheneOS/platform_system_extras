@@ -28,8 +28,6 @@ test_src_files := \
     aslr_rec_test.cpp \
     mmc_max_speed_test.cpp \
 
-cts_executable := CtsKernelConfigTestCases
-
 include $(CLEAR_VARS)
 LOCAL_MODULE := kernel-config-unit-tests
 LOCAL_MODULE_TAGS := tests
@@ -38,24 +36,8 @@ LOCAL_CFLAGS := -DHAS_KCMP
 LOCAL_SRC_FILES := $(test_src_files)
 include $(BUILD_NATIVE_TEST)
 
-ifeq ($(HOST_OS)-$(HOST_ARCH),$(filter $(HOST_OS)-$(HOST_ARCH),linux-x86 linux-x86_64))
-
 include $(CLEAR_VARS)
-LOCAL_MODULE := $(cts_executable)_list
-LOCAL_MODULE_TAGS := optional
-LOCAL_CFLAGS := $(test_c_flags)
-LOCAL_SRC_FILES := $(cts_src_files)
-LOCAL_MULTILIB := both
-LOCAL_MODULE_STEM_32 := $(LOCAL_MODULE)
-LOCAL_MODULE_STEM_64 := $(LOCAL_MODULE)64
-LOCAL_CXX_STL := libc++
-LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
-include $(BUILD_HOST_NATIVE_TEST)
-
-endif  # ifeq ($(HOST_OS)-$(HOST_ARCH),$(filter $(HOST_OS)-$(HOST_ARCH),linux-x86 linux-x86_64))
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := $(cts_executable)
+LOCAL_MODULE := CtsKernelConfigTestCases
 LOCAL_MODULE_TAGS := optional
 LOCAL_CFLAGS := $(test_c_flags)
 LOCAL_CFLAGS := -DHAS_KCMP
@@ -68,7 +50,6 @@ LOCAL_STATIC_LIBRARIES := libgtest libgtest_main
 
 LOCAL_COMPATIBILITY_SUITE := cts_v2
 LOCAL_CTS_TEST_PACKAGE := android.kernel.config
-LOCAL_CTS_GTEST_LIST_EXECUTABLE := $(ALL_MODULES.$(cts_executable)_list$(HOST_2ND_ARCH_MODULE_SUFFIX).INSTALLED)
 include $(BUILD_CTS_EXECUTABLE)
 
 include $(CLEAR_VARS)
