@@ -571,21 +571,21 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters,
 
   if (verbose_mode_) {
     for (auto& counters_info : counters) {
-      const EventTypeAndModifier& event_type =
-          counters_info.selection->event_type_modifier;
       for (auto& counter_info : counters_info.counters) {
         if (csv_) {
           fprintf(fp, "%s,tid,%d,cpu,%d,count,%" PRIu64 ",time_enabled,%" PRIu64
                       ",time running,%" PRIu64 ",id,%" PRIu64 ",\n",
-                  event_type.name.c_str(), counter_info.tid, counter_info.cpu,
-                  counter_info.counter.value, counter_info.counter.time_enabled,
+                  counters_info.event_name.c_str(), counter_info.tid,
+                  counter_info.cpu, counter_info.counter.value,
+                  counter_info.counter.time_enabled,
                   counter_info.counter.time_running, counter_info.counter.id);
         } else {
           fprintf(fp,
                   "%s(tid %d, cpu %d): count %" PRIu64 ", time_enabled %" PRIu64
                   ", time running %" PRIu64 ", id %" PRIu64 "\n",
-                  event_type.name.c_str(), counter_info.tid, counter_info.cpu,
-                  counter_info.counter.value, counter_info.counter.time_enabled,
+                  counters_info.event_name.c_str(), counter_info.tid,
+                  counter_info.cpu, counter_info.counter.value,
+                  counter_info.counter.time_enabled,
                   counter_info.counter.time_running, counter_info.counter.id);
         }
       }
@@ -606,10 +606,9 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters,
     if (time_running_sum < time_enabled_sum && time_running_sum != 0) {
       scale = static_cast<double>(time_enabled_sum) / time_running_sum;
     }
-    summaries.AddSummary(CounterSummary(
-        counters_info.selection->event_type_modifier.event_type.name,
-        counters_info.selection->event_type_modifier.modifier,
-        counters_info.selection->group_id, value_sum, scale, false, csv_));
+    summaries.AddSummary(
+        CounterSummary(counters_info.event_name, counters_info.event_modifier,
+                       counters_info.group_id, value_sum, scale, false, csv_));
   }
   summaries.AutoGenerateSummaries();
   summaries.GenerateComments(duration_in_sec);

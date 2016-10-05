@@ -157,7 +157,7 @@ static const std::string GetFeatureName(int feature) {
 }
 
 void DumpRecordCommand::DumpAttrSection() {
-  std::vector<AttrWithId> attrs = record_file_reader_->AttrSection();
+  std::vector<EventAttrWithId> attrs = record_file_reader_->AttrSection();
   for (size_t i = 0; i < attrs.size(); ++i) {
     const auto& attr = attrs[i];
     printf("attr %zu:\n", i + 1);
