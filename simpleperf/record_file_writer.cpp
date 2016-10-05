@@ -68,7 +68,7 @@ RecordFileWriter::~RecordFileWriter() {
   }
 }
 
-bool RecordFileWriter::WriteAttrSection(const std::vector<AttrWithId>& attr_ids) {
+bool RecordFileWriter::WriteAttrSection(const std::vector<EventAttrWithId>& attr_ids) {
   if (attr_ids.empty()) {
     return false;
   }

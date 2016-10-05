@@ -36,6 +36,7 @@
 #endif
 
 #include "read_elf.h"
+#include "thread_tree.h"
 #include "utils.h"
 
 class LineReader {

@@ -23,7 +23,6 @@
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 
-#include "environment.h"
 #include "perf_event.h"
 #include "record.h"
 
@@ -59,9 +58,11 @@ void ThreadTree::AddThread(int pid, int tid, const std::string& comm) {
     CHECK(pair.second);
     it = pair.first;
   }
-  thread_comm_storage_.push_back(
-      std::unique_ptr<std::string>(new std::string(comm)));
-  it->second->comm = thread_comm_storage_.back()->c_str();
+  if (comm != it->second->comm) {
+    thread_comm_storage_.push_back(
+        std::unique_ptr<std::string>(new std::string(comm)));
+    it->second->comm = thread_comm_storage_.back()->c_str();
+  }
 }
 
 void ThreadTree::ForkThread(int pid, int tid, int ppid, int ptid) {

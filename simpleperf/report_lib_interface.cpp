@@ -188,7 +188,7 @@ Sample* ReportLib::GetCurrentSample() {
 Event* ReportLib::GetEventOfCurrentSample() {
   if (!(update_flag_ & UPDATE_FLAG_OF_EVENT)) {
     if (event_attrs_.empty()) {
-      std::vector<AttrWithId> attrs = record_file_reader_->AttrSection();
+      std::vector<EventAttrWithId> attrs = record_file_reader_->AttrSection();
       for (const auto& attr_with_id : attrs) {
         EventAttrWithName attr;
         attr.attr = *attr_with_id.attr;
