@@ -34,7 +34,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#ifdef USE_MINGW
+#ifdef _WIN32
 
 #include <winsock2.h>
 
@@ -116,7 +116,7 @@ static u32 build_default_directory_structure(const char *dir_path,
 	inode_set_permissions(inode, dentries.mode,
 		dentries.uid, dentries.gid, dentries.mtime);
 
-#ifndef USE_MINGW
+#ifndef _WIN32
 	if (sehnd) {
 		char *path = NULL;
 		char *secontext = NULL;
@@ -135,7 +135,7 @@ static u32 build_default_directory_structure(const char *dir_path,
 	return root_inode;
 }
 
-#ifndef USE_MINGW
+#ifndef _WIN32
 /* Read a local directory and create the same tree in the generated filesystem.
    Calls itself recursively with each directory in the given directory.
    full_path is an absolute or relative path, with a trailing slash, to the
@@ -230,7 +230,7 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 			error("can't set android permissions - built without android support");
 #endif
 		}
-#ifndef USE_MINGW
+#ifndef _WIN32
 		if (sehnd) {
 			if (selabel_lookup(sehnd, &dentries[i].secon, dentries[i].path, stat.st_mode) < 0) {
 				error("cannot lookup security context for %s", dentries[i].path);
@@ -546,7 +546,7 @@ static int get_block_group(u32 block) {
 static void extract_base_fs_allocations(const char *directory, const char *mountpoint,
 										FILE* base_alloc_file_in) {
 #define err_msg "base file badly formatted"
-#ifndef USE_MINGW
+#ifndef _WIN32
 	// FORMAT Version 1.0: filename blk_mapping
 	const char *base_alloc_file_in_format = "%s %s";
 	const int base_file_format_param_count = 2;
@@ -800,7 +800,7 @@ int make_ext4fs_internal(int fd, const char *_directory, const char *_target_out
 	if (info.feat_compat & EXT4_FEATURE_COMPAT_RESIZE_INODE)
 		ext4_create_resize_inode();
 
-#ifdef USE_MINGW
+#ifdef _WIN32
 	// Windows needs only 'create an empty fs image' functionality
 	assert(!directory);
 	root_inode_num = build_default_directory_structure(mountpoint, sehnd);
@@ -815,7 +815,7 @@ int make_ext4fs_internal(int fd, const char *_directory, const char *_target_out
 	root_mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
 	inode_set_permissions(root_inode_num, root_mode, 0, 0, 0);
 
-#ifndef USE_MINGW
+#ifndef _WIN32
 	if (sehnd) {
 		char *secontext = NULL;
 

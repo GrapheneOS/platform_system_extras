@@ -27,7 +27,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#ifndef USE_MINGW
+#ifndef _WIN32
 #include <sys/mman.h>
 #endif
 
