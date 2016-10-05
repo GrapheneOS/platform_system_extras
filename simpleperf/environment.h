@@ -18,6 +18,7 @@
 #define SIMPLE_PERF_ENVIRONMENT_H_
 
 #include <sys/types.h>
+#include <time.h>
 
 #include <functional>
 #include <set>
@@ -28,8 +29,6 @@
 
 std::vector<int> GetOnlineCpus();
 std::vector<int> GetCpusFromString(const std::string& s);
-
-constexpr char DEFAULT_KERNEL_MMAP_NAME[] = "[kernel.kallsyms]";
 
 struct KernelMmap {
   std::string name;
@@ -46,8 +45,7 @@ struct ThreadComm {
 };
 
 bool GetThreadComms(std::vector<ThreadComm>* thread_comms);
-
-constexpr char DEFAULT_EXECNAME_FOR_THREAD_MMAP[] = "//anon";
+bool GetProcessIdForThread(pid_t tid, pid_t* pid);
 
 struct ThreadMmap {
   uint64_t start_addr;
@@ -70,5 +68,14 @@ bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>
 bool CheckPerfEventLimit();
 bool CheckSampleFrequency(uint64_t sample_freq);
 bool CheckKernelSymbolAddresses();
+
+#if defined(__linux__)
+static inline uint64_t GetSystemClock() {
+  timespec ts;
+  // Assume clock_gettime() doesn't fail.
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+}
+#endif
 
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_

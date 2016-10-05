@@ -26,6 +26,11 @@
 
 struct EventType;
 
+struct EventAttrWithId {
+  const perf_event_attr* attr;
+  std::vector<uint64_t> ids;
+};
+
 perf_event_attr CreateDefaultPerfEventAttr(const EventType& event_type);
 void DumpPerfEventAttr(const perf_event_attr& attr, size_t indent = 0);
 bool GetCommonEventIdPositionsForAttrs(std::vector<perf_event_attr>& attrs,

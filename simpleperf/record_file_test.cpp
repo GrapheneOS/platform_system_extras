@@ -40,7 +40,7 @@ class RecordFileTest : public ::testing::Test {
     perf_event_attr attr = CreateDefaultPerfEventAttr(event_type_modifier->event_type);
     attr.sample_id_all = 1;
     attrs_.push_back(std::unique_ptr<perf_event_attr>(new perf_event_attr(attr)));
-    AttrWithId attr_id;
+    EventAttrWithId attr_id;
     attr_id.attr = attrs_.back().get();
     attr_id.ids.push_back(attrs_.size());  // Fake id.
     attr_ids_.push_back(attr_id);
@@ -48,7 +48,7 @@ class RecordFileTest : public ::testing::Test {
 
   TemporaryFile tmpfile_;
   std::vector<std::unique_ptr<perf_event_attr>> attrs_;
-  std::vector<AttrWithId> attr_ids_;
+  std::vector<EventAttrWithId> attr_ids_;
 };
 
 TEST_F(RecordFileTest, smoke) {
@@ -80,7 +80,7 @@ TEST_F(RecordFileTest, smoke) {
   // Read from a record file.
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile_.path);
   ASSERT_TRUE(reader != nullptr);
-  std::vector<AttrWithId> attrs = reader->AttrSection();
+  std::vector<EventAttrWithId> attrs = reader->AttrSection();
   ASSERT_EQ(1u, attrs.size());
   ASSERT_EQ(0, memcmp(attrs[0].attr, attr_ids_[0].attr, sizeof(perf_event_attr)));
   ASSERT_EQ(attrs[0].ids, attr_ids_[0].ids);
@@ -149,7 +149,7 @@ TEST_F(RecordFileTest, record_more_than_one_attr) {
   // Read from a record file.
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile_.path);
   ASSERT_TRUE(reader != nullptr);
-  std::vector<AttrWithId> attrs = reader->AttrSection();
+  std::vector<EventAttrWithId> attrs = reader->AttrSection();
   ASSERT_EQ(3u, attrs.size());
   for (size_t i = 0; i < attrs.size(); ++i) {
     ASSERT_EQ(0, memcmp(attrs[i].attr, attr_ids_[i].attr, sizeof(perf_event_attr)));

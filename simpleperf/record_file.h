@@ -28,14 +28,10 @@
 
 #include <android-base/macros.h>
 
+#include "event_attr.h"
 #include "perf_event.h"
 #include "record.h"
 #include "record_file_format.h"
-
-struct AttrWithId {
-  const perf_event_attr* attr;
-  std::vector<uint64_t> ids;
-};
 
 // RecordFileWriter writes to a perf record file, like perf.data.
 class RecordFileWriter {
@@ -44,7 +40,7 @@ class RecordFileWriter {
 
   ~RecordFileWriter();
 
-  bool WriteAttrSection(const std::vector<AttrWithId>& attr_ids);
+  bool WriteAttrSection(const std::vector<EventAttrWithId>& attr_ids);
   bool WriteRecord(const Record& record);
   bool SortDataSection();
 
@@ -100,8 +96,8 @@ class RecordFileReader {
     return header_;
   }
 
-  std::vector<AttrWithId> AttrSection() const {
-    std::vector<AttrWithId> result(file_attrs_.size());
+  std::vector<EventAttrWithId> AttrSection() const {
+    std::vector<EventAttrWithId> result(file_attrs_.size());
     for (size_t i = 0; i < file_attrs_.size(); ++i) {
       result[i].attr = &file_attrs_[i].attr;
       result[i].ids = event_ids_for_file_attrs_[i];

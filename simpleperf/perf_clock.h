@@ -26,6 +26,6 @@
 // InitPerfClock() must be called before GetPerfClock().
 bool InitPerfClock();
 
-bool GetPerfClock(uint64_t* time_in_ns);
+uint64_t GetPerfClock();
 
 #endif  // SIMPLE_PERF_PERF_CLOCK_H_
