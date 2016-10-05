@@ -25,6 +25,7 @@
 
 #include <android-base/logging.h>
 
+#include "environment.h"
 #include "event_attr.h"
 #include "event_fd.h"
 #include "event_type.h"
@@ -40,16 +41,6 @@ struct ThreadArg {
   uint64_t system_time_in_ns;
   std::atomic<bool> has_error;
 };
-
-static bool GetSystemClock(uint64_t* time_in_ns) {
-  timespec ts;
-  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
-    PLOG(ERROR) << "clock_gettime() failed";
-    return false;
-  }
-  *time_in_ns = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
-  return true;
-}
 
 static void ThreadA(ThreadArg* thread_arg) {
   thread_arg->thread_a_tid = syscall(SYS_gettid);
@@ -69,10 +60,7 @@ static void ThreadA(ThreadArg* thread_arg) {
   // In case current thread is preempted by other threads, we run mmap()
   // multiple times and use the one with the smallest time interval.
   for (size_t i = 0; i < TRY_MMAP_COUNT; ++i) {
-    if (!GetSystemClock(&array[i].start_system_time_in_ns)) {
-      thread_arg->has_error = true;
-      return;
-    }
+    array[i].start_system_time_in_ns = GetSystemClock();
     array[i].mmap_start_addr =
         mmap(NULL, 4096, PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (array[i].mmap_start_addr == MAP_FAILED) {
@@ -81,10 +69,7 @@ static void ThreadA(ThreadArg* thread_arg) {
       return;
     }
 
-    if (!GetSystemClock(&array[i].end_system_time_in_ns)) {
-      thread_arg->has_error = true;
-      return;
-    }
+    array[i].end_system_time_in_ns = GetSystemClock();
   }
   size_t best_index = 0;
   uint64_t min_duration_in_ns = UINT64_MAX;
@@ -177,12 +162,7 @@ bool InitPerfClock() {
   return true;
 }
 
-bool GetPerfClock(uint64_t* time_in_ns) {
+uint64_t GetPerfClock() {
   CHECK(perf_clock_initialized);
-  uint64_t system_time_in_ns;
-  if (!GetSystemClock(&system_time_in_ns)) {
-    return false;
-  }
-  *time_in_ns = system_time_in_ns + perf_clock_and_system_clock_diff_in_ns;
-  return true;
+  return GetSystemClock() + perf_clock_and_system_clock_diff_in_ns;
 }

@@ -29,6 +29,7 @@
 #include "record.h"
 #include "record_file.h"
 #include "test_util.h"
+#include "thread_tree.h"
 
 using namespace PerfFileFormat;
 
@@ -223,7 +224,8 @@ static void CheckKernelSymbol(const std::string& path, bool need_kallsyms,
       has_kernel_symbol_records = true;
     }
   }
-  ASSERT_EQ(need_kallsyms, has_kernel_symbol_records);
+  bool require_kallsyms = need_kallsyms && CheckKernelSymbolAddresses();
+  ASSERT_EQ(require_kallsyms, has_kernel_symbol_records);
   *success = true;
 }
 

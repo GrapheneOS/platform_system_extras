@@ -24,7 +24,6 @@
 #include <android-base/test_utils.h>
 
 #include "command.h"
-#include "event_selection_set.h"
 #include "get_test_data.h"
 #include "perf_regs.h"
 #include "read_apk.h"
@@ -417,6 +416,7 @@ TEST_F(ReportCommandTest, report_data_generated_by_linux_perf) {
 }
 
 #if defined(__linux__)
+#include "event_selection_set.h"
 
 static std::unique_ptr<Command> RecordCmd() {
   return CreateCommandInstance("record");
