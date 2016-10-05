@@ -24,9 +24,13 @@
 #include <set>
 
 #include "dso.h"
-#include "environment.h"
+//#include "environment.h"
 
 struct Record;
+
+constexpr char DEFAULT_KERNEL_MMAP_NAME[] = "[kernel.kallsyms]";
+
+constexpr char DEFAULT_EXECNAME_FOR_THREAD_MMAP[] = "//anon";
 
 namespace simpleperf {
 
