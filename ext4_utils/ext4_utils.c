@@ -32,7 +32,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#ifdef USE_MINGW
+#ifdef _WIN32
 #include <winsock2.h>
 #else
 #include <arpa/inet.h>
@@ -537,7 +537,7 @@ u64 get_block_device_size(int fd)
 
 int is_block_device_fd(int fd)
 {
-#ifdef USE_MINGW
+#ifdef _WIN32
 	return 0;
 #else
 	struct stat st;
