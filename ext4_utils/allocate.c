@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-#include "ext4_utils.h"
 #include "allocate.h"
-
-#include <sparse/sparse.h>
 
 #include <stdio.h>
 #include <stdlib.h>
+
+#include <sparse/sparse.h>
+
+#include "ext4_utils/ext4_utils.h"
 
 struct xattr_list_element {
 	struct ext4_inode *inode;

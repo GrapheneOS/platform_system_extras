@@ -14,15 +14,7 @@
  * limitations under the License.
  */
 
-#define TAG "ext4_utils"
-
-#include "ext4_crypt_init_extensions.h"
-#include "ext4_crypt.h"
-
-#include <android-base/logging.h>
-
-#include <string>
-#include <vector>
+#include "ext4_utils/ext4_crypt_init_extensions.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -30,15 +22,21 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <android-base/file.h>
-#include <android-base/stringprintf.h>
+#include <string>
+#include <vector>
 
+#include <android-base/file.h>
+#include <android-base/logging.h>
+#include <android-base/stringprintf.h>
 #include <cutils/klog.h>
 #include <cutils/properties.h>
 #include <cutils/sockets.h>
 #include <logwrap/logwrap.h>
 
-#include "key_control.h"
+#include "ext4_utils/ext4_crypt.h"
+#include "ext4_utils/key_control.h"
+
+#define TAG "ext4_utils"
 
 static const std::string arbitrary_sequence_number = "42";
 static const int vold_command_timeout_ms = 60 * 1000;

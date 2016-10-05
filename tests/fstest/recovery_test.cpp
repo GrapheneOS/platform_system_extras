@@ -29,8 +29,8 @@
 #include <unistd.h>
 
 #include "cutils/properties.h"
-#include "ext4.h"
-#include "ext4_utils.h"
+#include <ext4_utils/ext4.h>
+#include <ext4_utils/ext4_utils.h>
 
 #define LOG_TAG "fsRecoveryTest"
 #include <utils/Log.h>
