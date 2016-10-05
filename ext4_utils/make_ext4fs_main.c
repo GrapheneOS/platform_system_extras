@@ -30,7 +30,7 @@
 #include <private/canned_fs_config.h>
 #endif
 
-#ifndef USE_MINGW
+#ifndef _WIN32
 #include <selinux/selinux.h>
 #include <selinux/label.h>
 #if !defined(HOST)
@@ -43,7 +43,7 @@ struct selabel_handle;
 #include "make_ext4fs.h"
 #include "ext4_utils.h"
 
-#ifndef USE_MINGW /* O_BINARY is windows-specific flag */
+#ifndef _WIN32 /* O_BINARY is windows-specific flag */
 #define O_BINARY 0
 #endif
 
@@ -83,7 +83,7 @@ int main(int argc, char **argv)
 	FILE* block_list_file = NULL;
 	FILE* base_alloc_file_in = NULL;
 	FILE* base_alloc_file_out = NULL;
-#ifndef USE_MINGW
+#ifndef _WIN32
 	struct selinux_opt seopts[] = { { SELABEL_OPT_PATH, "" } };
 #endif
 
@@ -144,7 +144,7 @@ int main(int argc, char **argv)
 			fprintf(stderr, "Warning: -t (initialize inode tables) is deprecated\n");
 			break;
 		case 'S':
-#ifndef USE_MINGW
+#ifndef _WIN32
 			seopts[0].value = optarg;
 			sehnd = selabel_open(SELABEL_CTX_FILE, seopts, 1);
 			if (!sehnd) {

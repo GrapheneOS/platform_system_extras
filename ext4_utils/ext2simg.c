@@ -35,7 +35,7 @@
 #define off64_t off_t
 #endif
 
-#ifndef USE_MINGW /* O_BINARY is windows-specific flag */
+#ifndef _WIN32 /* O_BINARY is windows-specific flag */
 #define O_BINARY 0
 #endif
 
