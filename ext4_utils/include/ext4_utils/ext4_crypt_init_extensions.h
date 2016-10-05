@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+#ifndef _EXT4_CRYPT_INIT_EXTENSIONS_H_
+#define _EXT4_CRYPT_INIT_EXTENSIONS_H_
+
 #include <sys/cdefs.h>
 #include <stdbool.h>
 #include <cutils/multiuser.h>
@@ -29,3 +32,5 @@ int e4crypt_set_directory_policy(const char* path);
 int e4crypt_do_init_user0();
 
 __END_DECLS
+
+#endif // _EXT4_CRYPT_INIT_EXTENSIONS_H_

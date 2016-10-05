@@ -36,10 +36,10 @@
 #define __u8 uint8_t
 #endif
 
-#include "ext4.h"
-#include "xattr.h"
-#include "ext4_extents.h"
-#include "jbd2.h"
+#include "ext4_utils/ext4.h"
+#include "ext4_utils/ext4_extents.h"
+#include "ext4_utils/jbd2.h"
+#include "ext4_utils/xattr.h"
 
 #ifndef __BIONIC__
 #undef __le64
