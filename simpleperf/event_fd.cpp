@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#define ATRACE_TAG ATRACE_TAG_ALWAYS
 #include "event_fd.h"
 
 #include <fcntl.h>
@@ -25,6 +25,8 @@
 #include <sys/types.h>
 #include <atomic>
 #include <memory>
+#include <cutils/trace.h>
+#include <utils/Trace.h>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
@@ -112,9 +114,20 @@ bool EventFd::EnableEvent() {
 
 bool EventFd::ReadCounter(PerfCounter* counter) const {
   CHECK(counter != nullptr);
+  uint64_t pre_counter = counter->value;
   if (!android::base::ReadFully(perf_event_fd_, counter, sizeof(*counter))) {
     PLOG(ERROR) << "ReadCounter from " << Name() << " failed";
     return false;
+  }
+  // Trace is always available to systrace if enabled
+  if (tid_ > 0) {
+    ATRACE_INT64(android::base::StringPrintf(
+                   "%s_tid%d_cpu%d", event_name_.c_str(), tid_,
+                   cpu_).c_str(), counter->value - pre_counter);
+  } else {
+    ATRACE_INT64(android::base::StringPrintf(
+                   "%s_cpu%d", event_name_.c_str(),
+                   cpu_).c_str(), counter->value - pre_counter);
   }
   return true;
 }
