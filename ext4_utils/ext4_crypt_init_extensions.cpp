@@ -31,6 +31,7 @@
 #include <unistd.h>
 
 #include <android-base/file.h>
+#include <android-base/stringprintf.h>
 
 #include <cutils/klog.h>
 #include <cutils/properties.h>
@@ -42,32 +43,13 @@
 static const std::string arbitrary_sequence_number = "42";
 static const int vold_command_timeout_ms = 60 * 1000;
 
-static void kernel_logger(android::base::LogId, android::base::LogSeverity severity, const char*,
-        const char*, unsigned int, const char* message) {
-    if (severity == android::base::ERROR || severity == android::base::FATAL) {
-        KLOG_ERROR(TAG, "%s\n", message);
-    } else if (severity == android::base::WARNING) {
-        KLOG_WARNING(TAG, "%s\n", message);
-    } else {
-        KLOG_INFO(TAG, "%s\n", message);
-    }
-}
-
-static void init_logging() {
-    android::base::SetLogger(kernel_logger);
-}
-
 int e4crypt_create_device_key(const char* dir,
                               int ensure_dir_exists(const char*))
 {
-    init_logging();
-
     // Make sure folder exists. Use make_dir to set selinux permissions.
     std::string unencrypted_dir = std::string(dir) + e4crypt_unencrypted_folder;
     if (ensure_dir_exists(unencrypted_dir.c_str())) {
-        KLOG_ERROR(TAG, "Failed to create %s (%s)\n",
-                   unencrypted_dir.c_str(),
-                   strerror(errno));
+        PLOG(ERROR) << "Failed to create " << unencrypted_dir;
         return -1;
     }
 
@@ -79,26 +61,21 @@ int e4crypt_create_device_key(const char* dir,
 
 int e4crypt_install_keyring()
 {
-    init_logging();
-
     key_serial_t device_keyring = add_key("keyring", "e4crypt", 0, 0,
                                           KEY_SPEC_SESSION_KEYRING);
 
     if (device_keyring == -1) {
-        KLOG_ERROR(TAG, "Failed to create keyring (%s)\n", strerror(errno));
+        PLOG(ERROR) << "Failed to create keyring";
         return -1;
     }
 
-    KLOG_INFO(TAG, "Keyring created with id %d in process %d\n",
-              device_keyring, getpid());
+    LOG(INFO) << "Keyring created with id " << device_keyring << " in process " << getpid();
 
     return 0;
 }
 
 int e4crypt_do_init_user0()
 {
-    init_logging();
-
     const char* argv[] = { "/system/bin/vdc", "--wait", "cryptfs", "init_user0" };
     int rc = android_fork_execvp(4, (char**) argv, NULL, false, true);
     LOG(INFO) << "init_user0 result: " << rc;
@@ -107,8 +84,6 @@ int e4crypt_do_init_user0()
 
 int e4crypt_set_directory_policy(const char* dir)
 {
-    init_logging();
-
     // Only set policy on first level /data directories
     // To make this less restrictive, consider using a policy file.
     // However this is overkill for as long as the policy is simply
@@ -130,7 +105,7 @@ int e4crypt_set_directory_policy(const char* dir)
     std::string prefix = "/data/";
     for (auto d: directories_to_exclude) {
         if ((prefix + d) == dir) {
-            KLOG_INFO(TAG, "Not setting policy on %s\n", dir);
+            LOG(INFO) << "Not setting policy on " << dir;
             return 0;
         }
     }
@@ -138,7 +113,7 @@ int e4crypt_set_directory_policy(const char* dir)
     std::string ref_filename = std::string("/data") + e4crypt_key_ref;
     std::string policy;
     if (!android::base::ReadFileToString(ref_filename, &policy)) {
-        KLOG_ERROR(TAG, "Unable to read system policy to set on %s\n", dir);
+        LOG(ERROR) << "Unable to read system policy to set on " << dir;
         return -1;
     }
 
@@ -152,8 +127,9 @@ int e4crypt_set_directory_policy(const char* dir)
     int result = e4crypt_policy_ensure(dir, policy.c_str(), policy.length(),
                                        contents_encryption_mode.c_str());
     if (result) {
-        KLOG_ERROR(TAG, "Setting %02x%02x%02x%02x policy on %s failed!\n",
-                   policy[0], policy[1], policy[2], policy[3], dir);
+        LOG(ERROR) << android::base::StringPrintf(
+            "Setting %02x%02x%02x%02x policy on %s failed!",
+            policy[0], policy[1], policy[2], policy[3], dir);
         return -1;
     }
 
