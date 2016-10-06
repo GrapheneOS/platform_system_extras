@@ -18,9 +18,10 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 
+#include <ext4_utils/ext4_sb.h>
+
 extern "C" {
     #include <squashfs_utils.h>
-    #include <ext4_sb.h>
 }
 
 #if defined(__linux__)

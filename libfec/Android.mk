@@ -7,7 +7,6 @@ common_cflags := -Wall -Werror -O3
 common_c_includes := \
     $(LOCAL_PATH)/include \
     external/fec \
-    system/extras/ext4_utils \
     system/extras/squashfs_utils
 
 common_src_files := \
