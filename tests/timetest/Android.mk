@@ -28,7 +28,6 @@ test_c_flags := \
     -Wall -Wextra \
     -Werror \
     -fno-builtin \
-    -std=gnu++11
 
 test_src_files := \
     rtc_test.cpp
