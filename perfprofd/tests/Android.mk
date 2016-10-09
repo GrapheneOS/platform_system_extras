@@ -1,7 +1,7 @@
 # Build the unit tests.
 LOCAL_PATH := $(call my-dir)
 
-perfprofd_test_cppflags := -Wall -Wno-sign-compare -Wno-unused-parameter -Werror -std=gnu++11
+perfprofd_test_cppflags := -Wall -Wno-sign-compare -Wno-unused-parameter -Werror
 
 #
 # Static library with mockup utilities layer (called by unit test).

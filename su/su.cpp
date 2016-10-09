@@ -137,7 +137,7 @@ int main(int argc, char** argv) {
       exec_args[i] = *argv++;
     }
     // Default to the standard shell.
-    if (i == 0) exec_args[i++] = "/system/bin/sh";
+    if (i == 0) exec_args[i++] = const_cast<char*>("/system/bin/sh");
     exec_args[i] = NULL;
 
     execvp(exec_args[0], exec_args);

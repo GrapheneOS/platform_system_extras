@@ -8,7 +8,6 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := dnschk
 
 LOCAL_C_INCLUDES += frameworks/native/include external/libcxx/include
-LOCAL_CPPFLAGS += -std=c++11
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 ifndef BRILLO
     LOCAL_MODULE_TAGS := debug
@@ -21,7 +20,6 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := httpurl
 
 LOCAL_C_INCLUDES += frameworks/native/include external/libcxx/include
-LOCAL_CPPFLAGS += -std=c++11
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 ifndef BRILLO
     LOCAL_MODULE_TAGS := debug
