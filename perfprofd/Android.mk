@@ -5,7 +5,6 @@ perfprofd_cppflags := \
   -Wno-sign-compare \
   -Wno-unused-parameter \
   -Werror \
-  -std=gnu++11 \
 
 #
 # Static library containing guts of AWP daemon.
@@ -60,7 +59,7 @@ LOCAL_STATIC_LIBRARIES := libperfprofdcore libperfprofdutils
 LOCAL_SHARED_LIBRARIES := liblog libprotobuf-cpp-lite libbase
 LOCAL_SYSTEM_SHARED_LIBRARIES := libc libstdc++
 LOCAL_CPPFLAGS += $(perfprofd_cppflags)
-LOCAL_CFLAGS := -Wall -Werror -std=gnu++11
+LOCAL_CFLAGS := -Wall -Werror
 LOCAL_MODULE := perfprofd
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_MODULE_TAGS := debug
