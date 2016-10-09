@@ -12,7 +12,6 @@ test_c_flags := \
     -Wall -Wextra \
     -Werror \
     -fno-builtin \
-    -std=gnu++11
 
 # Required Tests
 cts_src_files := \
