@@ -1,3 +1,6 @@
+#ifndef _KEY_CONTROL_H_
+#define _KEY_CONTROL_H_
+
 #include <sys/cdefs.h>
 #include <sys/types.h>
 
@@ -29,3 +32,5 @@ long keyctl_search(key_serial_t ringid, const char *type,
                    const char *description, key_serial_t destringid);
 
 __END_DECLS
+
+#endif // _KEY_CONTROL_H_
