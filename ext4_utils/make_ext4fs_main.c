@@ -40,8 +40,8 @@
 struct selabel_handle;
 #endif
 
-#include "make_ext4fs.h"
-#include "ext4_utils.h"
+#include "ext4_utils/ext4_utils.h"
+#include "ext4_utils/make_ext4fs.h"
 
 #ifndef _WIN32 /* O_BINARY is windows-specific flag */
 #define O_BINARY 0

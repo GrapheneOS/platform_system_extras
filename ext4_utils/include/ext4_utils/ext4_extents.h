@@ -12,7 +12,7 @@
 #ifndef _EXT4_EXTENTS
 #define _EXT4_EXTENTS
 
-#include "ext4.h"
+#include "ext4_utils/ext4.h"
 
 #define AGGRESSIVE_TEST_
 

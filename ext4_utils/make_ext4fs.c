@@ -14,13 +14,11 @@
  * limitations under the License.
  */
 
-#include "make_ext4fs.h"
-#include "ext4_utils.h"
-#include "allocate.h"
-#include "contents.h"
-#include "wipe.h"
+#include "ext4_utils/make_ext4fs.h"
 
-#include <sparse/sparse.h>
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
 #include <assert.h>
 #include <dirent.h>
@@ -30,9 +28,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
+
+#include <sparse/sparse.h>
+
+#include "allocate.h"
+#include "contents.h"
+#include "ext4_utils/ext4_utils.h"
+#include "ext4_utils/wipe.h"
 
 #ifdef _WIN32
 

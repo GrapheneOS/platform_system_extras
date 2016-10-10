@@ -17,7 +17,7 @@
 #ifndef _EXT4_UTILS_EXT4_SB_H_
 #define _EXT4_UTILS_EXT4_SB_H_
 
-#include "ext4_kernel_headers.h"
+#include "ext4_utils/ext4_kernel_headers.h"
 
 #define EXT4_SUPER_MAGIC 0xEF53
 

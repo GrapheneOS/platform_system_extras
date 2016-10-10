@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 The Android Open Source Project
+ * Copyright (C) 2016 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,28 +14,22 @@
  * limitations under the License.
  */
 
-#ifndef _WIPE_H_
-#define _WIPE_H_
+#ifndef _EXT4_CRYPT_H_
+#define _EXT4_CRYPT_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <sys/cdefs.h>
+#include <stdbool.h>
+#include <cutils/multiuser.h>
 
-#include "ext4_utils.h"
+__BEGIN_DECLS
 
-/* Set WIPE_IS_SUPPORTED to 1 if the current platform supports
- * wiping of block devices. 0 otherwise. For now, only Linux does.
- */
-#ifdef __linux__
-#  define WIPE_IS_SUPPORTED 1
-#else
-#  define WIPE_IS_SUPPORTED 0
-#endif
+bool e4crypt_is_native();
 
-int wipe_block_device(int fd, s64 len);
+int e4crypt_policy_ensure(const char *directory, const char* policy, size_t policy_length);
 
-#ifdef __cplusplus
-}
-#endif
+static const char* e4crypt_unencrypted_folder = "/unencrypted";
+static const char* e4crypt_key_ref = "/unencrypted/ref";
 
-#endif
+__END_DECLS
+
+#endif // _EXT4_CRYPT_H_

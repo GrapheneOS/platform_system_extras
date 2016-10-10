@@ -14,23 +14,25 @@
  * limitations under the License.
  */
 
-#include "ext4_utils.h"
-#include "allocate.h"
-#include "indirect.h"
-#include "extent.h"
-#include "sha1.h"
-
-#include <sparse/sparse.h>
-#ifdef REAL_UUID
-#include <uuid.h>
-#endif
+#include "ext4_utils/ext4_utils.h"
 
 #include <fcntl.h>
 #include <inttypes.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <stddef.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
+#include <sparse/sparse.h>
+
+#include "allocate.h"
+#include "extent.h"
+#include "indirect.h"
+#include "sha1.h"
+
+#ifdef REAL_UUID
+#include <uuid.h>
+#endif
 
 #ifdef _WIN32
 #include <winsock2.h>
