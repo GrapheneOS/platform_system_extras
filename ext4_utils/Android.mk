@@ -24,6 +24,10 @@ LOCAL_SRC_FILES := $(libext4_utils_src_files)
 LOCAL_MODULE := libext4_utils_host
 # Various instances of dereferencing a type-punned pointer in extent.c
 LOCAL_CFLAGS += -fno-strict-aliasing
+LOCAL_C_INCLUDES := \
+    $(LOCAL_PATH)/include
+LOCAL_EXPORT_C_INCLUDE_DIRS := \
+    $(LOCAL_PATH)/include
 LOCAL_STATIC_LIBRARIES := \
     libsparse_host \
     libz
@@ -36,6 +40,8 @@ include $(BUILD_HOST_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := make_ext4fs_main.c
 LOCAL_MODULE := make_ext4fs
+LOCAL_C_INCLUDES := \
+    $(LOCAL_PATH)/include
 LOCAL_SHARED_LIBRARIES += libcutils
 LOCAL_STATIC_LIBRARIES += \
     libext4_utils_host \
@@ -48,10 +54,11 @@ LOCAL_CFLAGS_darwin := -DHOST
 LOCAL_CFLAGS_linux := -DHOST
 include $(BUILD_HOST_EXECUTABLE)
 
+
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := blk_alloc_to_base_fs.c
 LOCAL_MODULE := blk_alloc_to_base_fs
-LOCAL_SHARED_LIBRARIES += libcutils
+LOCAL_SHARED_LIBRARIES := libcutils
 LOCAL_CFLAGS_darwin := -DHOST
 LOCAL_CFLAGS_linux := -DHOST
 include $(BUILD_HOST_EXECUTABLE)
@@ -69,9 +76,14 @@ ifneq ($(HOST_OS),windows)
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(libext4_utils_src_files)
 LOCAL_MODULE := libext4_utils
-LOCAL_C_INCLUDES += system/core/logwrapper/include
+LOCAL_C_INCLUDES := \
+    $(LOCAL_PATH)/include \
+    system/core/logwrapper/include
 # Various instances of dereferencing a type-punned pointer in extent.c
 LOCAL_CFLAGS += -fno-strict-aliasing
+LOCAL_CFLAGS += -DREAL_UUID
+LOCAL_EXPORT_C_INCLUDE_DIRS := \
+    $(LOCAL_PATH)/include
 LOCAL_SHARED_LIBRARIES := \
     libbase \
     libcutils \
@@ -79,18 +91,21 @@ LOCAL_SHARED_LIBRARIES := \
     libselinux \
     libsparse \
     libz
-LOCAL_CFLAGS := -DREAL_UUID
 include $(BUILD_SHARED_LIBRARY)
 
 
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := $(libext4_utils_src_files) \
+LOCAL_SRC_FILES := \
+    $(libext4_utils_src_files) \
     ext4_crypt_init_extensions.cpp
 LOCAL_MODULE := libext4_utils_static
+LOCAL_C_INCLUDES := \
+    $(LOCAL_PATH)/include
 # Various instances of dereferencing a type-punned pointer in extent.c
 LOCAL_CFLAGS += -fno-strict-aliasing
+LOCAL_EXPORT_C_INCLUDE_DIRS := \
+    $(LOCAL_PATH)/include
 LOCAL_STATIC_LIBRARIES := \
-    libbase \
     liblogwrap \
     libsparse_static \
     libselinux \
@@ -101,6 +116,8 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := make_ext4fs_main.c
 LOCAL_MODULE := make_ext4fs
+LOCAL_C_INCLUDES := \
+    $(LOCAL_PATH)/include
 LOCAL_SHARED_LIBRARIES := \
     libcutils \
     libext2_uuid \
@@ -114,6 +131,8 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := ext2simg.c
 LOCAL_MODULE := ext2simg
+LOCAL_C_INCLUDES := \
+    $(LOCAL_PATH)/include
 LOCAL_SHARED_LIBRARIES += \
     libext4_utils \
     libselinux \
@@ -125,6 +144,8 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := ext2simg.c
 LOCAL_MODULE := ext2simg
+LOCAL_C_INCLUDES := \
+    $(LOCAL_PATH)/include
 LOCAL_SHARED_LIBRARIES += \
     libselinux
 LOCAL_STATIC_LIBRARIES += \

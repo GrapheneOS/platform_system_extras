@@ -14,22 +14,26 @@
  * limitations under the License.
  */
 
+#ifndef _FILE_OFFSET_BITS
 #define _FILE_OFFSET_BITS 64
-#define _LARGEFILE64_SOURCE 1
+#endif
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/mman.h>
+#ifndef _LARGEFILE64_SOURCE
+#define _LARGEFILE64_SOURCE 1
+#endif
+
 #include <fcntl.h>
 #include <libgen.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <sparse/sparse.h>
 
-#include "ext4_utils.h"
-#include "make_ext4fs.h"
 #include "allocate.h"
+#include "ext4_utils/ext4_utils.h"
+#include "ext4_utils/make_ext4fs.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
 #define off64_t off_t

@@ -13,19 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "ext4_utils.h"
-#include "make_ext4fs.h"
-#include "ext4_extents.h"
-#include "allocate.h"
+
 #include "ext4fixup.h"
+
+#define _LARGEFILE64_SOURCE
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <sparse/sparse.h>
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <fcntl.h>
-#include <unistd.h>
+#include "allocate.h"
+#include "ext4_utils/ext4_extents.h"
+#include "ext4_utils/ext4_utils.h"
+#include "ext4_utils/make_ext4fs.h"
 
 #ifndef _WIN32
 #include <sys/mman.h>
