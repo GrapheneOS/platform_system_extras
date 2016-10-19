@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <android-base/file.h>
 #include <android-base/test_utils.h>
 
 #include "command.h"
@@ -44,7 +45,12 @@ TEST(cmd_report_sample, show_callchain_option) {
 
 TEST(cmd_report_sample, protobuf_option) {
   TemporaryFile tmpfile;
+  TemporaryFile tmpfile2;
   ASSERT_TRUE(ReportSampleCmd()->Run({"-i", GetTestData(PERF_DATA_WITH_SYMBOLS),
                                       "-o", tmpfile.path, "--protobuf"}));
-  ASSERT_TRUE(ReportSampleCmd()->Run({"--dump-protobuf-report", tmpfile.path}));
+  ASSERT_TRUE(ReportSampleCmd()->Run(
+      {"--dump-protobuf-report", tmpfile.path, "-o", tmpfile2.path}));
+  std::string data;
+  ASSERT_TRUE(android::base::ReadFileToString(tmpfile2.path, &data));
+  ASSERT_NE(data.find("file:"), std::string::npos);
 }
