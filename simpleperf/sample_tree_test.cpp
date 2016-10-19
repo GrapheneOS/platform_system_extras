@@ -232,3 +232,9 @@ TEST(sample_tree, overlapped_map) {
   };
   CheckSamples(sample_tree_builder.GetSamples(), expected_samples);
 }
+
+TEST(thread_tree, symbol_ULLONG_MAX) {
+  ThreadTree thread_tree;
+  thread_tree.ShowIpForUnknownSymbol();
+  ASSERT_TRUE(thread_tree.FindKernelSymbol(ULLONG_MAX) != nullptr);
+}
