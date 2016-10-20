@@ -25,6 +25,7 @@
 #include <vector>
 
 #include <android-base/logging.h>
+#include <android-base/parsedouble.h>
 #include <android-base/parseint.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
@@ -276,10 +277,12 @@ class ReportCommand : public Command {
 "                      the graph shows how functions call others.\n"
 "                      Default is caller mode.\n"
 "-i <file>  Specify path of record file, default is perf.data.\n"
+"--max-stack <frames>  Set max stack frames shown when printing call graph.\n"
 "-n         Print the sample count for each item.\n"
 "--no-demangle         Don't demangle symbol names.\n"
 "--no-show-ip          Don't show vaddr in file for unknown symbols.\n"
 "-o report_file_name   Set report file name, default is stdout.\n"
+"--percent-limit <percent>  Set min percentage shown when printing call graph.\n"
 "--pids pid1,pid2,...  Report only for selected pids.\n"
 "--sort key1,key2,...  Select keys used to sort and print the report. The\n"
 "                      appearance order of keys decides the order of keys used\n"
@@ -312,7 +315,9 @@ class ReportCommand : public Command {
         system_wide_collection_(false),
         accumulate_callchain_(false),
         print_callgraph_(false),
-        callgraph_show_callee_(false) {}
+        callgraph_show_callee_(false),
+        callgraph_max_stack_(UINT32_MAX),
+        callgraph_percent_limit_(0) {}
 
   bool Run(const std::vector<std::string>& args);
 
@@ -341,6 +346,8 @@ class ReportCommand : public Command {
   bool accumulate_callchain_;
   bool print_callgraph_;
   bool callgraph_show_callee_;
+  uint32_t callgraph_max_stack_;
+  double callgraph_percent_limit_;
 
   std::string report_filename_;
 };
@@ -423,6 +430,14 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       }
       record_filename_ = args[i];
 
+    } else if (args[i] == "--max-stack") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (!android::base::ParseUint(args[i].c_str(), &callgraph_max_stack_)) {
+        LOG(ERROR) << "invalid arg for --max-stack: " << args[i];
+        return false;
+      }
     } else if (args[i] == "-n") {
       print_sample_count = true;
 
@@ -435,7 +450,14 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
         return false;
       }
       report_filename_ = args[i];
-
+    } else if (args[i] == "--percent-limit") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (!android::base::ParseDouble(args[i].c_str(),
+                                      &callgraph_percent_limit_, 0.0)) {
+        LOG(ERROR) << "invalid arg for --percent-limit: " << args[i];
+      }
     } else if (args[i] == "--pids" || args[i] == "--tids") {
       const std::string& option = args[i];
       std::unordered_set<int>& filter =
@@ -562,7 +584,8 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
         displayer.AddExclusiveDisplayFunction(
             ReportCmdCallgraphDisplayerWithVaddrInFile());
       } else {
-        displayer.AddExclusiveDisplayFunction(ReportCmdCallgraphDisplayer());
+        displayer.AddExclusiveDisplayFunction(ReportCmdCallgraphDisplayer(
+            callgraph_max_stack_, callgraph_percent_limit_));
       }
     }
   }
