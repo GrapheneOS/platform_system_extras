@@ -96,6 +96,10 @@ std::string DisplaySymbolFrom(const EntryT* sample) {
 template <typename SampleT, typename CallChainNodeT>
 class CallgraphDisplayer {
  public:
+  CallgraphDisplayer(uint32_t max_stack = UINT32_MAX,
+                     double percent_limit = 0.0)
+      : max_stack_(max_stack), percent_limit_(percent_limit) {}
+
   virtual ~CallgraphDisplayer() {}
 
   void operator()(FILE* fp, const SampleT* sample) {
@@ -113,20 +117,22 @@ class CallgraphDisplayer {
   void DisplayCallGraphEntry(FILE* fp, size_t depth, std::string prefix,
                              const std::unique_ptr<CallChainNodeT>& node,
                              uint64_t parent_period, bool last) {
-    if (depth > 20) {
-      LOG(WARNING) << "truncated callgraph at depth " << depth;
+    if (depth > max_stack_) {
       return;
-    }
-    prefix += "|";
-    fprintf(fp, "%s\n", prefix.c_str());
-    if (last) {
-      prefix.back() = ' ';
     }
     std::string percentage_s = "-- ";
     if (node->period + node->children_period != parent_period) {
       double percentage =
           100.0 * (node->period + node->children_period) / parent_period;
+      if (percentage < percent_limit_) {
+        return;
+      }
       percentage_s = android::base::StringPrintf("--%.2f%%-- ", percentage);
+    }
+    prefix += "|";
+    fprintf(fp, "%s\n", prefix.c_str());
+    if (last) {
+      prefix.back() = ' ';
     }
     fprintf(fp, "%s%s%s\n", prefix.c_str(), percentage_s.c_str(),
             PrintSampleName(node->chain[0]).c_str());
@@ -146,6 +152,10 @@ class CallgraphDisplayer {
   virtual std::string PrintSampleName(const SampleT* sample) {
     return sample->symbol->DemangledName();
   }
+
+ private:
+  uint32_t max_stack_;
+  double percent_limit_;
 };
 
 // SampleDisplayer is a class using a collections of display functions to show a
