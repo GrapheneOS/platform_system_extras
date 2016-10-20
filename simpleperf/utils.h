@@ -107,8 +107,32 @@ class ArchiveHelper {
 
 template <class T>
 void MoveFromBinaryFormat(T& data, const char*& p) {
+  static_assert(std::is_standard_layout<T>::value, "not standard layout");
   data = *reinterpret_cast<const T*>(p);
   p += sizeof(T);
+}
+
+template <class T>
+void MoveFromBinaryFormat(T* data_p, size_t n, const char*& p) {
+  static_assert(std::is_standard_layout<T>::value, "not standard layout");
+  size_t size = n * sizeof(T);
+  memcpy(data_p, p, size);
+  p += size;
+}
+
+template <class T>
+void MoveToBinaryFormat(const T& data, char*& p) {
+  static_assert(std::is_standard_layout<T>::value, "not standard layout");
+  *reinterpret_cast<T*>(p) = data;
+  p += sizeof(T);
+}
+
+template <class T>
+void MoveToBinaryFormat(const T* data_p, size_t n, char*& p) {
+  static_assert(std::is_standard_layout<T>::value, "not standard layout");
+  size_t size = n * sizeof(T);
+  memcpy(p, data_p, size);
+  p += size;
 }
 
 void PrintIndented(size_t indent, const char* fmt, ...);

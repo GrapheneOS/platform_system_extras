@@ -23,8 +23,6 @@
 #include <memory>
 
 #include "command.h"
-#include "environment.h"
-#include "event_selection_set.h"
 #include "get_test_data.h"
 #include "record.h"
 #include "record_file.h"
@@ -71,6 +69,7 @@ static void KmemReportFile(const std::string& perf_data,
 }
 
 #if defined(__linux__)
+#include "environment.h"
 
 static bool RunKmemRecordCmd(std::vector<std::string> v,
                              const char* output_file = nullptr) {
