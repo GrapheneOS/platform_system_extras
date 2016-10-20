@@ -27,6 +27,7 @@ class RecordTest : public ::testing::Test {
     const EventType* type = FindEventTypeByName("cpu-cycles");
     ASSERT_TRUE(type != nullptr);
     event_attr = CreateDefaultPerfEventAttr(*type);
+    event_attr.sample_id_all = 1;
   }
 
   void CheckRecordMatchBinary(const Record& record) {
@@ -47,7 +48,15 @@ TEST_F(RecordTest, MmapRecordMatchBinary) {
 }
 
 TEST_F(RecordTest, CommRecordMatchBinary) {
-  CommRecord record(event_attr, 1, 2, "CommRecord", 0);
+  CommRecord record(event_attr, 1, 2, "CommRecord", 0, 7);
+  CheckRecordMatchBinary(record);
+}
+
+TEST_F(RecordTest, SampleRecordMatchBinary) {
+  event_attr.sample_type = PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_TIME
+                           | PERF_SAMPLE_ID | PERF_SAMPLE_CPU
+                           | PERF_SAMPLE_PERIOD | PERF_SAMPLE_CALLCHAIN;
+  SampleRecord record(event_attr, 1, 2, 3, 4, 5, 6, 7, {8, 9, 10});
   CheckRecordMatchBinary(record);
 }
 
