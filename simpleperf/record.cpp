@@ -24,7 +24,6 @@
 #include <android-base/stringprintf.h>
 
 #include "dso.h"
-#include "environment.h"
 #include "perf_regs.h"
 #include "tracing.h"
 #include "utils.h"
@@ -56,29 +55,9 @@ static std::string RecordTypeToString(int record_type) {
   return android::base::StringPrintf("unknown(%d)", record_type);
 }
 
-template <class T>
-void MoveFromBinaryFormat(T* data_p, size_t n, const char*& p) {
-  size_t size = n * sizeof(T);
-  memcpy(data_p, p, size);
-  p += size;
-}
-
-template <class T>
-void MoveToBinaryFormat(const T& data, char*& p) {
-  *reinterpret_cast<T*>(p) = data;
-  p += sizeof(T);
-}
-
 template <>
 void MoveToBinaryFormat(const RecordHeader& data, char*& p) {
   data.MoveToBinaryFormat(p);
-}
-
-template <class T>
-void MoveToBinaryFormat(const T* data_p, size_t n, char*& p) {
-  size_t size = n * sizeof(T);
-  memcpy(p, data_p, size);
-  p += size;
 }
 
 SampleId::SampleId() { memset(this, 0, sizeof(SampleId)); }
@@ -321,12 +300,13 @@ CommRecord::CommRecord(const perf_event_attr& attr, const char* p) : Record(p) {
 }
 
 CommRecord::CommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
-                       const std::string& comm, uint64_t event_id) {
+                       const std::string& comm, uint64_t event_id, uint64_t time) {
   SetTypeAndMisc(PERF_RECORD_COMM, 0);
   CommRecordDataType data;
   data.pid = pid;
   data.tid = tid;
   size_t sample_id_size = sample_id.CreateContent(attr, event_id);
+  sample_id.time_data.time = time;
   SetSize(header_size() + sizeof(data) + Align(comm.size() + 1, 8) +
           sample_id_size);
   char* new_binary = new char[size()];
@@ -474,6 +454,83 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, const char* p)
   if (p < end) {
     LOG(DEBUG) << "Record has " << end - p << " bytes left\n";
   }
+}
+
+SampleRecord::SampleRecord(const perf_event_attr& attr, uint64_t id,
+                           uint64_t ip, uint32_t pid, uint32_t tid,
+                           uint64_t time, uint32_t cpu, uint64_t period,
+                           const std::vector<uint64_t>& ips) {
+  SetTypeAndMisc(PERF_RECORD_SAMPLE, PERF_RECORD_MISC_USER);
+  sample_type = attr.sample_type;
+  CHECK_EQ(0u, sample_type & ~(PERF_SAMPLE_IP | PERF_SAMPLE_TID
+      | PERF_SAMPLE_TIME | PERF_SAMPLE_ID | PERF_SAMPLE_CPU
+      | PERF_SAMPLE_PERIOD | PERF_SAMPLE_CALLCHAIN));
+  ip_data.ip = ip;
+  tid_data.pid = pid;
+  tid_data.tid = tid;
+  time_data.time = time;
+  id_data.id = id;
+  cpu_data.cpu = cpu;
+  cpu_data.res = 0;
+  period_data.period = period;
+  callchain_data.ip_nr = ips.size();
+  raw_data.size = 0;
+  branch_stack_data.stack_nr = 0;
+  regs_user_data.abi = 0;
+  regs_user_data.reg_mask = 0;
+  stack_user_data.size = 0;
+
+  uint32_t size = header_size();
+  if (sample_type & PERF_SAMPLE_IP) {
+    size += sizeof(ip_data);
+  }
+  if (sample_type & PERF_SAMPLE_TID) {
+    size += sizeof(tid_data);
+  }
+  if (sample_type & PERF_SAMPLE_TIME) {
+    size += sizeof(time_data);
+  }
+  if (sample_type & PERF_SAMPLE_ID) {
+    size += sizeof(id_data);
+  }
+  if (sample_type & PERF_SAMPLE_CPU) {
+    size += sizeof(cpu_data);
+  }
+  if (sample_type & PERF_SAMPLE_PERIOD) {
+    size += sizeof(period_data);
+  }
+  if (sample_type & PERF_SAMPLE_CALLCHAIN) {
+    size += sizeof(uint64_t) * (ips.size() + 1);
+  }
+  SetSize(size);
+  char* new_binary = new char[size];
+  char* p = new_binary;
+  MoveToBinaryFormat(header, p);
+  if (sample_type & PERF_SAMPLE_IP) {
+    MoveToBinaryFormat(ip_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_TID) {
+    MoveToBinaryFormat(tid_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_TIME) {
+    MoveToBinaryFormat(time_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_ID) {
+    MoveToBinaryFormat(id_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_CPU) {
+    MoveToBinaryFormat(cpu_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_PERIOD) {
+    MoveToBinaryFormat(period_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_CALLCHAIN) {
+    MoveToBinaryFormat(callchain_data.ip_nr, p);
+    callchain_data.ips = reinterpret_cast<uint64_t*>(p);
+    MoveToBinaryFormat(ips.data(), ips.size(), p);
+  }
+  CHECK_EQ(p, new_binary + size);
+  UpdateBinary(new_binary);
 }
 
 void SampleRecord::ReplaceRegAndStackWithCallChain(

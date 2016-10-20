@@ -191,7 +191,10 @@ const Symbol* Dso::FindSymbol(uint64_t vaddr_in_dso) {
   auto it = symbols_.upper_bound(Symbol("", vaddr_in_dso, 0));
   if (it != symbols_.begin()) {
     --it;
-    if (it->addr <= vaddr_in_dso && it->addr + it->len > vaddr_in_dso) {
+    // If vaddr_in_dso is ULLONG_MAX, then it->addr + it->len overflows,
+    // and we allow this situation.
+    if (it->addr <= vaddr_in_dso && (it->addr + it->len > vaddr_in_dso ||
+                                     it->addr + it->len < it->addr)) {
       return &*it;
     }
   }
