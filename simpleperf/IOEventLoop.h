@@ -40,6 +40,10 @@ class IOEventLoop {
   // to control the Event, otherwise return nullptr.
   IOEventRef AddReadEvent(int fd, const std::function<bool()>& callback);
 
+  // Register a write Event, so [callback] is called when [fd] can be written
+  // without blocking.
+  IOEventRef AddWriteEvent(int fd, const std::function<bool()>& callback);
+
   // Register a signal Event, so [callback] is called each time signal [sig]
   // happens.
   bool AddSignalEvent(int sig, const std::function<bool()>& callback);
@@ -59,6 +63,11 @@ class IOEventLoop {
 
   // Exit the loop started by RunLoop().
   bool ExitLoop();
+
+  // Disable an Event, which can be enabled later.
+  static bool DisableEvent(IOEventRef ref);
+  // Enable a disabled Event.
+  static bool EnableEvent(IOEventRef ref);
 
   // Unregister an Event.
   static bool DelEvent(IOEventRef ref);

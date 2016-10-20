@@ -25,10 +25,8 @@ TEST(IOEventLoop, read) {
   int fd[2];
   ASSERT_EQ(0, pipe(fd));
   IOEventLoop loop;
-  static int count;
-  static int retry_count;
-  count = 0;
-  retry_count = 0;
+  int count = 0;
+  int retry_count = 0;
   ASSERT_NE(nullptr, loop.AddReadEvent(fd[0], [&]() {
     while (true) {
       char c;
@@ -62,10 +60,45 @@ TEST(IOEventLoop, read) {
   close(fd[1]);
 }
 
+TEST(IOEventLoop, write) {
+  int fd[2];
+  ASSERT_EQ(0, pipe(fd));
+  IOEventLoop loop;
+  int count = 0;
+  ASSERT_NE(nullptr, loop.AddWriteEvent(fd[1], [&]() {
+    int ret = 0;
+    char buf[4096];
+    while ((ret = write(fd[1], buf, sizeof(buf))) > 0) {
+    }
+    if (ret == -1 && errno == EAGAIN) {
+      if (++count == 100) {
+        loop.ExitLoop();
+      }
+      return true;
+    }
+    return false;
+  }));
+  std::thread thread([&]() {
+    usleep(500000);
+    while (true) {
+      usleep(1000);
+      char buf[4096];
+      if (read(fd[0], buf, sizeof(buf)) <= 0) {
+        break;
+      }
+    }
+  });
+  ASSERT_TRUE(loop.RunLoop());
+  // close fd[1] to make read thread stop.
+  close(fd[1]);
+  thread.join();
+  close(fd[0]);
+  ASSERT_EQ(100, count);
+}
+
 TEST(IOEventLoop, signal) {
   IOEventLoop loop;
-  static int count;
-  count = 0;
+  int count = 0;
   ASSERT_TRUE(loop.AddSignalEvent(SIGINT, [&]() {
     if (++count == 100) {
       loop.ExitLoop();
@@ -87,8 +120,7 @@ TEST(IOEventLoop, periodic) {
   timeval tv;
   tv.tv_sec = 0;
   tv.tv_usec = 1000;
-  static int count;
-  count = 0;
+  int count = 0;
   IOEventLoop loop;
   ASSERT_TRUE(loop.AddPeriodicEvent(tv, [&]() {
     if (++count == 100) {
@@ -113,8 +145,7 @@ TEST(IOEventLoop, read_and_del_event) {
   int fd[2];
   ASSERT_EQ(0, pipe(fd));
   IOEventLoop loop;
-  static int count;
-  count = 0;
+  int count = 0;
   IOEventRef ref = loop.AddReadEvent(fd[0], [&]() {
     count++;
     return IOEventLoop::DelEvent(ref);
@@ -131,6 +162,43 @@ TEST(IOEventLoop, read_and_del_event) {
   ASSERT_TRUE(loop.RunLoop());
   thread.join();
   ASSERT_EQ(1, count);
+  close(fd[0]);
+  close(fd[1]);
+}
+
+TEST(IOEventLoop, disable_enable_event) {
+  int fd[2];
+  ASSERT_EQ(0, pipe(fd));
+  IOEventLoop loop;
+  int count = 0;
+  IOEventRef ref = loop.AddWriteEvent(fd[1], [&]() {
+    count++;
+    return IOEventLoop::DisableEvent(ref);
+  });
+  ASSERT_NE(nullptr, ref);
+
+  timeval tv;
+  tv.tv_sec = 0;
+  tv.tv_usec = 500000;
+  int periodic_count = 0;
+  ASSERT_TRUE(loop.AddPeriodicEvent(tv, [&]() {
+    periodic_count++;
+    if (periodic_count == 1) {
+      if (count != 1) {
+        return false;
+      }
+      return IOEventLoop::EnableEvent(ref);
+    } else {
+      if (count != 2) {
+        return false;
+      }
+      return loop.ExitLoop();
+    }
+  }));
+
+  ASSERT_TRUE(loop.RunLoop());
+  ASSERT_EQ(2, count);
+  ASSERT_EQ(2, periodic_count);
   close(fd[0]);
   close(fd[1]);
 }
