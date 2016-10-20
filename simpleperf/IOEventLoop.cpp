@@ -25,9 +25,10 @@ struct IOEvent {
   IOEventLoop* loop;
   event* e;
   std::function<bool()> callback;
+  bool enabled;
 
   IOEvent(IOEventLoop* loop, const std::function<bool()>& callback)
-      : loop(loop), e(nullptr), callback(callback) {}
+      : loop(loop), e(nullptr), callback(callback), enabled(false) {}
 
   ~IOEvent() {
     if (e != nullptr) {
@@ -80,6 +81,14 @@ IOEventRef IOEventLoop::AddReadEvent(int fd,
   return AddEvent(fd, EV_READ | EV_PERSIST, nullptr, callback);
 }
 
+IOEventRef IOEventLoop::AddWriteEvent(int fd,
+                                      const std::function<bool()>& callback) {
+  if (!MakeFdNonBlocking(fd)) {
+    return nullptr;
+  }
+  return AddEvent(fd, EV_WRITE | EV_PERSIST, nullptr, callback);
+}
+
 bool IOEventLoop::AddSignalEvent(int sig,
                                  const std::function<bool()>& callback) {
   return AddEvent(sig, EV_SIGNAL | EV_PERSIST, nullptr, callback) != nullptr;
@@ -115,6 +124,7 @@ IOEventRef IOEventLoop::AddEvent(int fd_or_sig, short events, timeval* timeout,
     LOG(ERROR) << "event_add() failed";
     return nullptr;
   }
+  e->enabled = true;
   events_.push_back(std::move(e));
   return events_.back().get();
 }
@@ -138,14 +148,33 @@ bool IOEventLoop::ExitLoop() {
   return true;
 }
 
+bool IOEventLoop::DisableEvent(IOEventRef ref) {
+  if (ref->enabled) {
+    if (event_del(ref->e) != 0) {
+      LOG(ERROR) << "event_del() failed";
+      return false;
+    }
+    ref->enabled = false;
+  }
+  return true;
+}
+
+bool IOEventLoop::EnableEvent(IOEventRef ref) {
+  if (!ref->enabled) {
+    if (event_add(ref->e, nullptr) != 0) {
+      LOG(ERROR) << "event_add() failed";
+      return false;
+    }
+    ref->enabled = true;
+  }
+  return true;
+}
+
 bool IOEventLoop::DelEvent(IOEventRef ref) {
+  DisableEvent(ref);
   IOEventLoop* loop = ref->loop;
   for (auto it = loop->events_.begin(); it != loop->events_.end(); ++it) {
     if (it->get() == ref) {
-      if (event_del((*it)->e) != 0) {
-        LOG(ERROR) << "event_del() failed";
-        return false;
-      }
       loop->events_.erase(it);
       break;
     }
