@@ -724,7 +724,7 @@ bool RecordCommand::DumpThreadCommAndMmaps(const perf_event_attr& attr,
         dump_processes.find(thread.pid) == dump_processes.end()) {
       continue;
     }
-    CommRecord record(attr, thread.pid, thread.tid, thread.comm, event_id);
+    CommRecord record(attr, thread.pid, thread.tid, thread.comm, event_id, 0);
     if (!ProcessRecord(&record)) {
       return false;
     }
@@ -759,7 +759,8 @@ bool RecordCommand::DumpThreadCommAndMmaps(const perf_event_attr& attr,
     if (!ProcessRecord(&fork_record)) {
       return false;
     }
-    CommRecord comm_record(attr, thread.pid, thread.tid, thread.comm, event_id);
+    CommRecord comm_record(attr, thread.pid, thread.tid, thread.comm, event_id,
+                           0);
     if (!ProcessRecord(&comm_record)) {
       return false;
     }

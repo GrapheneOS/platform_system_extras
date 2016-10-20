@@ -319,7 +319,7 @@ struct CommRecord : public Record {
   CommRecord(const perf_event_attr& attr, const char* p);
 
   CommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
-             const std::string& comm, uint64_t event_id);
+             const std::string& comm, uint64_t event_id, uint64_t time);
 
  protected:
   void DumpData(size_t indent) const override;
@@ -385,6 +385,10 @@ struct SampleRecord : public Record {
   PerfSampleStackUserType stack_user_data;  // Valid if PERF_SAMPLE_STACK_USER.
 
   SampleRecord(const perf_event_attr& attr, const char* p);
+  SampleRecord(const perf_event_attr& attr, uint64_t id, uint64_t ip,
+               uint32_t pid, uint32_t tid, uint64_t time, uint32_t cpu,
+               uint64_t period, const std::vector<uint64_t>& ips);
+
   void ReplaceRegAndStackWithCallChain(const std::vector<uint64_t>& ips);
   uint64_t Timestamp() const override;
   uint32_t Cpu() const override;
