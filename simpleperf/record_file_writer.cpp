@@ -58,8 +58,8 @@ RecordFileWriter::RecordFileWriter(const std::string& filename, FILE* fp)
       attr_section_size_(0),
       data_section_offset_(0),
       data_section_size_(0),
-      feature_count_(0),
-      current_feature_index_(0) {
+      feature_section_offset_(0),
+      feature_count_(0) {
 }
 
 RecordFileWriter::~RecordFileWriter() {
@@ -79,8 +79,8 @@ bool RecordFileWriter::WriteAttrSection(const std::vector<EventAttrWithId>& attr
   }
 
   // Write id section.
-  off_t id_section_offset = ftello(record_fp_);
-  if (id_section_offset == -1) {
+  uint64_t id_section_offset;
+  if (!GetFilePos(&id_section_offset)) {
     return false;
   }
   for (auto& attr_id : attr_ids) {
@@ -90,8 +90,8 @@ bool RecordFileWriter::WriteAttrSection(const std::vector<EventAttrWithId>& attr
   }
 
   // Write attr section.
-  off_t attr_section_offset = ftello(record_fp_);
-  if (attr_section_offset == -1) {
+  uint64_t attr_section_offset;
+  if (!GetFilePos(&attr_section_offset)) {
     return false;
   }
   for (auto& attr_id : attr_ids) {
@@ -105,8 +105,8 @@ bool RecordFileWriter::WriteAttrSection(const std::vector<EventAttrWithId>& attr
     }
   }
 
-  off_t data_section_offset = ftello(record_fp_);
-  if (data_section_offset == -1) {
+  uint64_t data_section_offset;
+  if (!GetFilePos(&data_section_offset)) {
     return false;
   }
 
@@ -173,28 +173,24 @@ bool RecordFileWriter::Write(const void* buf, size_t len) {
   return true;
 }
 
-bool RecordFileWriter::SeekFileEnd(uint64_t* file_end) {
-  if (fseek(record_fp_, 0, SEEK_END) == -1) {
-    PLOG(ERROR) << "fseek() failed";
-    return false;
-  }
+bool RecordFileWriter::GetFilePos(uint64_t* file_pos) {
   off_t offset = ftello(record_fp_);
   if (offset == -1) {
     PLOG(ERROR) << "ftello() failed";
     return false;
   }
-  *file_end = static_cast<uint64_t>(offset);
+  *file_pos = static_cast<uint64_t>(offset);
   return true;
 }
 
-bool RecordFileWriter::WriteFeatureHeader(size_t feature_count) {
+bool RecordFileWriter::BeginWriteFeatures(size_t feature_count) {
+  feature_section_offset_ = data_section_offset_ + data_section_size_;
   feature_count_ = feature_count;
-  current_feature_index_ = 0;
   uint64_t feature_header_size = feature_count * sizeof(SectionDesc);
 
   // Reserve enough space in the record file for the feature header.
   std::vector<unsigned char> zero_data(feature_header_size);
-  if (fseek(record_fp_, data_section_offset_ + data_section_size_, SEEK_SET) == -1) {
+  if (fseek(record_fp_, feature_section_offset_, SEEK_SET) == -1) {
     PLOG(ERROR) << "fseek() failed";
     return false;
   }
@@ -202,8 +198,7 @@ bool RecordFileWriter::WriteFeatureHeader(size_t feature_count) {
 }
 
 bool RecordFileWriter::WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records) {
-  uint64_t start_offset;
-  if (!WriteFeatureBegin(&start_offset)) {
+  if (!WriteFeatureBegin(FEAT_BUILD_ID)) {
     return false;
   }
   for (auto& record : build_id_records) {
@@ -211,29 +206,40 @@ bool RecordFileWriter::WriteBuildIdFeature(const std::vector<BuildIdRecord>& bui
       return false;
     }
   }
-  return WriteFeatureEnd(FEAT_BUILD_ID, start_offset);
+  return WriteFeatureEnd(FEAT_BUILD_ID);
 }
 
-bool RecordFileWriter::WriteFeatureString(int feature, const std::string& s) {
-  uint64_t start_offset;
-  if (!WriteFeatureBegin(&start_offset)) {
-    return false;
-  }
+bool RecordFileWriter::WriteStringWithLength(const std::string& s) {
   uint32_t len = static_cast<uint32_t>(Align(s.size() + 1, 64));
   if (!Write(&len, sizeof(len))) {
     return false;
   }
-  std::vector<char> v(len, '\0');
-  std::copy(s.begin(), s.end(), v.begin());
-  if (!Write(v.data(), v.size())) {
+  if (!Write(&s[0], s.size() + 1)) {
     return false;
   }
-  return WriteFeatureEnd(feature, start_offset);
+  size_t pad_size = Align(s.size() + 1, 64) - s.size() - 1;
+  if (pad_size > 0u) {
+    char align_buf[pad_size];
+    memset(align_buf, '\0', pad_size);
+    if (!Write(align_buf, pad_size)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool RecordFileWriter::WriteFeatureString(int feature, const std::string& s) {
+  if (!WriteFeatureBegin(feature)) {
+    return false;
+  }
+  if (!WriteStringWithLength(s)) {
+    return false;
+  }
+  return WriteFeatureEnd(feature);
 }
 
 bool RecordFileWriter::WriteCmdlineFeature(const std::vector<std::string>& cmdline) {
-  uint64_t start_offset;
-  if (!WriteFeatureBegin(&start_offset)) {
+  if (!WriteFeatureBegin(FEAT_CMDLINE)) {
     return false;
   }
   uint32_t arg_count = cmdline.size();
@@ -241,54 +247,91 @@ bool RecordFileWriter::WriteCmdlineFeature(const std::vector<std::string>& cmdli
     return false;
   }
   for (auto& arg : cmdline) {
-    uint32_t len = static_cast<uint32_t>(Align(arg.size() + 1, 64));
-    if (!Write(&len, sizeof(len))) {
-      return false;
-    }
-    std::vector<char> array(len, '\0');
-    std::copy(arg.begin(), arg.end(), array.begin());
-    if (!Write(array.data(), array.size())) {
+    if (!WriteStringWithLength(arg)) {
       return false;
     }
   }
-  return WriteFeatureEnd(FEAT_CMDLINE, start_offset);
+  return WriteFeatureEnd(FEAT_CMDLINE);
 }
 
 bool RecordFileWriter::WriteBranchStackFeature() {
-  uint64_t start_offset;
-  if (!WriteFeatureBegin(&start_offset)) {
+  if (!WriteFeatureBegin(FEAT_BRANCH_STACK)) {
     return false;
   }
-  return WriteFeatureEnd(FEAT_BRANCH_STACK, start_offset);
+  return WriteFeatureEnd(FEAT_BRANCH_STACK);
 }
 
-bool RecordFileWriter::WriteFeatureBegin(uint64_t* start_offset) {
-  CHECK_LT(current_feature_index_, feature_count_);
-  if (!SeekFileEnd(start_offset)) {
+bool RecordFileWriter::WriteFileFeature(const std::string& file_path,
+                                        uint32_t file_type,
+                                        uint64_t min_vaddr,
+                                        const std::vector<Symbol>& symbols) {
+  uint32_t size = file_path.size() + 1 + sizeof(uint32_t) * 2 +
+      sizeof(uint64_t) + symbols.size() * (sizeof(uint64_t) + sizeof(uint32_t));
+  for (const auto& symbol : symbols) {
+    size += strlen(symbol.Name()) + 1;
+  }
+  std::vector<char> buf(sizeof(uint32_t) + size);
+  char* p = buf.data();
+  MoveToBinaryFormat(size, p);
+  MoveToBinaryFormat(file_path.c_str(), file_path.size() + 1, p);
+  MoveToBinaryFormat(file_type, p);
+  MoveToBinaryFormat(min_vaddr, p);
+  uint32_t symbol_count = static_cast<uint32_t>(symbols.size());
+  MoveToBinaryFormat(symbol_count, p);
+  for (const auto& symbol : symbols) {
+    MoveToBinaryFormat(symbol.addr, p);
+    uint32_t len = symbol.len;
+    MoveToBinaryFormat(len, p);
+    MoveToBinaryFormat(symbol.Name(), strlen(symbol.Name()) + 1, p);
+  }
+  CHECK_EQ(buf.size(), static_cast<size_t>(p - buf.data()));
+
+  if (!WriteFeatureBegin(FEAT_FILE)) {
     return false;
+  }
+  if (!Write(buf.data(), buf.size())) {
+    return false;
+  }
+  return WriteFeatureEnd(FEAT_FILE);
+}
+
+bool RecordFileWriter::WriteFeatureBegin(int feature) {
+  auto it = features_.find(feature);
+  if (it == features_.end()) {
+    CHECK_LT(features_.size(), feature_count_);
+    auto& sec = features_[feature];
+    if (!GetFilePos(&sec.offset)) {
+      return false;
+    }
+    sec.size = 0;
   }
   return true;
 }
 
-bool RecordFileWriter::WriteFeatureEnd(int feature, uint64_t start_offset) {
-  uint64_t end_offset;
-  if (!SeekFileEnd(&end_offset)) {
+bool RecordFileWriter::WriteFeatureEnd(int feature) {
+  auto it = features_.find(feature);
+  if (it == features_.end()) {
     return false;
   }
-  SectionDesc desc;
-  desc.offset = start_offset;
-  desc.size = end_offset - start_offset;
-  uint64_t feature_offset = data_section_offset_ + data_section_size_;
-  if (fseek(record_fp_, feature_offset + current_feature_index_ * sizeof(SectionDesc), SEEK_SET) ==
-      -1) {
+  uint64_t offset;
+  if (!GetFilePos(&offset)) {
+    return false;
+  }
+  it->second.size = offset - it->second.offset;
+  return true;
+}
+
+bool RecordFileWriter::EndWriteFeatures() {
+  CHECK_LE(feature_count_, features_.size());
+  if (fseek(record_fp_, feature_section_offset_, SEEK_SET) == -1) {
     PLOG(ERROR) << "fseek() failed";
     return false;
   }
-  if (!Write(&desc, sizeof(SectionDesc))) {
-    return false;
+  for (const auto& pair : features_) {
+    if (!Write(&pair.second, sizeof(SectionDesc))) {
+      return false;
+    }
   }
-  ++current_feature_index_;
-  features_.push_back(feature);
   return true;
 }
 
@@ -302,9 +345,9 @@ bool RecordFileWriter::WriteFileHeader() {
   header.attrs.size = attr_section_size_;
   header.data.offset = data_section_offset_;
   header.data.size = data_section_size_;
-  for (auto& feature : features_) {
-    int i = feature / 8;
-    int j = feature % 8;
+  for (const auto& pair : features_) {
+    int i = pair.first / 8;
+    int j = pair.first % 8;
     header.features[i] |= (1 << j);
   }
 
