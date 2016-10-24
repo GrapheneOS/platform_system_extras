@@ -351,11 +351,15 @@ std::vector<BuildIdRecord> RecordFileReader::ReadBuildIdFeature() {
   const char* end = buf.data() + buf.size();
   std::vector<BuildIdRecord> result;
   while (p < end) {
-    BuildIdRecord record(p);
+    auto header = reinterpret_cast<const perf_event_header*>(p);
+    CHECK_LE(p + header->size, end);
+    char* binary = new char[header->size];
+    memcpy(binary, p, header->size);
+    p += header->size;
+    BuildIdRecord record(binary);
+    record.OwnBinary();
     // Set type explicitly as the perf.data produced by perf doesn't set it.
     record.SetTypeAndMisc(PERF_RECORD_BUILD_ID, record.misc());
-    CHECK_LE(p + record.size(), end);
-    p += record.size();
     result.push_back(std::move(record));
   }
   return result;

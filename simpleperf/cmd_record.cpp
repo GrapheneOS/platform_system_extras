@@ -188,7 +188,7 @@ class RecordCommand : public Command {
   bool PostUnwind(const std::vector<std::string>& args);
   bool DumpAdditionalFeatures(const std::vector<std::string>& args);
   bool DumpBuildIdFeature();
-  void CollectHitFileInfo(Record* record);
+  void CollectHitFileInfo(const SampleRecord& r);
 
   bool use_sample_freq_;
   uint64_t sample_freq_;  // Sample 'sample_freq_' times per second.
@@ -778,7 +778,6 @@ bool RecordCommand::ProcessRecord(Record* record) {
   }
   UpdateRecordForEmbeddedElfPath(record);
   thread_tree_.Update(*record);
-  CollectHitFileInfo(record);
   if (unwind_dwarf_callchain_ && !post_unwind_) {
     if (!UnwindRecord(record)) {
       return false;
@@ -786,8 +785,9 @@ bool RecordCommand::ProcessRecord(Record* record) {
   }
   if (record->type() == PERF_RECORD_SAMPLE) {
     sample_record_count_++;
+    auto& r = *static_cast<SampleRecord*>(record);
+    CollectHitFileInfo(r);
     if (dump_symbols_) {
-      auto& r = *static_cast<SampleRecord*>(record);
       if (!DumpSymbolForRecord(r, false)) {
         return false;
       }
@@ -994,8 +994,8 @@ bool RecordCommand::DumpBuildIdFeature() {
       if (!GetKernelBuildId(&build_id)) {
         continue;
       }
-      build_id_records.push_back(BuildIdRecord(
-          true, UINT_MAX, build_id, DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID));
+      build_id_records.push_back(
+          BuildIdRecord(true, UINT_MAX, build_id, filename));
     } else {
       std::string path = filename;
       std::string module_name = basename(&path[0]);
@@ -1041,17 +1041,29 @@ bool RecordCommand::DumpBuildIdFeature() {
   return true;
 }
 
-void RecordCommand::CollectHitFileInfo(Record* record) {
-  if (record->type() == PERF_RECORD_SAMPLE) {
-    const auto& r = *static_cast<SampleRecord*>(record);
-    bool in_kernel = r.InKernel();
-    const ThreadEntry* thread =
-        thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-    const MapEntry* map = thread_tree_.FindMap(thread, r.ip_data.ip, in_kernel);
-    if (in_kernel) {
-      hit_kernel_modules_.insert(map->dso->Path());
-    } else {
-      hit_user_files_.insert(map->dso->Path());
+void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
+  const ThreadEntry* thread =
+      thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
+  const MapEntry* map =
+      thread_tree_.FindMap(thread, r.ip_data.ip, r.InKernel());
+  if (map->in_kernel) {
+    // TODO: remove hit_kernel_modules_ and hit_user_files_, and
+    // use map->dso->SetDumped(), which is more efficient.
+    hit_kernel_modules_.insert(map->dso->Path());
+  } else {
+    hit_user_files_.insert(map->dso->Path());
+  }
+  if (r.sample_type & PERF_SAMPLE_CALLCHAIN) {
+    size_t ip_nr = r.callchain_data.ip_nr;
+    const uint64_t* ips = r.callchain_data.ips;
+    for (size_t i = 0; i < ip_nr; ++i) {
+      // Even if a sample is in kernel, its callchain can be in user space.
+      map = thread_tree_.FindMap(thread, ips[i]);
+      if (map->in_kernel) {
+        hit_kernel_modules_.insert(map->dso->Path());
+      } else {
+        hit_user_files_.insert(map->dso->Path());
+      }
     }
   }
 }
