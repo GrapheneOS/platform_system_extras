@@ -217,9 +217,6 @@ class RecordCommand : public Command {
 
   uint64_t start_sampling_time_in_ns_;  // nanoseconds from machine starting
 
-  std::set<std::string> hit_kernel_modules_;
-  std::set<std::string> hit_user_files_;
-
   uint64_t sample_record_count_;
   uint64_t lost_record_count_;
 };
@@ -988,16 +985,19 @@ bool RecordCommand::DumpAdditionalFeatures(
 bool RecordCommand::DumpBuildIdFeature() {
   std::vector<BuildIdRecord> build_id_records;
   BuildId build_id;
-  // Add build_ids for kernel/modules.
-  for (const auto& filename : hit_kernel_modules_) {
-    if (filename == DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID) {
+  std::vector<Dso*> dso_v = thread_tree_.GetAllDsos();
+  for (Dso* dso : dso_v) {
+    if (!dso->IsHit()) {
+      continue;
+    }
+    if (dso->type() == DSO_KERNEL) {
       if (!GetKernelBuildId(&build_id)) {
         continue;
       }
       build_id_records.push_back(
-          BuildIdRecord(true, UINT_MAX, build_id, filename));
-    } else {
-      std::string path = filename;
+          BuildIdRecord(true, UINT_MAX, build_id, dso->Path()));
+    } else if (dso->type() == DSO_KERNEL_MODULE) {
+      std::string path = dso->Path();
       std::string module_name = basename(&path[0]);
       if (android::base::EndsWith(module_name, ".ko")) {
         module_name = module_name.substr(0, module_name.size() - 3);
@@ -1006,34 +1006,31 @@ bool RecordCommand::DumpBuildIdFeature() {
         LOG(DEBUG) << "can't read build_id for module " << module_name;
         continue;
       }
-      build_id_records.push_back(
-          BuildIdRecord(true, UINT_MAX, build_id, filename));
-    }
-  }
-  // Add build_ids for user elf files.
-  for (const auto& filename : hit_user_files_) {
-    if (filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) {
-      continue;
-    }
-    auto tuple = SplitUrlInApk(filename);
-    if (std::get<0>(tuple)) {
-      ElfStatus result = GetBuildIdFromApkFile(std::get<1>(tuple),
-                                               std::get<2>(tuple), &build_id);
-      if (result != ElfStatus::NO_ERROR) {
-        LOG(DEBUG) << "can't read build_id from file " << filename << ": "
-                   << result;
-        continue;
-      }
+      build_id_records.push_back(BuildIdRecord(true, UINT_MAX, build_id, path));
     } else {
-      ElfStatus result = GetBuildIdFromElfFile(filename, &build_id);
-      if (result != ElfStatus::NO_ERROR) {
-        LOG(DEBUG) << "can't read build_id from file " << filename << ": "
-                   << result;
+      if (dso->Path() == DEFAULT_EXECNAME_FOR_THREAD_MMAP) {
         continue;
       }
+      auto tuple = SplitUrlInApk(dso->Path());
+      if (std::get<0>(tuple)) {
+        ElfStatus result = GetBuildIdFromApkFile(std::get<1>(tuple),
+                                                 std::get<2>(tuple), &build_id);
+        if (result != ElfStatus::NO_ERROR) {
+          LOG(DEBUG) << "can't read build_id from file " << dso->Path() << ": "
+                     << result;
+          continue;
+        }
+      } else {
+        ElfStatus result = GetBuildIdFromElfFile(dso->Path(), &build_id);
+        if (result != ElfStatus::NO_ERROR) {
+          LOG(DEBUG) << "can't read build_id from file " << dso->Path() << ": "
+                     << result;
+          continue;
+        }
+      }
+      build_id_records.push_back(
+          BuildIdRecord(false, UINT_MAX, build_id, dso->Path()));
     }
-    build_id_records.push_back(
-        BuildIdRecord(false, UINT_MAX, build_id, filename));
   }
   if (!record_file_writer_->WriteBuildIdFeature(build_id_records)) {
     return false;
@@ -1046,24 +1043,14 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
       thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
   const MapEntry* map =
       thread_tree_.FindMap(thread, r.ip_data.ip, r.InKernel());
-  if (map->in_kernel) {
-    // TODO: remove hit_kernel_modules_ and hit_user_files_, and
-    // use map->dso->SetDumped(), which is more efficient.
-    hit_kernel_modules_.insert(map->dso->Path());
-  } else {
-    hit_user_files_.insert(map->dso->Path());
-  }
+  map->dso->SetHitFlag();
   if (r.sample_type & PERF_SAMPLE_CALLCHAIN) {
     size_t ip_nr = r.callchain_data.ip_nr;
     const uint64_t* ips = r.callchain_data.ips;
     for (size_t i = 0; i < ip_nr; ++i) {
       // Even if a sample is in kernel, its callchain can be in user space.
       map = thread_tree_.FindMap(thread, ips[i]);
-      if (map->in_kernel) {
-        hit_kernel_modules_.insert(map->dso->Path());
-      } else {
-        hit_user_files_.insert(map->dso->Path());
-      }
+      map->dso->SetHitFlag();
     }
   }
 }

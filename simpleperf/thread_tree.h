@@ -112,6 +112,8 @@ class ThreadTree {
   // Update thread tree with information provided by record.
   void Update(const Record& record);
 
+  std::vector<Dso*> GetAllDsos() const;
+
  private:
   Dso* FindKernelDsoOrNew(const std::string& filename);
   Dso* FindUserDsoOrNew(const std::string& filename);
