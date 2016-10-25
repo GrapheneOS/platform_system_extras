@@ -481,8 +481,8 @@ bool EventSelectionSet::PrepareToReadMmapEventData(
     for (auto& selection : group) {
       for (auto& event_fd : selection.event_fds) {
         if (event_fd->HasMappedBuffer()) {
-          if (!event_fd->StartPolling(loop, [&]() {
-                return ReadMmapEventDataForFd(event_fd.get());
+          if (!event_fd->StartPolling(loop, [this]() {
+                return ReadMmapEventData();
               })) {
             return false;
           }
@@ -497,41 +497,83 @@ bool EventSelectionSet::PrepareToReadMmapEventData(
   return true;
 }
 
-bool EventSelectionSet::ReadMmapEventDataForFd(EventFd* event_fd) {
-  const char* data;
-  // Call GetAvailableMmapData() only once instead of calling in a loop, because
-  // 1) A mapped buffer caches data before needing to be read again. By default
-  //    it raises read Event when half full.
-  // 2) Spinning on one mapped buffer can make other mapped buffers overflow.
-  size_t size = event_fd->GetAvailableMmapData(&data);
-  if (size == 0) {
-    return true;
+// When reading from mmap buffers, we prefer reading from all buffers at once
+// rather than reading one buffer at a time. Because by reading all buffers
+// at once, we can merge records from different buffers easily in memory.
+// Otherwise, we have to sort records with greater effort.
+bool EventSelectionSet::ReadMmapEventData() {
+  size_t head_size = 0;
+  std::vector<RecordBufferHead>& heads = record_buffer_heads_;
+  if (heads.empty()) {
+    heads.resize(1);
   }
-  std::vector<std::unique_ptr<Record>> records =
-      ReadRecordsFromBuffer(event_fd->attr(), data, size);
-  for (auto& r : records) {
-    if (!record_callback_(r.get())) {
-      return false;
+  heads[0].current_pos = 0;
+  size_t buffer_pos = 0;
+
+  for (auto& group : groups_) {
+    for (auto& selection : group) {
+      for (auto& event_fd : selection.event_fds) {
+        if (event_fd->HasMappedBuffer()) {
+          if (event_fd->GetAvailableMmapData(record_buffer_, buffer_pos) != 0) {
+            heads[head_size].end_pos = buffer_pos;
+            heads[head_size].attr = &selection.event_attr;
+            head_size++;
+            if (heads.size() == head_size) {
+              heads.resize(head_size + 1);
+            }
+            heads[head_size].current_pos = buffer_pos;
+          }
+        }
+      }
+    }
+  }
+
+  if (head_size == 1) {
+    // Only one buffer has data, process it directly.
+    std::vector<std::unique_ptr<Record>> records =
+        ReadRecordsFromBuffer(*heads[0].attr,
+                              record_buffer_.data(), buffer_pos);
+    for (auto& r : records) {
+      if (!record_callback_(r.get())) {
+        return false;
+      }
+    }
+  } else {
+    // Use a priority queue to merge records from different buffers. As
+    // records from the same buffer are already ordered by time, we only
+    // need to merge the first record from all buffers. And each time a
+    // record is popped from the queue, we put the next record from its
+    // buffer into the queue.
+    auto comparator = [&](RecordBufferHead* h1, RecordBufferHead* h2) {
+      return h1->timestamp > h2->timestamp;
+    };
+    std::priority_queue<RecordBufferHead*, std::vector<RecordBufferHead*>, decltype(comparator)> q(comparator);
+    for (size_t i = 0; i < head_size; ++i) {
+      RecordBufferHead& h = heads[i];
+      h.r = ReadRecordFromBuffer(*h.attr, &record_buffer_[h.current_pos]);
+      h.timestamp = h.r->Timestamp();
+      h.current_pos += h.r->size();
+      q.push(&h);
+    }
+    while (!q.empty()) {
+      RecordBufferHead* h = q.top();
+      q.pop();
+      if (!record_callback_(h->r.get())) {
+        return false;
+      }
+      if (h->current_pos < h->end_pos) {
+        h->r = ReadRecordFromBuffer(*h->attr, &record_buffer_[h->current_pos]);
+        h->timestamp = h->r->Timestamp();
+        h->current_pos += h->r->size();
+        q.push(h);
+      }
     }
   }
   return true;
 }
 
 bool EventSelectionSet::FinishReadMmapEventData() {
-  // Read each mapped buffer once, because some data may exist in the buffers
-  // but is not much enough to raise read Events.
-  for (auto& group : groups_) {
-    for (auto& selection : group) {
-      for (auto& event_fd : selection.event_fds) {
-        if (event_fd->HasMappedBuffer()) {
-          if (!ReadMmapEventDataForFd(event_fd.get())) {
-            return false;
-          }
-        }
-      }
-    }
-  }
-  return true;
+  return ReadMmapEventData();
 }
 
 bool EventSelectionSet::HandleCpuHotplugEvents(
@@ -576,6 +618,13 @@ bool EventSelectionSet::DetectCpuHotplugEvents() {
 }
 
 bool EventSelectionSet::HandleCpuOfflineEvent(int cpu) {
+  if (!for_stat_cmd_) {
+    // Read mmap data here, so we won't lose the existing records of the
+    // offlined cpu.
+    if (!ReadMmapEventData()) {
+      return false;
+    }
+  }
   for (auto& group : groups_) {
     for (auto& selection : group) {
       for (auto it = selection.event_fds.begin();
@@ -589,9 +638,6 @@ bool EventSelectionSet::HandleCpuOfflineEvent(int cpu) {
             selection.hotplugged_counters.push_back(counter);
           } else {
             if ((*it)->HasMappedBuffer()) {
-              if (!ReadMmapEventDataForFd(it->get())) {
-                return false;
-              }
               if (!(*it)->StopPolling()) {
                 return false;
               }
@@ -674,8 +720,8 @@ bool EventSelectionSet::CreateMappedBufferForCpu(int cpu) {
     }
   }
   if (fd_with_buffer != nullptr &&
-      !fd_with_buffer->StartPolling(*loop_, [this, fd_with_buffer]() {
-        return ReadMmapEventDataForFd(fd_with_buffer);
+      !fd_with_buffer->StartPolling(*loop_, [this]() {
+        return ReadMmapEventData();
       })) {
     return false;
   }

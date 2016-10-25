@@ -127,10 +127,11 @@ static bool GetClockDiff(int64_t* clock_diff_in_ns) {
     return false;
   }
 
-  const char* data;
-  size_t size = event_fd->GetAvailableMmapData(&data);
+  std::vector<char> buffer;
+  size_t buffer_pos = 0;
+  size_t size = event_fd->GetAvailableMmapData(buffer, buffer_pos);
   std::vector<std::unique_ptr<Record>> records =
-      ReadRecordsFromBuffer(attr, data, size);
+      ReadRecordsFromBuffer(attr, buffer.data(), size);
   uint64_t perf_time_in_ns = 0;
   for (auto& r : records) {
     if (r->type() == PERF_RECORD_MMAP) {
