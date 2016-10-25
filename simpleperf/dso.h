@@ -93,6 +93,10 @@ struct Dso {
 
   void SetDumped() { has_dumped_ = true; }
 
+  // Set when there are samples hit in current dso.
+  void SetHitFlag() { hit_flag_ = true; }
+  bool IsHit() const { return hit_flag_; }
+
   // Return the minimum virtual address in program header.
   uint64_t MinVirtualAddress();
   void SetMinVirtualAddress(uint64_t min_vaddr) { min_vaddr_ = min_vaddr; }
@@ -130,6 +134,7 @@ struct Dso {
   std::set<Symbol, SymbolComparator> symbols_;
   bool is_loaded_;
   bool has_dumped_;
+  bool hit_flag_;
 };
 
 const char* DsoTypeToString(DsoType dso_type);

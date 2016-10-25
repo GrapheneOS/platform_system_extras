@@ -305,4 +305,16 @@ void ThreadTree::Update(const Record& record) {
   }
 }
 
+std::vector<Dso*> ThreadTree::GetAllDsos() const {
+  std::vector<Dso*> result;
+  result.push_back(kernel_dso_.get());
+  for (auto& p : module_dso_tree_) {
+    result.push_back(p.second.get());
+  }
+  for (auto& p : user_dso_tree_) {
+    result.push_back(p.second.get());
+  }
+  return result;
+}
+
 }  // namespace simpleperf
