@@ -29,8 +29,7 @@ LOCAL_C_INCLUDES := \
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
     $(LOCAL_PATH)/include
 LOCAL_STATIC_LIBRARIES := \
-    libsparse_host \
-    libz
+    libsparse_host
 LOCAL_STATIC_LIBRARIES_darwin += libselinux
 LOCAL_STATIC_LIBRARIES_linux += libselinux
 LOCAL_MODULE_HOST_OS := darwin linux windows
@@ -89,8 +88,7 @@ LOCAL_SHARED_LIBRARIES := \
     libcutils \
     libext2_uuid \
     libselinux \
-    libsparse \
-    libz
+    libsparse
 include $(BUILD_SHARED_LIBRARY)
 
 
