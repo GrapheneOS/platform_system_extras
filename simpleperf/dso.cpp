@@ -138,7 +138,8 @@ Dso::Dso(DsoType type, uint64_t id, const std::string& path)
       debug_file_path_(path),
       min_vaddr_(std::numeric_limits<uint64_t>::max()),
       is_loaded_(false),
-      has_dumped_(false) {
+      has_dumped_(false),
+      hit_flag_(false) {
   // Check if file matching path_ exists in symfs directory before using it as
   // debug_file_path_.
   if (!symfs_dir_.empty()) {
