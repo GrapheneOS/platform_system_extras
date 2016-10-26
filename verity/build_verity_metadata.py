@@ -18,8 +18,9 @@ import argparse
 import os
 import sys
 import struct
+import shlex
+import subprocess
 import tempfile
-import commands
 
 VERSION = 0
 MAGIC_NUMBER = 0xb001b001
@@ -27,9 +28,10 @@ BLOCK_SIZE = 4096
 METADATA_SIZE = BLOCK_SIZE * 8
 
 def run(cmd):
-    status, output = commands.getstatusoutput(cmd)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    output, _ = p.communicate()
     print output
-    if status:
+    if p.returncode:
         exit(-1)
 
 def get_verity_metadata_size(data_size):
@@ -43,15 +45,15 @@ def build_metadata_block(verity_table, signature):
     return block
 
 def sign_verity_table(table, signer_path, key_path, signer_args=None):
-    if signer_args is None:
-        signer_args = ''
-
     with tempfile.NamedTemporaryFile(suffix='.table') as table_file:
         with tempfile.NamedTemporaryFile(suffix='.sig') as signature_file:
             table_file.write(table)
             table_file.flush()
-            cmd = " ".join((signer_path, signer_args, table_file.name,
-                            key_path, signature_file.name))
+            if signer_args is None:
+              cmd = [signer_path, table_file.name, key_path, signature_file.name]
+            else:
+              args_list = shlex.split(signer_args)
+              cmd = [signer_path] + args_list + [table_file.name, key_path, signature_file.name]
             print cmd
             run(cmd)
             return signature_file.read()
