@@ -39,6 +39,7 @@
 
 static auto test_duration_for_long_tests = std::chrono::seconds(120);
 static auto cpu_hotplug_interval = std::chrono::microseconds(1000);
+static bool verbose_mode = false;
 
 #if defined(__BIONIC__)
 class ScopedMpdecisionKiller {
@@ -253,7 +254,9 @@ TEST(cpu_offline, offline_while_recording) {
       // Report test time.
       auto diff = std::chrono::duration_cast<std::chrono::seconds>(
           std::chrono::steady_clock::now() - start_time);
-      GTEST_LOG_(INFO) << "Have Tested " << (diff.count() / 60.0) << " minutes.";
+      if (verbose_mode) {
+        GTEST_LOG_(INFO) << "Have Tested " << (diff.count() / 60.0) << " minutes.";
+      }
       cur_time = std::chrono::steady_clock::now();
     }
 
@@ -263,7 +266,9 @@ TEST(cpu_offline, offline_while_recording) {
       continue;
     }
     iterations++;
-    GTEST_LOG_(INFO) << "Test offline while recording for " << iterations << " times.";
+    if (verbose_mode) {
+      GTEST_LOG_(INFO) << "Test offline while recording for " << iterations << " times.";
+    }
   }
   if (cpu_toggle_arg.cpu_hotplug_failed) {
     GTEST_LOG_(INFO) << "Test ends because of cpu hotplug failure.";
@@ -305,7 +310,9 @@ TEST(cpu_offline, offline_while_ioctl_enable) {
       // Report test time.
       auto diff = std::chrono::duration_cast<std::chrono::seconds>(
           std::chrono::steady_clock::now() - start_time);
-      GTEST_LOG_(INFO) << "Have Tested " << (diff.count() / 60.0) << " minutes.";
+      if (verbose_mode) {
+        GTEST_LOG_(INFO) << "Have Tested " << (diff.count() / 60.0) << " minutes.";
+      }
       cur_time = std::chrono::steady_clock::now();
 
     }
@@ -318,7 +325,9 @@ TEST(cpu_offline, offline_while_ioctl_enable) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
     ASSERT_TRUE(event_fd->EnableEvent());
     iterations++;
-    GTEST_LOG_(INFO) << "Test offline while ioctl(PERF_EVENT_IOC_ENABLE) for " << iterations << " times.";
+    if (verbose_mode) {
+      GTEST_LOG_(INFO) << "Test offline while ioctl(PERF_EVENT_IOC_ENABLE) for " << iterations << " times.";
+    }
   }
   if (cpu_toggle_arg.cpu_hotplug_failed) {
     GTEST_LOG_(INFO) << "Test ends because of cpu hotplug failure.";
@@ -384,7 +393,9 @@ TEST(cpu_offline, offline_while_user_process_profiling) {
     if (cur_time + report_step < std::chrono::steady_clock::now()) {
       auto diff = std::chrono::duration_cast<std::chrono::seconds>(
           std::chrono::steady_clock::now() - start_time);
-      GTEST_LOG_(INFO) << "Have Tested " <<  (diff.count() / 60.0) << " minutes.";
+      if (verbose_mode) {
+        GTEST_LOG_(INFO) << "Have Tested " <<  (diff.count() / 60.0) << " minutes.";
+      }
       cur_time = std::chrono::steady_clock::now();
     }
     // Test if the cpu pmu is still usable.
@@ -399,7 +410,9 @@ TEST(cpu_offline, offline_while_user_process_profiling) {
     // profile for a while.
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
     iterations++;
-    GTEST_LOG_(INFO) << "Test offline while user process profiling for " << iterations << " times.";
+    if (verbose_mode) {
+      GTEST_LOG_(INFO) << "Test offline while user process profiling for " << iterations << " times.";
+    }
   }
   if (cpu_toggle_arg.cpu_hotplug_failed) {
     GTEST_LOG_(INFO) << "Test ends because of cpu hotplug failure.";
@@ -454,6 +467,7 @@ int main(int argc, char** argv) {
     if (strcmp(argv[i], "--help") == 0) {
       printf("--long_test_duration <second> Set test duration for long tests. Default is 120s.\n");
       printf("--cpu_hotplug_interval <microseconds> Set cpu hotplug interval. Default is 1000us.\n");
+      printf("--verbose  Show verbose log.\n");
     } else if (strcmp(argv[i], "--long_test_duration") == 0) {
       if (i + 1 < argc) {
         int second_count = atoi(argv[i+1]);
@@ -474,6 +488,8 @@ int main(int argc, char** argv) {
         cpu_hotplug_interval = std::chrono::microseconds(microsecond_count);
         i++;
       }
+    } else if (strcmp(argv[i], "--verbose") == 0) {
+      verbose_mode = true;
     }
   }
   InitLogging(argv, android::base::StderrLogger);
