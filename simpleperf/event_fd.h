@@ -76,7 +76,7 @@ class EventFd {
 
   // When the kernel writes new sampled records to the mapped area, we can get
   // them by returning the start address and size of the data.
-  size_t GetAvailableMmapData(const char** pdata);
+  size_t GetAvailableMmapData(std::vector<char>& buffer, size_t& buffer_pos);
 
   // [callback] is called when there is data available in the mapped buffer.
   bool StartPolling(IOEventLoop& loop, const std::function<bool()>& callback);
