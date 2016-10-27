@@ -134,7 +134,7 @@ class EventSelectionSet {
                              std::string* failed_event_type);
 
   bool MmapEventFiles(size_t mmap_pages, bool report_error);
-  bool ReadMmapEventDataForFd(EventFd* event_fd);
+  bool ReadMmapEventData();
 
   bool DetectCpuHotplugEvents();
   bool HandleCpuOnlineEvent(int cpu);
@@ -153,6 +153,20 @@ class EventSelectionSet {
 
   std::set<int> monitored_cpus_;
   std::vector<int> online_cpus_;
+
+  // Records from all mapped buffers are stored in record_buffer_, each
+  // RecordBufferHead manages records read from one mapped buffer. Create
+  // record_buffer_heads_ and record_buffer_ here to avoid allocating them
+  // from heap each time calling ReadMmapEventData().
+  struct RecordBufferHead {
+    size_t current_pos;  // current position in record_buffer_
+    size_t end_pos;  // end position in record_buffer_
+    perf_event_attr* attr;
+    uint64_t timestamp;
+    std::unique_ptr<Record> r;
+  };
+  std::vector<RecordBufferHead> record_buffer_heads_;
+  std::vector<char> record_buffer_;
 
   DISALLOW_COPY_AND_ASSIGN(EventSelectionSet);
 };
