@@ -313,6 +313,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   if (!event_selection_set_.FinishReadMmapEventData()) {
     return false;
   }
+  // TODO: remove SortDataSection as we have merged records in memory.
   if (!record_file_writer_->SortDataSection()) {
     return false;
   }
@@ -592,6 +593,7 @@ bool RecordCommand::SetEventSelectionFlags() {
     }
   }
   event_selection_set_.SetInherit(child_inherit_);
+  // TODO: remove SetLowWatermark() as we have merged records in memory.
   // If Unwinding while recording, records are used before being sorted.
   // By using low watermark, records are almost sorted when read from kernel.
   if (dwarf_callchain_sampling_ && unwind_dwarf_callchain_ && !post_unwind_) {
