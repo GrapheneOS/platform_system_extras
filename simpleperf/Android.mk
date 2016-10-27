@@ -112,6 +112,7 @@ libsimpleperf_src_files_linux := \
   IOEventLoop.cpp \
   perf_clock.cpp \
   record_file_writer.cpp \
+  UnixSocket.cpp \
   workload.cpp \
 
 libsimpleperf_src_files_darwin := \
@@ -258,6 +259,7 @@ simpleperf_unit_test_src_files_linux := \
   environment_test.cpp \
   IOEventLoop_test.cpp \
   record_file_test.cpp \
+  UnixSocket_test.cpp \
   workload_test.cpp \
 
 # simpleperf_unit_test target
