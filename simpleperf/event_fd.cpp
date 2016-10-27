@@ -37,8 +37,6 @@
 #include "perf_event.h"
 #include "utils.h"
 
-std::vector<char> EventFd::data_process_buffer_;
-
 static int perf_event_open(const perf_event_attr& attr, pid_t pid, int cpu,
                            int group_fd, unsigned long flags) {  // NOLINT
   return syscall(__NR_perf_event_open, &attr, pid, cpu, group_fd, flags);
@@ -157,9 +155,6 @@ bool EventFd::CreateMappedBuffer(size_t mmap_pages, bool report_error) {
   mmap_metadata_page_ = reinterpret_cast<perf_event_mmap_page*>(mmap_addr_);
   mmap_data_buffer_ = reinterpret_cast<char*>(mmap_addr_) + page_size;
   mmap_data_buffer_size_ = mmap_len_ - page_size;
-  if (data_process_buffer_.size() < mmap_data_buffer_size_) {
-    data_process_buffer_.resize(mmap_data_buffer_size_);
-  }
   return true;
 }
 
@@ -189,7 +184,7 @@ void EventFd::DestroyMappedBuffer() {
   }
 }
 
-size_t EventFd::GetAvailableMmapData(const char** pdata) {
+size_t EventFd::GetAvailableMmapData(std::vector<char>& buffer, size_t& buffer_pos) {
   if (!HasMappedBuffer()) {
     return 0;
   }
@@ -216,18 +211,27 @@ size_t EventFd::GetAvailableMmapData(const char** pdata) {
     // No available data.
     return 0;
   }
+  size_t read_bytes;
+  if (read_head < write_head) {
+    read_bytes = write_head - read_head;
+  } else {
+    read_bytes = mmap_data_buffer_size_ - read_head + write_head;
+  }
+  // Extend the buffer if it is not big enough.
+  if (buffer.size() < buffer_pos + read_bytes) {
+    buffer.resize(buffer_pos + read_bytes);
+  }
 
   // Make sure we can see the data after the fence.
   std::atomic_thread_fence(std::memory_order_acquire);
 
-  // Copy records from mapped buffer to data_process_buffer. Note that records
-  // can be wrapped at the end of the mapped buffer.
-  char* to = data_process_buffer_.data();
+  // Copy records from mapped buffer. Note that records can be wrapped at the
+  // end of the mapped buffer.
+  char* to = &buffer[buffer_pos];
   if (read_head < write_head) {
     char* from = mmap_data_buffer_ + read_head;
     size_t n = write_head - read_head;
     memcpy(to, from, n);
-    to += n;
   } else {
     char* from = mmap_data_buffer_ + read_head;
     size_t n = mmap_data_buffer_size_ - read_head;
@@ -236,10 +240,8 @@ size_t EventFd::GetAvailableMmapData(const char** pdata) {
     from = mmap_data_buffer_;
     n = write_head;
     memcpy(to, from, n);
-    to += n;
   }
-  size_t read_bytes = to - data_process_buffer_.data();
-  *pdata = data_process_buffer_.data();
+  buffer_pos += read_bytes;
   DiscardMmapData(read_bytes);
   return read_bytes;
 }

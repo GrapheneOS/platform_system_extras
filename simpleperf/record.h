@@ -517,6 +517,11 @@ std::unique_ptr<Record> ReadRecordFromOwnedBuffer(const perf_event_attr& attr,
 std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(
     const perf_event_attr& attr, const char* buf, size_t buf_size);
 
+// Read one record from the buffer pointed by [p]. But the record doesn't
+// own the buffer.
+std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
+                                             const char* p);
+
 // RecordCache is a cache used when receiving records from the kernel.
 // It sorts received records based on type and timestamp, and pops records
 // in sorted order. Records from the kernel need to be sorted because

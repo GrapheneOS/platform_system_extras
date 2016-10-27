@@ -918,6 +918,12 @@ std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(
   return result;
 }
 
+std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
+                                             const char* p) {
+  auto header = reinterpret_cast<const perf_event_header*>(p);
+  return ReadRecordFromBuffer(attr, header->type, p);
+}
+
 bool RecordCache::RecordWithSeq::IsHappensBefore(
     const RecordWithSeq& other) const {
   bool is_sample = (record->type() == PERF_RECORD_SAMPLE);
