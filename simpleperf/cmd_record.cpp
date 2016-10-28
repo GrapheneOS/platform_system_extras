@@ -696,72 +696,76 @@ bool RecordCommand::DumpKernelAndModuleMmaps(const perf_event_attr& attr,
 
 bool RecordCommand::DumpThreadCommAndMmaps(const perf_event_attr& attr,
                                            uint64_t event_id) {
-  std::vector<ThreadComm> thread_comms;
-  if (!GetThreadComms(&thread_comms)) {
-    return false;
-  }
   // Decide which processes and threads to dump.
+  // For system_wide profiling, dump all threads.
+  // For non system wide profiling, build dump_threads.
   bool all_threads = system_wide_collection_;
   std::set<pid_t> dump_threads = event_selection_set_.GetMonitoredThreads();
   for (const auto& pid : event_selection_set_.GetMonitoredProcesses()) {
     std::vector<pid_t> tids = GetThreadsInProcess(pid);
     dump_threads.insert(tids.begin(), tids.end());
   }
-  std::set<pid_t> dump_processes;
-  for (auto& thread : thread_comms) {
-    if (dump_threads.find(thread.tid) != dump_threads.end()) {
-      dump_processes.insert(thread.pid);
+
+  // Collect processes to dump.
+  std::vector<pid_t> processes;
+  if (all_threads) {
+    processes = GetAllProcesses();
+  } else {
+    std::set<pid_t> process_set;
+    for (const auto& tid : dump_threads) {
+      pid_t pid;
+      if (!GetProcessForThread(tid, &pid)) {
+        continue;
+      }
+      process_set.insert(pid);
     }
+    processes.insert(processes.end(), process_set.begin(), process_set.end());
   }
 
-  // Dump processes.
-  for (auto& thread : thread_comms) {
-    if (thread.pid != thread.tid) {
-      continue;
-    }
-    if (!all_threads &&
-        dump_processes.find(thread.pid) == dump_processes.end()) {
-      continue;
-    }
-    CommRecord record(attr, thread.pid, thread.tid, thread.comm, event_id, 0);
-    if (!ProcessRecord(&record)) {
-      return false;
-    }
+  // Dump each process and its threads.
+  for (auto& pid : processes) {
+    // Dump mmap records.
     std::vector<ThreadMmap> thread_mmaps;
-    if (!GetThreadMmapsInProcess(thread.pid, &thread_mmaps)) {
-      // The thread may exit before we get its info.
+    if (!GetThreadMmapsInProcess(pid, &thread_mmaps)) {
+      // The process may exit before we get its info.
       continue;
     }
-    for (auto& thread_mmap : thread_mmaps) {
-      if (thread_mmap.executable == 0) {
+    for (const auto& map : thread_mmaps) {
+      if (map.executable == 0) {
         continue;  // No need to dump non-executable mmap info.
       }
-      MmapRecord record(attr, false, thread.pid, thread.tid,
-                        thread_mmap.start_addr, thread_mmap.len,
-                        thread_mmap.pgoff, thread_mmap.name, event_id);
+      MmapRecord record(attr, false, pid, pid, map.start_addr, map.len,
+                        map.pgoff, map.name, event_id);
       if (!ProcessRecord(&record)) {
         return false;
       }
     }
-  }
-
-  // Dump threads.
-  for (auto& thread : thread_comms) {
-    if (thread.pid == thread.tid) {
-      continue;
+    // Dump process name.
+    std::string name;
+    if (GetThreadName(pid, &name)) {
+      CommRecord record(attr, pid, pid, name, event_id, 0);
+      if (!ProcessRecord(&record)) {
+        return false;
+      }
     }
-    if (!all_threads && dump_threads.find(thread.tid) == dump_threads.end()) {
-      continue;
-    }
-    ForkRecord fork_record(attr, thread.pid, thread.tid, thread.pid, thread.pid,
-                           event_id);
-    if (!ProcessRecord(&fork_record)) {
-      return false;
-    }
-    CommRecord comm_record(attr, thread.pid, thread.tid, thread.comm, event_id,
-                           0);
-    if (!ProcessRecord(&comm_record)) {
-      return false;
+    // Dump thread info.
+    std::vector<pid_t> threads = GetThreadsInProcess(pid);
+    for (const auto& tid : threads) {
+      if (tid == pid) {
+        continue;
+      }
+      if (all_threads || dump_threads.find(tid) != dump_threads.end()) {
+        ForkRecord fork_record(attr, pid, tid, pid, pid, event_id);
+        if (!ProcessRecord(&fork_record)) {
+          return false;
+        }
+        if (GetThreadName(tid, &name)) {
+          CommRecord comm_record(attr, pid, tid, name, event_id, 0);
+          if (!ProcessRecord(&comm_record)) {
+            return false;
+          }
+        }
+      }
     }
   }
   return true;
