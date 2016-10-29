@@ -295,14 +295,6 @@ void EventSelectionSet::SetInherit(bool enable) {
   }
 }
 
-void EventSelectionSet::SetLowWatermark() {
-  for (auto& group : groups_) {
-    for (auto& selection : group) {
-      selection.event_attr.wakeup_events = 1;
-    }
-  }
-}
-
 bool EventSelectionSet::NeedKernelSymbol() const {
   for (const auto& group : groups_) {
     for (const auto& selection : group) {
