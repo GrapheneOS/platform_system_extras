@@ -39,14 +39,6 @@ struct KernelMmap {
 
 void GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<KernelMmap>* module_mmaps);
 
-struct ThreadComm {
-  pid_t pid, tid;
-  std::string comm;
-};
-
-bool GetThreadComms(std::vector<ThreadComm>* thread_comms);
-bool GetProcessIdForThread(pid_t tid, pid_t* pid);
-
 struct ThreadMmap {
   uint64_t start_addr;
   uint64_t len;
@@ -62,7 +54,11 @@ constexpr char DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID[] = "[kernel.kallsyms]";
 bool GetKernelBuildId(BuildId* build_id);
 bool GetModuleBuildId(const std::string& module_name, BuildId* build_id);
 
+std::vector<pid_t> GetAllProcesses();
 std::vector<pid_t> GetThreadsInProcess(pid_t pid);
+bool GetProcessForThread(pid_t tid, pid_t* pid);
+bool GetThreadName(pid_t tid, std::string* name);
+
 bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>* tid_set);
 
 bool CheckPerfEventLimit();
