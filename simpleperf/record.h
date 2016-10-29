@@ -30,11 +30,6 @@
 #include "build_id.h"
 #include "perf_event.h"
 
-struct KernelMmap;
-struct ModuleMmap;
-struct ThreadComm;
-struct ThreadMmap;
-
 enum user_record_type {
   PERF_RECORD_USER_DEFINED_TYPE_START = 64,
   PERF_RECORD_ATTR = 64,

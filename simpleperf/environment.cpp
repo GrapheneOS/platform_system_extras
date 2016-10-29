@@ -19,6 +19,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/utsname.h>
 
 #include <limits>
 #include <set>
@@ -145,18 +146,6 @@ static std::vector<KernelMmap> GetLoadedModules() {
   return result;
 }
 
-static std::string GetLinuxVersion() {
-  std::string content;
-  if (android::base::ReadFileToString("/proc/version", &content)) {
-    char s[content.size() + 1];
-    if (sscanf(content.c_str(), "Linux version %s", s) == 1) {
-      return s;
-    }
-  }
-  PLOG(FATAL) << "can't read linux version";
-  return "";
-}
-
 static void GetAllModuleFiles(const std::string& path,
                               std::unordered_map<std::string, std::string>* module_file_map) {
   for (const auto& name : GetEntriesInDir(path)) {
@@ -172,12 +161,17 @@ static void GetAllModuleFiles(const std::string& path,
 }
 
 static std::vector<KernelMmap> GetModulesInUse() {
-  // TODO: There is no /proc/modules or /lib/modules on Android, find methods work on it.
-  std::vector<KernelMmap> module_mmaps = GetLoadedModules();
-  std::string linux_version = GetLinuxVersion();
+  utsname uname_buf;
+  if (TEMP_FAILURE_RETRY(uname(&uname_buf)) != 0) {
+    PLOG(ERROR) << "uname() failed";
+    return std::vector<KernelMmap>();
+  }
+  std::string linux_version = uname_buf.release;
   std::string module_dirpath = "/lib/modules/" + linux_version + "/kernel";
   std::unordered_map<std::string, std::string> module_file_map;
   GetAllModuleFiles(module_dirpath, &module_file_map);
+  // TODO: There is no /proc/modules or /lib/modules on Android, find methods work on it.
+  std::vector<KernelMmap> module_mmaps = GetLoadedModules();
   for (auto& module : module_mmaps) {
     auto it = module_file_map.find(module.name);
     if (it != module_file_map.end()) {
@@ -223,7 +217,8 @@ void GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<KernelMmap>* m
   }
 }
 
-static bool ReadThreadNameAndTgid(const std::string& status_file, std::string* comm, pid_t* tgid) {
+static bool ReadThreadNameAndPid(pid_t tid, std::string* comm, pid_t* pid) {
+  std::string status_file = android::base::StringPrintf("/proc/%d/status", tid);
   FILE* fp = fopen(status_file.c_str(), "re");
   if (fp == nullptr) {
     return false;
@@ -234,11 +229,17 @@ static bool ReadThreadNameAndTgid(const std::string& status_file, std::string* c
   char* line;
   while ((line = reader.ReadLine()) != nullptr) {
     char s[reader.MaxLineSize()];
+    pid_t tgid;
     if (sscanf(line, "Name:%s", s) == 1) {
-      *comm = s;
       read_comm = true;
-    } else if (sscanf(line, "Tgid:%d", tgid) == 1) {
+      if (comm != nullptr) {
+        *comm = s;
+      }
+    } else if (sscanf(line, "Tgid:%d", &tgid) == 1) {
       read_tgid = true;
+      if (pid != nullptr) {
+        *pid = tgid;
+      }
     }
     if (read_comm && read_tgid) {
       return true;
@@ -260,38 +261,25 @@ std::vector<pid_t> GetThreadsInProcess(pid_t pid) {
   return result;
 }
 
-static bool GetThreadComm(pid_t pid, std::vector<ThreadComm>* thread_comms) {
-  std::vector<pid_t> tids = GetThreadsInProcess(pid);
-  for (auto& tid : tids) {
-    std::string status_file = android::base::StringPrintf("/proc/%d/task/%d/status", pid, tid);
-    std::string comm;
-    pid_t tgid;
-    // It is possible that the process or thread exited before we can read its status.
-    if (!ReadThreadNameAndTgid(status_file, &comm, &tgid)) {
-      continue;
-    }
-    CHECK_EQ(pid, tgid);
-    ThreadComm thread;
-    thread.tid = tid;
-    thread.pid = pid;
-    thread.comm = comm;
-    thread_comms->push_back(thread);
-  }
-  return true;
+bool GetProcessForThread(pid_t tid, pid_t* pid) {
+  return ReadThreadNameAndPid(tid, nullptr, pid);
 }
 
-bool GetThreadComms(std::vector<ThreadComm>* thread_comms) {
-  thread_comms->clear();
-  for (const auto& name : GetSubDirs("/proc")) {
-    int pid;
-    if (!android::base::ParseInt(name.c_str(), &pid, 0)) {
+bool GetThreadName(pid_t tid, std::string* name) {
+  return ReadThreadNameAndPid(tid, name, nullptr);
+}
+
+std::vector<pid_t> GetAllProcesses() {
+  std::vector<pid_t> result;
+  std::vector<std::string> entries = GetEntriesInDir("/proc");
+  for (const auto& entry : entries) {
+    pid_t pid;
+    if (!android::base::ParseInt(entry.c_str(), &pid, 0)) {
       continue;
     }
-    if (!GetThreadComm(pid, thread_comms)) {
-      return false;
-    }
+    result.push_back(pid);
   }
-  return true;
+  return result;
 }
 
 bool GetThreadMmapsInProcess(pid_t pid, std::vector<ThreadMmap>* thread_mmaps) {
@@ -331,7 +319,7 @@ bool GetThreadMmapsInProcess(pid_t pid, std::vector<ThreadMmap>* thread_mmaps) {
 bool GetKernelBuildId(BuildId* build_id) {
   ElfStatus result = GetBuildIdFromNoteFile("/sys/kernel/notes", build_id);
   if (result != ElfStatus::NO_ERROR) {
-    LOG(WARNING) << "failed to read /sys/kernel/notes: " << result;
+    LOG(DEBUG) << "failed to read /sys/kernel/notes: " << result;
   }
   return result == ElfStatus::NO_ERROR;
 }
@@ -369,7 +357,7 @@ bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>
 static bool ReadPerfEventParanoid(int* value) {
   std::string s;
   if (!android::base::ReadFileToString("/proc/sys/kernel/perf_event_paranoid", &s)) {
-    PLOG(ERROR) << "failed to read /proc/sys/kernel/perf_event_paranoid";
+    PLOG(DEBUG) << "failed to read /proc/sys/kernel/perf_event_paranoid";
     return false;
   }
   s = android::base::Trim(s);
@@ -397,26 +385,42 @@ bool CheckPerfEventLimit() {
     return true;
   }
   int limit_level;
-  if (!ReadPerfEventParanoid(&limit_level)) {
-    return false;
-  }
-  if (limit_level <= 1) {
+  bool can_read_paranoid = ReadPerfEventParanoid(&limit_level);
+  if (can_read_paranoid && limit_level <= 1) {
     return true;
   }
 #if defined(__ANDROID__)
+  const char* prop_name = "security.perf_harden";
+  char prop_value[PROP_VALUE_MAX];
+  if (__system_property_get(prop_name, prop_value) <= 0) {
+    // can't do anything if there is no such property.
+    return true;
+  }
+  if (strcmp(prop_value, "0") == 0) {
+    return true;
+  }
   // Try to enable perf_event_paranoid by setprop security.perf_harden=0.
-  if (__system_property_set("security.perf_harden", "0") == 0) {
+  if (__system_property_set(prop_name, "0") == 0) {
     sleep(1);
-    if (ReadPerfEventParanoid(&limit_level) && limit_level <= 1) {
+    if (can_read_paranoid && ReadPerfEventParanoid(&limit_level) && limit_level <= 1) {
+      return true;
+    }
+    if (__system_property_get(prop_name, prop_value) > 0 && strcmp(prop_value, "0") == 0) {
       return true;
     }
   }
-  LOG(WARNING) << "/proc/sys/kernel/perf_event_paranoid is " << limit_level
-      << ", " << GetLimitLevelDescription(limit_level) << ".";
+  if (can_read_paranoid) {
+    LOG(WARNING) << "/proc/sys/kernel/perf_event_paranoid is " << limit_level
+        << ", " << GetLimitLevelDescription(limit_level) << ".";
+  }
   LOG(WARNING) << "Try using `adb shell setprop security.perf_harden 0` to allow profiling.";
+  return false;
 #else
-  LOG(WARNING) << "/proc/sys/kernel/perf_event_paranoid is " << limit_level
-      << ", " << GetLimitLevelDescription(limit_level) << ".";
+  if (can_read_paranoid) {
+    LOG(WARNING) << "/proc/sys/kernel/perf_event_paranoid is " << limit_level
+        << ", " << GetLimitLevelDescription(limit_level) << ".";
+    return false;
+  }
 #endif
   return true;
 }
@@ -428,7 +432,7 @@ bool CheckSampleFrequency(uint64_t sample_freq) {
   }
   std::string s;
   if (!android::base::ReadFileToString("/proc/sys/kernel/perf_event_max_sample_rate", &s)) {
-    PLOG(WARNING) << "failed to read /proc/sys/kernel/perf_event_max_sample_rate";
+    PLOG(DEBUG) << "failed to read /proc/sys/kernel/perf_event_max_sample_rate";
     // Omit the check if perf_event_max_sample_rate doesn't exist.
     return true;
   }
@@ -450,7 +454,7 @@ bool CheckKernelSymbolAddresses() {
   const std::string kptr_restrict_file = "/proc/sys/kernel/kptr_restrict";
   std::string s;
   if (!android::base::ReadFileToString(kptr_restrict_file, &s)) {
-    PLOG(WARNING) << "failed to read " << kptr_restrict_file;
+    PLOG(DEBUG) << "failed to read " << kptr_restrict_file;
     return false;
   }
   s = android::base::Trim(s);
