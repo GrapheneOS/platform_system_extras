@@ -85,7 +85,6 @@ class EventSelectionSet {
   void EnableFpCallChainSampling();
   bool EnableDwarfCallChainSampling(uint32_t dump_stack_size);
   void SetInherit(bool enable);
-  void SetLowWatermark();
   bool NeedKernelSymbol() const;
 
   void AddMonitoredProcesses(const std::set<pid_t>& processes) {
