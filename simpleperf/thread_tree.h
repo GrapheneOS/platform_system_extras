@@ -109,6 +109,9 @@ class ThreadTree {
   // the time to reload dso information.
   void ClearThreadAndMap();
 
+  void AddDsoInfo(const std::string& file_path, uint32_t file_type,
+                  uint64_t min_vaddr, std::vector<Symbol>* symbols);
+
   // Update thread tree with information provided by record.
   void Update(const Record& record);
 
@@ -135,7 +138,6 @@ class ThreadTree {
   bool show_ip_for_unknown_symbol_;
   bool show_mark_for_unknown_symbol_;
   Symbol unknown_symbol_;
-  std::unordered_map<uint64_t, Dso*> dso_id_to_dso_map_;
 };
 
 }  // namespace simpleperf
