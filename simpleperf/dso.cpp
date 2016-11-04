@@ -127,18 +127,15 @@ BuildId Dso::GetExpectedBuildId() {
 
 std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type,
                                     const std::string& dso_path) {
-  static uint64_t id = 0;
-  return std::unique_ptr<Dso>(new Dso(dso_type, ++id, dso_path));
+  return std::unique_ptr<Dso>(new Dso(dso_type, dso_path));
 }
 
-Dso::Dso(DsoType type, uint64_t id, const std::string& path)
+Dso::Dso(DsoType type, const std::string& path)
     : type_(type),
-      id_(id),
       path_(path),
       debug_file_path_(path),
       min_vaddr_(std::numeric_limits<uint64_t>::max()),
       is_loaded_(false),
-      has_dumped_(false),
       hit_flag_(false) {
   // Check if file matching path_ exists in symfs directory before using it as
   // debug_file_path_.
@@ -173,33 +170,46 @@ Dso::~Dso() {
   }
 }
 
+static bool CompareSymbol(const Symbol& symbol1, const Symbol& symbol2) {
+  return symbol1.addr < symbol2.addr;
+}
+
 const Symbol* Dso::FindSymbol(uint64_t vaddr_in_dso) {
   if (!is_loaded_) {
-    is_loaded_ = true;
-    // If symbols has been read from SymbolRecords, no need to load them from
-    // dso.
-    if (symbols_.empty()) {
-      if (!Load()) {
-        LOG(DEBUG) << "failed to load dso: " << path_;
-        return nullptr;
+    Load();
+  }
+  if (!symbols_.empty()) {
+    auto it = std::upper_bound(symbols_.begin(), symbols_.end(), Symbol("", vaddr_in_dso, 0), CompareSymbol);
+    if (it != symbols_.begin()) {
+      --it;
+      if (it->addr <= vaddr_in_dso && (it->addr + it->len > vaddr_in_dso)) {
+        return &*it;
       }
     }
   }
-  if (symbols_.empty()) {
-    return nullptr;
-  }
-
-  auto it = symbols_.upper_bound(Symbol("", vaddr_in_dso, 0));
-  if (it != symbols_.begin()) {
-    --it;
-    // If vaddr_in_dso is ULLONG_MAX, then it->addr + it->len overflows,
-    // and we allow this situation.
-    if (it->addr <= vaddr_in_dso && (it->addr + it->len > vaddr_in_dso ||
-                                     it->addr + it->len < it->addr)) {
-      return &*it;
+  if (!unknown_symbols_.empty()) {
+    auto it = unknown_symbols_.find(vaddr_in_dso);
+    if (it != unknown_symbols_.end()) {
+      return &it->second;
     }
   }
   return nullptr;
+}
+
+const std::vector<Symbol>& Dso::GetSymbols() {
+  if (!is_loaded_) {
+    Load();
+  }
+  return symbols_;
+}
+
+void Dso::SetSymbols(std::vector<Symbol>* symbols) {
+  symbols_ = std::move(*symbols);
+  symbols->clear();
+}
+
+void Dso::AddUnknownSymbol(uint64_t vaddr_in_dso, const std::string& name) {
+  unknown_symbols_.insert(std::make_pair(vaddr_in_dso, Symbol(name, vaddr_in_dso, 1)));
 }
 
 uint64_t Dso::MinVirtualAddress() {
@@ -222,7 +232,14 @@ uint64_t Dso::MinVirtualAddress() {
   return min_vaddr_;
 }
 
-bool Dso::Load() {
+void Dso::Load() {
+  is_loaded_ = true;
+  if (!symbols_.empty()) {
+    // If symbols has been read from file feature section of perf.data, no
+    // need to load them from file system.
+    // TODO: combine symbols in file feature section and in file system.
+    return;
+  }
   bool result = false;
   switch (type_) {
     case DSO_KERNEL:
@@ -241,11 +258,12 @@ bool Dso::Load() {
     }
   }
   if (result) {
+    std::sort(symbols_.begin(), symbols_.end(), CompareSymbol);
     FixupSymbolLength();
   } else {
     symbols_.clear();
+    LOG(DEBUG) << "failed to load dso: " << path_;
   }
-  return result;
 }
 
 static bool IsKernelFunctionSymbol(const KernelSymbol& symbol) {
@@ -253,16 +271,18 @@ static bool IsKernelFunctionSymbol(const KernelSymbol& symbol) {
           symbol.type == 'w');
 }
 
-static bool KernelSymbolCallback(const KernelSymbol& kernel_symbol, Dso* dso) {
+static bool KernelSymbolCallback(const KernelSymbol& kernel_symbol,
+                                 std::vector<Symbol>* symbols) {
   if (IsKernelFunctionSymbol(kernel_symbol)) {
-    dso->InsertSymbol(Symbol(kernel_symbol.name, kernel_symbol.addr, 0));
+    symbols->emplace_back(Symbol(kernel_symbol.name, kernel_symbol.addr, 0));
   }
   return false;
 }
 
-static void VmlinuxSymbolCallback(const ElfFileSymbol& elf_symbol, Dso* dso) {
+static void VmlinuxSymbolCallback(const ElfFileSymbol& elf_symbol,
+                                  std::vector<Symbol>* symbols) {
   if (elf_symbol.is_func) {
-    dso->InsertSymbol(
+    symbols->emplace_back(
         Symbol(elf_symbol.name, elf_symbol.vaddr, elf_symbol.len));
   }
 }
@@ -286,11 +306,11 @@ bool Dso::LoadKernel() {
   BuildId build_id = GetExpectedBuildId();
   if (!vmlinux_.empty()) {
     ElfStatus result = ParseSymbolsFromElfFile(vmlinux_, build_id,
-        std::bind(VmlinuxSymbolCallback, std::placeholders::_1, this));
+        std::bind(VmlinuxSymbolCallback, std::placeholders::_1, &symbols_));
     return CheckReadSymbolResult(result, vmlinux_);
   } else if (!kallsyms_.empty()) {
     ProcessKernelSymbols(kallsyms_, std::bind(&KernelSymbolCallback,
-                                              std::placeholders::_1, this));
+                                              std::placeholders::_1, &symbols_));
     bool all_zero = true;
     for (const auto& symbol : symbols_) {
       if (symbol.addr != 0) {
@@ -325,7 +345,7 @@ bool Dso::LoadKernel() {
       return false;
     }
     ProcessKernelSymbols(kallsyms, std::bind(&KernelSymbolCallback,
-                                             std::placeholders::_1, this));
+                                             std::placeholders::_1, &symbols_));
     bool all_zero = true;
     for (const auto& symbol : symbols_) {
       if (symbol.addr != 0) {
@@ -343,11 +363,11 @@ bool Dso::LoadKernel() {
   return true;
 }
 
-static void ElfFileSymbolCallback(const ElfFileSymbol& elf_symbol, Dso* dso,
-                                  bool (*filter)(const ElfFileSymbol&)) {
+static void ElfFileSymbolCallback(const ElfFileSymbol& elf_symbol,
+                                  bool (*filter)(const ElfFileSymbol&),
+                                  std::vector<Symbol>* symbols) {
   if (filter(elf_symbol)) {
-    dso->InsertSymbol(
-        Symbol(elf_symbol.name, elf_symbol.vaddr, elf_symbol.len));
+    symbols->emplace_back(elf_symbol.name, elf_symbol.vaddr, elf_symbol.len);
   }
 }
 
@@ -359,8 +379,8 @@ static bool SymbolFilterForKernelModule(const ElfFileSymbol& elf_symbol) {
 bool Dso::LoadKernelModule() {
   BuildId build_id = GetExpectedBuildId();
   ElfStatus result = ParseSymbolsFromElfFile(GetDebugFilePath(), build_id,
-      std::bind(ElfFileSymbolCallback, std::placeholders::_1, this,
-                SymbolFilterForKernelModule));
+      std::bind(ElfFileSymbolCallback, std::placeholders::_1,
+                SymbolFilterForKernelModule, &symbols_));
   return CheckReadSymbolResult(result, GetDebugFilePath());
 }
 
@@ -376,16 +396,18 @@ bool Dso::LoadElfFile() {
     // Linux host can store debug shared libraries in /usr/lib/debug.
     ElfStatus result = ParseSymbolsFromElfFile(
         "/usr/lib/debug" + path_, build_id,
-        std::bind(ElfFileSymbolCallback, std::placeholders::_1, this,
-                  SymbolFilterForDso));
+        std::bind(ElfFileSymbolCallback, std::placeholders::_1,
+                  SymbolFilterForDso, &symbols_));
     if (result == ElfStatus::NO_ERROR) {
       return CheckReadSymbolResult(result, "/usr/lib/debug" + path_);
     }
   }
+  // TODO: load std::vector<Symbol> directly from ParseSymbolsFromElfFile
+  // instead of needing to call a callback function for each symbol.
   ElfStatus result = ParseSymbolsFromElfFile(
       GetDebugFilePath(), build_id,
-      std::bind(ElfFileSymbolCallback, std::placeholders::_1, this,
-                SymbolFilterForDso));
+      std::bind(ElfFileSymbolCallback, std::placeholders::_1,
+                SymbolFilterForDso, &symbols_));
   return CheckReadSymbolResult(result, GetDebugFilePath());
 }
 
@@ -395,12 +417,10 @@ bool Dso::LoadEmbeddedElfFile() {
   CHECK(std::get<0>(tuple));
   ElfStatus result = ParseSymbolsFromApkFile(
       std::get<1>(tuple), std::get<2>(tuple), build_id,
-      std::bind(ElfFileSymbolCallback, std::placeholders::_1, this,
-                SymbolFilterForDso));
+      std::bind(ElfFileSymbolCallback, std::placeholders::_1,
+                SymbolFilterForDso, &symbols_));
   return CheckReadSymbolResult(result, GetDebugFilePath());
 }
-
-void Dso::InsertSymbol(const Symbol& symbol) { symbols_.insert(symbol); }
 
 void Dso::FixupSymbolLength() {
   Symbol* prev_symbol = nullptr;
