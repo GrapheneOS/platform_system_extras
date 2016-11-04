@@ -231,7 +231,7 @@ const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip,
       std::string name = android::base::StringPrintf(
           "%s%s[+%" PRIx64 "]", (show_mark_for_unknown_symbol_ ? "*" : ""),
           dso->FileName().c_str(), vaddr_in_file);
-      dso->InsertSymbol(Symbol(name, vaddr_in_file, 1));
+      dso->AddUnknownSymbol(vaddr_in_file, name);
       symbol = dso->FindSymbol(vaddr_in_file);
       CHECK(symbol != nullptr);
     } else {
@@ -254,6 +254,19 @@ void ThreadTree::ClearThreadAndMap() {
   thread_comm_storage_.clear();
   kernel_map_tree_.clear();
   map_storage_.clear();
+}
+
+void ThreadTree::AddDsoInfo(const std::string& file_path, uint32_t file_type,
+                            uint64_t min_vaddr, std::vector<Symbol>* symbols) {
+  DsoType dso_type = static_cast<DsoType>(file_type);
+  Dso* dso = nullptr;
+  if (dso_type == DSO_KERNEL || dso_type == DSO_KERNEL_MODULE) {
+    dso = FindKernelDsoOrNew(file_path);
+  } else {
+    dso = FindUserDsoOrNew(file_path);
+  }
+  dso->SetMinVirtualAddress(min_vaddr);
+  dso->SetSymbols(symbols);
 }
 
 void ThreadTree::Update(const Record& record) {
@@ -287,21 +300,6 @@ void ThreadTree::Update(const Record& record) {
   } else if (record.type() == SIMPLE_PERF_RECORD_KERNEL_SYMBOL) {
     const auto& r = *static_cast<const KernelSymbolRecord*>(&record);
     Dso::SetKallsyms(std::move(r.kallsyms));
-  } else if (record.type() == SIMPLE_PERF_RECORD_DSO) {
-    auto& r = *static_cast<const DsoRecord*>(&record);
-    Dso* dso = nullptr;
-    if (r.dso_type == DSO_KERNEL || r.dso_type == DSO_KERNEL_MODULE) {
-      dso = FindKernelDsoOrNew(r.dso_name);
-    } else {
-      dso = FindUserDsoOrNew(r.dso_name);
-    }
-    dso->SetMinVirtualAddress(r.min_vaddr);
-    dso_id_to_dso_map_[r.dso_id] = dso;
-  } else if (record.type() == SIMPLE_PERF_RECORD_SYMBOL) {
-    auto& r = *static_cast<const SymbolRecord*>(&record);
-    Dso* dso = dso_id_to_dso_map_[r.dso_id];
-    CHECK(dso != nullptr);
-    dso->InsertSymbol(Symbol(r.name, r.addr, r.len));
   }
 }
 

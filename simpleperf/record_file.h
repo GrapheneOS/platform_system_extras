@@ -28,6 +28,7 @@
 
 #include <android-base/macros.h>
 
+#include "dso.h"
 #include "event_attr.h"
 #include "perf_event.h"
 #include "record.h"
@@ -43,11 +44,16 @@ class RecordFileWriter {
   bool WriteAttrSection(const std::vector<EventAttrWithId>& attr_ids);
   bool WriteRecord(const Record& record);
 
-  bool WriteFeatureHeader(size_t feature_count);
+  bool BeginWriteFeatures(size_t feature_count);
   bool WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records);
   bool WriteFeatureString(int feature, const std::string& s);
   bool WriteCmdlineFeature(const std::vector<std::string>& cmdline);
   bool WriteBranchStackFeature();
+  bool WriteFileFeature(const std::string& file_path,
+                        uint32_t file_type,
+                        uint64_t min_vaddr,
+                        const std::vector<Symbol>& symbols);
+  bool EndWriteFeatures();
 
   // Normally, Close() should be called after writing. But if something
   // wrong happens and we need to finish in advance, the destructor
@@ -62,9 +68,10 @@ class RecordFileWriter {
   bool WriteFileHeader();
   bool WriteData(const void* buf, size_t len);
   bool Write(const void* buf, size_t len);
-  bool SeekFileEnd(uint64_t* file_end);
-  bool WriteFeatureBegin(uint64_t* start_offset);
-  bool WriteFeatureEnd(int feature, uint64_t start_offset);
+  bool GetFilePos(uint64_t* file_pos);
+  bool WriteStringWithLength(const std::string& s);
+  bool WriteFeatureBegin(int feature);
+  bool WriteFeatureEnd(int feature);
 
   const std::string filename_;
   FILE* record_fp_;
@@ -74,10 +81,10 @@ class RecordFileWriter {
   uint64_t attr_section_size_;
   uint64_t data_section_offset_;
   uint64_t data_section_size_;
+  uint64_t feature_section_offset_;
 
-  std::vector<int> features_;
-  int feature_count_;
-  int current_feature_index_;
+  std::map<int, PerfFileFormat::SectionDesc> features_;
+  size_t feature_count_;
 
   DISALLOW_COPY_AND_ASSIGN(RecordFileWriter);
 };
@@ -128,6 +135,15 @@ class RecordFileReader {
   std::vector<std::string> ReadCmdlineFeature();
   std::vector<BuildIdRecord> ReadBuildIdFeature();
   std::string ReadFeatureString(int feature);
+
+  // File feature section contains many file information. This function reads
+  // one file information located at [read_pos]. [read_pos] is 0 at the first
+  // call, and is updated to point to the next file information. Return true
+  // if read successfully, and return false if there is no more file
+  // information.
+  bool ReadFileFeature(size_t& read_pos, std::string* file_path,
+                       uint32_t* file_type, uint64_t* min_vaddr,
+                       std::vector<Symbol>* symbols);
   bool Close();
 
   // For testing only.

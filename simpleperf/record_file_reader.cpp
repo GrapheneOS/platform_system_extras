@@ -378,6 +378,60 @@ std::string RecordFileReader::ReadFeatureString(int feature) {
   return p;
 }
 
+bool RecordFileReader::ReadFileFeature(size_t& read_pos,
+                                       std::string* file_path,
+                                       uint32_t* file_type,
+                                       uint64_t* min_vaddr,
+                                       std::vector<Symbol>* symbols) {
+  auto it = feature_section_descriptors_.find(FEAT_FILE);
+  if (it == feature_section_descriptors_.end()) {
+    return false;
+  }
+  if (read_pos >= it->second.size) {
+    return false;
+  }
+  if (read_pos == 0) {
+    if (fseek(record_fp_, it->second.offset, SEEK_SET) != 0) {
+      PLOG(ERROR) << "fseek() failed";
+      return false;
+    }
+  }
+  uint32_t size;
+  if (!Read(&size, 4)) {
+    return false;
+  }
+  std::vector<char> buf(size);
+  if (!Read(buf.data(), size)) {
+    return false;
+  }
+  read_pos += 4 + size;
+  const char* p = buf.data();
+  *file_path = p;
+  p += file_path->size() + 1;
+  memcpy(file_type, p, sizeof(uint32_t));
+  p += sizeof(uint32_t);
+  memcpy(min_vaddr, p, sizeof(uint64_t));
+  p += sizeof(uint64_t);
+  uint32_t symbol_count;
+  memcpy(&symbol_count, p, sizeof(uint32_t));
+  p += sizeof(uint32_t);
+  symbols->clear();
+  symbols->reserve(symbol_count);
+  for (uint32_t i = 0; i < symbol_count; ++i) {
+    uint64_t start_vaddr;
+    uint32_t len;
+    memcpy(&start_vaddr, p, sizeof(uint64_t));
+    p += sizeof(uint64_t);
+    memcpy(&len, p, sizeof(uint32_t));
+    p += sizeof(uint32_t);
+    std::string name = p;
+    p += name.size() + 1;
+    symbols->emplace_back(name, start_vaddr, len);
+  }
+  CHECK_EQ(size, static_cast<size_t>(p - buf.data()));
+  return true;
+}
+
 std::vector<std::unique_ptr<Record>> RecordFileReader::DataSection() {
   std::vector<std::unique_ptr<Record>> records;
   ReadDataSection([&](std::unique_ptr<Record> record) {

@@ -182,12 +182,12 @@ class RecordCommand : public Command {
   bool DumpKernelAndModuleMmaps(const perf_event_attr& attr, uint64_t event_id);
   bool DumpThreadCommAndMmaps(const perf_event_attr& attr, uint64_t event_id);
   bool ProcessRecord(Record* record);
-  bool DumpSymbolForRecord(const SampleRecord& r, bool for_callchain);
   void UpdateRecordForEmbeddedElfPath(Record* record);
   bool UnwindRecord(Record* record);
   bool PostUnwind(const std::vector<std::string>& args);
   bool DumpAdditionalFeatures(const std::vector<std::string>& args);
   bool DumpBuildIdFeature();
+  bool DumpFileFeature();
   void CollectHitFileInfo(const SampleRecord& r);
 
   bool use_sample_freq_;
@@ -780,57 +780,11 @@ bool RecordCommand::ProcessRecord(Record* record) {
     sample_record_count_++;
     auto& r = *static_cast<SampleRecord*>(record);
     CollectHitFileInfo(r);
-    if (dump_symbols_) {
-      if (!DumpSymbolForRecord(r, false)) {
-        return false;
-      }
-      if (fp_callchain_sampling_) {
-        if (!DumpSymbolForRecord(r, true)) {
-          return false;
-        }
-      }
-    }
   } else if (record->type() == PERF_RECORD_LOST) {
     lost_record_count_ += static_cast<LostRecord*>(record)->lost;
   }
   bool result = record_file_writer_->WriteRecord(*record);
   return result;
-}
-
-bool RecordCommand::DumpSymbolForRecord(const SampleRecord& r,
-                                        bool for_callchain) {
-  const ThreadEntry* thread =
-      thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-  uint64_t ip_nr = 1;
-  const uint64_t* ips = &r.ip_data.ip;
-  if (for_callchain) {
-    ip_nr = r.callchain_data.ip_nr;
-    ips = r.callchain_data.ips;
-  }
-  for (uint64_t i = 0; i < ip_nr; ++i) {
-    const MapEntry* map = thread_tree_.FindMap(thread, ips[i], r.InKernel());
-    const Symbol* symbol = thread_tree_.FindSymbol(map, ips[i], nullptr);
-    if (symbol == thread_tree_.UnknownSymbol()) {
-      continue;
-    }
-    if (!map->dso->HasDumped()) {
-      map->dso->SetDumped();
-      DsoRecord dso_record(map->dso->type(), map->dso->id(), map->dso->Path(),
-                           map->dso->MinVirtualAddress());
-      if (!record_file_writer_->WriteRecord(dso_record)) {
-        return false;
-      }
-    }
-    if (!symbol->HasDumped()) {
-      symbol->SetDumped();
-      SymbolRecord symbol_record(symbol->addr, symbol->len, symbol->Name(),
-                                 map->dso->id());
-      if (!record_file_writer_->WriteRecord(symbol_record)) {
-        return false;
-      }
-    }
-  }
-  return true;
 }
 
 template <class RecordType>
@@ -886,11 +840,6 @@ bool RecordCommand::UnwindRecord(Record* record) {
           UnwindCallChain(arch, *thread, regs, r.stack_user_data.data,
                           r.GetValidStackSize(), strict_arch_check);
       r.ReplaceRegAndStackWithCallChain(unwind_ips);
-      if (dump_symbols_) {
-        if (!DumpSymbolForRecord(r, true)) {
-          return false;
-        }
-      }
     }
   }
   return true;
@@ -941,11 +890,20 @@ bool RecordCommand::PostUnwind(const std::vector<std::string>& args) {
 
 bool RecordCommand::DumpAdditionalFeatures(
     const std::vector<std::string>& args) {
-  size_t feature_count = (branch_sampling_ != 0 ? 5 : 4);
-  if (!record_file_writer_->WriteFeatureHeader(feature_count)) {
+  size_t feature_count = 4;
+  if (branch_sampling_) {
+    feature_count++;
+  }
+  if (dump_symbols_) {
+    feature_count++;
+  }
+  if (!record_file_writer_->BeginWriteFeatures(feature_count)) {
     return false;
   }
   if (!DumpBuildIdFeature()) {
+    return false;
+  }
+  if (dump_symbols_ && !DumpFileFeature()) {
     return false;
   }
   utsname uname_buf;
@@ -973,6 +931,9 @@ bool RecordCommand::DumpAdditionalFeatures(
   }
   if (branch_sampling_ != 0 &&
       !record_file_writer_->WriteBranchStackFeature()) {
+    return false;
+  }
+  if (!record_file_writer_->EndWriteFeatures()) {
     return false;
   }
   return true;
@@ -1030,6 +991,23 @@ bool RecordCommand::DumpBuildIdFeature() {
   }
   if (!record_file_writer_->WriteBuildIdFeature(build_id_records)) {
     return false;
+  }
+  return true;
+}
+
+bool RecordCommand::DumpFileFeature() {
+  std::vector<Dso*> dso_v = thread_tree_.GetAllDsos();
+  for (Dso* dso : dso_v) {
+    if (!dso->IsHit()) {
+      continue;
+    }
+    uint32_t dso_type = dso->type();
+    uint64_t min_vaddr = dso->MinVirtualAddress();
+    const std::vector<Symbol>& symbols = dso->GetSymbols();
+    if (!record_file_writer_->WriteFileFeature(dso->Path(), dso_type, min_vaddr,
+                                               symbols)) {
+      return false;
+    }
   }
   return true;
 }

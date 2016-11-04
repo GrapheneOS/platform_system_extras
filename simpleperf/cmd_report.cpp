@@ -629,6 +629,8 @@ bool ReportCommand::ReadEventAttrFromRecordFile() {
 }
 
 bool ReportCommand::ReadFeaturesFromRecordFile() {
+  // TODO: process features not only for report command, but also for
+  // other report ways: report_sample, report_lib_interface, etc.
   std::vector<BuildIdRecord> records =
       record_file_reader_->ReadBuildIdFeature();
   std::vector<std::pair<std::string, BuildId>> build_ids;
@@ -636,6 +638,18 @@ bool ReportCommand::ReadFeaturesFromRecordFile() {
     build_ids.push_back(std::make_pair(r.filename, r.build_id));
   }
   Dso::SetBuildIds(build_ids);
+
+  if (record_file_reader_->HasFeature(PerfFileFormat::FEAT_FILE)) {
+    std::string file_path;
+    uint32_t file_type;
+    uint64_t min_vaddr;
+    std::vector<Symbol> symbols;
+    size_t read_pos = 0;
+    while (record_file_reader_->ReadFileFeature(
+        read_pos, &file_path, &file_type, &min_vaddr, &symbols)) {
+      thread_tree_.AddDsoInfo(file_path, file_type, min_vaddr, &symbols);
+    }
+  }
 
   std::string arch =
       record_file_reader_->ReadFeatureString(PerfFileFormat::FEAT_ARCH);

@@ -66,7 +66,7 @@ TEST_F(RecordFileTest, smoke) {
   ASSERT_TRUE(writer->WriteRecord(mmap_record));
 
   // Write feature section.
-  ASSERT_TRUE(writer->WriteFeatureHeader(1));
+  ASSERT_TRUE(writer->BeginWriteFeatures(1));
   char p[BuildId::Size()];
   for (size_t i = 0; i < BuildId::Size(); ++i) {
     p[i] = i;
@@ -75,6 +75,7 @@ TEST_F(RecordFileTest, smoke) {
   std::vector<BuildIdRecord> build_id_records;
   build_id_records.push_back(BuildIdRecord(false, getpid(), build_id, "init"));
   ASSERT_TRUE(writer->WriteBuildIdFeature(build_id_records));
+  ASSERT_TRUE(writer->EndWriteFeatures());
   ASSERT_TRUE(writer->Close());
 
   // Read from a record file.
