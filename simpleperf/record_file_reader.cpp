@@ -432,6 +432,27 @@ bool RecordFileReader::ReadFileFeature(size_t& read_pos,
   return true;
 }
 
+void RecordFileReader::LoadBuildIdAndFileFeatures(ThreadTree& thread_tree) {
+  std::vector<BuildIdRecord> records = ReadBuildIdFeature();
+  std::vector<std::pair<std::string, BuildId>> build_ids;
+  for (auto& r : records) {
+    build_ids.push_back(std::make_pair(r.filename, r.build_id));
+  }
+  Dso::SetBuildIds(build_ids);
+
+  if (HasFeature(PerfFileFormat::FEAT_FILE)) {
+    std::string file_path;
+    uint32_t file_type;
+    uint64_t min_vaddr;
+    std::vector<Symbol> symbols;
+    size_t read_pos = 0;
+    while (ReadFileFeature(
+        read_pos, &file_path, &file_type, &min_vaddr, &symbols)) {
+      thread_tree.AddDsoInfo(file_path, file_type, min_vaddr, &symbols);
+    }
+  }
+}
+
 std::vector<std::unique_ptr<Record>> RecordFileReader::DataSection() {
   std::vector<std::unique_ptr<Record>> records;
   ReadDataSection([&](std::unique_ptr<Record> record) {
