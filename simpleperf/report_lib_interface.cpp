@@ -148,6 +148,7 @@ Sample* ReportLib::GetNextSample() {
     if (record_file_reader_ == nullptr) {
       return nullptr;
     }
+    record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
   }
   while (true) {
     std::unique_ptr<Record> record;

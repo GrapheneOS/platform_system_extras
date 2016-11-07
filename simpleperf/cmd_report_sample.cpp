@@ -125,6 +125,7 @@ bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
   if (record_file_reader_ == nullptr) {
     return false;
   }
+  record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
 
   // 3. Prepare report output stream.
   report_fp_ = stdout;

@@ -33,6 +33,7 @@
 #include "perf_event.h"
 #include "record.h"
 #include "record_file_format.h"
+#include "thread_tree.h"
 
 // RecordFileWriter writes to a perf record file, like perf.data.
 class RecordFileWriter {
@@ -144,6 +145,9 @@ class RecordFileReader {
   bool ReadFileFeature(size_t& read_pos, std::string* file_path,
                        uint32_t* file_type, uint64_t* min_vaddr,
                        std::vector<Symbol>* symbols);
+
+  void LoadBuildIdAndFileFeatures(ThreadTree& thread_tree);
+
   bool Close();
 
   // For testing only.
