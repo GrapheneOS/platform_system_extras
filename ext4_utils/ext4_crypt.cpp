@@ -39,11 +39,11 @@
 #define EXT4_KEY_DESCRIPTOR_SIZE_HEX 17
 
 struct ext4_encryption_policy {
-    char version;
-    char contents_encryption_mode;
-    char filenames_encryption_mode;
-    char flags;
-    char master_key_descriptor[EXT4_KEY_DESCRIPTOR_SIZE];
+    uint8_t version;
+    uint8_t contents_encryption_mode;
+    uint8_t filenames_encryption_mode;
+    uint8_t flags;
+    uint8_t master_key_descriptor[EXT4_KEY_DESCRIPTOR_SIZE];
 } __attribute__((__packed__));
 
 #define EXT4_ENCRYPTION_MODE_AES_256_XTS    1
