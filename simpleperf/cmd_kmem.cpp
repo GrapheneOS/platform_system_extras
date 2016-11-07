@@ -563,6 +563,7 @@ void KmemCommand::ReadEventAttrsFromRecordFile() {
 }
 
 bool KmemCommand::ReadFeaturesFromRecordFile() {
+  record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
   std::string arch =
       record_file_reader_->ReadFeatureString(PerfFileFormat::FEAT_ARCH);
   if (!arch.empty()) {
