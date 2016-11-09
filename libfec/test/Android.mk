@@ -9,7 +9,7 @@ LOCAL_MODULE := fec_test_read
 LOCAL_SRC_FILES := test_read.cpp
 LOCAL_MODULE_TAGS := optional
 LOCAL_STATIC_LIBRARIES := \
-    libfec_host \
+    libfec \
     libfec_rs_host \
     libcrypto_utils \
     libcrypto \

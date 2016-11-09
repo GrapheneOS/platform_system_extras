@@ -45,7 +45,7 @@ ifeq ($(HOST_OS),linux)
 LOCAL_SANITIZE := integer
 endif
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
-LOCAL_MODULE := libfec_host
+LOCAL_MODULE := libfec
 LOCAL_SRC_FILES := $(common_src_files)
 LOCAL_STATIC_LIBRARIES := \
     libfec_rs_host \
