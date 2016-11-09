@@ -13,7 +13,7 @@ LOCAL_STATIC_LIBRARIES := \
     libz \
     libcrypto_utils \
     libcrypto \
-    libfec_host \
+    libfec \
     libfec_rs_host \
     libext4_utils_host \
     libsquashfs_utils_host
