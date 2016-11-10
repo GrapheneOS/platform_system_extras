@@ -408,22 +408,17 @@ bool RecordFileReader::ReadFileFeature(size_t& read_pos,
   const char* p = buf.data();
   *file_path = p;
   p += file_path->size() + 1;
-  memcpy(file_type, p, sizeof(uint32_t));
-  p += sizeof(uint32_t);
-  memcpy(min_vaddr, p, sizeof(uint64_t));
-  p += sizeof(uint64_t);
+  MoveFromBinaryFormat(*file_type, p);
+  MoveFromBinaryFormat(*min_vaddr, p);
   uint32_t symbol_count;
-  memcpy(&symbol_count, p, sizeof(uint32_t));
-  p += sizeof(uint32_t);
+  MoveFromBinaryFormat(symbol_count, p);
   symbols->clear();
   symbols->reserve(symbol_count);
   for (uint32_t i = 0; i < symbol_count; ++i) {
     uint64_t start_vaddr;
     uint32_t len;
-    memcpy(&start_vaddr, p, sizeof(uint64_t));
-    p += sizeof(uint64_t);
-    memcpy(&len, p, sizeof(uint32_t));
-    p += sizeof(uint32_t);
+    MoveFromBinaryFormat(start_vaddr, p);
+    MoveFromBinaryFormat(len, p);
     std::string name = p;
     p += name.size() + 1;
     symbols->emplace_back(name, start_vaddr, len);

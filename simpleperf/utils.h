@@ -108,7 +108,7 @@ class ArchiveHelper {
 template <class T>
 void MoveFromBinaryFormat(T& data, const char*& p) {
   static_assert(std::is_standard_layout<T>::value, "not standard layout");
-  data = *reinterpret_cast<const T*>(p);
+  memcpy(&data, p, sizeof(T));
   p += sizeof(T);
 }
 
@@ -123,7 +123,7 @@ void MoveFromBinaryFormat(T* data_p, size_t n, const char*& p) {
 template <class T>
 void MoveToBinaryFormat(const T& data, char*& p) {
   static_assert(std::is_standard_layout<T>::value, "not standard layout");
-  *reinterpret_cast<T*>(p) = data;
+  memcpy(p, &data, sizeof(T));
   p += sizeof(T);
 }
 
