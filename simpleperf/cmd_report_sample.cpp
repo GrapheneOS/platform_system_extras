@@ -79,10 +79,7 @@ class ReportSampleCommand : public Command {
         report_fp_(nullptr),
         coded_os_(nullptr),
         sample_count_(0),
-        lost_count_(0) {
-    thread_tree_.ShowMarkForUnknownSymbol();
-    thread_tree_.ShowIpForUnknownSymbol();
-  }
+        lost_count_(0) {}
 
   bool Run(const std::vector<std::string>& args) override;
 
@@ -91,7 +88,14 @@ class ReportSampleCommand : public Command {
   bool DumpProtobufReport(const std::string& filename);
   bool ProcessRecord(std::unique_ptr<Record> record);
   bool PrintSampleRecordInProtobuf(const SampleRecord& record);
+  void GetCallEntry(const ThreadEntry* thread, bool in_kernel, uint64_t ip,
+                    uint64_t* pvaddr_in_file, uint32_t* pfile_id,
+                    int32_t* psymbol_id);
+  void GetCallEntry(const ThreadEntry* thread, bool in_kernel, uint64_t ip,
+                    uint64_t* pvaddr_in_file, Dso** pdso,
+                    const Symbol** psymbol);
   bool PrintLostSituationInProtobuf();
+  bool PrintFileInfoInProtobuf();
   bool PrintSampleRecord(const SampleRecord& record);
   void PrintLostSituation();
 
@@ -113,34 +117,45 @@ bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
   if (!ParseOptions(args)) {
     return false;
   }
-  if (!dump_protobuf_report_file_.empty()) {
-    return DumpProtobufReport(dump_protobuf_report_file_);
-  }
-  if (use_protobuf_) {
-    GOOGLE_PROTOBUF_VERIFY_VERSION;
-  }
-
-  // 2. Open record file.
-  record_file_reader_ = RecordFileReader::CreateInstance(record_filename_);
-  if (record_file_reader_ == nullptr) {
-    return false;
-  }
-  record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
-
-  // 3. Prepare report output stream.
+  // 2. Prepare report fp.
   report_fp_ = stdout;
   std::unique_ptr<FILE, decltype(&fclose)> fp(nullptr, fclose);
-  std::unique_ptr<ProtobufFileWriter> protobuf_writer;
-  std::unique_ptr<google::protobuf::io::CopyingOutputStreamAdaptor> protobuf_os;
-  std::unique_ptr<google::protobuf::io::CodedOutputStream> protobuf_coded_os;
   if (!report_filename_.empty()) {
-    fp.reset(fopen(report_filename_.c_str(), use_protobuf_ ? "wb" : "w"));
+    const char* open_mode = "w";
+    if (!dump_protobuf_report_file_.empty() && use_protobuf_) {
+      open_mode = "wb";
+    }
+    fp.reset(fopen(report_filename_.c_str(), open_mode));
     if (fp == nullptr) {
       PLOG(ERROR) << "failed to open " << report_filename_;
       return false;
     }
     report_fp_ = fp.get();
   }
+
+  // 3. Dump protobuf report.
+  if (!dump_protobuf_report_file_.empty()) {
+    return DumpProtobufReport(dump_protobuf_report_file_);
+  }
+
+  // 4. Open record file.
+  record_file_reader_ = RecordFileReader::CreateInstance(record_filename_);
+  if (record_file_reader_ == nullptr) {
+    return false;
+  }
+  record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
+
+  if (use_protobuf_) {
+    GOOGLE_PROTOBUF_VERIFY_VERSION;
+  } else {
+    thread_tree_.ShowMarkForUnknownSymbol();
+    thread_tree_.ShowIpForUnknownSymbol();
+  }
+
+  // 5. Prepare protobuf output stream.
+  std::unique_ptr<ProtobufFileWriter> protobuf_writer;
+  std::unique_ptr<google::protobuf::io::CopyingOutputStreamAdaptor> protobuf_os;
+  std::unique_ptr<google::protobuf::io::CodedOutputStream> protobuf_coded_os;
   if (use_protobuf_) {
     protobuf_writer.reset(new ProtobufFileWriter(report_fp_));
     protobuf_os.reset(new google::protobuf::io::CopyingOutputStreamAdaptor(
@@ -150,7 +165,7 @@ bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
     coded_os_ = protobuf_coded_os.get();
   }
 
-  // 4. Read record file, and print samples online.
+  // 6. Read record file, and print samples online.
   if (!record_file_reader_->ReadDataSection(
           [this](std::unique_ptr<Record> record) {
             return ProcessRecord(std::move(record));
@@ -160,6 +175,9 @@ bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
 
   if (use_protobuf_) {
     if (!PrintLostSituationInProtobuf()) {
+      return false;
+    }
+    if (!PrintFileInfoInProtobuf()) {
       return false;
     }
     coded_os_->WriteLittleEndian32(0);
@@ -225,6 +243,13 @@ bool ReportSampleCommand::DumpProtobufReport(const std::string& filename) {
   ProtobufFileReader protobuf_reader(fp.get());
   google::protobuf::io::CopyingInputStreamAdaptor adaptor(&protobuf_reader);
   google::protobuf::io::CodedInputStream coded_is(&adaptor);
+  // map from file_id to max_symbol_id requested on the file.
+  std::unordered_map<uint32_t, int32_t> max_symbol_id_map;
+  // files[file_id] is the number of symbols in the file.
+  std::vector<uint32_t> files;
+  uint32_t max_message_size = 64 * (1 << 20);
+  uint32_t warning_message_size = 512 * (1 << 20);
+  coded_is.SetTotalBytesLimit(max_message_size, warning_message_size);
   while (true) {
     uint32_t size;
     if (!coded_is.ReadLittleEndian32(&size)) {
@@ -234,6 +259,11 @@ bool ReportSampleCommand::DumpProtobufReport(const std::string& filename) {
     if (size == 0) {
       break;
     }
+    // Handle files having large symbol table.
+    if (size > max_message_size) {
+      max_message_size = size;
+      coded_is.SetTotalBytesLimit(max_message_size, warning_message_size);
+    }
     auto limit = coded_is.PushLimit(size);
     proto::Record proto_record;
     if (!proto_record.ParseFromCodedStream(&coded_is)) {
@@ -241,26 +271,64 @@ bool ReportSampleCommand::DumpProtobufReport(const std::string& filename) {
       return false;
     }
     coded_is.PopLimit(limit);
-    if (proto_record.type() == proto::Record_Type_SAMPLE) {
+    if (proto_record.has_sample()) {
       auto& sample = proto_record.sample();
       static size_t sample_count = 0;
-      PrintIndented(0, "sample %zu:\n", ++sample_count);
-      PrintIndented(1, "time: %" PRIu64 "\n", sample.time());
-      PrintIndented(1, "thread_id: %d\n", sample.thread_id());
-      PrintIndented(1, "callchain:\n");
-      for (int j = 0; j < sample.callchain_size(); ++j) {
-        const proto::Sample_CallChainEntry& callchain = sample.callchain(j);
-        PrintIndented(2, "ip: %" PRIx64 "\n", callchain.ip());
-        PrintIndented(2, "dso: %s\n", callchain.file().c_str());
-        PrintIndented(2, "symbol: %s\n", callchain.symbol().c_str());
+      FprintIndented(report_fp_, 0, "sample %zu:\n", ++sample_count);
+      FprintIndented(report_fp_, 1, "time: %" PRIu64 "\n", sample.time());
+      FprintIndented(report_fp_, 1, "thread_id: %d\n", sample.thread_id());
+      FprintIndented(report_fp_, 1, "callchain:\n");
+      for (int i = 0; i < sample.callchain_size(); ++i) {
+        const proto::Sample_CallChainEntry& callchain = sample.callchain(i);
+        FprintIndented(report_fp_, 2, "vaddr_in_file: %" PRIx64 "\n",
+                       callchain.vaddr_in_file());
+        FprintIndented(report_fp_, 2, "file_id: %u\n", callchain.file_id());
+        int32_t symbol_id = callchain.symbol_id();
+        FprintIndented(report_fp_, 2, "symbol_id: %d\n", symbol_id);
+        if (symbol_id < -1) {
+          LOG(ERROR) << "unexpected symbol_id " << symbol_id;
+          return false;
+        }
+        if (symbol_id != -1) {
+          max_symbol_id_map[callchain.file_id()] =
+              std::max(max_symbol_id_map[callchain.file_id()], symbol_id);
+        }
       }
-    } else if (proto_record.type() == proto::Record_Type_LOST_SITUATION) {
+    } else if (proto_record.has_lost()) {
       auto& lost = proto_record.lost();
-      PrintIndented(0, "lost_situation:\n");
-      PrintIndented(1, "sample_count: %" PRIu64 "\n", lost.sample_count());
-      PrintIndented(1, "lost_count: %" PRIu64 "\n", lost.lost_count());
+      FprintIndented(report_fp_, 0, "lost_situation:\n");
+      FprintIndented(report_fp_, 1, "sample_count: %" PRIu64 "\n",
+                     lost.sample_count());
+      FprintIndented(report_fp_, 1, "lost_count: %" PRIu64 "\n",
+                     lost.lost_count());
+    } else if (proto_record.has_file()) {
+      auto& file = proto_record.file();
+      FprintIndented(report_fp_, 0, "file:\n");
+      FprintIndented(report_fp_, 1, "id: %u\n", file.id());
+      FprintIndented(report_fp_, 1, "path: %s\n", file.path().c_str());
+      for (int i = 0; i < file.symbol_size(); ++i) {
+        FprintIndented(report_fp_, 1, "symbol: %s\n", file.symbol(i).c_str());
+      }
+      if (file.id() != files.size()) {
+        LOG(ERROR) << "file id doesn't increase orderly, expected "
+                   << files.size() << ", really " << file.id();
+        return false;
+      }
+      files.push_back(file.symbol_size());
     } else {
-      LOG(ERROR) << "unexpected record type " << proto_record.type();
+      LOG(ERROR) << "unexpected record type ";
+      return false;
+    }
+  }
+  for (auto pair : max_symbol_id_map) {
+    if (pair.first >= files.size()) {
+      LOG(ERROR) << "file_id(" << pair.first << ") >= file count ("
+                 << files.size() << ")";
+      return false;
+    }
+    if (static_cast<uint32_t>(pair.second) >= files[pair.first]) {
+      LOG(ERROR) << "symbol_id(" << pair.second << ") >= symbol count ("
+                 << files[pair.first] << ") in file_id( " << pair.first << ")";
       return false;
     }
   }
@@ -285,21 +353,23 @@ bool ReportSampleCommand::ProcessRecord(std::unique_ptr<Record> record) {
 }
 
 bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
+  uint64_t vaddr_in_file;
+  uint32_t file_id;
+  int32_t symbol_id;
   proto::Record proto_record;
-  proto_record.set_type(proto::Record_Type_SAMPLE);
   proto::Sample* sample = proto_record.mutable_sample();
   sample->set_time(r.time_data.time);
   sample->set_thread_id(r.tid_data.tid);
-  proto::Sample_CallChainEntry* callchain = sample->add_callchain();
-  callchain->set_ip(r.ip_data.ip);
 
   bool in_kernel = r.InKernel();
   const ThreadEntry* thread =
       thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-  const MapEntry* map = thread_tree_.FindMap(thread, r.ip_data.ip, in_kernel);
-  const Symbol* symbol = thread_tree_.FindSymbol(map, r.ip_data.ip, nullptr);
-  callchain->set_symbol(symbol->DemangledName());
-  callchain->set_file(map->dso->Path());
+  GetCallEntry(thread, in_kernel, r.ip_data.ip, &vaddr_in_file, &file_id,
+               &symbol_id);
+  proto::Sample_CallChainEntry* callchain = sample->add_callchain();
+  callchain->set_vaddr_in_file(vaddr_in_file);
+  callchain->set_file_id(file_id);
+  callchain->set_symbol_id(symbol_id);
 
   if (show_callchain_ && (r.sample_type & PERF_SAMPLE_CALLCHAIN)) {
     bool first_ip = true;
@@ -325,12 +395,12 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
             continue;
           }
         }
-        const MapEntry* map = thread_tree_.FindMap(thread, ip, in_kernel);
-        const Symbol* symbol = thread_tree_.FindSymbol(map, ip, nullptr);
+        GetCallEntry(thread, in_kernel, ip, &vaddr_in_file, &file_id,
+                     &symbol_id);
         callchain = sample->add_callchain();
-        callchain->set_ip(ip);
-        callchain->set_symbol(symbol->DemangledName());
-        callchain->set_file(map->dso->Path());
+        callchain->set_vaddr_in_file(vaddr_in_file);
+        callchain->set_file_id(file_id);
+        callchain->set_symbol_id(symbol_id);
       }
     }
   }
@@ -342,9 +412,40 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
   return true;
 }
 
+void ReportSampleCommand::GetCallEntry(const ThreadEntry* thread,
+                                       bool in_kernel, uint64_t ip,
+                                       uint64_t* pvaddr_in_file,
+                                       uint32_t* pfile_id,
+                                       int32_t* psymbol_id) {
+  Dso* dso;
+  const Symbol* symbol;
+  GetCallEntry(thread, in_kernel, ip, pvaddr_in_file, &dso, &symbol);
+  if (!dso->GetDumpId(pfile_id)) {
+    *pfile_id = dso->CreateDumpId();
+  }
+  if (symbol != thread_tree_.UnknownSymbol()) {
+    if (!symbol->GetDumpId(reinterpret_cast<uint32_t*>(psymbol_id))) {
+      *psymbol_id = dso->CreateSymbolDumpId(symbol);
+    }
+  } else {
+    *psymbol_id = -1;
+  }
+}
+
+void ReportSampleCommand::GetCallEntry(const ThreadEntry* thread,
+                                       bool in_kernel, uint64_t ip,
+                                       uint64_t* pvaddr_in_file, Dso** pdso,
+                                       const Symbol** psymbol) {
+  const MapEntry* map = thread_tree_.FindMap(thread, ip, in_kernel);
+  *psymbol = thread_tree_.FindSymbol(map, ip, pvaddr_in_file, pdso);
+  // If we can't find symbol, use the dso shown in the map.
+  if (*psymbol == thread_tree_.UnknownSymbol()) {
+    *pdso = map->dso;
+  }
+}
+
 bool ReportSampleCommand::PrintLostSituationInProtobuf() {
   proto::Record proto_record;
-  proto_record.set_type(proto::Record_Type_LOST_SITUATION);
   proto::LostSituation* lost = proto_record.mutable_lost();
   lost->set_sample_count(sample_count_);
   lost->set_lost_count(lost_count_);
@@ -356,17 +457,70 @@ bool ReportSampleCommand::PrintLostSituationInProtobuf() {
   return true;
 }
 
+static bool CompareDsoByDumpId(Dso* d1, Dso* d2) {
+  uint32_t id1 = UINT_MAX;
+  d1->GetDumpId(&id1);
+  uint32_t id2 = UINT_MAX;
+  d2->GetDumpId(&id2);
+  return id1 < id2;
+}
+
+static bool CompareSymbolByDumpId(const Symbol* s1, const Symbol* s2) {
+  uint32_t id1 = UINT_MAX;
+  s1->GetDumpId(&id1);
+  uint32_t id2 = UINT_MAX;
+  s2->GetDumpId(&id2);
+  return id1 < id2;
+}
+
+bool ReportSampleCommand::PrintFileInfoInProtobuf() {
+  std::vector<Dso*> dsos = thread_tree_.GetAllDsos();
+  std::sort(dsos.begin(), dsos.end(), CompareDsoByDumpId);
+  for (Dso* dso : dsos) {
+    uint32_t file_id;
+    if (!dso->GetDumpId(&file_id)) {
+      continue;
+    }
+    proto::Record proto_record;
+    proto::File* file = proto_record.mutable_file();
+    file->set_id(file_id);
+    file->set_path(dso->Path());
+    const std::vector<Symbol>& symbols = dso->GetSymbols();
+    std::vector<const Symbol*> dump_symbols;
+    for (const auto& sym : symbols) {
+      if (sym.HasDumpId()) {
+        dump_symbols.push_back(&sym);
+      }
+    }
+    std::sort(dump_symbols.begin(), dump_symbols.end(), CompareSymbolByDumpId);
+
+    for (const auto& sym : dump_symbols) {
+      std::string* symbol = file->add_symbol();
+      *symbol = sym->DemangledName();
+    }
+    coded_os_->WriteLittleEndian32(proto_record.ByteSize());
+    if (!proto_record.SerializeToCodedStream(coded_os_)) {
+      LOG(ERROR) << "failed to write file info to protobuf";
+      return false;
+    }
+  }
+  return true;
+}
+
 bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r) {
-  bool in_kernel = r.InKernel();
-  const ThreadEntry* thread =
-      thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-  const MapEntry* map = thread_tree_.FindMap(thread, r.ip_data.ip, in_kernel);
-  const Symbol* symbol = thread_tree_.FindSymbol(map, r.ip_data.ip, nullptr);
+  uint64_t vaddr_in_file;
+  Dso* dso;
+  const Symbol* symbol;
+
   FprintIndented(report_fp_, 0, "sample:\n");
   FprintIndented(report_fp_, 1, "time: %" PRIu64 "\n", r.time_data.time);
   FprintIndented(report_fp_, 1, "thread_id: %d\n", r.tid_data.tid);
-  FprintIndented(report_fp_, 1, "ip: %" PRIx64 "\n", r.ip_data.ip);
-  FprintIndented(report_fp_, 1, "dso: %s\n", map->dso->Path().c_str());
+  bool in_kernel = r.InKernel();
+  const ThreadEntry* thread =
+      thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
+  GetCallEntry(thread, in_kernel, r.ip_data.ip, &vaddr_in_file, &dso, &symbol);
+  FprintIndented(report_fp_, 1, "vaddr_in_file: %" PRIx64 "\n", vaddr_in_file);
+  FprintIndented(report_fp_, 1, "file: %s\n", dso->Path().c_str());
   FprintIndented(report_fp_, 1, "symbol: %s\n", symbol->DemangledName());
 
   if (show_callchain_ && (r.sample_type & PERF_SAMPLE_CALLCHAIN)) {
@@ -394,10 +548,10 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r) {
             continue;
           }
         }
-        const MapEntry* map = thread_tree_.FindMap(thread, ip, in_kernel);
-        const Symbol* symbol = thread_tree_.FindSymbol(map, ip, nullptr);
-        FprintIndented(report_fp_, 2, "ip: %" PRIx64 "\n", ip);
-        FprintIndented(report_fp_, 2, "dso: %s\n", map->dso->Path().c_str());
+        GetCallEntry(thread, in_kernel, ip, &vaddr_in_file, &dso, &symbol);
+        FprintIndented(report_fp_, 2, "vaddr_in_file: %" PRIx64 "\n",
+                       vaddr_in_file);
+        FprintIndented(report_fp_, 2, "file: %s\n", dso->Path().c_str());
         FprintIndented(report_fp_, 2, "symbol: %s\n", symbol->DemangledName());
       }
     }
