@@ -209,14 +209,10 @@ const MapEntry* ThreadTree::FindMap(const ThreadEntry* thread, uint64_t ip) {
 }
 
 const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip,
-                                     uint64_t* pvaddr_in_file) {
+                                     uint64_t* pvaddr_in_file, Dso** pdso) {
   uint64_t vaddr_in_file;
   Dso* dso = map->dso;
-  if (dso == kernel_dso_.get()) {
-    vaddr_in_file = ip;
-  } else {
-    vaddr_in_file = ip - map->start_addr + map->dso->MinVirtualAddress();
-  }
+  vaddr_in_file = ip - map->start_addr + map->dso->MinVirtualAddress();
   const Symbol* symbol = dso->FindSymbol(vaddr_in_file);
   if (symbol == nullptr && map->in_kernel && dso != kernel_dso_.get()) {
     // It is in a kernel module, but we can't find the kernel module file, or
@@ -240,6 +236,9 @@ const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip,
   }
   if (pvaddr_in_file != nullptr) {
     *pvaddr_in_file = vaddr_in_file;
+  }
+  if (pdso != nullptr) {
+    *pdso = dso;
   }
   return symbol;
 }
