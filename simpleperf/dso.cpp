@@ -38,7 +38,7 @@ Symbol::Symbol(const std::string& name, uint64_t addr, uint64_t len)
       len(len),
       name_(symbol_name_allocator.AllocateString(name)),
       demangled_name_(nullptr),
-      has_dumped_(false) {}
+      dump_id_(UINT_MAX) {}
 
 const char* Symbol::DemangledName() const {
   if (demangled_name_ == nullptr) {
@@ -58,6 +58,7 @@ std::string Dso::vmlinux_;
 std::string Dso::kallsyms_;
 std::unordered_map<std::string, BuildId> Dso::build_id_map_;
 size_t Dso::dso_count_;
+uint32_t Dso::g_dump_id_;
 
 void Dso::SetDemangle(bool demangle) { demangle_ = demangle; }
 
@@ -136,7 +137,11 @@ Dso::Dso(DsoType type, const std::string& path)
       debug_file_path_(path),
       min_vaddr_(std::numeric_limits<uint64_t>::max()),
       is_loaded_(false),
-      hit_flag_(false) {
+      dump_id_(UINT_MAX),
+      symbol_dump_id_(0) {
+  if (type_ == DSO_KERNEL) {
+    min_vaddr_ = 0;
+  }
   // Check if file matching path_ exists in symfs directory before using it as
   // debug_file_path_.
   if (!symfs_dir_.empty()) {
@@ -167,11 +172,23 @@ Dso::~Dso() {
     vmlinux_.clear();
     kallsyms_.clear();
     build_id_map_.clear();
+    g_dump_id_ = 0;
   }
 }
 
 static bool CompareSymbol(const Symbol& symbol1, const Symbol& symbol2) {
   return symbol1.addr < symbol2.addr;
+}
+
+uint32_t Dso::CreateDumpId() {
+  CHECK(!HasDumpId());
+  return dump_id_ = g_dump_id_++;
+}
+
+uint32_t Dso::CreateSymbolDumpId(const Symbol* symbol) {
+  CHECK(!symbol->HasDumpId());
+  symbol->dump_id_ = symbol_dump_id_++;
+  return symbol->dump_id_;
 }
 
 const Symbol* Dso::FindSymbol(uint64_t vaddr_in_dso) {

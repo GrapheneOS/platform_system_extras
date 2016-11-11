@@ -96,7 +96,7 @@ class ThreadTree {
   // Find map for an ip address when we don't know whether it is in kernel.
   const MapEntry* FindMap(const ThreadEntry* thread, uint64_t ip);
   const Symbol* FindSymbol(const MapEntry* map, uint64_t ip,
-                           uint64_t* pvaddr_in_file);
+                           uint64_t* pvaddr_in_file, Dso** pdso = nullptr);
   const Symbol* FindKernelSymbol(uint64_t ip);
   const Symbol* UnknownSymbol() const { return &unknown_symbol_; }
 

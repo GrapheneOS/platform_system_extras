@@ -26,6 +26,7 @@
 
 struct Symbol {
   uint64_t addr;
+  // TODO: make len uint32_t.
   uint64_t len;
 
   Symbol(const std::string& name, uint64_t addr, uint64_t len);
@@ -33,14 +34,24 @@ struct Symbol {
 
   const char* DemangledName() const;
 
-  bool HasDumped() const { return has_dumped_; }
+  bool HasDumpId() const {
+    return dump_id_ != UINT_MAX;
+  }
 
-  void SetDumped() const { has_dumped_ = true; }
+  bool GetDumpId(uint32_t* pdump_id) const {
+    if (!HasDumpId()) {
+      return false;
+    }
+    *pdump_id = dump_id_;
+    return true;
+  }
 
  private:
   const char* name_;
   mutable const char* demangled_name_;
-  mutable bool has_dumped_;
+  mutable uint32_t dump_id_;
+
+  friend class Dso;
 };
 
 enum DsoType {
@@ -52,7 +63,7 @@ enum DsoType {
 struct KernelSymbol;
 struct ElfFileSymbol;
 
-struct Dso {
+class Dso {
  public:
   static void SetDemangle(bool demangle);
   static std::string Demangle(const std::string& name);
@@ -80,9 +91,20 @@ struct Dso {
   // Return the file name without directory info.
   const std::string& FileName() const { return file_name_; }
 
-  // Set when there are samples hit in current dso.
-  void SetHitFlag() { hit_flag_ = true; }
-  bool IsHit() const { return hit_flag_; }
+  bool HasDumpId() {
+    return dump_id_ != UINT_MAX;
+  }
+
+  bool GetDumpId(uint32_t* pdump_id) {
+    if (!HasDumpId()) {
+      return false;
+    }
+    *pdump_id = dump_id_;
+    return true;
+  }
+
+  uint32_t CreateDumpId();
+  uint32_t CreateSymbolDumpId(const Symbol* symbol);
 
   // Return the minimum virtual address in program header.
   uint64_t MinVirtualAddress();
@@ -104,6 +126,7 @@ struct Dso {
   static std::string kallsyms_;
   static std::unordered_map<std::string, BuildId> build_id_map_;
   static size_t dso_count_;
+  static uint32_t g_dump_id_;
 
   Dso(DsoType type, const std::string& path);
   void Load();
@@ -127,7 +150,10 @@ struct Dso {
   // unknown symbols are like [libc.so+0x1234].
   std::unordered_map<uint64_t, Symbol> unknown_symbols_;
   bool is_loaded_;
-  bool hit_flag_;
+  // Used to identify current dso if it needs to be dumped.
+  uint32_t dump_id_;
+  // Used to assign dump_id for symbols in current dso.
+  uint32_t symbol_dump_id_;
 };
 
 const char* DsoTypeToString(DsoType dso_type);
