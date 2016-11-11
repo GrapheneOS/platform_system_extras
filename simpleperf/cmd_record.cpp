@@ -944,7 +944,7 @@ bool RecordCommand::DumpBuildIdFeature() {
   BuildId build_id;
   std::vector<Dso*> dso_v = thread_tree_.GetAllDsos();
   for (Dso* dso : dso_v) {
-    if (!dso->IsHit()) {
+    if (!dso->HasDumpId()) {
       continue;
     }
     if (dso->type() == DSO_KERNEL) {
@@ -998,7 +998,7 @@ bool RecordCommand::DumpBuildIdFeature() {
 bool RecordCommand::DumpFileFeature() {
   std::vector<Dso*> dso_v = thread_tree_.GetAllDsos();
   for (Dso* dso : dso_v) {
-    if (!dso->IsHit()) {
+    if (!dso->HasDumpId()) {
       continue;
     }
     uint32_t dso_type = dso->type();
@@ -1017,14 +1017,18 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
       thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
   const MapEntry* map =
       thread_tree_.FindMap(thread, r.ip_data.ip, r.InKernel());
-  map->dso->SetHitFlag();
+  if (!map->dso->HasDumpId()) {
+    map->dso->CreateDumpId();
+  }
   if (r.sample_type & PERF_SAMPLE_CALLCHAIN) {
     size_t ip_nr = r.callchain_data.ip_nr;
     const uint64_t* ips = r.callchain_data.ips;
     for (size_t i = 0; i < ip_nr; ++i) {
       // Even if a sample is in kernel, its callchain can be in user space.
       map = thread_tree_.FindMap(thread, ips[i]);
-      map->dso->SetHitFlag();
+      if (!map->dso->HasDumpId()) {
+        map->dso->CreateDumpId();
+      }
     }
   }
 }
