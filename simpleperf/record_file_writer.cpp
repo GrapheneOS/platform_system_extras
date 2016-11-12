@@ -173,6 +173,39 @@ bool RecordFileWriter::Write(const void* buf, size_t len) {
   return true;
 }
 
+bool RecordFileWriter::Read(void* buf, size_t len) {
+  if (len != 0u && fread(buf, len, 1, record_fp_) != 1) {
+    PLOG(ERROR) << "failed to read record file '" << filename_ << "'";
+    return false;
+  }
+  return true;
+}
+
+bool RecordFileWriter::ReadDataSection(const std::function<void(const Record*)>& callback) {
+  if (fseek(record_fp_, data_section_offset_, SEEK_SET) == -1) {
+    PLOG(ERROR) << "fseek() failed";
+    return false;
+  }
+  std::vector<char> record_buf(512);
+  uint64_t read_pos = 0;
+  while (read_pos < data_section_size_) {
+    if (!Read(record_buf.data(), Record::header_size())) {
+      return false;
+    }
+    RecordHeader header(record_buf.data());
+    if (record_buf.size() < header.size) {
+      record_buf.resize(header.size);
+    }
+    if (!Read(record_buf.data() + Record::header_size(), header.size - Record::header_size())) {
+      return false;
+    }
+    read_pos += header.size;
+    std::unique_ptr<Record> r = ReadRecordFromBuffer(event_attr_, header.type, record_buf.data());
+    callback(r.get());
+  }
+  return true;
+}
+
 bool RecordFileWriter::GetFilePos(uint64_t* file_pos) {
   off_t offset = ftello(record_fp_);
   if (offset == -1) {
@@ -264,11 +297,11 @@ bool RecordFileWriter::WriteBranchStackFeature() {
 bool RecordFileWriter::WriteFileFeature(const std::string& file_path,
                                         uint32_t file_type,
                                         uint64_t min_vaddr,
-                                        const std::vector<Symbol>& symbols) {
+                                        const std::vector<const Symbol*>& symbols) {
   uint32_t size = file_path.size() + 1 + sizeof(uint32_t) * 2 +
       sizeof(uint64_t) + symbols.size() * (sizeof(uint64_t) + sizeof(uint32_t));
   for (const auto& symbol : symbols) {
-    size += strlen(symbol.Name()) + 1;
+    size += strlen(symbol->Name()) + 1;
   }
   std::vector<char> buf(sizeof(uint32_t) + size);
   char* p = buf.data();
@@ -279,10 +312,10 @@ bool RecordFileWriter::WriteFileFeature(const std::string& file_path,
   uint32_t symbol_count = static_cast<uint32_t>(symbols.size());
   MoveToBinaryFormat(symbol_count, p);
   for (const auto& symbol : symbols) {
-    MoveToBinaryFormat(symbol.addr, p);
-    uint32_t len = symbol.len;
+    MoveToBinaryFormat(symbol->addr, p);
+    uint32_t len = symbol->len;
     MoveToBinaryFormat(len, p);
-    MoveToBinaryFormat(symbol.Name(), strlen(symbol.Name()) + 1, p);
+    MoveToBinaryFormat(symbol->Name(), strlen(symbol->Name()) + 1, p);
   }
   CHECK_EQ(buf.size(), static_cast<size_t>(p - buf.data()));
 

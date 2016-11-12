@@ -46,6 +46,22 @@ struct Symbol {
     return true;
   }
 
+  static bool CompareByDumpId(const Symbol* s1, const Symbol* s2) {
+    uint32_t id1 = UINT_MAX;
+    s1->GetDumpId(&id1);
+    uint32_t id2 = UINT_MAX;
+    s2->GetDumpId(&id2);
+    return id1 < id2;
+  }
+
+  static bool CompareByAddr(const Symbol* s1, const Symbol* s2) {
+    return s1->addr < s2->addr;
+  }
+
+  static bool CompareValueByAddr(const Symbol& s1, const Symbol& s2) {
+    return s1.addr < s2.addr;
+  }
+
  private:
   const char* name_;
   mutable const char* demangled_name_;

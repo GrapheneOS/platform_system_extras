@@ -465,14 +465,6 @@ static bool CompareDsoByDumpId(Dso* d1, Dso* d2) {
   return id1 < id2;
 }
 
-static bool CompareSymbolByDumpId(const Symbol* s1, const Symbol* s2) {
-  uint32_t id1 = UINT_MAX;
-  s1->GetDumpId(&id1);
-  uint32_t id2 = UINT_MAX;
-  s2->GetDumpId(&id2);
-  return id1 < id2;
-}
-
 bool ReportSampleCommand::PrintFileInfoInProtobuf() {
   std::vector<Dso*> dsos = thread_tree_.GetAllDsos();
   std::sort(dsos.begin(), dsos.end(), CompareDsoByDumpId);
@@ -492,7 +484,8 @@ bool ReportSampleCommand::PrintFileInfoInProtobuf() {
         dump_symbols.push_back(&sym);
       }
     }
-    std::sort(dump_symbols.begin(), dump_symbols.end(), CompareSymbolByDumpId);
+    std::sort(dump_symbols.begin(), dump_symbols.end(),
+              Symbol::CompareByDumpId);
 
     for (const auto& sym : dump_symbols) {
       std::string* symbol = file->add_symbol();
