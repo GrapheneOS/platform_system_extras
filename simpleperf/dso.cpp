@@ -176,10 +176,6 @@ Dso::~Dso() {
   }
 }
 
-static bool CompareSymbol(const Symbol& symbol1, const Symbol& symbol2) {
-  return symbol1.addr < symbol2.addr;
-}
-
 uint32_t Dso::CreateDumpId() {
   CHECK(!HasDumpId());
   return dump_id_ = g_dump_id_++;
@@ -196,7 +192,9 @@ const Symbol* Dso::FindSymbol(uint64_t vaddr_in_dso) {
     Load();
   }
   if (!symbols_.empty()) {
-    auto it = std::upper_bound(symbols_.begin(), symbols_.end(), Symbol("", vaddr_in_dso, 0), CompareSymbol);
+    auto it = std::upper_bound(symbols_.begin(), symbols_.end(),
+                               Symbol("", vaddr_in_dso, 0),
+                               Symbol::CompareValueByAddr);
     if (it != symbols_.begin()) {
       --it;
       if (it->addr <= vaddr_in_dso && (it->addr + it->len > vaddr_in_dso)) {
@@ -275,7 +273,7 @@ void Dso::Load() {
     }
   }
   if (result) {
-    std::sort(symbols_.begin(), symbols_.end(), CompareSymbol);
+    std::sort(symbols_.begin(), symbols_.end(), Symbol::CompareValueByAddr);
     FixupSymbolLength();
   } else {
     symbols_.clear();

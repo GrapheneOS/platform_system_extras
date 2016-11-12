@@ -770,16 +770,14 @@ bool RecordCommand::ProcessRecord(Record* record) {
     }
   }
   UpdateRecordForEmbeddedElfPath(record);
-  thread_tree_.Update(*record);
   if (unwind_dwarf_callchain_ && !post_unwind_) {
+    thread_tree_.Update(*record);
     if (!UnwindRecord(record)) {
       return false;
     }
   }
   if (record->type() == PERF_RECORD_SAMPLE) {
     sample_record_count_++;
-    auto& r = *static_cast<SampleRecord*>(record);
-    CollectHitFileInfo(r);
   } else if (record->type() == PERF_RECORD_LOST) {
     lost_record_count_ += static_cast<LostRecord*>(record)->lost;
   }
@@ -890,6 +888,18 @@ bool RecordCommand::PostUnwind(const std::vector<std::string>& args) {
 
 bool RecordCommand::DumpAdditionalFeatures(
     const std::vector<std::string>& args) {
+  // Read data section of perf.data to collect hit file information.
+  thread_tree_.ClearThreadAndMap();
+  auto callback = [&](const Record* r) {
+    thread_tree_.Update(*r);
+    if (r->type() == PERF_RECORD_SAMPLE) {
+      CollectHitFileInfo(*reinterpret_cast<const SampleRecord*>(r));
+    }
+  };
+  if (!record_file_writer_->ReadDataSection(callback)) {
+    return false;
+  }
+
   size_t feature_count = 4;
   if (branch_sampling_) {
     feature_count++;
@@ -1003,9 +1013,20 @@ bool RecordCommand::DumpFileFeature() {
     }
     uint32_t dso_type = dso->type();
     uint64_t min_vaddr = dso->MinVirtualAddress();
+
+    // Dumping all symbols in hit files takes too much space, so only dump
+    // needed symbols.
     const std::vector<Symbol>& symbols = dso->GetSymbols();
+    std::vector<const Symbol*> dump_symbols;
+    for (const auto& sym : symbols) {
+      if (sym.HasDumpId()) {
+        dump_symbols.push_back(&sym);
+      }
+    }
+    std::sort(dump_symbols.begin(), dump_symbols.end(), Symbol::CompareByAddr);
+
     if (!record_file_writer_->WriteFileFeature(dso->Path(), dso_type, min_vaddr,
-                                               symbols)) {
+                                               dump_symbols)) {
       return false;
     }
   }
@@ -1017,17 +1038,53 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
       thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
   const MapEntry* map =
       thread_tree_.FindMap(thread, r.ip_data.ip, r.InKernel());
-  if (!map->dso->HasDumpId()) {
-    map->dso->CreateDumpId();
+  Dso* dso = map->dso;
+  const Symbol* symbol;
+  if (dump_symbols_) {
+    symbol = thread_tree_.FindSymbol(map, r.ip_data.ip, nullptr, &dso);
+    if (!symbol->HasDumpId()) {
+      dso->CreateSymbolDumpId(symbol);
+    }
+  }
+  if (!dso->HasDumpId()) {
+    dso->CreateDumpId();
   }
   if (r.sample_type & PERF_SAMPLE_CALLCHAIN) {
-    size_t ip_nr = r.callchain_data.ip_nr;
-    const uint64_t* ips = r.callchain_data.ips;
-    for (size_t i = 0; i < ip_nr; ++i) {
-      // Even if a sample is in kernel, its callchain can be in user space.
-      map = thread_tree_.FindMap(thread, ips[i]);
-      if (!map->dso->HasDumpId()) {
-        map->dso->CreateDumpId();
+    bool in_kernel = r.InKernel();
+    bool first_ip = true;
+    for (uint64_t i = 0; i < r.callchain_data.ip_nr; ++i) {
+      uint64_t ip = r.callchain_data.ips[i];
+      if (ip >= PERF_CONTEXT_MAX) {
+        switch (ip) {
+          case PERF_CONTEXT_KERNEL:
+            in_kernel = true;
+            break;
+          case PERF_CONTEXT_USER:
+            in_kernel = false;
+            break;
+          default:
+            LOG(DEBUG) << "Unexpected perf_context in callchain: " << std::hex
+                       << ip;
+        }
+      } else {
+        if (first_ip) {
+          first_ip = false;
+          // Remove duplication with sample ip.
+          if (ip == r.ip_data.ip) {
+            continue;
+          }
+        }
+        map = thread_tree_.FindMap(thread, ip, in_kernel);
+        dso = map->dso;
+        if (dump_symbols_) {
+          symbol = thread_tree_.FindSymbol(map, ip, nullptr, &dso);
+          if (!symbol->HasDumpId()) {
+            dso->CreateSymbolDumpId(symbol);
+          }
+        }
+        if (!dso->HasDumpId()) {
+          dso->CreateDumpId();
+        }
       }
     }
   }
