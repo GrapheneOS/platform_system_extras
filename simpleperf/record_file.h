@@ -45,6 +45,8 @@ class RecordFileWriter {
   bool WriteAttrSection(const std::vector<EventAttrWithId>& attr_ids);
   bool WriteRecord(const Record& record);
 
+  bool ReadDataSection(const std::function<void(const Record*)>& callback);
+
   bool BeginWriteFeatures(size_t feature_count);
   bool WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records);
   bool WriteFeatureString(int feature, const std::string& s);
@@ -53,7 +55,7 @@ class RecordFileWriter {
   bool WriteFileFeature(const std::string& file_path,
                         uint32_t file_type,
                         uint64_t min_vaddr,
-                        const std::vector<Symbol>& symbols);
+                        const std::vector<const Symbol*>& symbols);
   bool EndWriteFeatures();
 
   // Normally, Close() should be called after writing. But if something
@@ -69,6 +71,7 @@ class RecordFileWriter {
   bool WriteFileHeader();
   bool WriteData(const void* buf, size_t len);
   bool Write(const void* buf, size_t len);
+  bool Read(void* buf, size_t len);
   bool GetFilePos(uint64_t* file_pos);
   bool WriteStringWithLength(const std::string& s);
   bool WriteFeatureBegin(int feature);
