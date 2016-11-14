@@ -35,7 +35,7 @@ static bool KernelSymbolsMatch(const KernelSymbol& sym1,
          ModulesMatch(sym1.module, sym2.module);
 }
 
-TEST(environment, ProcessKernelSymbols) {
+TEST(utils, ProcessKernelSymbols) {
   std::string data =
       "ffffffffa005c4e4 d __warned.41698   [libsas]\n"
       "aaaaaaaaaaaaaaaa T _text\n"
@@ -61,4 +61,15 @@ TEST(environment, ProcessKernelSymbols) {
   ASSERT_FALSE(ProcessKernelSymbols(
       data,
       std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
+}
+
+TEST(utils, ConvertBytesToValue) {
+  char buf[8];
+  for (int i = 0; i < 8; ++i) {
+    buf[i] = i;
+  }
+  ASSERT_EQ(0x1ULL, ConvertBytesToValue(buf + 1, 1));
+  ASSERT_EQ(0x201ULL, ConvertBytesToValue(buf + 1, 2));
+  ASSERT_EQ(0x05040302ULL, ConvertBytesToValue(buf + 2, 4));
+  ASSERT_EQ(0x0706050403020100ULL, ConvertBytesToValue(buf, 8));
 }

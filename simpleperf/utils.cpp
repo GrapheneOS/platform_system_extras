@@ -318,18 +318,17 @@ size_t GetPageSize() {
 }
 
 uint64_t ConvertBytesToValue(const char* bytes, uint32_t size) {
-  switch (size) {
-    case 1:
-      return *reinterpret_cast<const uint8_t*>(bytes);
-    case 2:
-      return *reinterpret_cast<const uint16_t*>(bytes);
-    case 4:
-      return *reinterpret_cast<const uint32_t*>(bytes);
-    case 8:
-      return *reinterpret_cast<const uint64_t*>(bytes);
+  if (size > 8) {
+    LOG(FATAL) << "unexpected size " << size << " in ConvertBytesToValue";
   }
-  LOG(FATAL) << "unexpected size " << size << " in ConvertBytesToValue";
-  return 0;
+  uint64_t result = 0;
+  int shift = 0;
+  for (uint32_t i = 0; i < size; ++i) {
+    uint64_t tmp = static_cast<unsigned char>(bytes[i]);
+    result |= tmp << shift;
+    shift += 8;
+  }
+  return result;
 }
 
 timeval SecondToTimeval(double time_in_sec) {
