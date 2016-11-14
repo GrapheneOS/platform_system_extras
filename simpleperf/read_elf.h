@@ -77,5 +77,6 @@ ElfStatus ReadSectionFromElfFile(const std::string& filename, const std::string&
 bool IsArmMappingSymbol(const char* name);
 ElfStatus IsValidElfFile(int fd);
 ElfStatus IsValidElfPath(const std::string& filename);
+bool GetBuildIdFromNoteSection(const char* section, size_t section_size, BuildId* build_id);
 
 #endif  // SIMPLE_PERF_READ_ELF_H_
