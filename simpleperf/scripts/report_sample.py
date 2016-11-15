@@ -32,6 +32,7 @@ def usage():
 def report_sample(record_file, symfs_dir):
     """ read record_file, and print each sample"""
     lib = ReportLib()
+
     lib.ShowIpForUnknownSymbol()
     if symfs_dir is not None:
         lib.SetSymfs(symfs_dir)
@@ -41,6 +42,7 @@ def report_sample(record_file, symfs_dir):
     while True:
         sample = lib.GetNextSample()
         if sample is None:
+            lib.Close()
             break
         event = lib.GetEventOfCurrentSample()
         symbol = lib.GetSymbolOfCurrentSample()
