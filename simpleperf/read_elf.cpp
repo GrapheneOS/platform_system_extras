@@ -99,23 +99,30 @@ ElfStatus IsValidElfPath(const std::string& filename) {
   return result;
 }
 
-static bool GetBuildIdFromNoteSection(const char* section, size_t section_size, BuildId* build_id) {
+bool GetBuildIdFromNoteSection(const char* section, size_t section_size, BuildId* build_id) {
   const char* p = section;
   const char* end = p + section_size;
   while (p < end) {
-    CHECK_LE(p + 12, end);
-    size_t namesz = *reinterpret_cast<const uint32_t*>(p);
-    p += 4;
-    size_t descsz = *reinterpret_cast<const uint32_t*>(p);
-    p += 4;
-    uint32_t type = *reinterpret_cast<const uint32_t*>(p);
-    p += 4;
+    if (p + 12 >= end) {
+      return false;
+    }
+    uint32_t namesz;
+    uint32_t descsz;
+    uint32_t type;
+    MoveFromBinaryFormat(namesz, p);
+    MoveFromBinaryFormat(descsz, p);
+    MoveFromBinaryFormat(type, p);
     namesz = Align(namesz, 4);
     descsz = Align(descsz, 4);
-    CHECK_LE(p + namesz + descsz, end);
-    if ((type == NT_GNU_BUILD_ID) && (strcmp(p, ELF_NOTE_GNU) == 0)) {
-      *build_id = BuildId(p + namesz, descsz);
-      return true;
+    if ((type == NT_GNU_BUILD_ID) && (p < end) && (strcmp(p, ELF_NOTE_GNU) == 0)) {
+      const char* desc_start = p + namesz;
+      const char* desc_end = desc_start + descsz;
+      if (desc_start > p && desc_start < desc_end && desc_end <= end) {
+        *build_id = BuildId(p + namesz, descsz);
+        return true;
+      } else {
+        return false;
+      }
     }
     p += namesz + descsz;
   }

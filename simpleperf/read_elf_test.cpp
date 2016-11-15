@@ -25,6 +25,40 @@
 
 #include "get_test_data.h"
 #include "test_util.h"
+#include "utils.h"
+
+#define ELF_NOTE_GNU "GNU"
+#define NT_GNU_BUILD_ID 3
+
+TEST(read_elf, GetBuildIdFromNoteSection) {
+  BuildId build_id;
+  std::vector<char> data;
+  // Fail to read build id for no data.
+  ASSERT_FALSE(GetBuildIdFromNoteSection(data.data(), 0, &build_id));
+
+  // Read build id from data starting from different alignment addresses.
+  char build_id_data[20];
+  for (int i = 0; i < 20; ++i) {
+    build_id_data[i] = i;
+  }
+  BuildId expected_build_id(build_id_data, 20);
+  data.resize(100, '\0');
+
+  for (size_t alignment = 0; alignment <= 3; ++alignment) {
+    char* start = data.data() + alignment;
+    char* p = start;
+    uint32_t type = NT_GNU_BUILD_ID;
+    uint32_t namesz = 4;
+    uint32_t descsz = 20;
+    MoveToBinaryFormat(namesz, p);
+    MoveToBinaryFormat(descsz, p);
+    MoveToBinaryFormat(type, p);
+    MoveToBinaryFormat(ELF_NOTE_GNU, 4, p);
+    MoveToBinaryFormat(build_id_data, 20, p);
+    ASSERT_TRUE(GetBuildIdFromNoteSection(start, p - start, &build_id));
+    ASSERT_TRUE(build_id == expected_build_id);
+  }
+}
 
 TEST(read_elf, GetBuildIdFromElfFile) {
   BuildId build_id;
