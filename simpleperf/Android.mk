@@ -43,6 +43,7 @@ simpleperf_static_libraries_target := \
   libbase \
   libcutils \
   liblog \
+  libprocinfo \
   libutils \
   liblzma \
   libLLVMObject \
@@ -71,6 +72,7 @@ simpleperf_static_libraries_host := \
   libprotobuf-cpp-lite \
 
 simpleperf_static_libraries_host_linux := \
+  libprocinfo \
   libbacktrace_offline \
   libbacktrace \
   libunwind \
