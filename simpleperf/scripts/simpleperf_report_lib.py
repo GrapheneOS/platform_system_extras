@@ -61,6 +61,8 @@ class CallChainStructure(ct.Structure):
     _fields_ = [('nr', ct.c_uint32),
                 ('entries', ct.POINTER(CallChainEntryStructure))]
 
+class ReportLibStructure(ct.Structure):
+    _fields_ = []
 
 class ReportLib(object):
 
@@ -68,6 +70,9 @@ class ReportLib(object):
         if native_lib_path is None:
             native_lib_path = _get_script_path() + "/libsimpleperf_report.so"
         self._lib = ct.CDLL(native_lib_path)
+        self._CreateReportLibFunc = self._lib.CreateReportLib
+        self._CreateReportLibFunc.restype = ct.POINTER(ReportLibStructure)
+        self._DestroyReportLibFunc = self._lib.DestroyReportLib
         self._SetLogSeverityFunc = self._lib.SetLogSeverity
         self._SetSymfsFunc = self._lib.SetSymfs
         self._SetRecordFileFunc = self._lib.SetRecordFile
@@ -81,39 +86,55 @@ class ReportLib(object):
         self._GetCallChainOfCurrentSampleFunc = self._lib.GetCallChainOfCurrentSample
         self._GetCallChainOfCurrentSampleFunc.restype = ct.POINTER(
             CallChainStructure)
+        self._instance = self._CreateReportLibFunc()
+        assert(not _is_null(self._instance))
+
+    def Close(self):
+        if self._instance is None:
+            return
+        self._DestroyReportLibFunc(self._instance)
+        self._instance = None
 
     def SetLogSeverity(self, log_level='info'):
         """ Set log severity of native lib, can be verbose,debug,info,error,fatal."""
-        assert(self._SetLogSeverityFunc(log_level))
+        cond = self._SetLogSeverityFunc(self.getInstance(), log_level)
+        assert(cond)
 
     def SetSymfs(self, symfs_dir):
         """ Set directory used to find symbols."""
-        assert(self._SetSymfsFunc(symfs_dir))
+        cond = self._SetSymfsFunc(self.getInstance(), symfs_dir)
+        assert(cond)
 
     def SetRecordFile(self, record_file):
         """ Set the path of record file, like perf.data."""
-        assert(self._SetRecordFileFunc(record_file))
+        cond = self._SetRecordFileFunc(self.getInstance(), record_file)
+        assert(cond)
 
     def ShowIpForUnknownSymbol(self):
-        self._ShowIpForUnknownSymbolFunc()
+        self._ShowIpForUnknownSymbolFunc(self.getInstance())
 
     def GetNextSample(self):
-        sample = self._GetNextSampleFunc()
+        sample = self._GetNextSampleFunc(self.getInstance())
         if _is_null(sample):
             return None
         return sample
 
     def GetEventOfCurrentSample(self):
-        event = self._GetEventOfCurrentSampleFunc()
+        event = self._GetEventOfCurrentSampleFunc(self.getInstance())
         assert(not _is_null(event))
         return event
 
     def GetSymbolOfCurrentSample(self):
-        symbol = self._GetSymbolOfCurrentSampleFunc()
+        symbol = self._GetSymbolOfCurrentSampleFunc(self.getInstance())
         assert(not _is_null(symbol))
         return symbol
 
     def GetCallChainOfCurrentSample(self):
-        callchain = self._GetCallChainOfCurrentSampleFunc()
+        callchain = self._GetCallChainOfCurrentSampleFunc(self.getInstance())
         assert(not _is_null(callchain))
         return callchain
+
+    def getInstance(self):
+        if self._instance is None:
+            raise Exception("Instance is Closed")
+        return self._instance

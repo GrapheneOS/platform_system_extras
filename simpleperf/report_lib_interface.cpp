@@ -24,6 +24,8 @@
 #include "thread_tree.h"
 #include "utils.h"
 
+class ReportLib;
+
 extern "C" {
 
 #define EXPORT __attribute__((visibility("default")))
@@ -59,17 +61,22 @@ struct CallChain {
   CallChainEntry* entries;
 };
 
+// Create a new instance,
+// pass the instance to the other functions below.
+ReportLib* CreateReportLib() EXPORT;
+void DestroyReportLib(ReportLib* report_lib) EXPORT;
+
 // Set log severity, different levels are:
 // verbose, debug, info, warning, error, fatal.
-bool SetLogSeverity(const char* log_level) EXPORT;
-bool SetSymfs(const char* symfs_dir) EXPORT;
-bool SetRecordFile(const char* record_file) EXPORT;
-void ShowIpForUnknownSymbol() EXPORT;
+bool SetLogSeverity(ReportLib* report_lib, const char* log_level) EXPORT;
+bool SetSymfs(ReportLib* report_lib, const char* symfs_dir) EXPORT;
+bool SetRecordFile(ReportLib* report_lib, const char* record_file) EXPORT;
+void ShowIpForUnknownSymbol(ReportLib* report_lib) EXPORT;
 
-Sample* GetNextSample() EXPORT;
-Event* GetEventOfCurrentSample() EXPORT;
-SymbolEntry* GetSymbolOfCurrentSample() EXPORT;
-CallChain* GetCallChainOfCurrentSample() EXPORT;
+Sample* GetNextSample(ReportLib* report_lib) EXPORT;
+Event* GetEventOfCurrentSample(ReportLib* report_lib) EXPORT;
+SymbolEntry* GetSymbolOfCurrentSample(ReportLib* report_lib) EXPORT;
+CallChain* GetCallChainOfCurrentSample(ReportLib* report_lib) EXPORT;
 }
 
 struct EventAttrWithName {
@@ -90,12 +97,9 @@ class ReportLib {
       : log_severity_(
             new android::base::ScopedLogSeverity(android::base::INFO)),
         record_filename_("perf.data"),
-        update_flag_(0) {}
-
-  static ReportLib& GetInstance() {
-    static ReportLib lib;
-    return lib;
-  }
+        current_thread_(nullptr),
+        update_flag_(0)
+         {}
 
   bool SetLogSeverity(const char* log_level);
 
@@ -272,32 +276,43 @@ CallChain* ReportLib::GetCallChainOfCurrentSample() {
   return &current_callchain_;
 }
 
-bool SetLogSeverity(const char* log_level) {
-  return ReportLib::GetInstance().SetLogSeverity(log_level);
+// Exported methods working with a client created instance
+ReportLib* CreateReportLib() {
+  return new ReportLib();
 }
 
-bool SetSymfs(const char* symfs_dir) {
-  return ReportLib::GetInstance().SetSymfs(symfs_dir);
+void DestroyReportLib(ReportLib* report_lib) {
+  delete report_lib;
 }
 
-bool SetRecordFile(const char* record_file) {
-  return ReportLib::GetInstance().SetRecordFile(record_file);
+bool SetLogSeverity(ReportLib* report_lib, const char* log_level) {
+  return report_lib->SetLogSeverity(log_level);
 }
 
-void ShowIpForUnknownSymbol() {
-  return ReportLib::GetInstance().ShowIpForUnknownSymbol();
+bool SetSymfs(ReportLib* report_lib, const char* symfs_dir) {
+  return report_lib->SetSymfs(symfs_dir);
 }
 
-Sample* GetNextSample() { return ReportLib::GetInstance().GetNextSample(); }
-
-Event* GetEventOfCurrentSample() {
-  return ReportLib::GetInstance().GetEventOfCurrentSample();
+bool SetRecordFile(ReportLib* report_lib, const char* record_file) {
+  return report_lib->SetRecordFile(record_file);
 }
 
-SymbolEntry* GetSymbolOfCurrentSample() {
-  return ReportLib::GetInstance().GetSymbolOfCurrentSample();
+void ShowIpForUnknownSymbol(ReportLib* report_lib) {
+  return report_lib->ShowIpForUnknownSymbol();
 }
 
-CallChain* GetCallChainOfCurrentSample() {
-  return ReportLib::GetInstance().GetCallChainOfCurrentSample();
+Sample* GetNextSample(ReportLib* report_lib) {
+  return report_lib->GetNextSample();
+}
+
+Event* GetEventOfCurrentSample(ReportLib* report_lib) {
+  return report_lib->GetEventOfCurrentSample();
+}
+
+SymbolEntry* GetSymbolOfCurrentSample(ReportLib* report_lib) {
+  return report_lib->GetSymbolOfCurrentSample();
+}
+
+CallChain* GetCallChainOfCurrentSample(ReportLib* report_lib) {
+  return report_lib->GetCallChainOfCurrentSample();
 }
