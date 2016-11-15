@@ -31,6 +31,7 @@
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
 #include <android-base/stringprintf.h>
+#include <procinfo/process.h>
 
 #if defined(__ANDROID__)
 #include <sys/system_properties.h>
@@ -218,46 +219,22 @@ void GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<KernelMmap>* m
 }
 
 static bool ReadThreadNameAndPid(pid_t tid, std::string* comm, pid_t* pid) {
-  std::string status_file = android::base::StringPrintf("/proc/%d/status", tid);
-  FILE* fp = fopen(status_file.c_str(), "re");
-  if (fp == nullptr) {
+  android::procinfo::ProcessInfo procinfo;
+  if (!android::procinfo::GetProcessInfo(tid, &procinfo)) {
     return false;
   }
-  bool read_comm = false;
-  bool read_tgid = false;
-  LineReader reader(fp);
-  char* line;
-  while ((line = reader.ReadLine()) != nullptr) {
-    char s[reader.MaxLineSize()];
-    pid_t tgid;
-    if (sscanf(line, "Name:%s", s) == 1) {
-      read_comm = true;
-      if (comm != nullptr) {
-        *comm = s;
-      }
-    } else if (sscanf(line, "Tgid:%d", &tgid) == 1) {
-      read_tgid = true;
-      if (pid != nullptr) {
-        *pid = tgid;
-      }
-    }
-    if (read_comm && read_tgid) {
-      return true;
-    }
+  if (comm != nullptr) {
+    *comm = procinfo.name;
   }
-  return false;
+  if (pid != nullptr) {
+    *pid = procinfo.pid;
+  }
+  return true;
 }
 
 std::vector<pid_t> GetThreadsInProcess(pid_t pid) {
   std::vector<pid_t> result;
-  std::string task_dirname = android::base::StringPrintf("/proc/%d/task", pid);
-  for (const auto& name : GetSubDirs(task_dirname)) {
-    int tid;
-    if (!android::base::ParseInt(name.c_str(), &tid, 0)) {
-      continue;
-    }
-    result.push_back(tid);
-  }
+  android::procinfo::GetProcessTids(pid, &result);
   return result;
 }
 
