@@ -64,28 +64,32 @@ TEST_F(RecordTest, RecordCache_smoke) {
   event_attr.sample_id_all = 1;
   event_attr.sample_type |= PERF_SAMPLE_TIME;
   RecordCache cache(true, 2, 2);
+
+  // Push r1.
   MmapRecord* r1 = new MmapRecord(event_attr, true, 1, 1, 0x100, 0x200, 0x300,
                                   "mmap_record1", 0, 3);
-  MmapRecord* r2 = new MmapRecord(event_attr, true, 1, 1, 0x100, 0x200, 0x300,
-                                  "mmap_record1", 0, 1);
-  MmapRecord* r3 = new MmapRecord(event_attr, true, 1, 1, 0x100, 0x200, 0x300,
-                                  "mmap_record1", 0, 4);
-  MmapRecord* r4 = new MmapRecord(event_attr, true, 1, 1, 0x100, 0x200, 0x300,
-                                  "mmap_record1", 0, 6);
-  // Push r1.
   cache.Push(std::unique_ptr<Record>(r1));
   ASSERT_EQ(nullptr, cache.Pop());
+
   // Push r2.
+  MmapRecord* r2 = new MmapRecord(event_attr, true, 1, 1, 0x100, 0x200, 0x300,
+                                  "mmap_record1", 0, 1);
   cache.Push(std::unique_ptr<Record>(r2));
   // Pop r2.
   std::unique_ptr<Record> popped_r = cache.Pop();
   ASSERT_TRUE(popped_r != nullptr);
   ASSERT_EQ(r2, popped_r.get());
   ASSERT_EQ(nullptr, cache.Pop());
+
   // Push r3.
+  MmapRecord* r3 = new MmapRecord(event_attr, true, 1, 1, 0x100, 0x200, 0x300,
+                                  "mmap_record1", 0, 4);
   cache.Push(std::unique_ptr<Record>(r3));
   ASSERT_EQ(nullptr, cache.Pop());
+
   // Push r4.
+  MmapRecord* r4 = new MmapRecord(event_attr, true, 1, 1, 0x100, 0x200, 0x300,
+                                  "mmap_record1", 0, 6);
   cache.Push(std::unique_ptr<Record>(r4));
   // Pop r1.
   popped_r = cache.Pop();
