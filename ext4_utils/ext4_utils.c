@@ -179,7 +179,7 @@ static void block_device_write_sb(int fd)
 	/* write out the backup superblocks */
 	for (i = 1; i < aux_info.groups; i++) {
 		if (ext4_bg_has_super_block(i)) {
-			offset = info.block_size * (aux_info.first_data_block
+			offset = (unsigned long long)info.block_size * (aux_info.first_data_block
 				+ i * info.blocks_per_group);
 			write_sb(fd, offset, aux_info.backup_sb[i]);
 		}
