@@ -106,12 +106,12 @@ class SampleTreeBuilder {
           (r.regs_user_data.reg_mask != 0) &&
           (r.sample_type & PERF_SAMPLE_STACK_USER) &&
           (r.GetValidStackSize() > 0)) {
-        RegSet regs =
-            CreateRegSet(r.regs_user_data.reg_mask, r.regs_user_data.regs);
-        ArchType arch = GetArchForAbi(ScopedCurrentArch::GetCurrentArch(),
-                                      r.regs_user_data.abi);
+        RegSet regs = CreateRegSet(r.regs_user_data.abi,
+                                   r.regs_user_data.reg_mask,
+                                   r.regs_user_data.regs);
         std::vector<uint64_t> unwind_ips =
-            UnwindCallChain(arch, *thread, regs, r.stack_user_data.data,
+            UnwindCallChain(r.regs_user_data.abi, *thread, regs,
+                            r.stack_user_data.data,
                             r.GetValidStackSize(), strict_unwind_arch_check_);
         if (!unwind_ips.empty()) {
           ips.push_back(PERF_CONTEXT_USER);

@@ -280,7 +280,7 @@ bool EventSelectionSet::EnableDwarfCallChainSampling(uint32_t dump_stack_size) {
                                           PERF_SAMPLE_STACK_USER;
       selection.event_attr.exclude_callchain_user = 1;
       selection.event_attr.sample_regs_user =
-          GetSupportedRegMask(GetBuildArch());
+          GetSupportedRegMask(GetMachineArch());
       selection.event_attr.sample_stack_user = dump_stack_size;
     }
   }

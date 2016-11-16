@@ -242,6 +242,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   if (!SetEventSelectionFlags()) {
     return false;
   }
+  ScopedCurrentArch scoped_arch(GetMachineArch());
 
   // 2. Create workload.
   std::unique_ptr<Workload> workload;
@@ -828,14 +829,15 @@ bool RecordCommand::UnwindRecord(Record* record) {
         (r.GetValidStackSize() > 0)) {
       ThreadEntry* thread =
           thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-      RegSet regs =
-          CreateRegSet(r.regs_user_data.reg_mask, r.regs_user_data.regs);
-      ArchType arch = GetArchForAbi(GetBuildArch(), r.regs_user_data.abi);
+      RegSet regs = CreateRegSet(r.regs_user_data.abi,
+                                 r.regs_user_data.reg_mask,
+                                 r.regs_user_data.regs);
       // Normally do strict arch check when unwinding stack. But allow unwinding
       // 32-bit processes on 64-bit devices for system wide profiling.
       bool strict_arch_check = !system_wide_collection_;
       std::vector<uint64_t> unwind_ips =
-          UnwindCallChain(arch, *thread, regs, r.stack_user_data.data,
+          UnwindCallChain(r.regs_user_data.abi, *thread, regs,
+                          r.stack_user_data.data,
                           r.GetValidStackSize(), strict_arch_check);
       r.ReplaceRegAndStackWithCallChain(unwind_ips);
     }
