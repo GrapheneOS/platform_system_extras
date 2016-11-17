@@ -103,7 +103,8 @@ void ThreadTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
 }
 
 Dso* ThreadTree::FindKernelDsoOrNew(const std::string& filename) {
-  if (filename == DEFAULT_KERNEL_MMAP_NAME) {
+  if (filename == DEFAULT_KERNEL_MMAP_NAME ||
+      filename == DEFAULT_KERNEL_MMAP_NAME_PERF) {
     return kernel_dso_.get();
   }
   auto it = module_dso_tree_.find(filename);
