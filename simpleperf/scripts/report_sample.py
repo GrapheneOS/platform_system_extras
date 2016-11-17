@@ -23,13 +23,14 @@ from simpleperf_report_lib import *
 
 
 def usage():
-    print 'python report_sample.py [options] <record_file>'
-    print '-h/--help print this help message'
-    print '--symfs <symfs_dir>  Set the path to looking for symbols'
-    print 'If record file is not given, use default file perf.data.'
+    print('python report_sample.py [options] <record_file>')
+    print('-h/--help print this help message')
+    print('--symfs <symfs_dir>  Set the path to looking for symbols')
+    print('--kallsyms <kallsyms_file>  Set the path to a kallsyms file')
+    print('If record file is not given, use default file perf.data.')
 
 
-def report_sample(record_file, symfs_dir):
+def report_sample(record_file, symfs_dir, kallsyms_file=None):
     """ read record_file, and print each sample"""
     lib = ReportLib()
 
@@ -38,6 +39,8 @@ def report_sample(record_file, symfs_dir):
         lib.SetSymfs(symfs_dir)
     if record_file is not None:
         lib.SetRecordFile(record_file)
+    if kallsyms_file is not None:
+        lib.SetKallsymsFile(kallsyms_file)
 
     while True:
         sample = lib.GetNextSample()
@@ -50,17 +53,18 @@ def report_sample(record_file, symfs_dir):
 
         sec = sample[0].time / 1000000000
         usec = (sample[0].time - sec * 1000000000) / 1000
-        print '%s\t%d [%03d] %d.%d:\t\t%d %s:' % (sample[0].thread_comm, sample[0].tid, sample[0].cpu, sec, usec, sample[0].period, event[0].name)
-        print '%16x\t%s (%s)' % (sample[0].ip, symbol[0].symbol_name, symbol[0].dso_name)
+        print('%s\t%d [%03d] %d.%d:\t\t%d %s:' % (sample[0].thread_comm, sample[0].tid, sample[0].cpu, sec, usec, sample[0].period, event[0].name))
+        print('%16x\t%s (%s)' % (sample[0].ip, symbol[0].symbol_name, symbol[0].dso_name))
         for i in range(callchain[0].nr):
             entry = callchain[0].entries[i]
-            print '%16x\t%s (%s)' % (entry.ip, entry.symbol.symbol_name, entry.symbol.dso_name)
-        print
+            print('%16x\t%s (%s)' % (entry.ip, entry.symbol.symbol_name, entry.symbol.dso_name))
+        print('')
 
 
 if __name__ == '__main__':
     record_file = 'perf.data'
     symfs_dir = None
+    kallsyms_file = None
     i = 1
     while i < len(sys.argv):
         if sys.argv[i] == '-h' or sys.argv[i] == '--help':
@@ -71,10 +75,17 @@ if __name__ == '__main__':
                 symfs_dir = sys.argv[i + 1]
                 i += 1
             else:
-                print 'argument for --symfs is missing'
+                print('argument for --symfs is missing')
+                sys.exit(1)
+        elif sys.argv[i] == '--kallsyms':
+            if i + 1 < len(sys.argv):
+                kallsyms_file = sys.argv[i + 1]
+                i += 1
+            else:
+                print('argument for --kallsyms is missing')
                 sys.exit(1)
         else:
           record_file = sys.argv[i]
         i += 1
 
-    report_sample(record_file, symfs_dir)
+    report_sample(record_file, symfs_dir, kallsyms_file)
