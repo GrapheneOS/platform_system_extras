@@ -15,8 +15,10 @@
  */
 
 #include <memory>
+#include <utility>
 
 #include <android-base/logging.h>
+#include <android-base/file.h>
 
 #include "dso.h"
 #include "event_attr.h"
@@ -71,6 +73,7 @@ void DestroyReportLib(ReportLib* report_lib) EXPORT;
 bool SetLogSeverity(ReportLib* report_lib, const char* log_level) EXPORT;
 bool SetSymfs(ReportLib* report_lib, const char* symfs_dir) EXPORT;
 bool SetRecordFile(ReportLib* report_lib, const char* record_file) EXPORT;
+bool SetKallsymsFile(ReportLib* report_lib, const char* kallsyms_file) EXPORT;
 void ShowIpForUnknownSymbol(ReportLib* report_lib) EXPORT;
 
 Sample* GetNextSample(ReportLib* report_lib) EXPORT;
@@ -110,6 +113,8 @@ class ReportLib {
     return true;
   }
 
+  bool SetKallsymsFile(const char* kallsyms_file);
+
   void ShowIpForUnknownSymbol() { thread_tree_.ShowIpForUnknownSymbol(); }
 
   Sample* GetNextSample();
@@ -145,6 +150,17 @@ bool ReportLib::SetLogSeverity(const char* log_level) {
   log_severity_.reset(new android::base::ScopedLogSeverity(severity));
   return true;
 }
+
+bool ReportLib::SetKallsymsFile(const char* kallsyms_file) {
+  std::string kallsyms;
+  if (!android::base::ReadFileToString(kallsyms_file, &kallsyms)) {
+    LOG(WARNING) << "Failed to read in kallsyms file from " << kallsyms_file;
+    return false;
+  }
+  Dso::SetKallsyms(std::move(kallsyms));
+  return true;
+}
+
 
 Sample* ReportLib::GetNextSample() {
   if (record_file_reader_ == nullptr) {
@@ -299,6 +315,10 @@ bool SetRecordFile(ReportLib* report_lib, const char* record_file) {
 
 void ShowIpForUnknownSymbol(ReportLib* report_lib) {
   return report_lib->ShowIpForUnknownSymbol();
+}
+
+bool SetKallsymsFile(ReportLib* report_lib, const char* kallsyms_file) {
+  return report_lib->SetKallsymsFile(kallsyms_file);
 }
 
 Sample* GetNextSample(ReportLib* report_lib) {
