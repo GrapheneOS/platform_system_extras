@@ -538,7 +538,8 @@ static int compare_chunks(const void* chunk1, const void* chunk2) {
 }
 
 static int get_block_group(u32 block) {
-	int i, group = 0;
+	unsigned int i, group = 0;
+
 	for(i = 0; i < aux_info.groups; i++) {
 		if (block >= aux_info.bgs[i].first_block)
 			group = i;
@@ -559,7 +560,8 @@ static void extract_base_fs_allocations(const char *directory, const char *mount
 	char stored_file_name[MAX_PATH], real_file_name[MAX_PATH], file_map[MAX_BLK_MAPPING_STR];
 	struct block_allocation *fs_alloc;
 	struct block_group_info *bgs = aux_info.bgs;
-	int i, major_version = 0, minor_version = 0;
+	int major_version = 0, minor_version = 0;
+	unsigned int i;
 	char *base_file_line = NULL;
 	size_t base_file_line_len = 0;
 
@@ -596,7 +598,8 @@ static void extract_base_fs_allocations(const char *directory, const char *mount
 		if (!access(real_file_name, R_OK)) {
 			char *block_range, *end_string;
 			int real_file_fd;
-			u32 start_block, end_block, block_file_size;
+			int start_block, end_block;
+			u32 block_file_size;
 			u32 real_file_block_size;
 
 			real_file_fd = open(real_file_name, O_RDONLY);
