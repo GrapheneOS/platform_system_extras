@@ -451,3 +451,16 @@ bool CheckKernelSymbolAddresses() {
       << "to fix this.";
   return false;
 }
+
+ArchType GetMachineArch() {
+  utsname uname_buf;
+  if (TEMP_FAILURE_RETRY(uname(&uname_buf)) != 0) {
+    PLOG(WARNING) << "uname() failed";
+    return GetBuildArch();
+  }
+  ArchType arch = GetArchType(uname_buf.machine);
+  if (arch != ARCH_UNSUPPORTED) {
+    return arch;
+  }
+  return GetBuildArch();
+}
