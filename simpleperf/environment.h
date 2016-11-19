@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "build_id.h"
+#include "perf_regs.h"
 
 std::vector<int> GetOnlineCpus();
 std::vector<int> GetCpusFromString(const std::string& s);
@@ -73,5 +74,7 @@ static inline uint64_t GetSystemClock() {
   return ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 }
 #endif
+
+ArchType GetMachineArch();
 
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_
