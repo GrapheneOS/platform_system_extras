@@ -16,7 +16,9 @@
 
 #include "ext4fixup.h"
 
-#define _LARGEFILE64_SOURCE
+#ifndef _LARGEFILE64_SOURCE
+#define _LARGEFILE64_SOURCE 1
+#endif
 
 #include <fcntl.h>
 #include <sys/stat.h>
