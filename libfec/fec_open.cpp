@@ -145,13 +145,6 @@ static int parse_ecc_header(fec_handle *f, uint64_t offset)
         error("inconsistent ecc size %u", header.fec_size);
         return -1;
     }
-    /* structure: data | ecc | header */
-    if (offset < header.fec_size ||
-            offset - header.fec_size != header.inp_size) {
-        error("unexpected input size: %" PRIu64 " vs %" PRIu64, offset,
-            header.inp_size);
-        return -1;
-    }
 
     f->data_size = header.inp_size;
     f->ecc.blocks = fec_div_round_up(f->data_size, FEC_BLOCKSIZE);
