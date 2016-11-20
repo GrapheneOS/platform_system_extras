@@ -107,6 +107,8 @@ static int usage()
            "  -r, --roots=<bytes>               number of parity bytes\n"
            "  -j, --threads=<threads>           number of threads to use\n"
            "  -S                                treat data as a sparse file\n"
+           "encoding options:\n"
+           "  -p, --padding=<bytes>             add padding after ECC data\n"
            "decoding options:\n"
            "  -i, --inplace                     correct <data> in place\n"
         );
@@ -220,6 +222,10 @@ static int decode(image& ctx, const std::vector<std::string>& inp_filenames,
             "files\n");
     }
 
+    if (ctx.padding) {
+        FATAL("invalid parameters: padding is only relevant when encoding\n");
+    }
+
     if (!image_ecc_load(fec_filename, &ctx) ||
             !image_load(inp_filenames, &ctx)) {
         FATAL("failed to read input\n");
@@ -284,10 +290,11 @@ int main(int argc, char **argv)
             {"print-fec-size", required_argument, 0, 's'},
             {"get-ecc-start", required_argument, 0, 'E'},
             {"get-verity-start", required_argument, 0, 'V'},
+            {"padding", required_argument, 0, 'p'},
             {"verbose", no_argument, 0, 'v'},
             {NULL, 0, 0, 0}
         };
-        int c = getopt_long(argc, argv, "hedSr:imj:s:E:V:v", long_options, NULL);
+        int c = getopt_long(argc, argv, "hedSr:ij:s:E:V:p:v", long_options, NULL);
         if (c < 0) {
             break;
         }
@@ -338,6 +345,12 @@ int main(int argc, char **argv)
             }
             mode = MODE_GETVERITYSTART;
             inp_filenames.push_back(optarg);
+            break;
+        case 'p':
+            ctx.padding = (uint32_t)parse_arg(optarg, "padding", UINT32_MAX);
+            if (ctx.padding % FEC_BLOCKSIZE) {
+                FATAL("padding must be multiple of %u\n", FEC_BLOCKSIZE);
+            }
             break;
         case 'v':
             ctx.verbose = true;
