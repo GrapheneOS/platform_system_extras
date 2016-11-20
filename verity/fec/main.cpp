@@ -105,7 +105,6 @@ static int usage()
            "  -h                                show this help\n"
            "  -v                                enable verbose logging\n"
            "  -r, --roots=<bytes>               number of parity bytes\n"
-           "  -m, --mmap                        use memory mapping\n"
            "  -j, --threads=<threads>           number of threads to use\n"
            "  -S                                treat data as a sparse file\n"
            "decoding options:\n"
@@ -176,7 +175,7 @@ static int encode(image& ctx, const std::vector<std::string>& inp_filenames,
         FATAL("invalid parameters: inplace can only used when decoding\n");
     }
 
-    if (!image_load(inp_filenames, &ctx, false)) {
+    if (!image_load(inp_filenames, &ctx)) {
         FATAL("failed to read input\n");
     }
 
@@ -222,7 +221,7 @@ static int decode(image& ctx, const std::vector<std::string>& inp_filenames,
     }
 
     if (!image_ecc_load(fec_filename, &ctx) ||
-            !image_load(inp_filenames, &ctx, !out_filename.empty())) {
+            !image_load(inp_filenames, &ctx)) {
         FATAL("failed to read input\n");
     }
 
@@ -281,7 +280,6 @@ int main(int argc, char **argv)
             {"sparse", no_argument, 0, 'S'},
             {"roots", required_argument, 0, 'r'},
             {"inplace", no_argument, 0, 'i'},
-            {"mmap", no_argument, 0, 'm'},
             {"threads", required_argument, 0, 'j'},
             {"print-fec-size", required_argument, 0, 's'},
             {"get-ecc-start", required_argument, 0, 'E'},
@@ -316,9 +314,6 @@ int main(int argc, char **argv)
             break;
         case 'i':
             ctx.inplace = true;
-            break;
-        case 'm':
-            ctx.mmap = true;
             break;
         case 'j':
             ctx.threads = (int)parse_arg(optarg, "threads", IMAGE_MAX_THREADS);
