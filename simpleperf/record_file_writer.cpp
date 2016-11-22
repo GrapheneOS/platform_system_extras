@@ -355,7 +355,8 @@ bool RecordFileWriter::WriteFeatureEnd(int feature) {
 }
 
 bool RecordFileWriter::EndWriteFeatures() {
-  CHECK_LE(feature_count_, features_.size());
+  // Used features (features_.size()) should be <= allocated feature space.
+  CHECK_LE(features_.size(), feature_count_);
   if (fseek(record_fp_, feature_section_offset_, SEEK_SET) == -1) {
     PLOG(ERROR) << "fseek() failed";
     return false;
