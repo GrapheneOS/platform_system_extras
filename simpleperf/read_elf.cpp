@@ -149,8 +149,7 @@ ElfStatus GetBuildIdFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf, Bu
       if (it->getContents(data)) {
         return ElfStatus::READ_FAILED;
       }
-      if (GetBuildIdFromNoteSection(reinterpret_cast<const char*>(data.data()),
-                                    data.size(), build_id)) {
+      if (GetBuildIdFromNoteSection(data.data(), data.size(), build_id)) {
         return ElfStatus::NO_ERROR;
       }
     }
