@@ -2,17 +2,19 @@
 
 #define LOG_TAG "f2fs_sparseblock"
 
-
-#include <cutils/log.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <f2fs_fs.h>
+#include <fcntl.h>
 #include <linux/types.h>
 #include <malloc.h>
 #include <string.h>
 #include <sys/stat.h>
-#include "f2fs_sparseblock.h"
+#include <sys/types.h>
+#include <unistd.h>
 
+#include <log/log.h>
+
+#include "f2fs_sparseblock.h"
 
 #define D_DISP_u32(ptr, member)           \
   do {                \
