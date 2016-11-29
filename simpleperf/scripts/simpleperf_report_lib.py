@@ -21,14 +21,16 @@
 
 import ctypes as ct
 import os
+import subprocess
 import sys
+import unittest
 
 
 def _isWindows():
     return sys.platform == 'win32' or sys.platform == 'cygwin'
 
 
-def _get_script_path():
+def _get_script_dir():
     return os.path.dirname(os.path.realpath(__file__))
 
 
@@ -40,7 +42,7 @@ def _get_native_lib():
     else:
         so_name = 'libsimpleperf_report.so'
 
-    return os.path.join(_get_script_path(), so_name)
+    return os.path.join(_get_script_dir(), so_name)
 
 
 def _is_null(p):
@@ -55,6 +57,13 @@ def _char_pt(str):
     return str.encode('utf-8')
 
 
+def _char_pt_to_str(char_pt):
+    if sys.version_info < (3, 0):
+        return char_pt
+    return char_pt.decode('utf-8')
+
+
+# TODO: convert fields of type c_char_p into str for python3.
 class SampleStruct(ct.Structure):
     _fields_ = [('ip', ct.c_uint64),
                 ('pid', ct.c_uint32),
@@ -73,7 +82,8 @@ class EventStruct(ct.Structure):
 class SymbolStruct(ct.Structure):
     _fields_ = [('dso_name', ct.c_char_p),
                 ('vaddr_in_file', ct.c_uint64),
-                ('symbol_name', ct.c_char_p)]
+                ('symbol_name', ct.c_char_p),
+                ('symbol_addr', ct.c_uint64)]
 
 
 class CallChainEntryStructure(ct.Structure):
@@ -114,6 +124,8 @@ class ReportLib(object):
         self._GetCallChainOfCurrentSampleFunc = self._lib.GetCallChainOfCurrentSample
         self._GetCallChainOfCurrentSampleFunc.restype = ct.POINTER(
             CallChainStructure)
+        self._GetBuildIdForPathFunc = self._lib.GetBuildIdForPath
+        self._GetBuildIdForPathFunc.restype = ct.c_char_p
         self._instance = self._CreateReportLibFunc()
         assert(not _is_null(self._instance))
 
@@ -175,6 +187,11 @@ class ReportLib(object):
         assert(not _is_null(callchain))
         return callchain
 
+    def GetBuildIdForPath(self, path):
+        build_id = self._GetBuildIdForPathFunc(self.getInstance(), _char_pt(path))
+        assert(not _is_null(build_id))
+        return _char_pt_to_str(build_id)
+
     def getInstance(self):
         if self._instance is None:
             raise Exception("Instance is Closed")
@@ -183,3 +200,51 @@ class ReportLib(object):
     def _check(self, cond, failmsg):
         if not cond:
             raise Exception(failmsg)
+
+
+class TestReportLib(unittest.TestCase):
+    def setUp(self):
+        self.perf_data_path = os.path.join(os.path.dirname(_get_script_dir()),
+                                           'testdata', 'perf_with_symbols.data')
+        if not os.path.isfile(self.perf_data_path):
+            raise Exception("can't find perf_data at %s" % self.perf_data_path)
+        self.report_lib = ReportLib()
+        self.report_lib.SetRecordFile(self.perf_data_path)
+
+    def tearDown(self):
+        self.report_lib.Close()
+
+    def test_build_id(self):
+        build_id = self.report_lib.GetBuildIdForPath('/data/t2')
+        self.assertEqual(build_id, '0x70f1fe24500fc8b0d9eb477199ca1ca21acca4de')
+
+    def test_symbol_addr(self):
+        met_func2 = False
+        while True:
+            sample = self.report_lib.GetNextSample()
+            if sample is None:
+                break
+            event = self.report_lib.GetEventOfCurrentSample()
+            symbol = self.report_lib.GetSymbolOfCurrentSample()
+            symbol_name = _char_pt_to_str(symbol[0].symbol_name)
+            if symbol_name == 'func2(int, int)':
+                met_func2 = True
+                self.assertEqual(symbol[0].symbol_addr, 0x4004ed)
+        self.assertTrue(met_func2)
+
+
+def main():
+    test_all = True
+    if len(sys.argv) > 1 and sys.argv[1] == '--test-one':
+        test_all = False
+        del sys.argv[1]
+
+    if test_all:
+        subprocess.check_call(['python', os.path.realpath(__file__), '--test-one'])
+        subprocess.check_call(['python3', os.path.realpath(__file__), '--test-one'])
+    else:
+        sys.exit(unittest.main())
+
+
+if __name__ == '__main__':
+    main()

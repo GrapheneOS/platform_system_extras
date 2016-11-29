@@ -118,12 +118,16 @@ void Dso::SetBuildIds(
   build_id_map_ = std::move(map);
 }
 
-BuildId Dso::GetExpectedBuildId() {
-  auto it = build_id_map_.find(path_);
+BuildId Dso::FindExpectedBuildIdForPath(const std::string& path) {
+  auto it = build_id_map_.find(path);
   if (it != build_id_map_.end()) {
     return it->second;
   }
   return BuildId();
+}
+
+BuildId Dso::GetExpectedBuildId() {
+  return FindExpectedBuildIdForPath(path_);
 }
 
 std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type,
