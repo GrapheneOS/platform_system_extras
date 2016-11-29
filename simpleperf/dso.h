@@ -92,6 +92,7 @@ class Dso {
   }
   static void SetBuildIds(
       const std::vector<std::pair<std::string, BuildId>>& build_ids);
+  static BuildId FindExpectedBuildIdForPath(const std::string& path);
 
   static std::unique_ptr<Dso> CreateDso(DsoType dso_type,
                                         const std::string& dso_path);
