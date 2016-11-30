@@ -63,7 +63,6 @@ def _char_pt_to_str(char_pt):
     return char_pt.decode('utf-8')
 
 
-# TODO: convert fields of type c_char_p into str for python3.
 class SampleStruct(ct.Structure):
     _fields_ = [('ip', ct.c_uint64),
                 ('pid', ct.c_uint32),
@@ -94,6 +93,47 @@ class CallChainEntryStructure(ct.Structure):
 class CallChainStructure(ct.Structure):
     _fields_ = [('nr', ct.c_uint32),
                 ('entries', ct.POINTER(CallChainEntryStructure))]
+
+
+# convert char_p to str for python3.
+class SampleStructUsingStr(object):
+    def __init__(self, sample):
+        self.ip = sample.ip
+        self.pid = sample.pid
+        self.tid = sample.tid
+        self.thread_comm = _char_pt_to_str(sample.thread_comm)
+        self.time = sample.time
+        self.in_kernel = sample.in_kernel
+        self.cpu = sample.cpu
+        self.period = sample.period
+
+
+class EventStructUsingStr(object):
+    def __init__(self, event):
+        self.name = _char_pt_to_str(event.name)
+
+
+class SymbolStructUsingStr(object):
+    def __init__(self, symbol):
+        self.dso_name = _char_pt_to_str(symbol.dso_name)
+        self.vaddr_in_file = symbol.vaddr_in_file
+        self.symbol_name = _char_pt_to_str(symbol.symbol_name)
+        self.symbol_addr = symbol.symbol_addr
+
+
+class CallChainEntryStructureUsingStr(object):
+    def __init__(self, entry):
+        self.ip = entry.ip
+        self.symbol = SymbolStructUsingStr(entry.symbol)
+
+
+class CallChainStructureUsingStr(object):
+    def __init__(self, callchain):
+        self.nr = callchain.nr
+        self.entries = []
+        for i in range(self.nr):
+            self.entries.append(CallChainEntryStructureUsingStr(callchain.entries[i]))
+
 
 class ReportLibStructure(ct.Structure):
     _fields_ = []
@@ -128,6 +168,8 @@ class ReportLib(object):
         self._GetBuildIdForPathFunc.restype = ct.c_char_p
         self._instance = self._CreateReportLibFunc()
         assert(not _is_null(self._instance))
+
+        self.convert_to_str = (sys.version_info >= (3, 0))
 
     def _load_dependent_lib(self):
         # As the windows dll is built with mingw we need to also find "libwinpthread-1.dll".
@@ -170,22 +212,30 @@ class ReportLib(object):
         sample = self._GetNextSampleFunc(self.getInstance())
         if _is_null(sample):
             return None
-        return sample
+        if self.convert_to_str:
+            return SampleStructUsingStr(sample[0])
+        return sample[0]
 
     def GetEventOfCurrentSample(self):
         event = self._GetEventOfCurrentSampleFunc(self.getInstance())
         assert(not _is_null(event))
-        return event
+        if self.convert_to_str:
+            return EventStructUsingStr(event[0])
+        return event[0]
 
     def GetSymbolOfCurrentSample(self):
         symbol = self._GetSymbolOfCurrentSampleFunc(self.getInstance())
         assert(not _is_null(symbol))
-        return symbol
+        if self.convert_to_str:
+            return SymbolStructUsingStr(symbol[0])
+        return symbol[0]
 
     def GetCallChainOfCurrentSample(self):
         callchain = self._GetCallChainOfCurrentSampleFunc(self.getInstance())
         assert(not _is_null(callchain))
-        return callchain
+        if self.convert_to_str:
+            return CallChainStructureUsingStr(callchain[0])
+        return callchain[0]
 
     def GetBuildIdForPath(self, path):
         build_id = self._GetBuildIdForPathFunc(self.getInstance(), _char_pt(path))
@@ -219,18 +269,35 @@ class TestReportLib(unittest.TestCase):
         self.assertEqual(build_id, '0x70f1fe24500fc8b0d9eb477199ca1ca21acca4de')
 
     def test_symbol_addr(self):
-        met_func2 = False
+        found_func2 = False
         while True:
             sample = self.report_lib.GetNextSample()
             if sample is None:
                 break
-            event = self.report_lib.GetEventOfCurrentSample()
             symbol = self.report_lib.GetSymbolOfCurrentSample()
-            symbol_name = _char_pt_to_str(symbol[0].symbol_name)
-            if symbol_name == 'func2(int, int)':
-                met_func2 = True
-                self.assertEqual(symbol[0].symbol_addr, 0x4004ed)
-        self.assertTrue(met_func2)
+            if symbol.symbol_name == 'func2(int, int)':
+                found_func2 = True
+                self.assertEqual(symbol.symbol_addr, 0x4004ed)
+        self.assertTrue(found_func2)
+
+    def test_sample(self):
+        found_sample = False
+        while True:
+            sample = self.report_lib.GetNextSample()
+            if sample is None:
+                break
+            if sample.ip == 0x4004ff and sample.time == 7637889424953:
+                found_sample = True
+                self.assertEqual(sample.pid, 15926)
+                self.assertEqual(sample.tid, 15926)
+                self.assertEqual(sample.thread_comm, 't2')
+                self.assertEqual(sample.cpu, 5)
+                self.assertEqual(sample.period, 694614)
+                event = self.report_lib.GetEventOfCurrentSample()
+                self.assertEqual(event.name, 'cpu-cycles')
+                callchain = self.report_lib.GetCallChainOfCurrentSample()
+                self.assertEqual(callchain.nr, 0)
+        self.assertTrue(found_sample)
 
 
 def main():
