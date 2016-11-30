@@ -141,10 +141,13 @@ TEST(record_cmd, system_wide_fp_callchain_sampling) {
 
 TEST(record_cmd, dwarf_callchain_sampling) {
   if (IsDwarfCallChainSamplingSupported()) {
-    ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf"}));
-    ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf,16384"}));
-    ASSERT_FALSE(RunRecordCmd({"--call-graph", "dwarf,65536"}));
-    ASSERT_TRUE(RunRecordCmd({"-g"}));
+    std::vector<std::unique_ptr<Workload>> workloads;
+    CreateProcesses(1, &workloads);
+    std::string pid = std::to_string(workloads[0]->GetPid());
+    ASSERT_TRUE(RunRecordCmd({"-p", pid, "--call-graph", "dwarf"}));
+    ASSERT_TRUE(RunRecordCmd({"-p", pid, "--call-graph", "dwarf,16384"}));
+    ASSERT_FALSE(RunRecordCmd({"-p", pid, "--call-graph", "dwarf,65536"}));
+    ASSERT_TRUE(RunRecordCmd({"-p", pid, "-g"}));
   } else {
     GTEST_LOG_(INFO) << "This test does nothing as dwarf callchain sampling is "
                         "not supported on this device.";
@@ -172,7 +175,10 @@ TEST(record_cmd, no_unwind_option) {
 
 TEST(record_cmd, post_unwind_option) {
   if (IsDwarfCallChainSamplingSupported()) {
-    ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf", "--post-unwind"}));
+    std::vector<std::unique_ptr<Workload>> workloads;
+    CreateProcesses(1, &workloads);
+    std::string pid = std::to_string(workloads[0]->GetPid());
+    ASSERT_TRUE(RunRecordCmd({"-p", pid, "--call-graph", "dwarf", "--post-unwind"}));
   } else {
     GTEST_LOG_(INFO) << "This test does nothing as dwarf callchain sampling is "
                         "not supported on this device.";
@@ -291,11 +297,14 @@ TEST(record_cmd, dump_symbols) {
   CheckDsoSymbolRecords(tmpfile.path, true, &success);
   ASSERT_TRUE(success);
   if (IsDwarfCallChainSamplingSupported()) {
-    ASSERT_TRUE(RunRecordCmd({"-g"}, tmpfile.path));
+    std::vector<std::unique_ptr<Workload>> workloads;
+    CreateProcesses(1, &workloads);
+    std::string pid = std::to_string(workloads[0]->GetPid());
+    ASSERT_TRUE(RunRecordCmd({"-p", pid, "-g"}, tmpfile.path));
     bool success;
     CheckDsoSymbolRecords(tmpfile.path, false, &success);
     ASSERT_TRUE(success);
-    ASSERT_TRUE(RunRecordCmd({"-g", "--dump-symbols"}, tmpfile.path));
+    ASSERT_TRUE(RunRecordCmd({"-p", pid, "-g", "--dump-symbols"}, tmpfile.path));
     CheckDsoSymbolRecords(tmpfile.path, true, &success);
     ASSERT_TRUE(success);
   }

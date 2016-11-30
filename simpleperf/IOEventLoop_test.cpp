@@ -18,6 +18,7 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <thread>
 
@@ -105,13 +106,15 @@ TEST(IOEventLoop, signal) {
     }
     return true;
   }));
-  std::thread thread([]() {
-    for (int i = 0; i < 100; ++i) {
+  std::atomic<bool> stop_thread(false);
+  std::thread thread([&]() {
+    while (!stop_thread) {
       usleep(1000);
       kill(getpid(), SIGINT);
     }
   });
   ASSERT_TRUE(loop.RunLoop());
+  stop_thread = true;
   thread.join();
   ASSERT_EQ(100, count);
 }

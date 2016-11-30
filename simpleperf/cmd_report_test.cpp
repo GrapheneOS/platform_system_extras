@@ -446,9 +446,12 @@ static std::unique_ptr<Command> RecordCmd() {
 
 TEST_F(ReportCommandTest, dwarf_callgraph) {
   if (IsDwarfCallChainSamplingSupported()) {
+    std::vector<std::unique_ptr<Workload>> workloads;
+    CreateProcesses(1, &workloads);
+    std::string pid = std::to_string(workloads[0]->GetPid());
     TemporaryFile tmp_file;
     ASSERT_TRUE(
-        RecordCmd()->Run({"-g", "-o", tmp_file.path, "sleep", SLEEP_SEC}));
+        RecordCmd()->Run({"-p", pid, "-g", "-o", tmp_file.path, "sleep", SLEEP_SEC}));
     ReportRaw(tmp_file.path, {"-g"});
     ASSERT_TRUE(success);
   } else {
