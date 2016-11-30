@@ -25,7 +25,15 @@
 #include <android-base/logging.h>
 
 std::unique_ptr<Workload> Workload::CreateWorkload(const std::vector<std::string>& args) {
-  std::unique_ptr<Workload> workload(new Workload(args));
+  std::unique_ptr<Workload> workload(new Workload(args, std::function<void ()>()));
+  if (workload != nullptr && workload->CreateNewProcess()) {
+    return workload;
+  }
+  return nullptr;
+}
+
+std::unique_ptr<Workload> Workload::CreateWorkload(const std::function<void ()>& function) {
+  std::unique_ptr<Workload> workload(new Workload(std::vector<std::string>(), function));
   if (workload != nullptr && workload->CreateNewProcess()) {
     return workload;
   }
@@ -46,8 +54,6 @@ Workload::~Workload() {
     close(exec_child_fd_);
   }
 }
-
-static void ChildProcessFn(std::vector<std::string>& args, int start_signal_fd, int exec_child_fd);
 
 bool Workload::CreateNewProcess() {
   CHECK_EQ(work_state_, NotYetCreateNewProcess);
@@ -78,7 +84,7 @@ bool Workload::CreateNewProcess() {
     // In child process.
     close(start_signal_pipe[1]);
     close(exec_child_pipe[0]);
-    ChildProcessFn(args_, start_signal_pipe[0], exec_child_pipe[1]);
+    ChildProcessFn(start_signal_pipe[0], exec_child_pipe[1]);
     _exit(0);
   }
   // In parent process.
@@ -91,28 +97,33 @@ bool Workload::CreateNewProcess() {
   return true;
 }
 
-static void ChildProcessFn(std::vector<std::string>& args, int start_signal_fd, int exec_child_fd) {
+void Workload::ChildProcessFn(int start_signal_fd, int exec_child_fd) {
   // Die if parent exits.
   prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
-  std::vector<char*> argv(args.size() + 1);
-  for (size_t i = 0; i < args.size(); ++i) {
-    argv[i] = &args[i][0];
-  }
-  argv[args.size()] = nullptr;
 
   char start_signal = 0;
   ssize_t nread = TEMP_FAILURE_RETRY(read(start_signal_fd, &start_signal, 1));
   if (nread == 1 && start_signal == 1) {
     close(start_signal_fd);
-    execvp(argv[0], argv.data());
-    // If execvp() succeed, we will not arrive here. But if it failed, we need to
-    // report the failure to the parent process by writing 1 to exec_child_fd.
-    int saved_errno = errno;
-    char exec_child_failed = 1;
-    TEMP_FAILURE_RETRY(write(exec_child_fd, &exec_child_failed, 1));
-    close(exec_child_fd);
-    errno = saved_errno;
-    PLOG(ERROR) << "child process failed to execvp(" << argv[0] << ")";
+    if (child_proc_function_) {
+      close(exec_child_fd);
+      child_proc_function_();
+    } else {
+      char* argv[child_proc_args_.size() + 1];
+      for (size_t i = 0; i < child_proc_args_.size(); ++i) {
+        argv[i] = &child_proc_args_[i][0];
+      }
+      argv[child_proc_args_.size()] = nullptr;
+      execvp(argv[0], argv);
+      // If execvp() succeed, we will not arrive here. But if it failed, we need to
+      // report the failure to the parent process by writing 1 to exec_child_fd.
+      int saved_errno = errno;
+      char exec_child_failed = 1;
+      TEMP_FAILURE_RETRY(write(exec_child_fd, &exec_child_failed, 1));
+      close(exec_child_fd);
+      errno = saved_errno;
+      PLOG(ERROR) << "child process failed to execvp(" << argv[0] << ")";
+    }
   } else {
     PLOG(ERROR) << "child process failed to receive start_signal, nread = " << nread;
   }
