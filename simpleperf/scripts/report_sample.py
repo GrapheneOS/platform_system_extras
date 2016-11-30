@@ -19,16 +19,9 @@
 """
 
 from __future__ import print_function
+import argparse
 import sys
 from simpleperf_report_lib import *
-
-
-def usage():
-    print('python report_sample.py [options] <record_file>')
-    print('-h/--help print this help message')
-    print('--symfs <symfs_dir>  Set the path to looking for symbols')
-    print('--kallsyms <kallsyms_file>  Set the path to a kallsyms file')
-    print('If record file is not given, use default file perf.data.')
 
 
 def report_sample(record_file, symfs_dir, kallsyms_file=None):
@@ -65,30 +58,11 @@ def report_sample(record_file, symfs_dir, kallsyms_file=None):
 
 
 if __name__ == '__main__':
-    record_file = 'perf.data'
-    symfs_dir = None
-    kallsyms_file = None
-    i = 1
-    while i < len(sys.argv):
-        if sys.argv[i] == '-h' or sys.argv[i] == '--help':
-            usage()
-            sys.exit(0)
-        elif sys.argv[i] == '--symfs':
-            if i + 1 < len(sys.argv):
-                symfs_dir = sys.argv[i + 1]
-                i += 1
-            else:
-                print('argument for --symfs is missing')
-                sys.exit(1)
-        elif sys.argv[i] == '--kallsyms':
-            if i + 1 < len(sys.argv):
-                kallsyms_file = sys.argv[i + 1]
-                i += 1
-            else:
-                print('argument for --kallsyms is missing')
-                sys.exit(1)
-        else:
-          record_file = sys.argv[i]
-        i += 1
-
-    report_sample(record_file, symfs_dir, kallsyms_file)
+    parser = argparse.ArgumentParser(description='Report samples in perf.data.')
+    parser.add_argument('--symfs',
+                        help='Set the path to find binaries with symbols and debug info.')
+    parser.add_argument('--kallsyms', help='Set the path to find kernel symbols.')
+    parser.add_argument('record_file', nargs='?', default='perf.data',
+                        help='Default is perf.data.')
+    args = parser.parse_args()
+    report_sample(args.record_file, args.symfs, args.kallsyms)

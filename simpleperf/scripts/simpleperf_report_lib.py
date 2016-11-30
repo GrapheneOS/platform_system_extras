@@ -24,25 +24,11 @@ import os
 import subprocess
 import sys
 import unittest
-
-
-def _isWindows():
-    return sys.platform == 'win32' or sys.platform == 'cygwin'
-
-
-def _get_script_dir():
-    return os.path.dirname(os.path.realpath(__file__))
+from utils import *
 
 
 def _get_native_lib():
-    if _isWindows():
-        so_name = 'libsimpleperf_report.dll'
-    elif sys.platform == 'darwin': # OSX
-        so_name = 'libsimpleperf_report.dylib'
-    else:
-        so_name = 'libsimpleperf_report.so'
-
-    return os.path.join(_get_script_dir(), so_name)
+    return get_host_binary_path('libsimpleperf_report.so')
 
 
 def _is_null(p):
@@ -174,8 +160,8 @@ class ReportLib(object):
     def _load_dependent_lib(self):
         # As the windows dll is built with mingw we need to also find "libwinpthread-1.dll".
         # Load it before libsimpleperf_report.dll if it does exist in the same folder as this script.
-        if _isWindows():
-            libwinpthread_path = os.path.join(_get_script_path(), "libwinpthread-1.dll")
+        if is_windows():
+            libwinpthread_path = os.path.join(get_script_dir(), "libwinpthread-1.dll")
             if os.path.exists(libwinpthread_path):
                 self._libwinpthread = ct.CDLL(libwinpthread_path)
 
@@ -254,7 +240,7 @@ class ReportLib(object):
 
 class TestReportLib(unittest.TestCase):
     def setUp(self):
-        self.perf_data_path = os.path.join(os.path.dirname(_get_script_dir()),
+        self.perf_data_path = os.path.join(os.path.dirname(get_script_dir()),
                                            'testdata', 'perf_with_symbols.data')
         if not os.path.isfile(self.perf_data_path):
             raise Exception("can't find perf_data at %s" % self.perf_data_path)
