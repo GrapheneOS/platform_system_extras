@@ -279,7 +279,7 @@ LOCAL_POST_LINK_CMD = \
   $($(LOCAL_2ND_ARCH_VAR_PREFIX)TARGET_OBJCOPY) --add-section .testzipdata=$$TMP_FILE $(linked_module) && \
   rm -f $$TMP_FILE
 
-LOCAL_MULTILIB := first
+LOCAL_MULTILIB := both
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 include $(LLVM_DEVICE_BUILD_MK)
 include $(BUILD_NATIVE_TEST)
