@@ -55,9 +55,15 @@ TEST(stat_cmd, event_modifier) {
 void CreateProcesses(size_t count,
                      std::vector<std::unique_ptr<Workload>>* workloads) {
   workloads->clear();
+  // Create workloads run longer than profiling time.
+  auto function = []() {
+    while (true) {
+      for (volatile int i = 0; i < 10000; ++i);
+      usleep(1);
+    }
+  };
   for (size_t i = 0; i < count; ++i) {
-    // Create a workload runs longer than profiling time.
-    auto workload = Workload::CreateWorkload({"sleep", "1000"});
+    auto workload = Workload::CreateWorkload(function);
     ASSERT_TRUE(workload != nullptr);
     ASSERT_TRUE(workload->Start());
     workloads->push_back(std::move(workload));
