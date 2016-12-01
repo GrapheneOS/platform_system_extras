@@ -127,33 +127,6 @@ include $(BUILD_EXECUTABLE)
 
 
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := ext2simg.c
-LOCAL_MODULE := ext2simg
-LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/include
-LOCAL_SHARED_LIBRARIES += \
-    libext4_utils \
-    libselinux \
-    libsparse \
-    libz
-include $(BUILD_EXECUTABLE)
-
-
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := ext2simg.c
-LOCAL_MODULE := ext2simg
-LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/include
-LOCAL_SHARED_LIBRARIES += \
-    libselinux
-LOCAL_STATIC_LIBRARIES += \
-    libext4_utils_host \
-    libsparse_host \
-    libz
-include $(BUILD_HOST_EXECUTABLE)
-
-
-include $(CLEAR_VARS)
 LOCAL_SRC_FILES := setup_fs.c
 LOCAL_MODULE := setup_fs
 LOCAL_SHARED_LIBRARIES += libcutils
