@@ -149,7 +149,7 @@ static bool e4crypt_policy_get(const char *directory, char *policy,
     if (ioctl(fd, EXT4_IOC_GET_ENCRYPTION_POLICY, &eep) != 0) {
         PLOG(ERROR) << "Failed to get encryption policy for " << directory;
         close(fd);
-        return -1;
+        return false;
     }
     close(fd);
 
