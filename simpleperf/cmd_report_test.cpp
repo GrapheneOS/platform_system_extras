@@ -437,6 +437,12 @@ TEST_F(ReportCommandTest, max_stack_and_percent_limit_option) {
   ASSERT_NE(content.find("89.03"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, kallsyms_option) {
+  Report(PERF_DATA, {"--kallsyms", GetTestData("kallsyms")});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("FakeKernelSymbol"), std::string::npos);
+}
+
 #if defined(__linux__)
 #include "event_selection_set.h"
 
