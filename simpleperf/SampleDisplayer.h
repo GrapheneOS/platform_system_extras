@@ -95,6 +95,9 @@ std::string DisplaySymbolFrom(const EntryT* sample) {
 
 template <typename SampleT, typename CallChainNodeT>
 class CallgraphDisplayer {
+ private:
+  static constexpr int SPACES_BETWEEN_CALLGRAPH_ENTRIES = 4;
+
  public:
   CallgraphDisplayer(uint32_t max_stack = UINT32_MAX,
                      double percent_limit = 0.0)
@@ -109,7 +112,7 @@ class CallgraphDisplayer {
     prefix.append(3, ' ');
     for (size_t i = 0; i < sample->callchain.children.size(); ++i) {
       DisplayCallGraphEntry(fp, 1, prefix, sample->callchain.children[i],
-                            sample->callchain.children_period,
+                            sample->callchain.children_period + sample->GetPeriod(),
                             (i + 1 == sample->callchain.children.size()));
     }
   }
@@ -136,14 +139,18 @@ class CallgraphDisplayer {
     }
     fprintf(fp, "%s%s%s\n", prefix.c_str(), percentage_s.c_str(),
             PrintSampleName(node->chain[0]).c_str());
-    prefix.append(percentage_s.size(), ' ');
     for (size_t i = 1; i < node->chain.size(); ++i) {
-      fprintf(fp, "%s%s\n", prefix.c_str(),
+      fprintf(fp, "%s%*s%s\n", prefix.c_str(), static_cast<int>(percentage_s.size()), "",
               PrintSampleName(node->chain[i]).c_str());
+    }
+    prefix.append(SPACES_BETWEEN_CALLGRAPH_ENTRIES, ' ');
+    if (!node->children.empty() && node->period != 0) {
+      fprintf(fp, "%s|--%.2f%%-- [hit in function]\n", prefix.c_str(),
+              100.0 * node->period / (node->period + node->children_period));
     }
     for (size_t i = 0; i < node->children.size(); ++i) {
       DisplayCallGraphEntry(fp, depth + 1, prefix, node->children[i],
-                            node->children_period,
+                            node->children_period + node->period,
                             (i + 1 == node->children.size()));
     }
   }
