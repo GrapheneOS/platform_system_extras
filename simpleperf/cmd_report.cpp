@@ -24,6 +24,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/parsedouble.h>
 #include <android-base/parseint.h>
@@ -88,6 +89,10 @@ struct SampleEntry {
   // The data member 'callchain' can only move, not copy.
   SampleEntry(SampleEntry&&) = default;
   SampleEntry(SampleEntry&) = delete;
+
+  uint64_t GetPeriod() const {
+    return period;
+  }
 };
 
 struct SampleTree {
@@ -277,6 +282,7 @@ class ReportCommand : public Command {
 "                      the graph shows how functions call others.\n"
 "                      Default is caller mode.\n"
 "-i <file>  Specify path of record file, default is perf.data.\n"
+"--kallsyms <file>     Set the file to read kernel symbols.\n"
 "--max-stack <frames>  Set max stack frames shown when printing call graph.\n"
 "-n         Print the sample count for each item.\n"
 "--no-demangle         Don't demangle symbol names.\n"
@@ -430,6 +436,16 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       }
       record_filename_ = args[i];
 
+    } else if (args[i] == "--kallsyms") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      std::string kallsyms;
+      if (!android::base::ReadFileToString(args[i], &kallsyms)) {
+        LOG(ERROR) << "Can't read kernel symbols from " << args[i];
+        return false;
+      }
+      Dso::SetKallsyms(kallsyms);
     } else if (args[i] == "--max-stack") {
       if (!NextArgumentOrError(args, &i)) {
         return false;

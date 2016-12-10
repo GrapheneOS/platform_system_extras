@@ -52,6 +52,10 @@ struct SlabSample {
         sample_count(sample_count),
         gfp_flags(gfp_flags),
         cross_cpu_allocations(cross_cpu_allocations) {}
+
+  uint64_t GetPeriod() const {
+    return sample_count;
+  }
 };
 
 struct SlabAccumulateInfo {
