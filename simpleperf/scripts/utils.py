@@ -49,7 +49,7 @@ def log_fatal(msg):
 
 
 def get_target_binary_path(arch, binary_name):
-    arch_dir = os.path.join(get_script_path(), "shared_libraries", "target", arch)
+    arch_dir = os.path.join(get_script_dir(), "shared_libraries", "target", arch)
     if not os.path.isdir(arch_dir):
         log_fatal("can't find arch directory: %s" % arch_dir)
     binary_path = os.path.join(arch_dir, binary_name)
@@ -84,8 +84,10 @@ class AdbHelper(object):
     def __init__(self, adb_path):
         self.adb_path = adb_path
 
+
     def run(self, adb_args):
         return self.run_and_return_output(adb_args)[0]
+
 
     def run_and_return_output(self, adb_args):
         adb_args = [self.adb_path] + adb_args
@@ -93,10 +95,22 @@ class AdbHelper(object):
         subproc = subprocess.Popen(adb_args, stdout=subprocess.PIPE)
         (stdoutdata, _) = subproc.communicate()
         result = (subproc.returncode == 0)
-        if len(stdoutdata) > 0:
+        if stdoutdata:
             log_debug(stdoutdata)
         log_debug('run adb cmd: %s  [result %s]' % (adb_args, result))
         return (result, stdoutdata)
+
+
+    def check_run(self, adb_args):
+        self.check_run_and_return_output(adb_args)
+
+
+    def check_run_and_return_output(self, adb_args):
+        result, stdoutdata = self.run_and_return_output(adb_args)
+        if not result:
+            log_fatal('run "adb %s" failed' % adb_args)
+        return stdoutdata
+
 
     def switch_to_root(self):
         result, stdoutdata = self.run_and_return_output(['shell', 'whoami'])
@@ -104,16 +118,32 @@ class AdbHelper(object):
             return False
         if stdoutdata.find('root') != -1:
             return True
-        result, stdoutdata = self.run_and_return_output(['shell', 'getprop', 'ro.build.type'])
-        if not result:
-            return False
-        if stdoutdata.strip() == 'user':
+        build_type = self.get_property('ro.build.type')
+        if build_type == 'user':
             return False
         self.run(['root'])
         result, stdoutdata = self.run_and_return_output(['shell', 'whoami'])
         if result and stdoutdata.find('root') != -1:
             return True
         return False
+
+    def get_property(self, name):
+        result, stdoutdata = self.run_and_return_output(['shell', 'getprop', name])
+        if not result:
+            return None
+        return stdoutdata
+
+
+    def set_property(self, name, value):
+        return self.run(['shell', 'setprop', name, value])
+
+
+def load_config(config_file):
+    if not os.path.exists(config_file):
+        log_fatal("can't find config_file: %s" % config_file)
+    config = {}
+    execfile(config_file, config)
+    return config
 
 
 logging.getLogger().setLevel(logging.DEBUG)
