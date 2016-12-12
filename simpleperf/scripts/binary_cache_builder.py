@@ -89,7 +89,7 @@ class BinaryCacheBuilder(object):
 
     def _copy_binaries_from_symfs_dirs(self):
         """collect all files in symfs_dirs."""
-        if len(self.symfs_dirs) == 0:
+        if not self.symfs_dirs:
             return
 
         # It is possible that the path of the binary in symfs_dirs doesn't match
@@ -115,21 +115,26 @@ class BinaryCacheBuilder(object):
                 for file in files:
                     paths = filename_dict.get(file)
                     if paths is not None:
-                        build_id = self.read_build_id(os.path.join(root, file))
-                        if len(build_id) == 0:
+                        build_id = self._read_build_id(os.path.join(root, file))
+                        if not build_id:
                             continue
                         for binary in paths:
                             expected_build_id = self.binaries.get(binary)
                             if expected_build_id == build_id:
-                                self._copy_to_binary_cache(os.path.join(root, file), binary)
-                                del self.binaries[binary]
+                                self._copy_to_binary_cache(os.path.join(root, file),
+                                                           expected_build_id, binary)
 
 
-    def _copy_to_binary_cache(self, from_path, target_file):
+    def _copy_to_binary_cache(self, from_path, expected_build_id, target_file):
         if target_file[0] == '/':
             target_file = target_file[1:]
         target_file = target_file.replace('/', os.sep)
         target_file = os.path.join(self.binary_cache_dir, target_file)
+        if (os.path.isfile(target_file) and self._read_build_id(target_file) == expected_build_id
+            and self._file_has_symbol_table(target_file)):
+            # The existing file in binary_cache can provide more information, so no
+            # need to copy.
+            return
         target_dir = os.path.dirname(target_file)
         if not os.path.isdir(target_dir):
             os.makedirs(target_dir)
@@ -156,8 +161,8 @@ class BinaryCacheBuilder(object):
         need_pull = True
         if os.path.isfile(binary_cache_file):
             need_pull = False
-            if len(expected_build_id) > 0:
-                build_id = self.read_build_id(binary_cache_file)
+            if expected_build_id:
+                build_id = self._read_build_id(binary_cache_file)
                 if expected_build_id != build_id:
                     need_pull = True
         if need_pull:
@@ -172,9 +177,9 @@ class BinaryCacheBuilder(object):
             log_info('use current file in binary_cache: %s' % binary_cache_file)
 
 
-    def read_build_id(self, file):
+    def _read_build_id(self, file):
         """read build id of a binary on host."""
-        if len(self.readelf_path) == 0:
+        if not self.readelf_path:
             return ""
         output = subprocess.check_output([self.readelf_path, '-n', file])
         result = re.search(r'Build ID:\s*(\S+)', output)
@@ -185,6 +190,16 @@ class BinaryCacheBuilder(object):
             build_id = '0x' + build_id
             return build_id
         return ""
+
+
+    def _file_has_symbol_table(self, file):
+        """Test if an elf file has symbol table section."""
+        if not self.readelf_path:
+            return False
+        output = subprocess.check_output([self.readelf_path, '-S', file])
+        if output.find('.symtab') != -1:
+            return True
+        return False
 
 
     def _pull_file_from_device(self, device_path, host_path):
@@ -208,15 +223,6 @@ class BinaryCacheBuilder(object):
         if self.adb.switch_to_root():
             self.adb.run(['shell', '"echo 0>/proc/sys/kernel/kptr_restrict"'])
             self.adb.run(['pull', '/proc/kallsyms', file])
-
-
-def load_config(config_file):
-    """See annotate_source_file.config for explanation of configurations."""
-    if not os.path.exists(config_file):
-        log_fatal("can't find config_file: %s" % config_file)
-    config = {}
-    execfile(config_file, config)
-    return config
 
 
 if __name__ == '__main__':
