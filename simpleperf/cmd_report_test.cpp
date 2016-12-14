@@ -443,6 +443,10 @@ TEST_F(ReportCommandTest, kallsyms_option) {
   ASSERT_NE(content.find("FakeKernelSymbol"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, invalid_perf_data) {
+  ASSERT_FALSE(ReportCmd()->Run({"-i", GetTestData(INVALID_PERF_DATA)}));
+}
+
 #if defined(__linux__)
 #include "event_selection_set.h"
 
