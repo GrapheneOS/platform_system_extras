@@ -138,6 +138,7 @@ BandwidthBenchmark *createBandwidthBenchmarkObject(arg_t values) {
 
     if (!bench->setSize(size)) {
         printf("Failed to allocate buffers for benchmark.\n");
+        delete bench;
         return NULL;
     }
 
