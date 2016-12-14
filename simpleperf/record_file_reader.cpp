@@ -66,7 +66,14 @@ bool RecordFileReader::Close() {
 }
 
 bool RecordFileReader::ReadHeader() {
-  return Read(&header_, sizeof(header_));
+  if (!Read(&header_, sizeof(header_))) {
+    return false;
+  }
+  if (memcmp(header_.magic, PERF_MAGIC, sizeof(header_.magic)) != 0) {
+    LOG(ERROR) << filename_ << " is not a valid profiling record file.";
+    return false;
+  }
+  return true;
 }
 
 bool RecordFileReader::ReadAttrSection() {
