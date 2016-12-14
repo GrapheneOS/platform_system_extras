@@ -238,6 +238,10 @@ std::vector<pid_t> GetThreadsInProcess(pid_t pid) {
   return result;
 }
 
+bool IsThreadAlive(pid_t tid) {
+  return IsDir(android::base::StringPrintf("/proc/%d", tid));
+}
+
 bool GetProcessForThread(pid_t tid, pid_t* pid) {
   return ReadThreadNameAndPid(tid, nullptr, pid);
 }
