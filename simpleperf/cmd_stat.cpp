@@ -349,6 +349,7 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   }
+  bool need_to_check_targets = false;
   if (system_wide_collection_) {
     event_selection_set_.AddMonitoredThreads({-1});
   } else if (!event_selection_set_.HasMonitoredTarget()) {
@@ -360,6 +361,8 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
           << "No threads to monitor. Try `simpleperf help stat` for help\n";
       return false;
     }
+  } else {
+    need_to_check_targets = true;
   }
 
   // 3. Open perf_event_files and output file if defined.
@@ -382,14 +385,18 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
 
   // 4. Create IOEventLoop and add signal/periodic Events.
   IOEventLoop loop;
+  event_selection_set_.SetIOEventLoop(loop);
   std::chrono::time_point<std::chrono::steady_clock> start_time;
   std::vector<CountersInfo> counters;
   if (system_wide_collection_ || (!cpus_.empty() && cpus_[0] != -1)) {
-    if (!event_selection_set_.HandleCpuHotplugEvents(loop, cpus_)) {
+    if (!event_selection_set_.HandleCpuHotplugEvents(cpus_)) {
       return false;
     }
   }
-  if (!loop.AddSignalEvents({SIGCHLD, SIGINT, SIGTERM},
+  if (need_to_check_targets && !event_selection_set_.StopWhenNoMoreTargets()) {
+    return false;
+  }
+  if (!loop.AddSignalEvents({SIGCHLD, SIGINT, SIGTERM, SIGHUP},
                             [&]() { return loop.ExitLoop(); })) {
     return false;
   }
