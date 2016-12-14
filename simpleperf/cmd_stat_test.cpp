@@ -19,6 +19,9 @@
 #include <android-base/file.h>
 #include <android-base/stringprintf.h>
 #include <android-base/test_utils.h>
+#include <sys/syscall.h>
+
+#include <thread>
 
 #include "command.h"
 #include "get_test_data.h"
@@ -142,4 +145,24 @@ TEST(stat_cmd, no_modifier_for_clock_events) {
           << "event " << e << ":" << m;
     }
   }
+}
+
+TEST(stat_cmd, handle_SIGHUP) {
+  std::thread thread([]() {
+    sleep(1);
+    kill(getpid(), SIGHUP);
+  });
+  thread.detach();
+  ASSERT_TRUE(StatCmd()->Run({"sleep", "1000000"}));
+}
+
+TEST(stat_cmd, stop_when_no_more_targets) {
+  std::atomic<int> tid(0);
+  std::thread thread([&]() {
+    tid = syscall(__NR_gettid);
+    sleep(1);
+  });
+  thread.detach();
+  while (tid == 0);
+  ASSERT_TRUE(StatCmd()->Run({"-t", std::to_string(tid)}));
 }
