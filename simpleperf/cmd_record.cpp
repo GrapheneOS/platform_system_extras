@@ -164,7 +164,7 @@ class RecordCommand : public Command {
         start_sampling_time_in_ns_(0),
         sample_record_count_(0),
         lost_record_count_(0) {
-    // Die if parent exits.
+    // Stop profiling if parent exits.
     prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
   }
 
@@ -252,6 +252,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   }
+  bool need_to_check_targets = false;
   if (system_wide_collection_) {
     event_selection_set_.AddMonitoredThreads({-1});
   } else if (!event_selection_set_.HasMonitoredTarget()) {
@@ -263,6 +264,8 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
           << "No threads to monitor. Try `simpleperf help record` for help";
       return false;
     }
+  } else {
+    need_to_check_targets = true;
   }
 
   // 3. Open perf_event_files, create mapped buffers for perf_event_files.
@@ -281,15 +284,19 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
 
   // 5. Create IOEventLoop and add read/signal/periodic Events.
   IOEventLoop loop;
+  event_selection_set_.SetIOEventLoop(loop);
   auto callback =
       std::bind(&RecordCommand::ProcessRecord, this, std::placeholders::_1);
-  if (!event_selection_set_.PrepareToReadMmapEventData(loop, callback)) {
+  if (!event_selection_set_.PrepareToReadMmapEventData(callback)) {
     return false;
   }
-  if (!event_selection_set_.HandleCpuHotplugEvents(loop, cpus_)) {
+  if (!event_selection_set_.HandleCpuHotplugEvents(cpus_)) {
     return false;
   }
-  if (!loop.AddSignalEvents({SIGCHLD, SIGINT, SIGTERM},
+  if (need_to_check_targets && !event_selection_set_.StopWhenNoMoreTargets()) {
+    return false;
+  }
+  if (!loop.AddSignalEvents({SIGCHLD, SIGINT, SIGTERM, SIGHUP},
                             [&]() { return loop.ExitLoop(); })) {
     return false;
   }
