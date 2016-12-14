@@ -466,14 +466,13 @@ bool EventSelectionSet::MmapEventFiles(size_t mmap_pages, bool report_error) {
   return true;
 }
 
-bool EventSelectionSet::PrepareToReadMmapEventData(
-    IOEventLoop& loop, const std::function<bool(Record*)>& callback) {
+bool EventSelectionSet::PrepareToReadMmapEventData(const std::function<bool(Record*)>& callback) {
   // Add read Events for perf event files having mapped buffer.
   for (auto& group : groups_) {
     for (auto& selection : group) {
       for (auto& event_fd : selection.event_fds) {
         if (event_fd->HasMappedBuffer()) {
-          if (!event_fd->StartPolling(loop, [this]() {
+          if (!event_fd->StartPolling(*loop_, [this]() {
                 return ReadMmapEventData();
               })) {
             return false;
@@ -482,7 +481,6 @@ bool EventSelectionSet::PrepareToReadMmapEventData(
       }
     }
   }
-  loop_ = &loop;
 
   // Prepare record callback function.
   record_callback_ = callback;
@@ -568,13 +566,12 @@ bool EventSelectionSet::FinishReadMmapEventData() {
   return ReadMmapEventData();
 }
 
-bool EventSelectionSet::HandleCpuHotplugEvents(
-    IOEventLoop& loop, const std::vector<int>& monitored_cpus,
-    double check_interval_in_sec) {
+bool EventSelectionSet::HandleCpuHotplugEvents(const std::vector<int>& monitored_cpus,
+                                               double check_interval_in_sec) {
   monitored_cpus_.insert(monitored_cpus.begin(), monitored_cpus.end());
   online_cpus_ = GetOnlineCpus();
-  if (!loop.AddPeriodicEvent(SecondToTimeval(check_interval_in_sec),
-                             [&]() { return DetectCpuHotplugEvents(); })) {
+  if (!loop_->AddPeriodicEvent(SecondToTimeval(check_interval_in_sec),
+                               [&]() { return DetectCpuHotplugEvents(); })) {
     return false;
   }
   return true;
@@ -718,4 +715,23 @@ bool EventSelectionSet::CreateMappedBufferForCpu(int cpu) {
     return false;
   }
   return true;
+}
+
+bool EventSelectionSet::StopWhenNoMoreTargets(double check_interval_in_sec) {
+  return loop_->AddPeriodicEvent(SecondToTimeval(check_interval_in_sec),
+                                 [&]() { return CheckMonitoredTargets(); });
+}
+
+bool EventSelectionSet::CheckMonitoredTargets() {
+  for (const auto& tid : threads_) {
+    if (IsThreadAlive(tid)) {
+      return true;
+    }
+  }
+  for (const auto& pid : processes_) {
+    if (IsThreadAlive(pid)) {
+      return true;
+    }
+  }
+  return loop_->ExitLoop();
 }

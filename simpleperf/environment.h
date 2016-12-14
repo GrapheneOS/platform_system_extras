@@ -55,6 +55,7 @@ constexpr char DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID[] = "[kernel.kallsyms]";
 bool GetKernelBuildId(BuildId* build_id);
 bool GetModuleBuildId(const std::string& module_name, BuildId* build_id);
 
+bool IsThreadAlive(pid_t tid);
 std::vector<pid_t> GetAllProcesses();
 std::vector<pid_t> GetThreadsInProcess(pid_t pid);
 bool GetProcessForThread(pid_t tid, pid_t* pid);

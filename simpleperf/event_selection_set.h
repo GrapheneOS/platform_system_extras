@@ -32,6 +32,7 @@
 #include "record.h"
 
 constexpr double DEFAULT_PERIOD_TO_DETECT_CPU_HOTPLUG_EVENTS_IN_SEC = 0.5;
+constexpr double DEFAULT_PERIOD_TO_CHECK_MONITORED_TARGETS_IN_SEC = 1;
 
 struct CounterInfo {
   pid_t tid;
@@ -103,18 +104,24 @@ class EventSelectionSet {
     return !processes_.empty() || !threads_.empty();
   }
 
+  void SetIOEventLoop(IOEventLoop& loop) {
+    loop_ = &loop;
+  }
+
   bool OpenEventFiles(const std::vector<int>& on_cpus);
   bool ReadCounters(std::vector<CountersInfo>* counters);
   bool MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pages);
-  bool PrepareToReadMmapEventData(IOEventLoop& loop,
-                                  const std::function<bool(Record*)>& callback);
+  bool PrepareToReadMmapEventData(const std::function<bool(Record*)>& callback);
   bool FinishReadMmapEventData();
 
   // If monitored_cpus is empty, monitor all cpus.
-  bool HandleCpuHotplugEvents(
-      IOEventLoop& loop, const std::vector<int>& monitored_cpus,
-      double check_interval_in_sec =
-          DEFAULT_PERIOD_TO_DETECT_CPU_HOTPLUG_EVENTS_IN_SEC);
+  bool HandleCpuHotplugEvents(const std::vector<int>& monitored_cpus,
+                              double check_interval_in_sec =
+                                  DEFAULT_PERIOD_TO_DETECT_CPU_HOTPLUG_EVENTS_IN_SEC);
+
+  // Stop profiling if all monitored processes/threads don't exist.
+  bool StopWhenNoMoreTargets(double check_interval_in_sec =
+                                 DEFAULT_PERIOD_TO_CHECK_MONITORED_TARGETS_IN_SEC);
 
  private:
   struct EventSelection {
@@ -139,6 +146,7 @@ class EventSelectionSet {
   bool HandleCpuOnlineEvent(int cpu);
   bool HandleCpuOfflineEvent(int cpu);
   bool CreateMappedBufferForCpu(int cpu);
+  bool CheckMonitoredTargets();
 
   const bool for_stat_cmd_;
 
