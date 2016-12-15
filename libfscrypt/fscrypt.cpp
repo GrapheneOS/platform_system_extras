@@ -118,7 +118,7 @@ static bool is_dir_empty(const char *dirname, bool *is_empty)
     return true;
 }
 
-static uint8_t fscrypt_get_policy_flags(int filenames_encryption_mode) {
+static uint8_t fscrypt_get_policy_flags_old(int filenames_encryption_mode) {
     if (filenames_encryption_mode == FS_ENCRYPTION_MODE_AES_256_CTS) {
         // Use legacy padding with our original filenames encryption mode.
         return FS_POLICY_FLAGS_PAD_4;
@@ -134,6 +134,18 @@ static uint8_t fscrypt_get_policy_flags(int filenames_encryption_mode) {
     // efficient for encryption and decryption.
     return FS_POLICY_FLAGS_PAD_16;
 }
+
+static uint8_t fscrypt_get_policy_flags(int filenames_encryption_mode) {
+    if (filenames_encryption_mode == FS_ENCRYPTION_MODE_ADIANTUM) {
+        return FS_POLICY_FLAGS_PAD_32 | FS_POLICY_FLAG_DIRECT_KEY;
+    }
+    return FS_POLICY_FLAGS_PAD_32;
+}
+
+static bool fscrypt_policy_check(const char *directory, const char *policy,
+                                 size_t policy_length,
+                                 int contents_encryption_mode,
+                                 int filenames_encryption_mode);
 
 static bool fscrypt_policy_set(const char *directory, const char *policy,
                                size_t policy_length,
@@ -153,6 +165,14 @@ static bool fscrypt_policy_set(const char *directory, const char *policy,
     }
 
     fscrypt_policy fp;
+    memset(&fp, 0, sizeof(fscrypt_policy));
+
+    if (ioctl(fd, FS_IOC_GET_ENCRYPTION_POLICY, &fp) == 0) {
+        close(fd);
+        return fscrypt_policy_check(directory, policy, policy_length,
+                                    contents_encryption_mode, filenames_encryption_mode);
+    }
+
     fp.version = 0;
     fp.contents_encryption_mode = contents_encryption_mode;
     fp.filenames_encryption_mode = filenames_encryption_mode;
@@ -200,7 +220,9 @@ static bool fscrypt_policy_get(const char *directory, char *policy,
             || (fp.contents_encryption_mode != contents_encryption_mode)
             || (fp.filenames_encryption_mode != filenames_encryption_mode)
             || (fp.flags !=
-                fscrypt_get_policy_flags(filenames_encryption_mode))) {
+                fscrypt_get_policy_flags(filenames_encryption_mode) &&
+                fp.flags !=
+                fscrypt_get_policy_flags_old(filenames_encryption_mode))) {
         LOG(ERROR) << "Failed to find matching encryption policy for " << directory;
         return false;
     }
