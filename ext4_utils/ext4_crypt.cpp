@@ -133,7 +133,7 @@ static bool is_dir_empty(const char *dirname, bool *is_empty)
     return true;
 }
 
-static uint8_t e4crypt_get_policy_flags(int filenames_encryption_mode) {
+static uint8_t e4crypt_get_policy_flags_old(int filenames_encryption_mode) {
     if (filenames_encryption_mode == EXT4_ENCRYPTION_MODE_AES_256_CTS) {
         // Use legacy padding with our original filenames encryption mode.
         return EXT4_POLICY_FLAGS_PAD_4;
@@ -144,6 +144,15 @@ static uint8_t e4crypt_get_policy_flags(int filenames_encryption_mode) {
     // efficient for encryption and decryption.
     return EXT4_POLICY_FLAGS_PAD_16;
 }
+
+static uint8_t e4crypt_get_policy_flags(int filenames_encryption_mode) {
+    return EXT4_POLICY_FLAGS_PAD_32;
+}
+
+static bool e4crypt_policy_check(const char *directory, const char *policy,
+                                 size_t policy_length,
+                                 int contents_encryption_mode,
+                                 int filenames_encryption_mode);
 
 static bool e4crypt_policy_set(const char *directory, const char *policy,
                                size_t policy_length,
@@ -163,6 +172,14 @@ static bool e4crypt_policy_set(const char *directory, const char *policy,
     }
 
     ext4_encryption_policy eep;
+    memset(&eep, 0, sizeof(ext4_encryption_policy));
+
+    if (ioctl(fd, EXT4_IOC_GET_ENCRYPTION_POLICY, &eep) == 0) {
+        close(fd);
+        return e4crypt_policy_check(directory, policy, policy_length,
+                                    contents_encryption_mode, filenames_encryption_mode);
+    }
+
     eep.version = 0;
     eep.contents_encryption_mode = contents_encryption_mode;
     eep.filenames_encryption_mode = filenames_encryption_mode;
@@ -210,7 +227,9 @@ static bool e4crypt_policy_get(const char *directory, char *policy,
             || (eep.contents_encryption_mode != contents_encryption_mode)
             || (eep.filenames_encryption_mode != filenames_encryption_mode)
             || (eep.flags !=
-                e4crypt_get_policy_flags(filenames_encryption_mode))) {
+                e4crypt_get_policy_flags(filenames_encryption_mode) &&
+                eep.flags !=
+                e4crypt_get_policy_flags_old(filenames_encryption_mode))) {
         LOG(ERROR) << "Failed to find matching encryption policy for " << directory;
         return false;
     }
