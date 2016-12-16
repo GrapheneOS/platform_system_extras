@@ -113,9 +113,9 @@ std::vector<uint64_t> UnwindCallChain(int abi, const ThreadEntry& thread,
   }
   uint64_t stack_addr = sp_reg_value;
 
-  std::vector<backtrace_map_t> bt_maps(thread.maps.size());
+  std::vector<backtrace_map_t> bt_maps(thread.maps->size());
   size_t map_index = 0;
-  for (auto& map : thread.maps) {
+  for (auto& map : *thread.maps) {
     backtrace_map_t& bt_map = bt_maps[map_index++];
     bt_map.start = map->start_addr;
     bt_map.end = map->start_addr + map->len;

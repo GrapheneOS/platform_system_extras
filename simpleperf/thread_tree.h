@@ -60,11 +60,13 @@ struct MapComparator {
   bool operator()(const MapEntry* map1, const MapEntry* map2) const;
 };
 
+using MapSet = std::set<MapEntry*, MapComparator>;
+
 struct ThreadEntry {
   int pid;
   int tid;
   const char* comm;  // It always refers to the latest comm.
-  std::set<MapEntry*, MapComparator> maps;
+  MapSet* maps;
 };
 
 // ThreadTree contains thread information (in ThreadEntry) and mmap information
@@ -82,10 +84,10 @@ class ThreadTree {
                             0, 0, unknown_dso_.get(), false);
     kernel_dso_ = Dso::CreateDso(DSO_KERNEL, DEFAULT_KERNEL_MMAP_NAME);
     // We can't dump comm for pid 0 from /proc, so add it's name here.
-    AddThread(0, 0, "swapper");
+    SetThreadName(0, 0, "swapper");
   }
 
-  void AddThread(int pid, int tid, const std::string& comm);
+  void SetThreadName(int pid, int tid, const std::string& comm);
   void ForkThread(int pid, int tid, int ppid, int ptid);
   ThreadEntry* FindThreadOrNew(int pid, int tid);
   void AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
@@ -119,16 +121,17 @@ class ThreadTree {
   std::vector<Dso*> GetAllDsos() const;
 
  private:
+  ThreadEntry* CreateThread(int pid, int tid);
   Dso* FindKernelDsoOrNew(const std::string& filename);
   Dso* FindUserDsoOrNew(const std::string& filename);
   MapEntry* AllocateMap(const MapEntry& value);
-  void FixOverlappedMap(std::set<MapEntry*, MapComparator>* map_set,
-                        const MapEntry* map);
+  void FixOverlappedMap(MapSet* maps, const MapEntry* map);
 
   std::unordered_map<int, std::unique_ptr<ThreadEntry>> thread_tree_;
   std::vector<std::unique_ptr<std::string>> thread_comm_storage_;
 
-  std::set<MapEntry*, MapComparator> kernel_map_tree_;
+  std::vector<std::unique_ptr<MapSet>> map_set_storage_;
+  MapSet kernel_maps_;
   std::vector<std::unique_ptr<MapEntry>> map_storage_;
   MapEntry unknown_map_;
 
