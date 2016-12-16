@@ -120,12 +120,11 @@ static void CheckSamples(const std::vector<SampleEntry*>& samples,
 class SampleTreeTest : public testing::Test {
  protected:
   virtual void SetUp() {
-    thread_tree.AddThread(1, 1, "p1t1");
-    thread_tree.AddThread(1, 11, "p1t11");
-    thread_tree.AddThread(2, 2, "p2t2");
+    thread_tree.SetThreadName(1, 1, "p1t1");
+    thread_tree.SetThreadName(1, 11, "p1t11");
+    thread_tree.SetThreadName(2, 2, "p2t2");
     thread_tree.AddThreadMap(1, 1, 1, 5, 0, 0, "process1_thread1");
-    thread_tree.AddThreadMap(1, 1, 6, 5, 0, 0, "process1_thread1_map2");
-    thread_tree.AddThreadMap(1, 11, 1, 10, 0, 0, "process1_thread11");
+    thread_tree.AddThreadMap(1, 11, 6, 5, 0, 0, "process1_thread1_map2");
     thread_tree.AddThreadMap(2, 2, 1, 20, 0, 0, "process2_thread2");
     thread_tree.AddKernelMap(10, 20, 0, 0, "kernel");
     sample_tree_builder.reset(new TestSampleTreeBuilder(&thread_tree));
@@ -164,14 +163,14 @@ TEST_F(SampleTreeTest, different_tid) {
   sample_tree_builder->AddSample(1, 11, 1, false);
   std::vector<SampleEntry> expected_samples = {
       SampleEntry(1, 1, "p1t1", "process1_thread1", 1, 1),
-      SampleEntry(1, 11, "p1t11", "process1_thread11", 1, 1),
+      SampleEntry(1, 11, "p1t11", "process1_thread1", 1, 1),
   };
   CheckSamples(expected_samples);
 }
 
 TEST_F(SampleTreeTest, different_comm) {
   sample_tree_builder->AddSample(1, 1, 1, false);
-  thread_tree.AddThread(1, 1, "p1t1_comm2");
+  thread_tree.SetThreadName(1, 1, "p1t1_comm2");
   sample_tree_builder->AddSample(1, 1, 1, false);
   std::vector<SampleEntry> expected_samples = {
       SampleEntry(1, 1, "p1t1", "process1_thread1", 1, 1),
@@ -214,7 +213,7 @@ TEST_F(SampleTreeTest, map_kernel) {
 TEST(sample_tree, overlapped_map) {
   ThreadTree thread_tree;
   TestSampleTreeBuilder sample_tree_builder(&thread_tree);
-  thread_tree.AddThread(1, 1, "thread1");
+  thread_tree.SetThreadName(1, 1, "thread1");
   thread_tree.AddThreadMap(1, 1, 1, 10, 0, 0, "map1");  // Add map 1.
   sample_tree_builder.AddSample(1, 1, 5, false);        // Hit map 1.
   thread_tree.AddThreadMap(1, 1, 5, 20, 0, 0, "map2");  // Add map 2.
