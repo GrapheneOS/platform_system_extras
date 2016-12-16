@@ -343,6 +343,13 @@ TEST_F(ReportCommandTest, report_dumped_symbols) {
   ASSERT_NE(content.find("memcpy"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, report_dumped_symbols_with_symfs_dir) {
+  // Check if we can report symbols when they appear both in perf.data and symfs dir.
+  Report(PERF_DATA_WITH_SYMBOLS, {"--symfs", GetTestDataDir()});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("main"), std::string::npos);
+}
+
 TEST_F(ReportCommandTest, report_sort_vaddr_in_file) {
   Report(PERF_DATA, {"--sort", "vaddr_in_file"});
   ASSERT_TRUE(success);
