@@ -251,13 +251,22 @@ uint64_t Dso::MinVirtualAddress() {
   return min_vaddr_;
 }
 
+static std::vector<Symbol> MergeSortedSymbols(const std::vector<Symbol>& s1,
+                                              const std::vector<Symbol>& s2) {
+  std::vector<Symbol> result;
+  std::set_union(s1.begin(), s1.end(), s2.begin(), s2.end(), std::back_inserter(result),
+                 Symbol::CompareValueByAddr);
+  return result;
+}
+
 void Dso::Load() {
   is_loaded_ = true;
+  std::vector<Symbol> dumped_symbols;
   if (!symbols_.empty()) {
-    // If symbols has been read from file feature section of perf.data, no
-    // need to load them from file system.
-    // TODO: combine symbols in file feature section and in file system.
-    return;
+    // If symbols has been read from file feature section of perf.data, move it to
+    // dumped_symbols,  so later we can merge them with symbols read from file system.
+    dumped_symbols = std::move(symbols_);
+    symbols_.clear();
   }
   bool result = false;
   switch (type_) {
@@ -281,6 +290,15 @@ void Dso::Load() {
     FixupSymbolLength();
   } else {
     symbols_.clear();
+  }
+
+  if (symbols_.empty()) {
+    symbols_ = std::move(dumped_symbols);
+  } else if (!dumped_symbols.empty()) {
+    symbols_ = MergeSortedSymbols(symbols_, dumped_symbols);
+  }
+
+  if (symbols_.empty()) {
     LOG(DEBUG) << "failed to load dso: " << path_;
   }
 }
@@ -344,18 +362,18 @@ bool Dso::LoadKernel() {
       symbols_.clear();
       return false;
     }
-  } else {
-    if (!build_id.IsEmpty()) {
-      BuildId real_build_id;
-      if (!GetKernelBuildId(&real_build_id)) {
-        return false;
-      }
-      bool match = (build_id == real_build_id);
-      if (!match) {
-        LOG(WARNING) << "failed to read symbols from /proc/kallsyms: Build id "
-                     << "mismatch";
-        return false;
-      }
+  } else if (!build_id.IsEmpty()) {
+    // Try /proc/kallsyms only when build_id matches. Otherwise, it is likely to use
+    // /proc/kallsyms on host for perf.data recorded on device.
+    BuildId real_build_id;
+    if (!GetKernelBuildId(&real_build_id)) {
+      return false;
+    }
+    bool match = (build_id == real_build_id);
+    if (!match) {
+      LOG(WARNING) << "failed to read symbols from /proc/kallsyms: Build id "
+                   << "mismatch";
+      return false;
     }
 
     std::string kallsyms;
