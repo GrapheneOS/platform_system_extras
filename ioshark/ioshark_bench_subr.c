@@ -308,8 +308,8 @@ print_op_stats(u_int64_t *op_counts)
 
 	printf("IO Operation counts :\n");
 	for (i = IOSHARK_LSEEK ; i < IOSHARK_MAX_FILE_OP ; i++) {
-		printf("%s: %lu\n",
-		       IO_op[i], op_counts[i]);
+		printf("%s: %llu\n",
+		       IO_op[i], (unsigned long long)op_counts[i]);
 	}
 }
 

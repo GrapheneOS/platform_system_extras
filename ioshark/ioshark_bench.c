@@ -217,7 +217,7 @@ do_one_io(void *db_node,
 		rw_bytes->bytes_read += file_op->prw_len;
 		if (ret < 0) {
 			fprintf(stderr,
-				"%s: pread(%s %lu %lu) error %d\n",
+				"%s: pread(%s %zu %lu) error %d\n",
 				progname,
 				files_db_get_filename(db_node),
 				file_op->prw_len,
@@ -235,7 +235,7 @@ do_one_io(void *db_node,
 		rw_bytes->bytes_written += file_op->prw_len;
 		if (ret < 0) {
 			fprintf(stderr,
-				"%s: pwrite(%s %lu %lu) error %d\n",
+				"%s: pwrite(%s %zu %lu) error %d\n",
 				progname,
 				files_db_get_filename(db_node),
 				file_op->prw_len,
@@ -253,7 +253,7 @@ do_one_io(void *db_node,
 		rw_bytes->bytes_read += file_op->rw_len;
 		if (ret < 0) {
 			fprintf(stderr,
-				"%s: read(%s %lu) error %d\n",
+				"%s: read(%s %zu) error %d\n",
 				progname,
 				files_db_get_filename(db_node),
 				file_op->rw_len,
@@ -271,7 +271,7 @@ do_one_io(void *db_node,
 		rw_bytes->bytes_written += file_op->rw_len;
 		if (ret < 0) {
 			fprintf(stderr,
-				"%s: write(%s %lu) error %d\n",
+				"%s: write(%s %zu) error %d\n",
 				progname,
 				files_db_get_filename(db_node),
 				file_op->rw_len,
@@ -725,19 +725,19 @@ main(int argc, char **argv)
 			files_db_free_memory(state->db_handle);
 		}
 	}
-	printf("Total Creation time = %lu.%lu (msecs.usecs)\n",
-	       get_msecs(&aggregate_file_create_time),
-	       get_usecs(&aggregate_file_create_time));
-	printf("Total Remove time = %lu.%lu (msecs.usecs)\n",
-	       get_msecs(&aggregate_file_remove_time),
-	       get_usecs(&aggregate_file_remove_time));
+	printf("Total Creation time = %llu.%llu (msecs.usecs)\n",
+	       (unsigned long long)get_msecs(&aggregate_file_create_time),
+	       (unsigned long long)get_usecs(&aggregate_file_create_time));
+	printf("Total Remove time = %llu.%llu (msecs.usecs)\n",
+	       (unsigned long long)get_msecs(&aggregate_file_remove_time),
+	       (unsigned long long)get_usecs(&aggregate_file_remove_time));
 	if (do_delay)
-		printf("Total delay time = %lu.%lu (msecs.usecs)\n",
-		       get_msecs(&aggregate_delay_time),
-		       get_usecs(&aggregate_delay_time));
-	printf("Total IO time = %lu.%lu (msecs.usecs)\n",
-	       get_msecs(&aggregate_IO_time),
-	       get_usecs(&aggregate_IO_time));
+		printf("Total delay time = %llu.%llu (msecs.usecs)\n",
+		       (unsigned long long)get_msecs(&aggregate_delay_time),
+		       (unsigned long long)get_usecs(&aggregate_delay_time));
+	printf("Total IO time = %llu.%llu (msecs.usecs)\n",
+	       (unsigned long long)get_msecs(&aggregate_IO_time),
+	       (unsigned long long)get_usecs(&aggregate_IO_time));
 	print_bytes("Upfront File Creation bytes",
 		    &aggr_create_rw_bytes);
 	print_bytes("IO bytes", &aggr_io_rw_bytes);
