@@ -80,8 +80,8 @@ static std::function<void(CommandResult)> generate_callback(CommandResult *crp) 
 }
 
 static int handle_return(Return<void> ret, CommandResult cr, const char* errStr) {
-    if (!ret.getStatus().isOk()) {
-        fprintf(stderr, errStr, ret.getStatus().exceptionMessage().string());
+    if (!ret.isOk()) {
+        fprintf(stderr, errStr, ret.description().c_str());
         return EX_SOFTWARE;
     } else if (!cr.success) {
         fprintf(stderr, errStr, cr.errMsg.c_str());
@@ -114,8 +114,8 @@ static int do_set_slot_as_unbootable(sp<IBootControl> module,
 }
 
 static int handle_return(Return<BoolResult> ret, const char* errStr) {
-    if (!ret.getStatus().isOk()) {
-        fprintf(stderr, errStr, ret.getStatus().exceptionMessage().string());
+    if (!ret.isOk()) {
+        fprintf(stderr, errStr, ret.description().c_str());
         return EX_SOFTWARE;
     } else if (ret == BoolResult::INVALID_SLOT) {
         fprintf(stderr, errStr, "Invalid slot");
@@ -145,9 +145,9 @@ static int do_get_suffix(sp<IBootControl> module, Slot slot_number) {
         fprintf(stdout, "%s\n", suffix.c_str());
     };
     Return<void> ret = module->getSuffix(slot_number, cb);
-    if (!ret.getStatus().isOk()) {
+    if (!ret.isOk()) {
         fprintf(stderr, "Error calling getSuffix(): %s\n",
-                ret.getStatus().exceptionMessage().string());
+                ret.description().c_str());
         return EX_SOFTWARE;
     }
     return EX_OK;
