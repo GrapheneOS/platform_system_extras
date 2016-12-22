@@ -124,7 +124,7 @@ mmap_do_io(void *db_node, int prot, off_t offset, size_t len,
 		rw_bytes->bytes_read += len;
 		if (ret < 0) {
 			fprintf(stderr,
-				"%s: mapped pread(%s %lu %lu) error fd=%d %s\n",
+				"%s: mapped pread(%s %zu %lu) error fd=%d %s\n",
 				progname, files_db_get_filename(db_node),
 				len, offset, files_db_get_fd(db_node),
 				strerror(errno));
@@ -161,7 +161,7 @@ mmap_do_io(void *db_node, int prot, off_t offset, size_t len,
 			rw_bytes->bytes_read += len;
 			if (ret < 0) {
 				fprintf(stderr,
-				"%s: mapped pread(%s %lu %lu) error fd=%d %s\n",
+				"%s: mapped pread(%s %zu %lu) error fd=%d %s\n",
 					progname, files_db_get_filename(db_node),
 					len,
 					offset, files_db_get_fd(db_node),
