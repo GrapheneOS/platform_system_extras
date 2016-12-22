@@ -24,7 +24,6 @@
 #include <pthread.h>
 #include <sys/stat.h>
 #include <sys/errno.h>
-#include <linux/fs.h>
 #include <fcntl.h>
 #include <string.h>
 #include <assert.h>
