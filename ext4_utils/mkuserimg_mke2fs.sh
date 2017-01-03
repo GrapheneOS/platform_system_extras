@@ -98,6 +98,10 @@ if [ -z $MOUNT_POINT ]; then
   exit 2
 fi
 
+if [[ ${MOUNT_POINT:0:1} != "/" ]]; then
+  MOUNT_POINT="/"$MOUNT_POINT
+fi
+
 if [ -z $SIZE ]; then
   echo "Need size of filesystem"
   exit 2
@@ -107,6 +111,9 @@ BLOCKSIZE=4096
 # Round down the filesystem length to be a multiple of the block size
 SIZE=$((SIZE / BLOCKSIZE))
 
+# truncate output file since mke2fs will keep verity section in existing file
+cat /dev/null >$OUTPUT_FILE
+
 MAKE_EXT4FS_CMD="mke2fs $MKE2FS_OPTS -t $EXT_VARIANT -b $BLOCKSIZE $OUTPUT_FILE $SIZE"
 echo $MAKE_EXT4FS_CMD
 $MAKE_EXT4FS_CMD
@@ -114,7 +121,7 @@ if [ $? -ne 0 ]; then
   exit 4
 fi
 
-E2FSDROID_CMD="e2fsdroid $E2FSDROID_OPTS -f $SRC_DIR -a /$MOUNT_POINT $OUTPUT_FILE"
+E2FSDROID_CMD="e2fsdroid $E2FSDROID_OPTS -f $SRC_DIR -a $MOUNT_POINT $OUTPUT_FILE"
 echo $E2FSDROID_CMD
 $E2FSDROID_CMD
 if [ $? -ne 0 ]; then
