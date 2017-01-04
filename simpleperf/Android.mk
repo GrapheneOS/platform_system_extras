@@ -190,7 +190,7 @@ endif
 
 # simpleperf host
 include $(CLEAR_VARS)
-LOCAL_MODULE := simpleperf
+LOCAL_MODULE := simpleperf_host
 LOCAL_MODULE_HOST_OS := darwin linux windows
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
 LOCAL_CPPFLAGS_darwin := $(simpleperf_cppflags_host_darwin)
@@ -200,13 +200,22 @@ LOCAL_SRC_FILES := main.cpp
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
 LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
-LOCAL_MULTILIB := first
+LOCAL_MULTILIB := both
+LOCAL_MODULE_STEM_32 := simpleperf32
+LOCAL_MODULE_STEM_64 := simpleperf
 LOCAL_CXX_STL := libc++_static
 include $(LLVM_HOST_BUILD_MK)
 include $(BUILD_HOST_EXECUTABLE)
 
-$(call dist-for-goals,sdk,$(LOCAL_BUILT_MODULE):simpleperf_host)
-$(call dist-for-goals,win_sdk,$(ALL_MODULES.host_cross_simpleperf.BUILT))
+$(call dist-for-goals,sdk,$(ALL_MODULES.simpleperf_host.BUILT):simpleperf_host)
+ifdef HOST_2ND_ARCH
+$(call dist-for-goals,sdk,$(ALL_MODULES.simpleperf$(HOST_2ND_ARCH_MODULE_SUFFIX).BUILT):simpleperf_host32)
+endif
+$(call dist-for-goals,win_sdk,$(ALL_MODULES.host_cross_simpleperf_host.BUILT))
+ifdef HOST_CROSS_2ND_ARCH
+$(call dist-for-goals,win_sdk,$(ALL_MODULES.host_cross_simpleperf_host$(HOST_CROSS_2ND_ARCH_MODULE_SUFFIX).BUILT))
+endif
+
 
 # simpleperf report script
 include $(CLEAR_VARS)
@@ -237,6 +246,14 @@ LOCAL_CXX_STL := libc++_static
 include $(LLVM_HOST_BUILD_MK)
 include $(BUILD_HOST_SHARED_LIBRARY)
 
+$(call dist-for-goals,sdk,$(ALL_MODULES.libsimpleperf_report.BUILT))
+ifdef HOST_2ND_ARCH
+$(call dist-for-goals,sdk,$(ALL_MODULES.libsimpleperf_report$(HOST_2ND_ARCH_MODULE_SUFFIX).BUILT):libsimpleperf_report32.so)
+endif
+$(call dist-for-goals,win_sdk,$(ALL_MODULES.host_cross_libsimpleperf_report.BUILT):libsimpleperf_report32.dll)
+ifdef HOST_CROSS_2ND_ARCH
+$(call dist-for-goals,win_sdk,$(ALL_MODULES.host_cross_libsimpleperf_report$(HOST_CROSS_2ND_ARCH_MODULE_SUFFIX).BUILT))
+endif
 
 # simpleperf_unit_test
 # =========================================================
@@ -297,7 +314,7 @@ LOCAL_SRC_FILES_linux := $(simpleperf_unit_test_src_files_linux)
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
 LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
-LOCAL_MULTILIB := first
+LOCAL_MULTILIB := both
 include $(LLVM_HOST_BUILD_MK)
 include $(BUILD_HOST_NATIVE_TEST)
 
