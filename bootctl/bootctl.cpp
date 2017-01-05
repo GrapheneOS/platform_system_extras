@@ -52,10 +52,14 @@ static void usage(FILE* where, int /* argc */, char* argv[])
 }
 
 static int do_hal_info(const sp<IBootControl> module) {
-    fprintf(stdout,
-            "HAL module version: %u.%u\n",
-            module->getInterfaceVersion().get_major(),
-            module->getInterfaceVersion().get_minor());
+    module->interfaceChain([&](const auto& chain) {
+        if (chain.size() == 0) {
+            return; // error, can't dump info
+        }
+        fprintf(stdout,
+                "HAL Version: %s\n",
+                chain[0].c_str());
+    });
     return EX_OK;
 }
 
