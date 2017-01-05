@@ -2,7 +2,7 @@
 #
 LOCAL_PATH := $(call my-dir)
 
-common_cflags := -Wall -Werror -O3
+common_cflags := -Wall -Werror -O3 -D_LARGEFILE64_SOURCE
 
 common_c_includes := \
     $(LOCAL_PATH)/include \
