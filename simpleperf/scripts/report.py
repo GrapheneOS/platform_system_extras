@@ -31,6 +31,7 @@ import sys
 from tkFont import *
 from Tkinter import *
 from ttk import *
+from utils import *
 
 PAD_X = 3
 PAD_Y = 3
@@ -243,7 +244,8 @@ def display_report_file(report_file):
 
 def call_simpleperf_report(args, report_file):
   output_fh = open(report_file, 'w')
-  args = ['simpleperf', 'report'] + args
+  simpleperf_path = get_host_binary_path('simpleperf')
+  args = [simpleperf_path, 'report'] + args
   subprocess.check_call(args, stdout=output_fh)
   output_fh.close()
 
