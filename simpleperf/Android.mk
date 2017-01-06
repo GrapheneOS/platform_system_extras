@@ -217,14 +217,6 @@ $(call dist-for-goals,win_sdk,$(ALL_MODULES.host_cross_simpleperf_host$(HOST_CRO
 endif
 
 
-# simpleperf report script
-include $(CLEAR_VARS)
-LOCAL_PREBUILT_EXECUTABLES := simpleperf_report.py
-include $(BUILD_HOST_PREBUILT)
-
-$(call dist-for-goals,sdk,$(ALL_MODULES.simpleperf_report.BUILT))
-
-
 # libsimpleperf_report.so
 # It is the shared library used on host by python scripts
 # to report samples in different ways.
