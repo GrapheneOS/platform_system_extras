@@ -519,6 +519,7 @@ class SourceFileAnnotator(object):
         """
         dest_dir = self.config['annotate_dest_dir']
         for key in self.file_periods.keys():
+            is_java = False
             if key.startswith('$JAVA_SRC_ROOT/'):
                 path = key[len('$JAVA_SRC_ROOT/'):]
                 items = path.split('/')
