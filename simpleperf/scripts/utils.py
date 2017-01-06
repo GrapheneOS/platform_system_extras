@@ -49,7 +49,7 @@ def log_fatal(msg):
 
 
 def get_target_binary_path(arch, binary_name):
-    arch_dir = os.path.join(get_script_dir(), "shared_libraries", "target", arch)
+    arch_dir = os.path.join(get_script_dir(), "bin", "android", arch)
     if not os.path.isdir(arch_dir):
         log_fatal("can't find arch directory: %s" % arch_dir)
     binary_path = os.path.join(arch_dir, binary_name)
@@ -59,21 +59,18 @@ def get_target_binary_path(arch, binary_name):
 
 
 def get_host_binary_path(binary_name):
-    dir = os.path.join(get_script_dir(), 'shared_libraries', 'host')
-    if not os.path.isdir(dir):
-        log_fatal("can't find directory: %s" % dir)
+    dir = os.path.join(get_script_dir(), 'bin')
     if is_windows():
-        if so_name.endswith('.so'):
-            so_name = so_name[0:-3] + '.dll'
+        if binary_name.endswith('.so'):
+            binary_name = binary_name[0:-3] + '.dll'
         dir = os.path.join(dir, 'windows')
     elif sys.platform == 'darwin': # OSX
-        if so_name.endswith('.so'):
-            so_name = so_name[0:-3] + '.dylib'
+        if binary_name.endswith('.so'):
+            binary_name = binary_name[0:-3] + '.dylib'
         dir = os.path.join(dir, 'darwin')
     else:
         dir = os.path.join(dir, 'linux')
-    if not os.path.isdir(dir):
-        log_fatal("can't find directory: %s" % dir)
+    dir = os.path.join(dir, 'x86_64' if sys.maxsize > 2 ** 32 else 'x86')
     binary_path = os.path.join(dir, binary_name)
     if not os.path.isfile(binary_path):
         log_fatal("can't find binary: %s" % binary_path)
