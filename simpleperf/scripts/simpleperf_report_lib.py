@@ -164,6 +164,8 @@ class ReportLib(object):
             libwinpthread_path = os.path.join(get_script_dir(), "libwinpthread-1.dll")
             if os.path.exists(libwinpthread_path):
                 self._libwinpthread = ct.CDLL(libwinpthread_path)
+            else:
+                log_fatal('%s is missing' % libwinpthread_path)
 
     def Close(self):
         if self._instance is None:
