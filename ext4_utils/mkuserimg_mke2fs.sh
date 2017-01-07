@@ -16,8 +16,10 @@ MKE2FS_OPTS=""
 E2FSDROID_OPTS=""
 
 if [ "$1" = "-s" ]; then
-    MKE2FS_OPTS+="-E android_sparse"
+  MKE2FS_OPTS+="-E android_sparse"
   shift
+else
+  E2FSDROID_OPTS+="-e"
 fi
 
 if [ $# -lt 5 ]; then
