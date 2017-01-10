@@ -29,7 +29,7 @@
 #include <sys/wait.h>
 #include <time.h>
 
-#include <android/log.h>
+#include <log/log.h>
 
 #define ALEN(a) (sizeof(a) / sizeof((a)[0]))  // Array length
 typedef unsigned int bool_t;
