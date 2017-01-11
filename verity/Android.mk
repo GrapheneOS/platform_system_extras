@@ -50,7 +50,7 @@ LOCAL_STATIC_LIBRARIES := \
     libfec_rs \
     libcrypto_utils \
     libcrypto \
-    libext4_utils_host \
+    libext4_utils \
     libsparse_host \
     libsquashfs_utils_host \
     libbase \

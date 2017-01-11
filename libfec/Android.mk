@@ -16,6 +16,7 @@ common_src_files := \
     fec_process.cpp
 
 common_static_libraries := \
+    libext4_utils \
     libfec_rs \
     libcrypto_utils \
     libcrypto \
@@ -31,7 +32,6 @@ LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 LOCAL_MODULE := libfec
 LOCAL_SRC_FILES := $(common_src_files)
 LOCAL_STATIC_LIBRARIES := \
-    libext4_utils_static \
     libsquashfs_utils \
     libcutils \
     $(common_static_libraries)
@@ -48,7 +48,6 @@ LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 LOCAL_MODULE := libfec
 LOCAL_SRC_FILES := $(common_src_files)
 LOCAL_STATIC_LIBRARIES := \
-    libext4_utils_host \
     libsquashfs_utils_host \
     $(common_static_libraries)
 include $(BUILD_HOST_STATIC_LIBRARY)
