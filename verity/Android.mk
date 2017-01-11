@@ -52,7 +52,7 @@ LOCAL_STATIC_LIBRARIES := \
     libcrypto \
     libext4_utils \
     libsparse \
-    libsquashfs_utils_host \
+    libsquashfs_utils \
     libbase \
     libz
 LOCAL_CFLAGS := -Wall -Werror
