@@ -29,7 +29,7 @@ LOCAL_C_INCLUDES := \
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
     $(LOCAL_PATH)/include
 LOCAL_STATIC_LIBRARIES := \
-    libsparse_host
+    libsparse
 LOCAL_STATIC_LIBRARIES_darwin += libselinux
 LOCAL_STATIC_LIBRARIES_linux += libselinux
 LOCAL_MODULE_HOST_OS := darwin linux windows
@@ -44,7 +44,7 @@ LOCAL_C_INCLUDES := \
 LOCAL_SHARED_LIBRARIES += libcutils
 LOCAL_STATIC_LIBRARIES += \
     libext4_utils \
-    libsparse_host \
+    libsparse \
     libz
 LOCAL_LDLIBS_windows += -lws2_32
 LOCAL_SHARED_LIBRARIES_darwin += libselinux
@@ -105,7 +105,7 @@ LOCAL_EXPORT_C_INCLUDE_DIRS := \
     $(LOCAL_PATH)/include
 LOCAL_STATIC_LIBRARIES := \
     liblogwrap \
-    libsparse_static \
+    libsparse \
     libselinux \
     libbase
 include $(BUILD_STATIC_LIBRARY)
@@ -148,7 +148,7 @@ LOCAL_SRC_FILES := ext4fixup_main.c
 LOCAL_MODULE := ext4fixup
 LOCAL_STATIC_LIBRARIES += \
     libext4_utils \
-    libsparse_host \
+    libsparse \
     libz
 include $(BUILD_HOST_EXECUTABLE)
 
