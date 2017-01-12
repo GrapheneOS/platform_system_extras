@@ -51,7 +51,7 @@ LOCAL_STATIC_LIBRARIES := \
     libcrypto_utils \
     libcrypto \
     libext4_utils \
-    libsparse_host \
+    libsparse \
     libsquashfs_utils_host \
     libbase \
     libz
@@ -88,7 +88,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := build_verity_tree
 LOCAL_SRC_FILES := build_verity_tree.cpp
 LOCAL_MODULE_TAGS := optional
-LOCAL_STATIC_LIBRARIES := libsparse_host libz
+LOCAL_STATIC_LIBRARIES := libsparse libz
 LOCAL_SHARED_LIBRARIES := libcrypto libbase
 LOCAL_CFLAGS += -Wall -Werror
 include $(BUILD_HOST_EXECUTABLE)
