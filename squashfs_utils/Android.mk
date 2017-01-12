@@ -6,6 +6,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := squashfs_utils.c
 LOCAL_STATIC_LIBRARIES := libcutils
 LOCAL_C_INCLUDES := external/squashfs-tools/squashfs-tools
+LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)
 LOCAL_MODULE := libsquashfs_utils
 include $(BUILD_STATIC_LIBRARY)
 
@@ -13,6 +14,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := squashfs_utils.c
 LOCAL_STATIC_LIBRARIES := libcutils
 LOCAL_C_INCLUDES := external/squashfs-tools/squashfs-tools
+LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)
 LOCAL_CFLAGS := -Wall -Werror -D_GNU_SOURCE -DSQUASHFS_NO_KLOG
 LOCAL_MODULE := libsquashfs_utils
 include $(BUILD_HOST_STATIC_LIBRARY)
