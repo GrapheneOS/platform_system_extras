@@ -21,7 +21,7 @@ libext4_utils_src_files := \
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(libext4_utils_src_files)
-LOCAL_MODULE := libext4_utils_host
+LOCAL_MODULE := libext4_utils
 # Various instances of dereferencing a type-punned pointer in extent.c
 LOCAL_CFLAGS += -fno-strict-aliasing
 LOCAL_C_INCLUDES := \
@@ -43,7 +43,7 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include
 LOCAL_SHARED_LIBRARIES += libcutils
 LOCAL_STATIC_LIBRARIES += \
-    libext4_utils_host \
+    libext4_utils \
     libsparse_host \
     libz
 LOCAL_LDLIBS_windows += -lws2_32
@@ -96,7 +96,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
     $(libext4_utils_src_files) \
     ext4_crypt_init_extensions.cpp
-LOCAL_MODULE := libext4_utils_static
+LOCAL_MODULE := libext4_utils
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include
 # Various instances of dereferencing a type-punned pointer in extent.c
@@ -147,7 +147,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := ext4fixup_main.c
 LOCAL_MODULE := ext4fixup
 LOCAL_STATIC_LIBRARIES += \
-    libext4_utils_host \
+    libext4_utils \
     libsparse_host \
     libz
 include $(BUILD_HOST_EXECUTABLE)
