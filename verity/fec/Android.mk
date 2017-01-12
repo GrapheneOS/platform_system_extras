@@ -16,7 +16,7 @@ LOCAL_STATIC_LIBRARIES := \
     libfec \
     libfec_rs \
     libext4_utils \
-    libsquashfs_utils_host
+    libsquashfs_utils
 LOCAL_SHARED_LIBRARIES := libbase
 LOCAL_CFLAGS += -Wall -Werror -O3
 LOCAL_C_INCLUDES += external/fec
