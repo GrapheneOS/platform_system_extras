@@ -14,7 +14,7 @@ LOCAL_STATIC_LIBRARIES := \
     libcrypto_utils \
     libcrypto \
     libext4_utils \
-    libsquashfs_utils_host \
+    libsquashfs_utils \
     libbase
 LOCAL_CFLAGS := -Wall -Werror -D_GNU_SOURCE
 include $(BUILD_HOST_EXECUTABLE)
