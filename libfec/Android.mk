@@ -6,8 +6,7 @@ common_cflags := -Wall -Werror -O3 -D_LARGEFILE64_SOURCE
 
 common_c_includes := \
     $(LOCAL_PATH)/include \
-    external/fec \
-    system/extras/squashfs_utils
+    external/fec
 
 common_src_files := \
     fec_open.cpp \
