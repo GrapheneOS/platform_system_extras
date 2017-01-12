@@ -47,7 +47,7 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_SANITIZE := integer
 LOCAL_STATIC_LIBRARIES := \
     libfec \
-    libfec_rs_host \
+    libfec_rs \
     libcrypto_utils \
     libcrypto \
     libext4_utils_host \
