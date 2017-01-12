@@ -9,14 +9,14 @@ LOCAL_MODULE := fec
 LOCAL_SRC_FILES := main.cpp image.cpp
 LOCAL_MODULE_TAGS := optional
 LOCAL_STATIC_LIBRARIES := \
-    libsparse_host \
+    libsparse \
     libz \
     libcrypto_utils \
     libcrypto \
     libfec \
-    libfec_rs_host \
-    libext4_utils_host \
-    libsquashfs_utils_host
+    libfec_rs \
+    libext4_utils \
+    libsquashfs_utils
 LOCAL_SHARED_LIBRARIES := libbase
 LOCAL_CFLAGS += -Wall -Werror -O3
 LOCAL_C_INCLUDES += external/fec
