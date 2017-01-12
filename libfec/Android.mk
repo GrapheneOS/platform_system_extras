@@ -18,6 +18,7 @@ common_src_files := \
 common_static_libraries := \
     libext4_utils \
     libfec_rs \
+    libsquashfs_utils \
     libcrypto_utils \
     libcrypto \
     libcutils \
@@ -31,10 +32,7 @@ LOCAL_SANITIZE := integer
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 LOCAL_MODULE := libfec
 LOCAL_SRC_FILES := $(common_src_files)
-LOCAL_STATIC_LIBRARIES := \
-    libsquashfs_utils \
-    libcutils \
-    $(common_static_libraries)
+LOCAL_STATIC_LIBRARIES := $(common_static_libraries)
 include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -47,9 +45,7 @@ endif
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 LOCAL_MODULE := libfec
 LOCAL_SRC_FILES := $(common_src_files)
-LOCAL_STATIC_LIBRARIES := \
-    libsquashfs_utils_host \
-    $(common_static_libraries)
+LOCAL_STATIC_LIBRARIES := $(common_static_libraries)
 include $(BUILD_HOST_STATIC_LIBRARY)
 
 include $(LOCAL_PATH)/test/Android.mk
