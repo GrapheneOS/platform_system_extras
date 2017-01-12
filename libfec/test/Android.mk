@@ -13,7 +13,7 @@ LOCAL_STATIC_LIBRARIES := \
     libfec_rs \
     libcrypto_utils \
     libcrypto \
-    libext4_utils_host \
+    libext4_utils \
     libsquashfs_utils_host \
     libbase
 LOCAL_CFLAGS := -Wall -Werror -D_GNU_SOURCE
