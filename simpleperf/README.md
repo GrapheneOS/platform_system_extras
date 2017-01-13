@@ -1,4 +1,4 @@
-# Introduction of simpleperf
+# Simpleperf Introduction
 ## What is simpleperf
 Simpleperf is a native profiling tool for Android. Its command-line interface
 supports broadly the same options as the linux-tools perf, but also supports
@@ -6,6 +6,8 @@ various Android-specific improvements.
 
 Simpleperf is part of the Android Open Source Project. The source code is at
 https://android.googlesource.com/platform/system/extras/+/master/simpleperf/.
+The latest document is at
+https://android.googlesource.com/platform/system/extras/+show/master/simpleperf/README.md.
 Bugs and feature requests can be submitted at
 http://github.com/android-ndk/ndk/issues.
 
@@ -363,186 +365,197 @@ perf_harden to enable profiling.
 report call-graph of a program, we need to dump user stack and register set in
 each record, and then unwind the stack to find the call chain. Simpleperf
 supports unwinding while recording, so it doesn’t need to store user stack in
-perf.data. So we can profile for a longer time with limited space on device.
-3. Build in static binaries. Simpleperf is a static binary, so it doesn’t need
+perf.data. So we can profile for a longer time with limited space on device.'
+3. Support scripts to make profiling on Android more convenient.
+4. Build in static binaries. Simpleperf is a static binary, so it doesn’t need
 supporting shared libraries to run. It means there is no limitation of Android
 version that simpleperf can run on, although some devices don’t support
 profiling.
 
-# Steps to profile native libraries
-After introducing simpleperf, this section uses a simple example to show how to
-profile jni native libraries on Android using simpleperf. The example profiles
-an app called com.example.sudogame, which uses a jni native library
-sudo-game-jni.so. We focus on sudo-game-jni.so, not the java code or system
-libraries.
+# Simpleperf tools in ndk
+Simpleperf tools in ndk contain three parts: simpleperf executable running on
+Android device, simpleperf executable running on host, and python scripts.
 
-## 1. Run a debuggable="true" version of the app on device
-We need to run a copy of the app with android:debuggable=”true” in its
-AndroidManfest.xml <application> element, because we can’t use run-as for
-non-debuggable apps.
+## Simpleperf on device
+Simpleperf running on device is located at bin/android directory. It contains
+static binaries running on Android on different architectures. They can be used
+to profile processes running device, and generate perf.data.
 
-## 2. Download simpleperf to the app’s directory
-Use *uname* to find the architecture on device
+## Simpleperf on host
+Simpleperfs running on host are located at bin/darwin, bin/linux and
+bin/windows.They can be used to parse perf.data on host.
 
-    $adb shell uname -m
-    aarch64
+## Scripts
+Scripts are used to make it convenient to profile and parse profiling results.
+app_profiler.py is used to profile an android application. It prepares
+profiling environments, downloads simpleperf on device, generates and pulls
+perf.data on host. It is configured by app_profiler.config.
+binary_cache_builder.py is used to pull native binaries from device to host.
+It is used by app_profiler.py.
+annotate.py is used to annotate source files using perf.data. It is configured
+by annotate.config.
+report.py reports perf.data in a GUI window.
+simpleperf_report_lib.py is used to enumerate samples in perf.data. Internally
+it uses libsimpleperf_report.so to parse perf.data. It can be used to translate
+samples in perf.data to other forms. One example using simpleperf_report_lib.py
+is report_sample.py.
 
-"aarch64" means we should download arm64 version of simpleperf to device.
+# Examples of using simpleperf tools
+This section shows how to use simpleperf tools to profile an Android
+application.
 
-    $adb push device/arm64/simpleperf /data/local/tmp
-    $adb shell run-as com.example.sudogame cp /data/local/tmp/simpleperf .
-    $adb shell run-as com.example.sudogame chmod a+x simpleperf
-    $adb shell run-as com.example.sudogame ls -l
-    -rwxrwxrwx 1 u0_a90 u0_a90 3059208 2016-01-01 10:40 simpleperf
+## Prepare a debuggable Application
+The package name of the application is com.example.sudogame. It has both java
+code and c++ code. We need to run a copy of the app with
+android:debuggable=”true” in its AndroidManifest.xml <application> element,
+because we can’t use run-as for non-debuggable apps. The application should
+has been installed on device, and we can connect device via adb.
 
-Note that some apps use arm native libraries even on arm64 devices (We can
-verify this by checking /proc/<process\_id\_of\_app>/maps). In that case, we
-should use arm/simpleperf instead of arm64/simpleperf.
+## Profile using command line
+To record profiling data, we need to download simpleperf and native libraries
+with debug information on device, run simpleperf to generate profiling data
+file: perf.data, and run simpleperf to report perf.data. Below are the steps.
 
-## 3. Enable profiling
-Android devices may disable profiling by default, and we need to enable
-profiling.
+### 1. Enable profiling
 
     $adb shell setprop security.perf_harden 0
 
-## 4. Find the target process/thread to record
+### 2. Find the process running the app
+Run `ps` in the app’s context. On >=O devices, run `ps -e` instead.
 
-    # Use `ps` to get process id of sudogame.
-    $adb shell ps  | grep sudogame
-    u0_a102   15869 545   1629824 76888 SyS_epoll_ 0000000000 S com.example.sudogame
+    $adb shell
+    angler:/ $ run-as com.example.sudogame
+    angler:/data/data/com.example.sudogame $ ps
+    u0_a93    10324 570   1030480 58104 SyS_epoll_ 00f41b7528 S com.example.sudogame
+    u0_a93    10447 10441 7716   1588  sigsuspend 753c515d34 S sh
+    u0_a93    10453 10447 9112   1644           0 7ba07ff664 R ps
 
-    # Use `ps -t` to get thread ids of process 15869.
-    # If this doesn’t work, you can try `ps -eT`.
-    $adb shell ps -t  | grep 15869
-    u0_a102   15869 545   1629824 76888 SyS_epoll_ 0000000000 S com.example.sudogame
-    u0_a102   15874 15869 1629824 76888 futex_wait 0000000000 S Jit thread pool
-    ...
+So process 10324 runs the app.
 
-## 5. Record perf.data
+### 3. Download simpleperf to the app’s data directory
+First we need to find out which architecture the app is using. There are many
+ways, here we just check the map of the process.
 
-    # Record process 15869 for 30s, and use the app while recording it.
-    $adb shell run-as com.example.sudogame ./simpleperf record -p 15869 --duration 30
-    simpleperf W 07-12 20:00:33 16022 16022 environment.cpp:485] failed to read /proc/sys/kernel/kptr_restrict: Permission denied
-    simpleperf I 07-12 20:01:03 16022 16022 cmd_record.cpp:315] Samples recorded: 81445. Samples lost: 0.
+    angler:/data/data/com.example.sudogame $cat /proc/10324/maps | grep boot.art
+    70f34000-7144e000 r--p 00000000 fd:00 1082  /system/framework/arm/boot.oat
 
-    $adb shell run-as com.example.sudogame ls -lh perf.data
-    -rw-rw-rw- 1 u0_a102 u0_a102 4.3M 2016-07-12 20:01 perf.data
+The file path shows it is arm. So we download simpleperf in arm directory on
+device.
 
-Now we have recorded perf.data with 81445 records. There is a warning about
-failing to read kptr_restrict. It doesn’t matter in our case, but is a notification that we
-can’t read kernel symbol addresses.
+    $adb push bin/android/arm/simpleperf /data/local/tmp
+    $adb shell
+    angler:/ $ run-as com.example.sudogame
+    angler:/data/data/com.example.sudogame $ cp /data/local/tmp/simpleperf .
 
-## 6. Report perf.data
-Below are several examples reporting on device.
+### 4. Record perf.data
 
-### Report samples in different binaries
+    angler:/data/data/com.example.sudogame $./simpleperf record -p 10324 --duration 30
+    simpleperf I 01-01 09:26:39 10598 10598 cmd_record.cpp:341] Samples recorded: 49471. Samples lost: 0.
+    angler:/data/data/com.example.sudogame $ls -lh perf.data
+    -rw-rw-rw- 1 u0_a93 u0_a93 2.6M 2017-01-01 09:26 perf.data
 
-    # Report how samples distribute on different binaries.
-    $adb shell run-as com.example.sudogame ./simpleperf report -n --sort dso
-    simpleperf W 07-12 19:15:10 11389 11389 dso.cpp:309] Symbol addresses in /proc/kallsyms are all zero. `echo 0 >/proc/sys/kernel/kptr_restrict` if possible.
-    Cmdline: /data/data/com.example.sudogame/simpleperf record -p 15869 --duration 30
+Don’t forget to run the app while recording. Otherwise, we may get no samples
+because the process is always sleeping.
+
+### 5. Report perf.data
+There are different ways to report perf.data. Below shows some examples.
+
+Report samples in different threads.
+
+    angler:/data/data/com.example.sudogame $./simpleperf report --sort pid,tid,comm
+    Cmdline: /data/data/com.example.sudogame/simpleperf record -p 10324 --duration 30
     Arch: arm64
     Event: cpu-cycles (type 0, config 0)
-    Samples: 81445
-    Event count: 34263925309
+    Samples: 49471
+    Event count: 16700769019
 
+    Overhead  Pid    Tid    Command
+    66.31%    10324  10324  xample.sudogame
+    30.97%    10324  10340  RenderThread
+    ...
+
+Report samples in different binaries in the main thread.
+
+    angler:/data/data/com.example.sudogame $./simpleperf report --tids 10324 --sort dso -n
+    ...
     Overhead  Sample  Shared Object
-    75.31%    58231   [kernel.kallsyms]
-    8.44%     6845    /system/lib64/libc.so
-    4.30%     4667    /vendor/lib64/egl/libGLESv2_adreno.so
-    2.30%     2433    /system/lib64/libhwui.so
-    1.88%     1952    /system/lib64/libart.so
-    1.88%     1967    /system/framework/arm64/boot-framework.oat
-    1.59%     1218    /system/lib64/libcutils.so
-    0.69%     728     /system/lib64/libskia.so
-    0.63%     489     /data/app/com.example.sudogame-2/lib/arm64/libsudo-game-jni.so
-    0.34%     312     /system/lib64/libart-compiler.so
+    37.71%    9970    /system/lib/libc.so
+    35.45%    9786    [kernel.kallsyms]
+    8.71%     3305    /system/lib/libart.so
+    6.44%     2405    /system/framework/arm/boot-framework.oat
+    5.64%     1480    /system/lib/libcutils.so
+    1.55%     426     /data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so
     ...
 
-According to the report above, most time is spent in kernel, and
-libsudo-game-jni.so costs only 0.63% by itself. It seems libsudo-game-jni.so
-can’t be the bottleneck. However, it is possible we didn’t record long enough
-to hit the hot spot, or code in libsudo-game-jni.so calls other libraries
-consuming most time.
+Report samples in different functions in libsudo-game-jni.so in the main thread.
 
-### Report samples in different functions
-
-    # Report how samples distribute inside libsudo-game-jni.so.
-    $adb shell run-as com.example.sudogame ./simpleperf report -n --dsos /data/app/com.example.sudogame-2/lib/arm64/libsudo-game-jni.so --sort symbol
+    angler:/data/data/com.example.sudogame $./simpleperf report --tids 10324 --dsos  /data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so --sort symbol -n
     ...
     Overhead  Sample  Symbol
-    94.45%    461     unknown
-    5.22%     26      @plt
-    0.20%     1       Java_com_example_sudogame_GameModel_findConflictPairs
-    0.14%     1       Java_com_example_sudogame_GameModel_canFindSolution
-
-In the report above, most samples belong to unknown symbol. It is because the
-libsudo-game-jni.so used on device doesn’t contain symbol table. We need to
-download shared library with symbol table to device. In android studio 2.1.2,
-the binary with symbol table is in
-[app_dir]/app/build/intermediates/binaries/debug/obj/arm64-v8a (for amr64).
-
-    # Make a proper directory to download binary to device. This directory
-    # should be the same as the directory of
-    # /data/app/com.example.sudogame-2/lib/arm64/libsudo-game-jni.so.
-    $adb shell run-as com.example.sudogame mkdir -p data/app/com.example.sudogame-2/lib/arm64
-    # Download binary with symbol table.
-    $adb push [app_dir]/app/build/intermediates/binaries/debug/obj/arm64-v8a/libsudo-game-jni.so /data/local/tmp
-    $adb shell run-as com.example.sudogame cp /data/local/tmp/libsudo-game-jni.so data/app/com.example.sudogame-2/lib/arm64
-
-    # Report how samples distribute inside libsudo-game-jni.so with debug binary
-    # support.
-    $adb shell run-as com.example.sudogame ./simpleperf report -n --dsos /data/app/com.example.sudogame-2/lib/arm64/libsudo-game-jni.so --sort symbol --symfs .
+    8.94%     35      libsudo-game-jni.so[+1d54]
+    5.71%     25      libsudo-game-jni.so[+1dae]
+    5.70%     23      @plt
+    5.09%     22      libsudo-game-jni.so[+1d88]
+    4.54%     19      libsudo-game-jni.so[+1d82]
+    3.61%     14      libsudo-game-jni.so[+1f3c]
     ...
-    Overhead  Sample  Symbol
-    71.08%    347     checkValid(Board const&, int, int)
-    15.13%    74      randomBlock_r(Board&, int, int, int, int, int)
-    7.94%     38      canFindSolution_r(Board&, int, int)
-    5.22%     26      @plt
-    0.30%     2       randomBoard(Board&)
-    0.20%     1       Java_com_example_sudogame_GameModel_findConflictPairs
-    0.14%     1       Java_com_example_sudogame_GameModel_canFindSolution
 
-With the help of debug version of libsudo-game-jni.so, the report above shows that most
-time in libsudo-game-jni.so is spent in function checkValid. So now we can look
-into it further.
+In the above result, most symbols are binary name[+virual_addr]. It is because
+libsudo-game-jni.so used on device has stripped .symbol section. We can
+download libsudo-game-jni.so having debug information on device. In android
+studio project, it locates at
+app/build/intermediates/binaries/debug/arm/obj/armeabi-v7a/libsudo-game-jni.so.
+We have to download libsudo-game-jni.so to the same relative path as recorded
+in perf.data (otherwise, simpleperf can’t find it). In this case, it is
+/data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so.
 
-### Report samples in one function
+Report symbols using libraries with debug information.
 
-    # Report how samples distribute inside checkValid() function.
-    # adb shell command can’t pass ‘(‘ in arguments, so we run the command
-    # inside `adb shell`.
+    $adb push app/build/intermediates/binaries/debug/arm/obj/armeabi-v7a/libsudo-game-jni.so /data/local/tmp
     $adb shell
-    device$ run-as com.example.sudogame ./simpleperf report -n --symbols "checkValid(Board const&, int, int)" --sort vaddr_in_file --symfs .
+    angler:/ $ run-as com.example.sudogame
+    angler:/data/data/com.example.sudogame $ mkdir -p data/app/com.example.sudogame-1/lib/arm
+    angler:/data/data/com.example.sudogame $cp /data/local/tmp/libsudo-game-jni.so data/app/com.example.sudogame-1/lib/arm
+    angler:/data/data/com.example.sudogame $./simpleperf report --tids 10324 --dsos  /data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so --sort symbol -n --symfs .
+    ...
+    Overhead  Sample  Symbol
+    75.18%    317     checkValid(Board const&, int, int)
+    14.43%    60      canFindSolution_r(Board&, int, int)
+    5.70%     23      @plt
+    3.51%     20      randomBlock_r(Board&, int, int, int, int, int)
+    ...
+
+Report samples in one function
+
+    angler:/data/data/com.example.sudogame $./simpleperf report --tids 10324 --dsos  /data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so --symbols “checkValid(Board const&, int, int)” --sort vaddr_in_file -n --symfs .
     ...
     Overhead  Sample  VaddrInFile
-    14.90%    50      0x24d8
-    8.48%     29      0x251c
-    5.52%     19      0x2468
+    11.89%    35      0x1d54
+    7.59%     25      0x1dae
+    6.77%     22      0x1d88
+    6.03%     19      0x1d82
     ...
 
-The report above shows samples hitting different places inside function
-checkValid(). By using objdump to disassemble libsudo-game-jni.so, we can find
-which are the hottest instructions in checkValid() function.
+### 6. Record and report call graph
+A call graph is a tree showing function call relations. Below is an example.
 
-    # Disassemble libsudo-game-jni.so.
-    $aarch64-linux-android-objdump -d -S -l libsudo-game-jni.so >libsudo-game-jni.asm
+    main() {
+        FunctionOne();
+        FunctionTwo();
+    }
+    FunctionOne() {
+        FunctionTwo();
+        FunctionThree();
+    }
+    callgraph:
+        main-> FunctionOne
+           |    |
+           |    |-> FunctionTwo
+           |    |-> FunctionThree
+           |
+           |-> FunctionTwo
 
-## 7. Record and report call graph
-### What is a call graph
-A call graph is a tree showing function call relations. For example, a program
-starts at main() function, and main() calls functionOne() and functionTwo(),
-and functionOne() calls functionTwo() and functionThree(). Then the call graph
-is as below.
-
-    main() -> functionOne()
-          |    |
-          |    |-> functionTwo()
-          |    |
-          |     ->  functionThree()
-           -> functionTwo()
-
-### Record dwarf based call graph
+#### Record dwarf based call graph
 To generate call graph, simpleperf needs to generate call chain for each record.
 Simpleperf requests kernel to dump user stack and user register set for each
 record, then it backtraces the user stack to find the function call chain. To
@@ -550,220 +563,255 @@ parse the call chain, it needs support of dwarf call frame information, which
 usually resides in .eh_frame or .debug_frame section of the binary.  So we need
 to use --symfs to point out where is libsudo-game-jni.so with debug information.
 
-    # Record thread 11546 for 30s, use the app while recording it.
-    $adb shell run-as com.example.sudogame ./simpleperf record -t 11546 -g --symfs . --duration 30
-    simpleperf I 01-01 07:13:08  9415  9415 cmd_record.cpp:336] Samples recorded: 65279. Samples lost: 16740.
-    simpleperf W 01-01 07:13:08  9415  9415 cmd_record.cpp:343] Lost 20.4099% of samples, consider increasing mmap_pages(-m), or decreasing sample frequency(-f), or increasing sample period(-c).
-
-    $adb shell run-as com.example.sudogame ls -lh perf.data
-    -rw-rw-rw- 1 u0_a96 u0_a96 8.3M 2016-01-01 08:49 perf.data
+    angler:/data/data/com.example.sudogame $./simpleperf record -p 10324 -g --symfs . --duration 30
+    simpleperf I 01-01 09:59:42 11021 11021 cmd_record.cpp:341] Samples recorded: 60700. Samples lost: 1240.
 
 Note that kernel can’t dump user stack >= 64K, so the dwarf based call graph
-doesn’t contain call chains consuming >= 64K stack. So avoiding allocating
-large memory on stack is a good way to improve dwarf based call graph.
+doesn’t contain call chains consuming >= 64K stack. What’s more, because we
+need to dump stack in each record, it is likely to lost records. Usually, it
+doesn’t matter to lost some records.
 
-### Record stack frame based call graph
+#### Record stack frame based call graph
 Another way to generate call graph is to rely on the kernel parsing the call
 chain for each record. To make it possible, kernel has to be able to identify
 the stack frame of each function call. This is not always possible, because
 compilers can optimize away stack frames, or use a stack frame style not
-recognized by the kernel. So how well it works depends.
+recognized by the kernel. So how well it works depends (It works well on arm64,
+but not well on arm).
 
-    # Record thread 11546 for 30s, use the app while recording it.
-    $adb shell run-as com.example.sudogame ./simpleperf record -t 11546 --call-graph fp --symfs . --duration 30
-    simpleperf W 01-02 05:43:24 23277 23277 environment.cpp:485] failed to read /proc/sys/kernel/kptr_restrict: Permission denied
-    simpleperf I 01-02 05:43:54 23277 23277 cmd_record.cpp:323] Samples recorded: 95023. Samples lost: 0.
+    angler:/data/data/com.example.sudogame $./simpleperf record -p 10324 --call-graph fp --symfs . --duration 30
+    simpleperf I 01-01 10:03:58 11267 11267 cmd_record.cpp:341] Samples recorded: 56736. Samples lost: 0.
 
-    $adb shell run-as com.example.sudogame ls -lh perf.data
-    -rw-rw-rw- 1 u0_a96 u0_a96 39M 2016-01-02 05:43 perf.data
+#### Report call graph
+Report accumulated period. In the table below, the first column is “Children”,
+it is the cpu cycle percentage of a function and functions called by that
+function. The second column is “Self”, it is the cpu cycle percentage of just a
+function. For example, checkValid() itself takes 1.28% cpus, but it takes
+29.43% by running itself and calling other functions.
 
-### Report call graph
-#### Report call graph on device
-    # Report call graph.
-    $adb shell run-as com.example.sudogame ./simpleperf report -n -g --symfs .
-    Cmdline: /data/data/com.example.sudogame/simpleperf record -t 11546 -g --symfs . -f 1000 --duration 30
-    Arch: arm64
-    Event: cpu-cycles (type 0, config 0)
-    Samples: 23840
-    Event count: 41301992088
-
-    Children  Self    Sample  Command          Pid    Tid    Shared Object                                                   Symbol
-    97.98%    0.69%   162     xample.sudogame  11546  11546  /data/app/com.example.sudogame-1/lib/arm64/libsudo-game-jni.so  checkValid(Board const&, int, int)
-       |
-       -- checkValid(Board const&, int, int)
-          |
-          |--99.95%-- __android_log_print
-          |           |
-          |           |--92.19%-- __android_log_buf_write
-          |           |           |
-          |           |           |--73.50%-- libcutils.so[+1120c]
+    angler:/data/data/com.example.sudogame $./simpleperf report --children --symfs .
+    ...
+    Children  Self   Command          Pid    Tid    Shared Object                                                 Symbol
+    31.94%    0.00%  xample.sudogame  10324  10324  [kernel.kallsyms]                                             [kernel.kallsyms][+ffffffc000204268]
+    31.10%    0.92%  xample.sudogame  10324  10324  /system/lib/libc.so                                           writev
+    29.43%    1.28%  xample.sudogame  10324  10324  /data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so  checkValid(Board const&, int, int)
+    28.43%    0.34%  xample.sudogame  10324  10324  /system/lib/liblog.so                                         __android_log_print
+    28.24%    0.00%  xample.sudogame  10324  10324  /system/lib/libcutils.so                                      libcutils.so[+107b7]
+    28.10%    0.27%  xample.sudogame  10324  10324  /data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so  canFindSolution_r(Board&, int, int)
     ...
 
-#### Report call graph in callee mode
-Call graph can be shown in two modes. One is caller mode, showing how functions
-call others. The other is callee mode, showing how functions are called by
-others. We can use  *-g callee* option to show call graph in callee mode.
+Report call graph.
 
-    # Report call graph.
-    $host/simpleperf report -n -g callee --symfs .
-    Cmdline: /data/data/com.example.sudogame/simpleperf record -t 11546 -g --symfs . -f 1000 --duration 30
-    Arch: arm64
-    Event: cpu-cycles (type 0, config 0)
-    Samples: 23840
-    Event count: 41301992088
-
-    Children  Self    Sample  Command          Pid    Tid    Shared Object                                                   Symbol
-    97.58%    0.21%   48      xample.sudogame  11546  11546  /system/lib64/liblog.so                                         __android_log_print
-       |
-       -- __android_log_print
-          |
-          |--99.70%-- checkValid(Board const&, int, int)
-          |           |
-          |           |--99.31%-- canFindSolution_r(Board&, int, int)
+    angler:/data/data/com.example.sudogame $./simpleperf report -g --symfs . >report
+    angler:/data/data/com.example.sudogame $exit
+    angler:/ $cp /data/data/com.example.sudogame/report /data/local/tmp
+    angler:/ $exit
+    $adb pull /data/local/tmp/report .
+    $cat report
+    ...
+    29.43%    1.28%  xample.sudogame  10324  10324  /data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so  checkValid(Board const&, int, int)
+           |
+           -- checkValid(Board const&, int, int)
+              |
+              |--95.50%-- __android_log_print
+              |    |--0.68%-- [hit in function]
+              |    |
+              |    |--51.84%-- __android_log_buf_write
+              |    |    |--2.07%-- [hit in function]
+              |    |    |
+              |    |    |--30.74%-- libcutils.so[+c69d]
     ...
 
-#### Report using report.py
-The call graph generated by simpleperf report may be hard to read in text mode.
-Simpleperf provides a python script showing GUI of call graph.
-It can be used as below.
+Report call graph in callee mode. We can also show how a function is called by
+other functions.
 
-    # Show call graph in GUI.
-    $adb shell run-as com.example.sudogame ./simpleperf report -n -g --symfs . >perf.report
-    $python report.py perf.report
+    angler:/data/data/com.example.sudogame $./simpleperf report -g callee --symfs . >report
+    $adb shell run-as com.example.sudogame cat report >report
+    $cat report
+    …
+    28.43%    0.34%  xample.sudogame  10324  10324  /system/lib/liblog.so                                         __android_log_print
+           |
+           -- __android_log_print
+              |
+              |--97.82%-- checkValid(Board const&, int, int)
+              |    |--0.13%-- [hit in function]
+              |    |
+              |    |--94.89%-- canFindSolution_r(Board&, int, int)
+              |    |    |--0.01%-- [hit in function]
+              |    |    |
+    ...
 
-## 8. Report perf.data on host
-We can also use adb to pull perf.data on host. Then use simpleperf on host to
-report it (Simpleperf on host is not provided, but can be built from source
-code). Because we don’t have any symbol information on host, we need to
-collect symbol information in perf.data while recording.
-
-    # Collect symbol information while recording.
-    device#./simpleperf record -t 25636 --dump-symbols --duration 30
-
-    # pull perf.data on host
-    host$adb shell run-as com.example.sudogame cat perf.data >perf.data
-
-    # report perf.data
-    host$simpleperf report
-
-### Show flamegraph
-Simpleperf supports reading perf.data through libsimpleperf_report.so.
-Currently, libsimpleperf_report.so is only provided on linux x86_64 platform,
-but it can be built for other platforms from source code. It has a python
-interface simpleperf_report_lib.py. So we can write python scripts to read
-perf.data. The shared library and scripts are in
-https://android.googlesource.com/platform/system/extras/+/master/simpleperf/scripts/.
-
-One example is report_sample.py. It can be used to output file used to show
-flame graph as below.
-
-    # Convert perf.data into out.perf.
-    host$python report_sample.py >out.perf
-
-    # show out.perf using flamegraph
-    host$stackcollapse-perf.pl out.perf >out.folded
-    host$./flamegraph.pl out.folded >a.svg
-
-
-# Steps to profile java code on rooted devices
+## Profile java code
 Simpleperf only supports profiling native instructions in binaries in ELF
 format. If the java code is executed by interpreter, or with jit cache, it
 can’t be profiled by simpleperf. As Android supports Ahead-of-time compilation,
-it can compile java bytecode into native instructions. We currently need root
-privilege to force Android fully compiling java code into native instructions
-in ELF binaries with debug information (this could be fixed by a
-profileable=”true” in AndroidManifest that causes PackageManager to pass -g to
-dex2oat). We also need root privilege to read compiled native binaries
-(because installd writes them to a directory whose uid/gid is system:install).
-So profiling java code can currently only be done on rooted devices.
+it can compile java bytecode into native instructions with debug information.
+On devices with Android version <= M, we need root privilege to compile java
+bytecode with debug information. However, on devices with Android version >= N,
+we don't need root privilege to do so.
 
-## 1. Fully compile java code into native instructions
 ### On Android N
+#### 1. Fully compile java code into native instructions.
 
-    # Restart adb as root. It needs root privilege to setprop below.
-    $adb root
-    # Set the property to compile with debug information.
-    $adb shell setprop dalvik.vm.dex2oat-flags -g
-
-    # Fully compile the app instead of using interpreter or jit.
+    $adb shell setprop debug.generate-debug-info true
     $adb shell cmd package compile -f -m speed com.example.sudogame
+    // restart the app to take effect
 
-    # Restart the app on device.
+#### 2. Record perf.data
+
+    angler:/data/data/com.example.sudogame $./simpleperf record -p 11826 -g --symfs . --duration 30
+    simpleperf I 01-01 10:31:40 11859 11859 cmd_record.cpp:341] Samples recorded: 50576. Samples lost: 2139.
+
+#### 3. Report perf.data
+
+    angler:/data/data/com.example.sudogame $./simpleperf report -g --symfs . >report
+    angler:/data/data/com.example.sudogame $exit
+    angler:/ $cp /data/data/com.example.sudogame/report /data/local/tmp
+    angler:/ $exit
+    $adb pull /data/local/tmp/report .
+    $cat report
+    ...
+    21.14%    0.00%  xample.sudogame  11826  11826  /data/app/com.example.sudogame-1/oat/arm/base.odex            boolean com.example.sudogame.MainActivity.onOptionsItemSelected(android.view.MenuItem)
+           |
+           -- boolean com.example.sudogame.MainActivity.onOptionsItemSelected(android.view.MenuItem)
+              |
+               --99.99%-- void com.example.sudogame.GameView.startNewGame()
+                   |--0.01%-- [hit in function]
+                   |
+                   |--99.87%-- void com.example.sudogame.GameModel.reInit()
+                   |    |--0.01%-- [hit in function]
+                   |    |
+                   |    |--89.65%-- boolean com.example.sudogame.GameModel.canFindSolution(int[][])
+                   |    |    |
+                   |    |    |--99.95%-- Java_com_example_sudogame_GameModel_canFindSolution
+                   |    |    |    |
+                   |    |    |    |--99.49%-- canFindSolution(Board&)
+                   |    |    |    |    |--0.01%-- [hit in function]
+                   |    |    |    |    |
+                   |    |    |    |    |--99.97%-- canFindSolution_r(Board&, int, int)
+                   |    |    |    |    |           canFindSolution_r(Board&, int, int)
+    ...
 
 ### On Android M
+On M devices, We need root privilege to force Android fully compiling java code
+into native instructions in ELF binaries with debug information. We also need
+root privilege to read compiled native binaries (because installd writes them
+to a directory whose uid/gid is system:install). So profiling java code can
+only be done on rooted devices.
 
-    # Restart adb as root. It needs root privilege to setprop below.
     $adb root
-    # Set the property to compile with debug information.
     $adb shell setprop dalvik.vm.dex2oat-flags -g
 
     # Reinstall the app.
     $adb install -r app-debug.apk
-
-### On Android L
-
-    # Restart adb as root. It needs root privilege to setprop below.
-    $adb root
-    # Set the property to compile with debug information.
-    $adb shell setprop dalvik.vm.dex2oat-flags --include-debug-symbols
-
-    # Reinstall the app.
-    $adb install -r app-debug.apk
-
-## 2. Record perf.data
 
     # Change to the app’s data directory.
     $ adb root && adb shell
     device# cd `run-as com.example.sudogame pwd`
 
     # Record as root as simpleperf needs to read the generated native binary.
-    device#./simpleperf record -t 25636 -g --symfs . -f 1000 --duration 30
+    device#./simpleperf record -p 25636 -g --symfs . -f 1000 --duration 30
     simpleperf I 01-02 07:18:20 27182 27182 cmd_record.cpp:323] Samples recorded: 23552. Samples lost: 39.
 
-    device#ls -lh perf.data
-    -rw-rw-rw- 1 root root 11M 2016-01-02 07:18 perf.data
+### On Android L
+On L devices, we also need root privilege to compile the app with debug info
+and access the native binaries.
 
-## 3. Report perf.data
-    # Report how samples distribute on different binaries.
-    device#./simpleperf report -n --sort dso
-    Cmdline: /data/data/com.example.sudogame/simpleperf record -t 25636 -g --symfs . -f 1000 --duration 30
-    Arch: arm64
-    Event: cpu-cycles (type 0, config 0)
-    Samples: 23552
-    Event count: 40662494587
+    $adb root
+    $adb shell setprop dalvik.vm.dex2oat-flags --include-debug-symbols
 
-    Overhead  Sample  Shared Object
-    85.73%    20042   [kernel.kallsyms]
-    9.41%     2198    /system/lib64/libc.so
-    2.29%     535     /system/lib64/libcutils.so
-    0.95%     222     /data/app/com.example.sudogame-1/lib/arm64/libsudo-game-jni.so
+    # Reinstall the app.
+    $adb install -r app-debug.apk
+
+## Profile using scripts
+Although using command line is flexible, it can be too complex. So we have
+python scripts to help running commands.
+
+### Record using app_profiler.py
+app_profiler.py is used to profile an Android application. It sets up profiling
+environment, downloads simpleperf and native libraries with debug information,
+runs simpleperf to generate perf.data, and pulls perf.data and binaries from
+device to host.
+It is configured by app_profiler.config. Below is an example.
+
+app_profiler.config:
+
+    app_package_name = “com.example.sudogame”
+    android_studio_project_dir = “/AndroidStudioProjects/SudoGame”  # absolute path of the project
     ...
-    0.04%     16      /system/lib64/libandroid_runtime.so
-    0.03%     10      /data/app/com.example.sudogame-1/oat/arm64/base.odex
-    ...
-
-As in the report above, there are samples in
-/data/app/com.example.sudogame-1/oat/arm64/base.odex, which is the native binary
-compiled from java code.
-
-    # Report call graph.
-    device#./simpleperf report -n -g --symfs .
-    Cmdline: /data/data/com.example.sudogame/simpleperf record -t 25636 -g --symfs . -f 1000 --duration 30
-    Arch: arm64
-    Event: cpu-cycles (type 0, config 0)
-    Samples: 23552
-    Event count: 40662494587
-
-    Children  Self    Sample  Command          Pid    Tid    Shared Object                                                   Symbol
-    98.32%    0.00%   1       xample.sudogame  25636  25636  /data/app/com.example.sudogame-1/oat/arm64/base.odex            void com.example.sudogame.GameModel.reInit()
-       |
-       -- void com.example.sudogame.GameModel.reInit()
-          |
-          |--98.98%-- boolean com.example.sudogame.GameModel.canFindSolution(int[][])
-          |           Java_com_example_sudogame_GameModel_canFindSolution
-          |           |
-          |           |--99.93%-- canFindSolution(Board&)
+    record_options = "-e cpu-cycles:u -f 4000 -g --dump-symbols --duration 30"
     ...
 
-As in the report above, reInit() and canFindSolution() are java
-functions.
+run app_profiler.py:
+
+    $python app_profiler.py
+    ...
+    INFO:root:profiling is finished.
+
+It pulls generated perf.data on host, and collects binaries from device in
+binary_cache.
+
+### Report using report.py
+
+    $python report.py -g
+
+It generates a GUI interface to report data.
+
+### Process samples using simpleperf_report_lib.py
+simpleperf_report_lib.py provides an interface reading samples from perf.data.
+An example is report_sample.py.
+
+### Show flamegraph
+
+    $python report_sample.py >out.perf
+    $stackcollapse-perf.pl out.perf >out.folded
+    $./flamegraph.pl out.folded >a.svg
+
+### Annotate source code
+annotate.py reads perf.data and binaries in binary_cache. Then it knows which
+source file:line each sample hits. So it can annotate source code. annotate.py
+is configured by annotate.config. Below is an example.
+
+annotate.config:
+
+    ...
+    source_dirs = [“/AndroidStudio/SudoGame”]  # It is a directory containing source code.
+    ...
+
+run annotate.py:
+
+    $python annotate.py
+
+It generates annotated_files directory.
+annotated_files/summary file contains summary information for each source file.
+An example is as below.
+
+    /AndroidStudioProjects/SudoGame/app/src/main/jni/sudo-game-jni.cpp: accumulated_period: 25.587937%, period: 1.250961%
+      function (checkValid(Board const&, int, int)): line 99, accumulated_period: 23.564356%, period: 0.908457%
+      function (canFindSolution_r(Board&, int, int)): line 135, accumulated_period: 22.260125%, period: 0.142359%
+      function (canFindSolution(Board&)): line 166, accumulated_period: 22.233101%, period: 0.000000%
+      function (Java_com_example_sudogame_GameModel_canFindSolution): line 470, accumulated_period: 21.983184%, period: 0.000000%
+      function (Java_com_example_sudogame_GameModel_initRandomBoard): line 430, accumulated_period: 2.226896%, period: 0.000000%
+
+      line 27: accumulated_period: 0.011729%, period: 0.000000%
+      line 32: accumulated_period: 0.004362%, period: 0.000000%
+      line 33: accumulated_period: 0.004427%, period: 0.000000%
+      line 36: accumulated_period: 0.003303%, period: 0.000000%
+      line 39: accumulated_period: 0.010367%, period: 0.004123%
+      line 41: accumulated_period: 0.162219%, period: 0.000000%
+
+annotated_files/ also contains annotated source files which are found by
+annotate.py. For example, part of checkValid() function in libsudo-game-jni.cpp
+is annotated as below.
+
+    /* [func] acc_p: 23.564356%, p: 0.908457% */static bool checkValid(const Board& board, int curR, int curC) {
+    /* acc_p: 0.037933%, p: 0.037933%         */    int digit = board.digits[curR][curC];
+    /* acc_p: 0.162355%, p: 0.162355%         */    for (int r = 0; r < BOARD_ROWS; ++r) {
+    /* acc_p: 0.020880%, p: 0.020880%         */        if (r == curR) {
+    /* acc_p: 0.034691%, p: 0.034691%         */            continue;
+                                                        }
+    /* acc_p: 0.176490%, p: 0.176490%         */        if (board.digits[r][curC] == digit) {
+    /* acc_p: 14.957673%, p: 0.059022%        */            LOGI("conflict (%d, %d) (%d, %d)", curR, curC, r, curC);
+    /* acc_p: 0.016296%, p: 0.016296%         */            return false;
+                                                        }
+                                                    }
