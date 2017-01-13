@@ -312,6 +312,32 @@ TEST(record_cmd, dump_symbols) {
   }
 }
 
+TEST(record_cmd, dump_kernel_symbols) {
+  if (!IsRoot()) {
+    GTEST_LOG_(INFO) << "Test requires root privilege";
+    return;
+  }
+  system("echo 0 >/proc/sys/kernel/kptr_restrict");
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({"--dump-symbols", "-a", "-o", tmpfile.path, "sleep", "1"}));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader != nullptr);
+  std::map<int, SectionDesc> section_map = reader->FeatureSectionDescriptors();
+  ASSERT_NE(section_map.find(FEAT_FILE), section_map.end());
+  std::string file_path;
+  uint32_t file_type;
+  uint64_t min_vaddr;
+  std::vector<Symbol> symbols;
+  size_t read_pos = 0;
+  bool has_kernel_symbols = false;
+  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr, &symbols)) {
+    if (file_type == DSO_KERNEL && !symbols.empty()) {
+      has_kernel_symbols = true;
+    }
+  }
+  ASSERT_TRUE(has_kernel_symbols);
+}
+
 TEST(record_cmd, group_option) {
   ASSERT_TRUE(RunRecordCmd({"--group", "cpu-cycles,cpu-clock", "-m", "16"}));
   ASSERT_TRUE(RunRecordCmd({"--group", "cpu-cycles,cpu-clock", "--group",
