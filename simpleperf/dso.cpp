@@ -56,6 +56,7 @@ bool Dso::demangle_ = true;
 std::string Dso::symfs_dir_;
 std::string Dso::vmlinux_;
 std::string Dso::kallsyms_;
+bool Dso::read_kernel_symbols_from_proc_;
 std::unordered_map<std::string, BuildId> Dso::build_id_map_;
 size_t Dso::dso_count_;
 uint32_t Dso::g_dump_id_;
@@ -175,6 +176,7 @@ Dso::~Dso() {
     symfs_dir_.clear();
     vmlinux_.clear();
     kallsyms_.clear();
+    read_kernel_symbols_from_proc_ = false;
     build_id_map_.clear();
     g_dump_id_ = 0;
   }
@@ -362,18 +364,20 @@ bool Dso::LoadKernel() {
       symbols_.clear();
       return false;
     }
-  } else if (!build_id.IsEmpty()) {
-    // Try /proc/kallsyms only when build_id matches. Otherwise, it is likely to use
-    // /proc/kallsyms on host for perf.data recorded on device.
-    BuildId real_build_id;
-    if (!GetKernelBuildId(&real_build_id)) {
-      return false;
-    }
-    bool match = (build_id == real_build_id);
-    if (!match) {
-      LOG(WARNING) << "failed to read symbols from /proc/kallsyms: Build id "
-                   << "mismatch";
-      return false;
+  } else if (read_kernel_symbols_from_proc_ || !build_id.IsEmpty()) {
+    // Try /proc/kallsyms only when asked to do so, or when build id matches.
+    // Otherwise, it is likely to use /proc/kallsyms on host for perf.data recorded on device.
+    if (!build_id.IsEmpty()) {
+      BuildId real_build_id;
+      if (!GetKernelBuildId(&real_build_id)) {
+        return false;
+      }
+      bool match = (build_id == real_build_id);
+      if (!match) {
+        LOG(WARNING) << "failed to read symbols from /proc/kallsyms: Build id "
+                     << "mismatch";
+        return false;
+      }
     }
 
     std::string kallsyms;
