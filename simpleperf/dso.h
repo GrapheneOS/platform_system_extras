@@ -90,6 +90,9 @@ class Dso {
       kallsyms_ = std::move(kallsyms);
     }
   }
+  static void ReadKernelSymbolsFromProc() {
+    read_kernel_symbols_from_proc_ = true;
+  }
   static void SetBuildIds(
       const std::vector<std::pair<std::string, BuildId>>& build_ids);
   static BuildId FindExpectedBuildIdForPath(const std::string& path);
@@ -141,6 +144,7 @@ class Dso {
   static std::string symfs_dir_;
   static std::string vmlinux_;
   static std::string kallsyms_;
+  static bool read_kernel_symbols_from_proc_;
   static std::unordered_map<std::string, BuildId> build_id_map_;
   static size_t dso_count_;
   static uint32_t g_dump_id_;
