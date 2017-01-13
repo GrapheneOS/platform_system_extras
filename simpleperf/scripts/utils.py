@@ -49,6 +49,8 @@ def log_fatal(msg):
 
 
 def get_target_binary_path(arch, binary_name):
+    if arch == 'aarch64':
+        arch = 'arm64'
     arch_dir = os.path.join(get_script_dir(), "bin", "android", arch)
     if not os.path.isdir(arch_dir):
         log_fatal("can't find arch directory: %s" % arch_dir)
