@@ -52,7 +52,8 @@ int e4crypt_create_device_key(const char* dir,
     }
 
     const char* argv[] = { "/system/bin/vdc", "--wait", "cryptfs", "enablefilecrypto" };
-    int rc = android_fork_execvp(4, (char**) argv, NULL, false, true);
+    int rc = android_fork_execvp_ext(arraysize(argv), (char**) argv, NULL, false,
+                                     LOG_KLOG, false, NULL, NULL, 0);
     LOG(INFO) << "enablefilecrypto result: " << rc;
     return rc;
 }
@@ -75,7 +76,8 @@ int e4crypt_install_keyring()
 int e4crypt_do_init_user0()
 {
     const char* argv[] = { "/system/bin/vdc", "--wait", "cryptfs", "init_user0" };
-    int rc = android_fork_execvp(4, (char**) argv, NULL, false, true);
+    int rc = android_fork_execvp_ext(arraysize(argv), (char**) argv, NULL, false,
+                                     LOG_KLOG, false, NULL, NULL, 0);
     LOG(INFO) << "init_user0 result: " << rc;
     return rc;
 }
