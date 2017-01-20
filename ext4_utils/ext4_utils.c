@@ -352,10 +352,14 @@ void ext4_fill_in_sb(int real_uuid)
 	sb->s_want_extra_isize = sizeof(struct ext4_inode) -
 		EXT4_GOOD_OLD_INODE_SIZE;
 	sb->s_flags = 2;
-	sb->s_raid_stride = 0;
+	sb->s_raid_stride = info.flash_logical_block_size / info.block_size;
+	// stride should be the max of 8kb and logical block size
+	if (info.flash_logical_block_size != 0 && info.flash_logical_block_size < 8192) {
+		sb->s_raid_stride = 8192 / info.block_size;
+	}
 	sb->s_mmp_interval = 0;
 	sb->s_mmp_block = 0;
-	sb->s_raid_stripe_width = 0;
+	sb->s_raid_stripe_width = info.flash_erase_block_size / info.block_size;
 	sb->s_log_groups_per_flex = 0;
 	sb->s_kbytes_written = 0;
 
