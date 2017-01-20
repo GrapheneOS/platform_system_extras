@@ -184,7 +184,7 @@ int main(int argc, char *argv[])
         return EX_USAGE;
     }
 
-    module = IBootControl::getService("bootctrl");
+    module = IBootControl::getService();
     if (module == NULL) {
         fprintf(stderr, "Error getting bootctrl module.\n");
         return EX_SOFTWARE;
