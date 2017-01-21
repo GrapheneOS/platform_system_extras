@@ -33,6 +33,8 @@ struct fs_info {
 			 * end of the partition, else use the size given. */
 	uint32_t block_size;
 	uint32_t blocks_per_group;
+	uint32_t flash_erase_block_size;
+	uint32_t flash_logical_block_size;
 	uint32_t inodes_per_group;
 	uint32_t inode_size;
 	uint32_t inodes;
