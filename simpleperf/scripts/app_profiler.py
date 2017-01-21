@@ -151,8 +151,7 @@ class AppProfiler(object):
             return
         pid = self._find_app_process()
         if pid is not None:
-            self.adb.run(['shell', 'run-as', self.config['app_package_name'],
-                          'kill', '-9', str(pid)])
+            self.run_in_app_dir(['kill', '-9', str(pid)])
             time.sleep(1)
         activity = self.config['app_package_name'] + '/' + self.config['main_activity']
         result = self.adb.run(['shell', 'am', 'start', '-n', activity])
@@ -168,8 +167,7 @@ class AppProfiler(object):
 
 
     def _find_app_process(self):
-        result, output = self.adb.run_and_return_output(
-                ['shell', 'run-as', self.config['app_package_name'], 'ps'])
+        result, output = self.adb.run_and_return_output(['shell', 'ps'])
         if not result:
             return None
         output = output.split('\n')
@@ -185,9 +183,7 @@ class AppProfiler(object):
         if self.app_pid is None:
             log_fatal("can't find process for app [%s]" % self.config['app_package_name'])
         if self.device_arch in ['aarch64', 'x86_64']:
-            output = self.adb.check_run_and_return_output(
-                ['shell', 'run-as', self.config['app_package_name'],
-                'cat', '/proc/%d/maps' % self.app_pid])
+            output = self.run_in_app_dir(['cat', '/proc/%d/maps' % self.app_pid])
             if output.find('linker64') != -1:
                 self.app_arch = self.device_arch
             else:
@@ -200,10 +196,8 @@ class AppProfiler(object):
     def _download_simpleperf(self):
         simpleperf_binary = get_target_binary_path(self.app_arch, 'simpleperf')
         self.adb.check_run(['push', simpleperf_binary, '/data/local/tmp'])
-        self.adb.check_run(['shell', 'run-as', self.config['app_package_name'],
-                            'cp', '/data/local/tmp/simpleperf', '.'])
-        self.adb.check_run(['shell', 'run-as', self.config['app_package_name'],
-                            'chmod', 'a+x', 'simpleperf'])
+        self.run_in_app_dir(['cp', '/data/local/tmp/simpleperf', '.'])
+        self.run_in_app_dir(['chmod', 'a+x', 'simpleperf'])
 
 
     def _download_native_libs(self):
@@ -222,8 +216,7 @@ class AppProfiler(object):
                     filename_dict[file] = path
                 else:
                     log_info('%s is worse than %s' % (path, old_path))
-        maps = self.adb.check_run_and_return_output(['shell', 'run-as',
-                  self.config['app_package_name'], 'cat', '/proc/%d/maps' % self.app_pid])
+        maps = self.run_in_app_dir(['cat', '/proc/%d/maps' % self.app_pid])
         searched_lib = dict()
         for item in maps.split():
             if item.endswith('.so') and searched_lib.get(item) is None:
@@ -235,10 +228,8 @@ class AppProfiler(object):
                 if path is None:
                     continue
                 self.adb.check_run(['push', path, '/data/local/tmp'])
-                self.adb.check_run(['shell', 'run-as', self.config['app_package_name'],
-                                    'mkdir', '-p', dirname])
-                self.adb.check_run(['shell', 'run-as', self.config['app_package_name'],
-                                    'cp', '/data/local/tmp/' + filename, dirname])
+                self.run_in_app_dir(['mkdir', '-p', dirname])
+                self.run_in_app_dir(['cp', '/data/local/tmp/' + filename, dirname])
 
 
     def _is_lib_better(self, new_path, old_path):
@@ -263,14 +254,13 @@ class AppProfiler(object):
 
 
     def start_and_wait_profiling(self):
-        self.adb.check_run(['shell', 'run-as', self.config['app_package_name'],
+        self.run_in_app_dir([
             './simpleperf', 'record', self.config['record_options'], '-p',
             str(self.app_pid), '--symfs', '.'])
 
 
     def collect_profiling_data(self):
-        self.adb.check_run(['shell', 'run-as', self.config['app_package_name'],
-                            'chmod', 'a+rw', 'perf.data'])
+        self.run_in_app_dir(['chmod', 'a+rw', 'perf.data'])
         self.adb.check_run(['shell', 'cp',
             '/data/data/%s/perf.data' % self.config['app_package_name'], '/data/local/tmp'])
         self.adb.check_run(['pull', '/data/local/tmp/perf.data', self.config['perf_data_path']])
@@ -280,6 +270,15 @@ class AppProfiler(object):
             config['symfs_dirs'].append(self.config['native_lib_dir'])
         binary_cache_builder = BinaryCacheBuilder(config)
         binary_cache_builder.build_binary_cache()
+
+
+    def run_in_app_dir(self, args):
+        if self.is_root_device:
+            cmd = 'cd /data/data/' + self.config['app_package_name'] + ' && ' + (' '.join(args))
+            return self.adb.check_run_and_return_output(['shell', cmd])
+        else:
+            return self.adb.check_run_and_return_output(
+                ['shell', 'run-as', self.config['app_package_name']] + args)
 
 
 if __name__ == '__main__':
