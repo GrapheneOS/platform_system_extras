@@ -54,6 +54,7 @@ static void usage(char *path)
 {
 	fprintf(stderr, "%s [ -l <len> ] [ -j <journal size> ] [ -b <block_size> ]\n", basename(path));
 	fprintf(stderr, "    [ -g <blocks per group> ] [ -i <inodes> ] [ -I <inode size> ]\n");
+	fprintf(stderr, "    [ -e <flash erase block size> ] [ -o <flash logical block size> ]\n");
 	fprintf(stderr, "    [ -L <label> ] [ -f ] [ -a <android mountpoint> ] [ -u ]\n");
 	fprintf(stderr, "    [ -S file_contexts ] [ -C fs_config ] [ -T timestamp ]\n");
 	fprintf(stderr, "    [ -z | -s ] [ -w ] [ -c ] [ -J ] [ -v ] [ -B <block_list_file> ]\n");
@@ -87,7 +88,7 @@ int main(int argc, char **argv)
 	struct selinux_opt seopts[] = { { SELABEL_OPT_PATH, "" } };
 #endif
 
-	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:S:T:C:B:d:D:fwzJsctvu")) != -1) {
+	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:e:o:L:a:S:T:C:B:d:D:fwzJsctvu")) != -1) {
 		switch (opt) {
 		case 'l':
 			info.len = parse_num(optarg);
@@ -106,6 +107,12 @@ int main(int argc, char **argv)
 			break;
 		case 'I':
 			info.inode_size = parse_num(optarg);
+			break;
+		case 'e':
+			info.flash_erase_block_size = parse_num(optarg);
+			break;
+		case 'o':
+			info.flash_logical_block_size = parse_num(optarg);
 			break;
 		case 'L':
 			info.label = optarg;
