@@ -20,6 +20,8 @@ LOCAL_MODULE_HOST_OS := linux
 LOCAL_SRC_FILES := ioshark_bench.c ioshark_bench_subr.c ioshark_bench_mmap.c
 LOCAL_CFLAGS := -g -O2 -Wall  -Werror
 LOCAL_MODULE := ioshark_bench
+LOCAL_MODULE_TAGS := debug
+LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
@@ -28,6 +30,7 @@ LOCAL_MODULE_HOST_OS := linux
 LOCAL_SRC_FILES := compile_ioshark.c compile_ioshark_subr.c
 LOCAL_CFLAGS := -g -O2 -Wall -Werror -D_GNU_SOURCE
 LOCAL_MODULE := compile_ioshark
+LOCAL_MODULE_TAGS := debug
 include $(BUILD_HOST_EXECUTABLE)
 
 
