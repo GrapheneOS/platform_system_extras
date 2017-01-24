@@ -45,7 +45,7 @@ class AppProfiler(object):
     def __init__(self, config):
         # check config variables
         config_names = ['app_package_name', 'native_lib_dir', 'apk_file_path',
-                        'recompile_app', 'restart_app', 'main_activity',
+                        'recompile_app', 'launch_activity', 'launch_inst_test',
                         'record_options', 'perf_data_path', 'adb_path', 'readelf_path',
                         'binary_cache_dir']
         for name in config_names:
@@ -147,20 +147,30 @@ class AppProfiler(object):
 
 
     def _restart_app(self):
-        if not self.config['restart_app']:
+        if not self.config['launch_activity'] and not self.config['launch_inst_test']:
             return
+
         pid = self._find_app_process()
         if pid is not None:
             self.run_in_app_dir(['kill', '-9', str(pid)])
             time.sleep(1)
-        activity = self.config['app_package_name'] + '/' + self.config['main_activity']
-        result = self.adb.run(['shell', 'am', 'start', '-n', activity])
-        if not result:
-            log_fatal("Can't start activity %s" % activity)
+
+        if self.config['launch_activity']:
+            activity = self.config['app_package_name'] + '/' + self.config['launch_activity']
+            result = self.adb.run(['shell', 'am', 'start', '-n', activity])
+            if not result:
+                log_fatal("Can't start activity %s" % activity)
+        else:
+            runner = self.config['app_package_name'] + '/android.support.test.runner.AndroidJUnitRunner'
+            result = self.adb.run(['shell', 'am', 'instrument', '-e', 'class',
+                                   self.config['launch_inst_test'], runner])
+            if not result:
+                log_fatal("Can't start instrumentation test  %s" % self.config['launch_inst_test'])
+
         for i in range(10):
             pid = self._find_app_process()
             if pid is not None:
-                return pid
+                return
             time.sleep(1)
             log_info('Wait for the app process for %d seconds' % (i + 1))
         log_fatal("Can't find the app process")
