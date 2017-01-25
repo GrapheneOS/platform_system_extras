@@ -21,7 +21,7 @@ LOCAL_CFLAGS := -Wno-unused-parameter
 LOCAL_STATIC_LIBRARIES := \
     libselinux \
     libsparse \
-    libext2_uuid-host \
+    libext2_uuid \
     libz
 LOCAL_MODULE := libf2fs_ioutils_host
 include $(BUILD_HOST_STATIC_LIBRARY)
