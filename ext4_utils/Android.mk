@@ -2,39 +2,9 @@
 
 LOCAL_PATH:= $(call my-dir)
 
-libext4_utils_src_files := \
-    make_ext4fs.c \
-    ext4fixup.c \
-    ext4_utils.c \
-    allocate.c \
-    contents.c \
-    extent.c \
-    indirect.c \
-    sha1.c \
-    wipe.c \
-    crc16.c \
-    ext4_sb.c
-
 #
 # -- All host/targets including windows
 #
-
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := $(libext4_utils_src_files)
-LOCAL_MODULE := libext4_utils
-# Various instances of dereferencing a type-punned pointer in extent.c
-LOCAL_CFLAGS += -fno-strict-aliasing
-LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/include
-LOCAL_EXPORT_C_INCLUDE_DIRS := \
-    $(LOCAL_PATH)/include
-LOCAL_STATIC_LIBRARIES := \
-    libsparse
-LOCAL_STATIC_LIBRARIES_darwin += libselinux
-LOCAL_STATIC_LIBRARIES_linux += libselinux
-LOCAL_MODULE_HOST_OS := darwin linux windows
-include $(BUILD_HOST_STATIC_LIBRARY)
-
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := make_ext4fs_main.c
@@ -66,50 +36,7 @@ include $(BUILD_HOST_EXECUTABLE)
 # -- All host/targets excluding windows
 #
 
-libext4_utils_src_files += \
-    key_control.cpp \
-    ext4_crypt.cpp
-
 ifneq ($(HOST_OS),windows)
-
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := $(libext4_utils_src_files)
-LOCAL_MODULE := libext4_utils
-LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/include \
-    system/core/logwrapper/include
-# Various instances of dereferencing a type-punned pointer in extent.c
-LOCAL_CFLAGS += -fno-strict-aliasing
-LOCAL_CFLAGS += -DREAL_UUID
-LOCAL_EXPORT_C_INCLUDE_DIRS := \
-    $(LOCAL_PATH)/include
-LOCAL_SHARED_LIBRARIES := \
-    libbase \
-    libcutils \
-    libext2_uuid \
-    libselinux \
-    libsparse
-include $(BUILD_SHARED_LIBRARY)
-
-
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := \
-    $(libext4_utils_src_files) \
-    ext4_crypt_init_extensions.cpp
-LOCAL_MODULE := libext4_utils
-LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/include
-# Various instances of dereferencing a type-punned pointer in extent.c
-LOCAL_CFLAGS += -fno-strict-aliasing
-LOCAL_EXPORT_C_INCLUDE_DIRS := \
-    $(LOCAL_PATH)/include
-LOCAL_STATIC_LIBRARIES := \
-    liblogwrap \
-    libsparse \
-    libselinux \
-    libbase
-include $(BUILD_STATIC_LIBRARY)
-
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := make_ext4fs_main.c
