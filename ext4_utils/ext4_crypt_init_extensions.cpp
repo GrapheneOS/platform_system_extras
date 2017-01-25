@@ -28,7 +28,6 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
-#include <cutils/klog.h>
 #include <cutils/properties.h>
 #include <cutils/sockets.h>
 #include <logwrap/logwrap.h>
@@ -123,7 +122,7 @@ int e4crypt_set_directory_policy(const char* dir)
         LOG(ERROR) << "Cannot read mode";
     }
 
-    KLOG_INFO(TAG, "Setting policy on %s\n", dir);
+    LOG(INFO) << "Setting policy on " << dir;
     int result = e4crypt_policy_ensure(dir, policy.c_str(), policy.length(),
                                        contents_encryption_mode.c_str());
     if (result) {
