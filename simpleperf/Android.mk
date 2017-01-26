@@ -282,12 +282,7 @@ LOCAL_SRC_FILES := \
   $(simpleperf_unit_test_src_files_linux) \
 
 LOCAL_STATIC_LIBRARIES += libsimpleperf $(simpleperf_static_libraries_target)
-LOCAL_POST_LINK_CMD = \
-  TMP_FILE=`mktemp $(OUT_DIR)/simpleperf-post-link-XXXXXXXXXX` && \
-  (cd $(LOCAL_PATH)/testdata && zip - -0 -r .) > $$TMP_FILE && \
-  $($(LOCAL_2ND_ARCH_VAR_PREFIX)TARGET_OBJCOPY) --add-section .testzipdata=$$TMP_FILE $(linked_module) && \
-  rm -f $$TMP_FILE
-
+LOCAL_TEST_DATA := $(call find-test-data-in-subdirs,$(LOCAL_PATH),*,testdata)
 LOCAL_MULTILIB := both
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 include $(LLVM_DEVICE_BUILD_MK)

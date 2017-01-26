@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+#include <libgen.h>
+
 #include <memory>
 
 #include <android-base/file.h>
@@ -159,11 +161,14 @@ int main(int argc, char** argv) {
 #if defined(__ANDROID__)
   std::unique_ptr<TemporaryDir> tmp_dir;
   if (!::testing::GTEST_FLAG(list_tests) && testdata_dir.empty()) {
-    tmp_dir.reset(new TemporaryDir);
-    testdata_dir = std::string(tmp_dir->path) + "/";
-    if (!ExtractTestDataFromElfSection()) {
-      LOG(ERROR) << "failed to extract test data from elf section";
-      return 1;
+    testdata_dir = std::string(dirname(argv[0])) + "/testdata";
+    if (!IsDir(testdata_dir)) {
+      tmp_dir.reset(new TemporaryDir);
+      testdata_dir = std::string(tmp_dir->path) + "/";
+      if (!ExtractTestDataFromElfSection()) {
+        LOG(ERROR) << "failed to extract test data from elf section";
+        return 1;
+      }
     }
   }
 
