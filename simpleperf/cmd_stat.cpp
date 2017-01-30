@@ -383,9 +383,7 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
     fp = fp_holder.get();
   }
 
-  // 4. Create IOEventLoop and add signal/periodic Events.
-  IOEventLoop loop;
-  event_selection_set_.SetIOEventLoop(loop);
+  // 4. Add signal/periodic Events.
   std::chrono::time_point<std::chrono::steady_clock> start_time;
   std::vector<CountersInfo> counters;
   if (system_wide_collection_ || (!cpus_.empty() && cpus_[0] != -1)) {
@@ -396,13 +394,14 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   if (need_to_check_targets && !event_selection_set_.StopWhenNoMoreTargets()) {
     return false;
   }
-  if (!loop.AddSignalEvents({SIGCHLD, SIGINT, SIGTERM, SIGHUP},
-                            [&]() { return loop.ExitLoop(); })) {
+  IOEventLoop* loop = event_selection_set_.GetIOEventLoop();
+  if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM, SIGHUP},
+                             [&]() { return loop->ExitLoop(); })) {
     return false;
   }
   if (duration_in_sec_ != 0) {
-    if (!loop.AddPeriodicEvent(SecondToTimeval(duration_in_sec_),
-                               [&]() { return loop.ExitLoop(); })) {
+    if (!loop->AddPeriodicEvent(SecondToTimeval(duration_in_sec_),
+                                [&]() { return loop->ExitLoop(); })) {
       return false;
     }
   }
@@ -422,8 +421,8 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   };
 
   if (interval_in_ms_ != 0) {
-    if (!loop.AddPeriodicEvent(SecondToTimeval(interval_in_ms_ / 1000.0),
-                               print_counters)) {
+    if (!loop->AddPeriodicEvent(SecondToTimeval(interval_in_ms_ / 1000.0),
+                                print_counters)) {
       return false;
     }
   }
@@ -433,7 +432,7 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   if (workload != nullptr && !workload->Start()) {
     return false;
   }
-  if (!loop.RunLoop()) {
+  if (!loop->RunLoop()) {
     return false;
   }
 
@@ -548,7 +547,7 @@ bool StatCommand::AddDefaultMeasuredEventTypes() {
     // supported by the kernel.
     const EventType* type = FindEventTypeByName(name);
     if (type != nullptr &&
-        IsEventAttrSupportedByKernel(CreateDefaultPerfEventAttr(*type))) {
+        IsEventAttrSupported(CreateDefaultPerfEventAttr(*type))) {
       if (!event_selection_set_.AddEventType(name)) {
         return false;
       }

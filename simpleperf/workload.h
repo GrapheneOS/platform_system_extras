@@ -40,6 +40,9 @@ class Workload {
   ~Workload();
 
   bool Start();
+  bool IsStarted() {
+    return work_state_ == Started;
+  }
   pid_t GetPid() {
     return work_pid_;
   }
