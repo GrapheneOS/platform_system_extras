@@ -202,7 +202,7 @@ class PerfProfdRunner {
   {
     std::string semaphore(test_dir);
     semaphore += "/" SEMAPHORE_FILENAME;
-    close(open(semaphore.c_str(), O_WRONLY|O_CREAT));
+    close(open(semaphore.c_str(), O_WRONLY|O_CREAT, 0600));
   }
 
   void write_processed_file(int start_seq, int end_seq)
