@@ -45,19 +45,13 @@ getstats () {
     app=$2
     echo "Data for $app :"
 
-    # Chrome related Hack alert :
-    # For Chrome launches, "TotalTime" is the right metric to measure. That is closer
-    # to what the user seems Chrome launch time as. So special case Chrome here.
-
-    if [ $app == Chrome ]; then
-	launch_time_string="TotalTime"
-    else
-	launch_time_string="ThisTime"
-    fi
+    # Activity Manager reports ThisTime and TotalTime. TotalTime seems to be
+    # a more measure of the launch from the users perspective. So using TotalTime
+    # as our metric for launch latency
 
     # From Activity Manager
-    echo "Launch Time :"
-    fgrep $launch_time_string $infile | awk '{print $2}' | computestats
+    echo "Launch Time (TotalTime) :"
+    fgrep TotalTime $infile | awk '{print $2}' | computestats
 
     # Data from simpleperf
     echo "cpu-cycles :"
@@ -360,8 +354,8 @@ launch_phone_apps() {
     getstats camera-$model Camera
     launch_app com.google.android.apps.maps com.google.android.maps.MapsActivity > maps-$model
     getstats maps-$model Maps
-#   launch_app com.google.android.youtube com.google.android.apps.youtube.app.WatchWhileActivity > youtube-$model
-#   getstats youtube-$model YouTube
+    launch_app com.google.android.youtube com.google.android.apps.youtube.app.WatchWhileActivity > youtube-$model
+    getstats youtube-$model YouTube
 }
 
 usage() {
