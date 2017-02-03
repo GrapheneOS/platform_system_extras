@@ -42,6 +42,9 @@ MOUNT_POINT=$4
 SIZE=$5
 shift; shift; shift; shift; shift
 
+# selinux requires ext_attr.
+MKE2FS_OPTS+="-O ext_attr "
+
 if [ "$1" = "-j" ]; then
   if [ "$2" = "0" ]; then
     MKE2FS_OPTS+="-O ^has_journal"
