@@ -28,6 +28,8 @@
 #include "event_attr.h"
 #include "event_fd.h"
 #include "event_type.h"
+#include "InplaceSamplerClient.h"
+#include "IOEventLoop.h"
 #include "perf_event.h"
 #include "record.h"
 
@@ -47,8 +49,6 @@ struct CountersInfo {
   std::vector<CounterInfo> counters;
 };
 
-class IOEventLoop;
-
 // EventSelectionSet helps to monitor events. It is used in following steps:
 // 1. Create an EventSelectionSet, and add event types to monitor by calling
 //    AddEventType() or AddEventGroup().
@@ -67,13 +67,14 @@ class IOEventLoop;
 class EventSelectionSet {
  public:
   EventSelectionSet(bool for_stat_cmd)
-      : for_stat_cmd_(for_stat_cmd), mmap_pages_(0), loop_(nullptr) {}
+      : for_stat_cmd_(for_stat_cmd), mmap_pages_(0), loop_(new IOEventLoop) {}
 
   bool empty() const { return groups_.empty(); }
 
   bool AddEventType(const std::string& event_name);
   bool AddEventGroup(const std::vector<std::string>& event_names);
   std::vector<const EventType*> GetTracepointEvents() const;
+  bool HasInplaceSampler() const;
   std::vector<EventAttrWithId> GetEventAttrWithId() const;
 
   void SetEnableOnExec(bool enable);
@@ -104,8 +105,8 @@ class EventSelectionSet {
     return !processes_.empty() || !threads_.empty();
   }
 
-  void SetIOEventLoop(IOEventLoop& loop) {
-    loop_ = &loop;
+  IOEventLoop* GetIOEventLoop() {
+    return loop_.get();
   }
 
   bool OpenEventFiles(const std::vector<int>& on_cpus);
@@ -128,6 +129,7 @@ class EventSelectionSet {
     EventTypeAndModifier event_type_modifier;
     perf_event_attr event_attr;
     std::vector<std::unique_ptr<EventFd>> event_fds;
+    std::vector<std::unique_ptr<InplaceSamplerClient>> inplace_samplers;
     // counters for event files closed for cpu hotplug events
     std::vector<CounterInfo> hotplugged_counters;
   };
@@ -136,6 +138,9 @@ class EventSelectionSet {
   bool BuildAndCheckEventSelection(const std::string& event_name,
                                    EventSelection* selection);
   void UnionSampleType();
+  bool IsUserSpaceSamplerGroup(EventSelectionGroup& group);
+  bool OpenUserSpaceSamplersOnGroup(EventSelectionGroup& group,
+                                    const std::map<pid_t, std::set<pid_t>>& process_map);
   bool OpenEventFilesOnGroup(EventSelectionGroup& group, pid_t tid, int cpu,
                              std::string* failed_event_type);
 
@@ -147,6 +152,7 @@ class EventSelectionSet {
   bool HandleCpuOfflineEvent(int cpu);
   bool CreateMappedBufferForCpu(int cpu);
   bool CheckMonitoredTargets();
+  bool HasSampler();
 
   const bool for_stat_cmd_;
 
@@ -155,7 +161,7 @@ class EventSelectionSet {
   std::set<pid_t> threads_;
   size_t mmap_pages_;
 
-  IOEventLoop* loop_;
+  std::unique_ptr<IOEventLoop> loop_;
   std::function<bool(Record*)> record_callback_;
 
   std::set<int> monitored_cpus_;
