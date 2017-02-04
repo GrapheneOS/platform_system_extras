@@ -464,7 +464,8 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, uint64_t id,
   sample_type = attr.sample_type;
   CHECK_EQ(0u, sample_type & ~(PERF_SAMPLE_IP | PERF_SAMPLE_TID
       | PERF_SAMPLE_TIME | PERF_SAMPLE_ID | PERF_SAMPLE_CPU
-      | PERF_SAMPLE_PERIOD | PERF_SAMPLE_CALLCHAIN));
+      | PERF_SAMPLE_PERIOD | PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER
+      | PERF_SAMPLE_STACK_USER));
   ip_data.ip = ip;
   tid_data.pid = pid;
   tid_data.tid = tid;
@@ -502,6 +503,13 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, uint64_t id,
   if (sample_type & PERF_SAMPLE_CALLCHAIN) {
     size += sizeof(uint64_t) * (ips.size() + 1);
   }
+  if (sample_type & PERF_SAMPLE_REGS_USER) {
+    size += sizeof(uint64_t);
+  }
+  if (sample_type & PERF_SAMPLE_STACK_USER) {
+    size += sizeof(uint64_t);
+  }
+
   SetSize(size);
   char* new_binary = new char[size];
   char* p = new_binary;
@@ -528,6 +536,12 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, uint64_t id,
     MoveToBinaryFormat(callchain_data.ip_nr, p);
     callchain_data.ips = reinterpret_cast<uint64_t*>(p);
     MoveToBinaryFormat(ips.data(), ips.size(), p);
+  }
+  if (sample_type & PERF_SAMPLE_REGS_USER) {
+    MoveToBinaryFormat(regs_user_data.abi, p);
+  }
+  if (sample_type & PERF_SAMPLE_STACK_USER) {
+    MoveToBinaryFormat(stack_user_data.size, p);
   }
   CHECK_EQ(p, new_binary + size);
   UpdateBinary(new_binary);

@@ -40,6 +40,7 @@ struct IOEvent {
 IOEventLoop::IOEventLoop() : ebase_(nullptr), has_error_(false) {}
 
 IOEventLoop::~IOEventLoop() {
+  events_.clear();
   if (ebase_ != nullptr) {
     event_base_free(ebase_);
   }
