@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 constexpr int LOOP_COUNT = 100000000;
@@ -19,12 +20,15 @@ void ChildFunction() {
 }
 
 int main() {
-  pid_t pid = fork();
-  if (pid == 0) {
-    ChildFunction();
-    return 0;
-  } else {
-    ParentFunction();
+  while (true) {
+    pid_t pid = fork();
+    if (pid == 0) {
+      ChildFunction();
+      return 0;
+    } else {
+      ParentFunction();
+      waitpid(pid, nullptr, 0);
+    }
   }
   return 0;
 }

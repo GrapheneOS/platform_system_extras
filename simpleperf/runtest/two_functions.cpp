@@ -18,7 +18,9 @@ void Function2() {
 }
 
 int main() {
-  Function1();
-  Function2();
+  while (true) {
+    Function1();
+    Function2();
+  }
   return 0;
 }
