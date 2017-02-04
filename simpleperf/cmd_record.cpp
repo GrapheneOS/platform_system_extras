@@ -259,6 +259,13 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     if (workload != nullptr) {
       event_selection_set_.AddMonitoredProcesses({workload->GetPid()});
       event_selection_set_.SetEnableOnExec(true);
+      if (event_selection_set_.HasInplaceSampler()) {
+        // Start worker early, because the worker process has to setup inplace-sampler server
+        // before we try to connect it.
+        if (!workload->Start()) {
+          return false;
+        }
+      }
     } else {
       LOG(ERROR)
           << "No threads to monitor. Try `simpleperf help record` for help";
@@ -282,9 +289,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     return false;
   }
 
-  // 5. Create IOEventLoop and add read/signal/periodic Events.
-  IOEventLoop loop;
-  event_selection_set_.SetIOEventLoop(loop);
+  // 5. Add read/signal/periodic Events.
   auto callback =
       std::bind(&RecordCommand::ProcessRecord, this, std::placeholders::_1);
   if (!event_selection_set_.PrepareToReadMmapEventData(callback)) {
@@ -296,13 +301,14 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   if (need_to_check_targets && !event_selection_set_.StopWhenNoMoreTargets()) {
     return false;
   }
-  if (!loop.AddSignalEvents({SIGCHLD, SIGINT, SIGTERM, SIGHUP},
-                            [&]() { return loop.ExitLoop(); })) {
+  IOEventLoop* loop = event_selection_set_.GetIOEventLoop();
+  if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM, SIGHUP},
+                             [&]() { return loop->ExitLoop(); })) {
     return false;
   }
   if (duration_in_sec_ != 0) {
-    if (!loop.AddPeriodicEvent(SecondToTimeval(duration_in_sec_),
-                               [&]() { return loop.ExitLoop(); })) {
+    if (!loop->AddPeriodicEvent(SecondToTimeval(duration_in_sec_),
+                                [&]() { return loop->ExitLoop(); })) {
       return false;
     }
   }
@@ -312,10 +318,10 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   start_sampling_time_in_ns_ = GetPerfClock();
   LOG(VERBOSE) << "start_sampling_time is " << start_sampling_time_in_ns_
                << " ns";
-  if (workload != nullptr && !workload->Start()) {
+  if (workload != nullptr && !workload->IsStarted() && !workload->Start()) {
     return false;
   }
-  if (!loop.RunLoop()) {
+  if (!loop->RunLoop()) {
     return false;
   }
   if (!event_selection_set_.FinishReadMmapEventData()) {

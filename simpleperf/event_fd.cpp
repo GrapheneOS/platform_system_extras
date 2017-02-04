@@ -260,7 +260,12 @@ bool EventFd::StartPolling(IOEventLoop& loop,
 
 bool EventFd::StopPolling() { return IOEventLoop::DelEvent(ioevent_ref_); }
 
-bool IsEventAttrSupportedByKernel(perf_event_attr attr) {
-  auto event_fd = EventFd::OpenEventFile(attr, getpid(), -1, nullptr, false);
+bool IsEventAttrSupported(const perf_event_attr& attr) {
+  if (attr.type == SIMPLEPERF_TYPE_USER_SPACE_SAMPLERS &&
+      attr.config == SIMPLEPERF_CONFIG_INPLACE_SAMPLER) {
+    // User space samplers don't need kernel support.
+    return true;
+  }
+  std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, getpid(), -1, nullptr, false);
   return event_fd != nullptr;
 }
