@@ -277,22 +277,29 @@ def load_symbol_relation_requirement(symbol_item):
 
 class Runner(object):
 
-  def __init__(self, perf_path):
+  def __init__(self, target, perf_path):
+    self.target = target
     self.perf_path = perf_path
+    self.use_callgraph = False
+    self.sampler = 'cpu-cycles'
 
   def record(self, test_executable_name, record_file, additional_options=[]):
-    call_args = [self.perf_path,
-                 'record'] + additional_options + ['-e',
-                                                   'cpu-cycles:u',
-                                                   '-o',
-                                                   record_file,
-                                                   test_executable_name]
+    call_args = [self.perf_path, 'record']
+    call_args += ['--duration', '1']
+    call_args += ['-e', '%s:u' % self.sampler]
+    if self.use_callgraph:
+      call_args += ['-f', '1000', '-g']
+    call_args += ['-o', record_file]
+    call_args += additional_options
+    call_args += [test_executable_name]
     self._call(call_args)
 
   def report(self, record_file, report_file, additional_options=[]):
-    call_args = [self.perf_path,
-                 'report'] + additional_options + ['-i',
-                                                   record_file]
+    call_args = [self.perf_path, 'report']
+    call_args += ['-i', record_file]
+    if self.use_callgraph:
+      call_args += ['-g', 'callee']
+    call_args += additional_options
     self._call(call_args, report_file)
 
   def _call(self, args, output_file=None):
@@ -302,6 +309,9 @@ class Runner(object):
 class HostRunner(Runner):
 
   """Run perf test on host."""
+
+  def __init__(self, perf_path):
+    super(HostRunner, self).__init__('host', perf_path)
 
   def _call(self, args, output_file=None):
     output_fh = None
@@ -318,8 +328,8 @@ class DeviceRunner(Runner):
 
   def __init__(self, perf_path):
     self.tmpdir = '/data/local/tmp/'
+    super(DeviceRunner, self).__init__('device', self.tmpdir + perf_path)
     self._download(os.environ['OUT'] + '/system/xbin/' + perf_path, self.tmpdir)
-    self.perf_path = self.tmpdir + perf_path
 
   def _call(self, args, output_file=None):
     output_fh = None
@@ -518,7 +528,7 @@ class ReportAnalyzer(object):
     return result
 
 
-def runtest(host, device, normal, callgraph, selected_tests):
+def runtest(host, device, normal, callgraph, use_inplace_sampler, selected_tests):
   tests = load_config_file(os.path.dirname(os.path.realpath(__file__)) + \
                            '/runtest.conf')
   host_runner = HostRunner('simpleperf')
@@ -581,26 +591,76 @@ def runtest(host, device, normal, callgraph, selected_tests):
       if not result:
         exit(1)
 
+
+def build_runner(target, use_callgraph, sampler):
+  if target == 'host':
+    runner = HostRunner('simpleperf')
+  else:
+    runner = DeviceRunner('simpleperf')
+  runner.use_callgraph = use_callgraph
+  runner.sampler = sampler
+  return runner
+
+
+def test_with_runner(runner, tests):
+  report_analyzer = ReportAnalyzer()
+  for test in tests:
+    runner.record(test.executable_name, 'perf.data')
+    if runner.sampler == 'inplace-sampler':
+      # TODO: fix this when inplace-sampler actually works.
+      runner.report('perf.data', 'perf.report')
+      symbols = report_analyzer._read_report_file('perf.report', runner.use_callgraph)
+      result = False
+      if len(symbols) == 1 and symbols[0].name == 'fake_elf[+0]':
+        result = True
+    else:
+      runner.report('perf.data', 'perf.report', additional_options = test.report_options)
+      result = report_analyzer.check_report_file(test, 'perf.report', runner.use_callgraph)
+    str = 'test %s on %s ' % (test.test_name, runner.target)
+    if runner.use_callgraph:
+      str += 'with call graph '
+    str += 'using %s ' % runner.sampler
+    str += ' Succeeded' if result else 'Failed'
+    print str
+    if not result:
+      exit(1)
+
+
+def runtest(target_options, use_callgraph_options, sampler_options, selected_tests):
+  tests = load_config_file(os.path.dirname(os.path.realpath(__file__)) + \
+                           '/runtest.conf')
+  if selected_tests is not None:
+    new_tests = []
+    for test in tests:
+      if test.test_name in selected_tests:
+        new_tests.append(test)
+    tests = new_tests
+  for target in target_options:
+    for use_callgraph in use_callgraph_options:
+      for sampler in sampler_options:
+        runner = build_runner(target, use_callgraph, sampler)
+        test_with_runner(runner, tests)
+
+
 def main():
-  host = True
-  device = True
-  normal = True
-  callgraph = True
+  target_options = ['host', 'target']
+  use_callgraph_options = [False, True]
+  sampler_options = ['cpu-cycles', 'inplace-sampler']
   selected_tests = None
   i = 1
   while i < len(sys.argv):
     if sys.argv[i] == '--host':
-      host = True
-      device = False
+      use_callgraph_options = ['host']
     elif sys.argv[i] == '--device':
-      host = False
-      device = True
+      use_callgraph_options = ['device']
     elif sys.argv[i] == '--normal':
-      normal = True
-      callgraph = False
+      use_callgraph_options = [False]
     elif sys.argv[i] == '--callgraph':
-      normal = False
-      callgraph = True
+      use_callgraph_options = [True]
+    elif sys.argv[i] == '--no-inplace-sampler':
+      sampler_options = ['cpu-cycles']
+    elif sys.argv[i] == '--inplace-sampler':
+      sampler_options = ['inplace-sampler']
     elif sys.argv[i] == '--test':
       if i < len(sys.argv):
         i += 1
@@ -609,7 +669,7 @@ def main():
             selected_tests = {}
           selected_tests[test] = True
     i += 1
-  runtest(host, device, normal, callgraph, selected_tests)
+  runtest(target_options, use_callgraph_options, sampler_options, selected_tests)
 
 if __name__ == '__main__':
   main()
