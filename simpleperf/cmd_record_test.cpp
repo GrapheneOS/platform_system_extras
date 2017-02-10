@@ -385,3 +385,14 @@ TEST(record_cmd, stop_when_no_more_targets) {
   while (tid == 0);
   ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "-t", std::to_string(tid)}));
 }
+
+TEST(record_cmd, donot_stop_when_having_targets) {
+  std::vector<std::unique_ptr<Workload>> workloads;
+  CreateProcesses(1, &workloads);
+  std::string pid = std::to_string(workloads[0]->GetPid());
+  uint64_t start_time_in_ns = GetSystemClock();
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "-p", pid, "--duration", "3"}));
+  uint64_t end_time_in_ns = GetSystemClock();
+  ASSERT_GT(end_time_in_ns - start_time_in_ns, static_cast<uint64_t>(2e9));
+}

@@ -813,7 +813,7 @@ bool EventSelectionSet::HasSampler() {
   for (auto& group : groups_) {
     for (auto& sel : group) {
       if (!sel.event_fds.empty()) {
-        return false;
+        return true;
       }
       for (auto& sampler : sel.inplace_samplers) {
         if (!sampler->IsClosed()) {
