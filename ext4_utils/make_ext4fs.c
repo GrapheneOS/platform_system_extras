@@ -426,15 +426,32 @@ void reset_ext4fs_info() {
 int make_ext4fs_sparse_fd(int fd, long long len,
 				const char *mountpoint, struct selabel_handle *sehnd)
 {
-	return make_ext4fs_sparse_fd_directory(fd, len, mountpoint, sehnd, NULL);
+	return make_ext4fs_sparse_fd_align(fd, len, mountpoint, sehnd, 0, 0);
+}
+
+int make_ext4fs_sparse_fd_align(int fd, long long len,
+				const char *mountpoint, struct selabel_handle *sehnd,
+				unsigned eraseblk, unsigned logicalblk)
+{
+	return make_ext4fs_sparse_fd_directory_align(fd, len, mountpoint, sehnd, NULL,
+								eraseblk, logicalblk);
 }
 
 int make_ext4fs_sparse_fd_directory(int fd, long long len,
 				const char *mountpoint, struct selabel_handle *sehnd,
 				const char *directory)
 {
+	return make_ext4fs_sparse_fd_directory_align(fd, len, mountpoint, sehnd, directory, 0, 0);
+}
+
+int make_ext4fs_sparse_fd_directory_align(int fd, long long len,
+				const char *mountpoint, struct selabel_handle *sehnd,
+				const char *directory, unsigned eraseblk, unsigned logicalblk)
+{
 	reset_ext4fs_info();
 	info.len = len;
+	info.flash_erase_block_size = eraseblk;
+	info.flash_logical_block_size = logicalblk;
 
 	return make_ext4fs_internal(fd, directory, NULL, mountpoint, NULL,
 								0, 1, 0, 0, 0,
@@ -445,6 +462,13 @@ int make_ext4fs(const char *filename, long long len,
 				const char *mountpoint, struct selabel_handle *sehnd)
 {
 	return make_ext4fs_directory(filename, len, mountpoint, sehnd, NULL);
+}
+
+int make_ext4fs_directory(const char *filename, long long len,
+						  const char *mountpoint, struct selabel_handle *sehnd,
+						  const char *directory)
+{
+	return make_ext4fs_directory_align(filename, len, mountpoint, sehnd, directory, 0, 0);
 }
 
 int make_ext4fs_directory_align(const char *filename, long long len,
@@ -459,30 +483,6 @@ int make_ext4fs_directory_align(const char *filename, long long len,
 	info.len = len;
 	info.flash_erase_block_size = eraseblk;
 	info.flash_logical_block_size = logicalblk;
-
-	fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
-	if (fd < 0) {
-		error_errno("open");
-		return EXIT_FAILURE;
-	}
-
-	status = make_ext4fs_internal(fd, directory, NULL, mountpoint, NULL,
-								  0, 0, 0, 1, 0,
-								  sehnd, 0, -1, NULL, NULL, NULL);
-	close(fd);
-
-	return status;
-}
-
-int make_ext4fs_directory(const char *filename, long long len,
-						  const char *mountpoint, struct selabel_handle *sehnd,
-						  const char *directory)
-{
-	int fd;
-	int status;
-
-	reset_ext4fs_info();
-	info.len = len;
 
 	fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
 	if (fd < 0) {
