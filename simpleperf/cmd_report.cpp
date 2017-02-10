@@ -182,6 +182,7 @@ class ReportCmdSampleTreeBuilder
     const Symbol* symbol = thread_tree_->FindSymbol(map, ip, &vaddr_in_file);
     std::unique_ptr<SampleEntry> callchain_sample(new SampleEntry(
         sample->time, 0, acc_info, 0, thread, map, symbol, vaddr_in_file));
+    callchain_sample->thread_comm = sample->thread_comm;
     return InsertCallChainSample(std::move(callchain_sample), callchain);
   }
 
