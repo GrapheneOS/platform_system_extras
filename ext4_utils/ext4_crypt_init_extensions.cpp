@@ -28,6 +28,7 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <cutils/properties.h>
 #include <cutils/sockets.h>
 #include <logwrap/logwrap.h>
@@ -117,14 +118,23 @@ int e4crypt_set_directory_policy(const char* dir)
     }
 
     auto type_filename = std::string("/data") + e4crypt_key_mode;
-    std::string contents_encryption_mode;
-    if (!android::base::ReadFileToString(type_filename, &contents_encryption_mode)) {
+    std::string modestring;
+    if (!android::base::ReadFileToString(type_filename, &modestring)) {
         LOG(ERROR) << "Cannot read mode";
+    }
+
+    std::vector<std::string> modes = android::base::Split(modestring, ":");
+
+    if (modes.size() < 1 || modes.size() > 2) {
+        LOG(ERROR) << "Invalid encryption mode string: " << modestring;
+        return -1;
     }
 
     LOG(INFO) << "Setting policy on " << dir;
     int result = e4crypt_policy_ensure(dir, policy.c_str(), policy.length(),
-                                       contents_encryption_mode.c_str());
+                                       modes[0].c_str(),
+                                       modes.size() >= 2 ?
+                                            modes[1].c_str() : "aes-256-cts");
     if (result) {
         LOG(ERROR) << android::base::StringPrintf(
             "Setting %02x%02x%02x%02x policy on %s failed!",
