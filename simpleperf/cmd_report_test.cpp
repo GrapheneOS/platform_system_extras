@@ -45,6 +45,7 @@ class ReportCommandTest : public ::testing::Test {
       const std::string& perf_data,
       const std::vector<std::string>& add_args = std::vector<std::string>()) {
     success = false;
+    TemporaryFile tmp_file;
     std::vector<std::string> args = {
         "-i", perf_data, "--symfs", GetTestDataDir(), "-o", tmp_file.path};
     args.insert(args.end(), add_args.begin(), add_args.end());
@@ -63,7 +64,6 @@ class ReportCommandTest : public ::testing::Test {
     success = true;
   }
 
-  TemporaryFile tmp_file;
   std::string content;
   std::vector<std::string> lines;
   bool success;
