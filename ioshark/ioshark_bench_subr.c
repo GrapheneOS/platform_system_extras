@@ -357,6 +357,41 @@ get_cores(void)
 #endif
 
 static void
+get_blockdev_name(char *bdev)
+{
+	char dev_name[BUFSIZE];
+	FILE *cmd;
+
+	cmd = popen("getprop ro.product.name", "r");
+	if (cmd == NULL) {
+		fprintf(stderr, "%s: Cannot popen getprop\n",
+			progname);
+		exit(1);
+	}
+	if (fgets(dev_name, BUFSIZE, cmd) == NULL) {
+		fprintf(stderr,
+			"%s: Bad output from getprop ro.product.name\n",
+			progname);
+		exit(1);
+	}
+	pclose(cmd);
+	/* strncmp needed because of the trailing '\n' */
+	if (strncmp(dev_name, "bullhead", strlen("bullhead")) == 0 ||
+	    strncmp(dev_name, "angler", strlen("angler")) == 0 ||
+	    strncmp(dev_name, "shamu", strlen("shamu")) == 0) {
+		strcpy(bdev, "mmcblk0");
+	} else if (strncmp(dev_name, "marlin", strlen("marlin")) == 0 ||
+		   strncmp(dev_name, "sailfish", strlen("sailfish")) == 0) {
+		strcpy(bdev, "sda");
+	} else {
+		fprintf(stderr,
+			"%s: Unknown device %s\n",
+			progname, dev_name);
+		exit(1);
+	}
+}
+
+static void
 read_disk_util_state(struct cpu_disk_util_stats *state)
 {
 	FILE *fp;
@@ -369,6 +404,7 @@ read_disk_util_state(struct cpu_disk_util_stats *state)
 	unsigned long rd_merges;
 	unsigned long wr_merges;
 	unsigned long up_sec, up_cent;
+	char blockdev_name[BUFSIZE];
 
 	/* Read and parse /proc/uptime */
 	fp = fopen("/proc/uptime", "r");
@@ -381,7 +417,9 @@ read_disk_util_state(struct cpu_disk_util_stats *state)
 	sscanf(line, "%lu.%lu", &up_sec, &up_cent);
 	state->uptime = (unsigned long long) up_sec * hz +
 		(unsigned long long) up_cent * hz / 100;
+
 	/* Read and parse /proc/diskstats */
+	get_blockdev_name(blockdev_name);
 	fp = fopen("/proc/diskstats", "r");
 	while (fgets(line, sizeof(line), fp)) {
 		sscanf(line,
@@ -391,7 +429,7 @@ read_disk_util_state(struct cpu_disk_util_stats *state)
 		       &rd_ticks, &state->wr_ios, &wr_merges,
 		       &state->wr_sec, &wr_ticks,
 		       &ios_pgr, &state->tot_ticks, &rq_ticks);
-                if (strcmp(dev_name, "sda") == 0) {
+                if (strcmp(dev_name, blockdev_name) == 0) {
 			/*
 			 * tot_ticks is "number of milliseconds spent
 			 * doing I/Os". Look at Documentation/iostats.txt.
