@@ -492,7 +492,7 @@ int main(int argc, char** argv) {
       verbose_mode = true;
     }
   }
-  InitLogging(argv, android::base::StderrLogger);
+  android::base::InitLogging(argv, android::base::StderrLogger);
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
