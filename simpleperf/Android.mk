@@ -352,7 +352,7 @@ libsimpleperf_cts_test_src_files := \
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
 LOCAL_MODULE := libsimpleperf_cts_test
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_target) -DRUN_IN_APP_CONTEXT
 LOCAL_SRC_FILES := $(libsimpleperf_cts_test_src_files)
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_target)
 LOCAL_MULTILIB := both

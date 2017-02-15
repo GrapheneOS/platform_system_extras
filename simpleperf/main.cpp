@@ -27,7 +27,7 @@
 constexpr int SIMPLEPERF_VERSION = 1;
 
 int main(int argc, char** argv) {
-  InitLogging(argv, android::base::StderrLogger);
+  android::base::InitLogging(argv, android::base::StderrLogger);
   std::vector<std::string> args;
   android::base::LogSeverity log_severity = android::base::INFO;
 
