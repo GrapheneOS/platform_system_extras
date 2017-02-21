@@ -8,7 +8,7 @@ LOCAL_SRC_FILES := verify_boot_signature.c
 LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES := libcrypto
-LOCAL_C_INCLUDES += external/openssl/include system/core/mkbootimg
+LOCAL_C_INCLUDES += system/core/mkbootimg
 include $(BUILD_HOST_EXECUTABLE)
 
 endif # HOST_OS == linux
