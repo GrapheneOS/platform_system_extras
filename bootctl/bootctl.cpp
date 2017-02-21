@@ -83,7 +83,7 @@ static std::function<void(CommandResult)> generate_callback(CommandResult *crp) 
     };
 }
 
-static int handle_return(Return<void> ret, CommandResult cr, const char* errStr) {
+static int handle_return(const Return<void> &ret, CommandResult cr, const char* errStr) {
     if (!ret.isOk()) {
         fprintf(stderr, errStr, ret.description().c_str());
         return EX_SOFTWARE;
@@ -117,7 +117,7 @@ static int do_set_slot_as_unbootable(sp<IBootControl> module,
     return handle_return(ret, cr, "Error setting slot as unbootable: %s\n");
 }
 
-static int handle_return(Return<BoolResult> ret, const char* errStr) {
+static int handle_return(const Return<BoolResult> &ret, const char* errStr) {
     if (!ret.isOk()) {
         fprintf(stderr, errStr, ret.description().c_str());
         return EX_SOFTWARE;
