@@ -20,6 +20,11 @@
 #include <sys/types.h>
 #include <time.h>
 
+#if defined(__linux__)
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
+
 #include <functional>
 #include <set>
 #include <string>
@@ -74,6 +79,12 @@ static inline uint64_t GetSystemClock() {
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 }
+
+#if !defined(__ANDROID__)
+static inline int gettid() {
+  return syscall(__NR_gettid);
+}
+#endif
 #endif
 
 ArchType GetMachineArch();

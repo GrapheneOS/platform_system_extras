@@ -31,23 +31,25 @@ class InplaceSamplerClient {
                                                       const std::set<pid_t>& tids);
   uint64_t Id() const;
   bool IsClosed() {
-    return closed_;
+    return conn_->IsClosed();
   }
   bool StartPolling(IOEventLoop& loop, const std::function<bool(Record*)>& record_callback,
                     const std::function<bool()>& close_callback);
-  bool StopProfiling();
+  bool StopProfiling(IOEventLoop& loop, const std::function<bool()>& close_callback);
 
  private:
   InplaceSamplerClient(const perf_event_attr& attr, pid_t pid, const std::set<pid_t>& tids);
   bool ConnectServer();
-  bool StartProfiling();
+  bool SendStartProfilingMessage();
+  bool HandleMessage(const UnixSocketMessage& msg);
 
   const perf_event_attr attr_;
   const pid_t pid_;
   const std::set<pid_t> tids_;
+  uint32_t sample_freq_;
+  std::unique_ptr<UnixSocketConnection> conn_;
   std::function<bool(Record*)> record_callback_;
-  std::function<bool()> close_callback_;
-  bool closed_;
+  bool got_start_profiling_reply_msg_;
 };
 
 #endif  // SIMPLE_PERF_INPLACE_SAMPLER_CLIENT_H_

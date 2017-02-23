@@ -17,7 +17,6 @@
 #include <gtest/gtest.h>
 
 #include <sys/stat.h>
-#include <sys/syscall.h>
 #include <unistd.h>
 #if defined(__BIONIC__)
 #include <sys/system_properties.h>
@@ -32,6 +31,7 @@
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 
+#include "environment.h"
 #include "event_attr.h"
 #include "event_fd.h"
 #include "event_type.h"
@@ -343,7 +343,7 @@ struct CpuSpinThreadArg {
 };
 
 static void CpuSpinThread(CpuSpinThreadArg* arg) {
-  arg->tid = syscall(__NR_gettid);
+  arg->tid = gettid();
   while (!arg->end_flag) {
     cpu_set_t mask;
     CPU_ZERO(&mask);
