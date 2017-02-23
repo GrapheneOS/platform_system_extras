@@ -324,8 +324,11 @@ TEST_F(ReportCommandTest, report_symbols_of_nativelib_in_apk) {
 TEST_F(ReportCommandTest, report_more_than_one_event_types) {
   Report(PERF_DATA_WITH_TWO_EVENT_TYPES);
   ASSERT_TRUE(success);
-  ASSERT_NE(content.find("cpu-cycles"), std::string::npos);
-  ASSERT_NE(content.find("cpu-clock"), std::string::npos);
+  size_t pos = 0;
+  ASSERT_NE(pos = content.find("cpu-cycles", pos), std::string::npos);
+  ASSERT_NE(pos = content.find("Samples:", pos), std::string::npos);
+  ASSERT_NE(pos = content.find("cpu-clock", pos), std::string::npos);
+  ASSERT_NE(pos = content.find("Samples:", pos), std::string::npos);
 }
 
 TEST_F(ReportCommandTest, report_kernel_symbol) {
