@@ -30,6 +30,7 @@
 #include "ioshark_bench.h"
 
 extern char *progname;
+extern int verbose, summary_mode;
 
 void *
 files_db_create_handle(void)
@@ -307,10 +308,15 @@ print_op_stats(u_int64_t *op_counts)
 void
 print_bytes(char *desc, struct rw_bytes_s *rw_bytes)
 {
-	printf("%s: Reads = %dMB, Writes = %dMB\n",
-	       desc,
-	       (int)(rw_bytes->bytes_read / (1024 * 1024)),
-	       (int)(rw_bytes->bytes_written / (1024 * 1024)));
+	if (!summary_mode)
+		printf("%s: Reads = %dMB, Writes = %dMB\n",
+		       desc,
+		       (int)(rw_bytes->bytes_read / (1024 * 1024)),
+		       (int)(rw_bytes->bytes_written / (1024 * 1024)));
+	else
+		printf("%d %d ",
+		       (int)(rw_bytes->bytes_read / (1024 * 1024)),
+		       (int)(rw_bytes->bytes_written / (1024 * 1024)));
 }
 
 struct cpu_disk_util_stats {
@@ -504,18 +510,27 @@ report_cpu_disk_util(void)
 	tot1 += before.iowait_cpu_ticks + before.idle_cpu_ticks;
 	delta2 = tot2 - tot1;
 	cpu_util = delta1 * 100.0 / delta2;
-	printf("CPU util = %.2f%%\n", cpu_util);
+	if (!summary_mode)
+		printf("CPU util = %.2f%%\n", cpu_util);
+	else
+		printf("%.2f ", cpu_util);
 	/* Next compute system (incl irq/softirq) and user cpu util */
 	delta1 = (after.user_cpu_ticks + after.nice_cpu_ticks) -
 		(before.user_cpu_ticks + before.nice_cpu_ticks);
 	cpu_util = delta1 * 100.0 / delta2;
-	printf("User CPU util = %.2f%%\n", cpu_util);
+	if (!summary_mode)
+		printf("User CPU util = %.2f%%\n", cpu_util);
+	else
+		printf("%.2f ", cpu_util);
 	delta1 = (after.system_cpu_ticks + after.hardirq_cpu_ticks +
 		  after.softirq_cpu_ticks) -
 		(before.system_cpu_ticks + before.hardirq_cpu_ticks +
 		 before.softirq_cpu_ticks);
 	cpu_util = delta1 * 100.0 / delta2;
-	printf("System CPU util = %.2f%%\n", cpu_util);	
+	if (!summary_mode)
+		printf("System CPU util = %.2f%%\n", cpu_util);
+	else
+		printf("%.2f ", cpu_util);
 	/* Disk Util */
 	disk_util = (after.tot_ticks - before.tot_ticks) * 100.0 /
 		(after.uptime - before.uptime);
@@ -527,5 +542,8 @@ report_cpu_disk_util(void)
 	       (after.wr_ios - before.wr_ios),
 		       (after.wr_sec - before.wr_sec) / 2048);
 	}
-	printf("Disk util = %.2f%%\n", disk_util);
+	if (!summary_mode)
+		printf("Disk util = %.2f%%\n", disk_util);
+	else
+		printf("%.2f", disk_util);
 }

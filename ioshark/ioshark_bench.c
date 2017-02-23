@@ -55,6 +55,7 @@ pthread_t tid[MAX_THREADS];
  */
 int do_delay = 0;
 int verbose = 0;
+int summary_mode = 0;
 
 #if 0
 static long gettid()
@@ -581,13 +582,17 @@ main(int argc, char **argv)
 	struct thread_state_s *state;
 
 	progname = argv[0];
-        while ((c = getopt(argc, argv, "dn:t:v")) != EOF) {
+        while ((c = getopt(argc, argv, "dn:st:v")) != EOF) {
                 switch (c) {
                 case 'd':
 			do_delay = 1;
 			break;
                 case 'n':
 			num_iterations = atoi(optarg);
+			break;
+                case 's':
+			/* Non-verbose summary mode for nightly runs */
+			summary_mode = 1;
 			break;
                 case 't':
 			num_threads = atoi(optarg);
@@ -599,6 +604,9 @@ main(int argc, char **argv)
                         usage();
 		}
 	}
+
+	if ((verbose + summary_mode) == 2)
+		usage();
 
 	if (num_threads > MAX_THREADS)
 		usage();
@@ -657,7 +665,8 @@ main(int argc, char **argv)
 		struct timeval time_for_pass;
 
 		/* Create files once */
-		printf("Doing Pre-creation of Files\n");
+		if (!summary_mode)
+			printf("Doing Pre-creation of Files\n");
 		if (num_threads == 0 || num_threads > num_files)
 			num_threads = num_files;
 		(void)system("echo 3 > /proc/sys/vm/drop_caches");
@@ -679,11 +688,13 @@ main(int argc, char **argv)
 		/* Do the IOs N times */
 		for (i = 0 ; i < num_iterations ; i++) {
 			(void)system("echo 3 > /proc/sys/vm/drop_caches");
-			if (num_iterations > 1)
-				printf("Starting Test. Iteration %d...\n",
-				       i);
-			else
-				printf("Starting Test...\n");
+			if (!summary_mode) {
+				if (num_iterations > 1)
+					printf("Starting Test. Iteration %d...\n",
+					       i);
+				else
+					printf("Starting Test...\n");
+			}
 			init_work(start_file, num_files);
 			(void)gettimeofday(&time_for_pass,
 					   (struct timezone *)NULL);
@@ -715,24 +726,43 @@ main(int argc, char **argv)
 			files_db_free_memory(state->db_handle);
 		}
 	}
-	printf("Total Creation time = %ju.%ju (msecs.usecs)\n",
-	       get_msecs(&aggregate_file_create_time),
-	       get_usecs(&aggregate_file_create_time));
-	printf("Total Remove time = %ju.%ju (msecs.usecs)\n",
-	       get_msecs(&aggregate_file_remove_time),
-	       get_usecs(&aggregate_file_remove_time));
-	if (do_delay)
-		printf("Total delay time = %ju.%ju (msecs.usecs)\n",
-		       get_msecs(&aggregate_delay_time),
-		       get_usecs(&aggregate_delay_time));
-	printf("Total Test (IO) time = %ju.%ju (msecs.usecs)\n",
-	       get_msecs(&aggregate_IO_time),
-	       get_usecs(&aggregate_IO_time));
-	if (verbose)
-		print_bytes("Upfront File Creation bytes",
-			    &aggr_create_rw_bytes);
-	print_bytes("Total Test (IO) bytes", &aggr_io_rw_bytes);
-	if (verbose)
-		print_op_stats(aggr_op_counts);
-	report_cpu_disk_util();
+	if (!summary_mode) {
+		printf("Total Creation time = %ju.%ju (msecs.usecs)\n",
+		       get_msecs(&aggregate_file_create_time),
+		       get_usecs(&aggregate_file_create_time));
+		printf("Total Remove time = %ju.%ju (msecs.usecs)\n",
+		       get_msecs(&aggregate_file_remove_time),
+		       get_usecs(&aggregate_file_remove_time));
+		if (do_delay)
+			printf("Total delay time = %ju.%ju (msecs.usecs)\n",
+			       get_msecs(&aggregate_delay_time),
+			       get_usecs(&aggregate_delay_time));
+		printf("Total Test (IO) time = %ju.%ju (msecs.usecs)\n",
+		       get_msecs(&aggregate_IO_time),
+		       get_usecs(&aggregate_IO_time));
+		if (verbose)
+			print_bytes("Upfront File Creation bytes",
+				    &aggr_create_rw_bytes);
+		print_bytes("Total Test (IO) bytes", &aggr_io_rw_bytes);
+		if (verbose)
+			print_op_stats(aggr_op_counts);
+		report_cpu_disk_util();
+	} else {
+		printf("%ju.%ju ",
+		       get_msecs(&aggregate_file_create_time),
+		       get_usecs(&aggregate_file_create_time));
+		printf("%ju.%ju ",
+		       get_msecs(&aggregate_file_remove_time),
+		       get_usecs(&aggregate_file_remove_time));
+		if (do_delay)
+			printf("%ju.%ju ",
+			       get_msecs(&aggregate_delay_time),
+			       get_usecs(&aggregate_delay_time));
+		printf("%ju.%ju ",
+		       get_msecs(&aggregate_IO_time),
+		       get_usecs(&aggregate_IO_time));
+		print_bytes(NULL, &aggr_io_rw_bytes);
+		report_cpu_disk_util();
+		printf("\n");
+	}
 }
