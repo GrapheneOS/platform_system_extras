@@ -629,7 +629,46 @@ bool EventSelectionSet::ReadMmapEventData() {
 }
 
 bool EventSelectionSet::FinishReadMmapEventData() {
-  return ReadMmapEventData();
+  if (!ReadMmapEventData()) {
+    return false;
+  }
+  if (!HasInplaceSampler()) {
+    return true;
+  }
+  // Inplace sampler server uses a buffer to cache samples before sending them, so we need to
+  // explicitly ask it to send the cached samples.
+  loop_.reset(new IOEventLoop);
+  size_t inplace_sampler_count = 0;
+  auto close_callback = [&]() {
+    if (--inplace_sampler_count == 0) {
+      return loop_->ExitLoop();
+    }
+    return true;
+  };
+  for (auto& group : groups_) {
+    for (auto& sel : group) {
+      for (auto& sampler : sel.inplace_samplers) {
+        if (!sampler->IsClosed()) {
+          if (!sampler->StopProfiling(*loop_, close_callback)) {
+            return false;
+          }
+          inplace_sampler_count++;
+        }
+      }
+    }
+  }
+  if (inplace_sampler_count == 0) {
+    return true;
+  }
+
+  // Set a timeout to exit the loop.
+  timeval tv;
+  tv.tv_sec = 1;
+  tv.tv_usec = 0;
+  if (!loop_->AddPeriodicEvent(tv, [&]() { return loop_->ExitLoop(); })) {
+    return false;
+  }
+  return loop_->RunLoop();
 }
 
 bool EventSelectionSet::HandleCpuHotplugEvents(const std::vector<int>& monitored_cpus,

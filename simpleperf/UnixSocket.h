@@ -150,6 +150,10 @@ class UnixSocketConnection {
 
   ~UnixSocketConnection();
 
+  bool IsClosed() {
+    return fd_ == -1;
+  }
+
   bool PrepareForIO(IOEventLoop& loop,
                     const std::function<bool(const UnixSocketMessage&)>&
                         receive_message_callback,

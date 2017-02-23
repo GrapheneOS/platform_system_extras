@@ -18,7 +18,6 @@
 
 #include <android-base/stringprintf.h>
 #include <android-base/test_utils.h>
-#include <sys/syscall.h>
 
 #include <map>
 #include <memory>
@@ -378,7 +377,7 @@ TEST(record_cmd, stop_when_no_more_targets) {
   TemporaryFile tmpfile;
   std::atomic<int> tid(0);
   std::thread thread([&]() {
-    tid = syscall(__NR_gettid);
+    tid = gettid();
     sleep(1);
   });
   thread.detach();
