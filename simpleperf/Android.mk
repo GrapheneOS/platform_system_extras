@@ -226,7 +226,6 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := libsimpleperf_report
 LOCAL_MODULE_HOST_OS := darwin linux windows
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
 LOCAL_CPPFLAGS_darwin := $(simpleperf_cppflags_host_darwin)
 LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
 LOCAL_CPPFLAGS_windows := $(simpleperf_cppflags_host_windows)
@@ -247,6 +246,45 @@ $(call dist-for-goals,win_sdk,$(ALL_MODULES.host_cross_libsimpleperf_report.BUIL
 ifdef HOST_CROSS_2ND_ARCH
 $(call dist-for-goals,win_sdk,$(ALL_MODULES.host_cross_libsimpleperf_report$(HOST_CROSS_2ND_ARCH_MODULE_SUFFIX).BUILT))
 endif
+
+
+# libsimpleperf_inplace_sampler.so
+# It is the shared library linked with user's app and get samples from
+# signal handlers in each thread.
+# =========================================================
+
+libsimpleperf_inplace_sampler_static_libraries_target := \
+	$(filter-out libc,$(simpleperf_static_libraries_target)) \
+
+# libsimpleperf_inplace_sampler.so on target
+include $(CLEAR_VARS)
+LOCAL_CLANG := true
+LOCAL_MODULE := libsimpleperf_inplace_sampler
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
+LOCAL_SRC_FILES := inplace_sampler_lib.cpp
+LOCAL_STATIC_LIBRARIES := libsimpleperf $(libsimpleperf_inplace_sampler_static_libraries_target)
+LOCAL_MULTILIB := both
+LOCAL_CXX_STL := libc++_static
+LOCAL_LDLIBS := -Wl,--exclude-libs,ALL
+include $(LLVM_DEVICE_BUILD_MK)
+include $(BUILD_SHARED_LIBRARY)
+
+# libsimpleperf_inplace_sampler.so on host
+include $(CLEAR_VARS)
+LOCAL_CLANG := true
+LOCAL_MODULE := libsimpleperf_inplace_sampler
+LOCAL_MODULE_HOST_OS := linux
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
+LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
+LOCAL_SRC_FILES := inplace_sampler_lib.cpp
+LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
+LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
+LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux) -Wl,--exclude-libs,ALL
+LOCAL_MULTILIB := both
+LOCAL_CXX_STL := libc++_static
+include $(LLVM_HOST_BUILD_MK)
+include $(BUILD_HOST_SHARED_LIBRARY)
+
 
 # simpleperf_unit_test
 # =========================================================
