@@ -247,6 +247,7 @@ struct Record {
 
   virtual uint64_t Timestamp() const;
   virtual uint32_t Cpu() const;
+  virtual uint64_t Id() const;
 
  protected:
   void UpdateBinary(const char* new_binary);
@@ -388,6 +389,7 @@ struct SampleRecord : public Record {
   void ReplaceRegAndStackWithCallChain(const std::vector<uint64_t>& ips);
   uint64_t Timestamp() const override;
   uint32_t Cpu() const override;
+  uint64_t Id() const override;
 
   uint64_t GetValidStackSize() const {
     // If stack_user_data.dyn_size == 0, it may be because the kernel misses
