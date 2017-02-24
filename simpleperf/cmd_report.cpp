@@ -291,6 +291,7 @@ class ReportCommand : public Command {
 "-o report_file_name   Set report file name, default is stdout.\n"
 "--percent-limit <percent>  Set min percentage shown when printing call graph.\n"
 "--pids pid1,pid2,...  Report only for selected pids.\n"
+"--raw-period          Report period count instead of period percentage.\n"
 "--sort key1,key2,...  Select keys used to sort and print the report. The\n"
 "                      appearance order of keys decides the order of keys used\n"
 "                      to sort and print the report.\n"
@@ -324,7 +325,8 @@ class ReportCommand : public Command {
         print_callgraph_(false),
         callgraph_show_callee_(false),
         callgraph_max_stack_(UINT32_MAX),
-        callgraph_percent_limit_(0) {}
+        callgraph_percent_limit_(0),
+        raw_period_(false) {}
 
   bool Run(const std::vector<std::string>& args);
 
@@ -355,6 +357,7 @@ class ReportCommand : public Command {
   bool callgraph_show_callee_;
   uint32_t callgraph_max_stack_;
   double callgraph_percent_limit_;
+  bool raw_period_;
 
   std::string report_filename_;
 };
@@ -491,7 +494,8 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
         }
         filter.insert(id);
       }
-
+    } else if (args[i] == "--raw-period") {
+      raw_period_ = true;
     } else if (args[i] == "--sort") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -536,10 +540,19 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   SampleComparator<SampleEntry> comparator;
 
   if (accumulate_callchain_) {
-    displayer.AddDisplayFunction("Children", DisplayAccumulatedOverhead);
-    displayer.AddDisplayFunction("Self", DisplaySelfOverhead);
+    if (raw_period_) {
+      displayer.AddDisplayFunction("Children", DisplayAccumulatedPeriod);
+      displayer.AddDisplayFunction("Self", DisplaySelfPeriod);
+    } else {
+      displayer.AddDisplayFunction("Children", DisplayAccumulatedOverhead);
+      displayer.AddDisplayFunction("Self", DisplaySelfOverhead);
+    }
   } else {
-    displayer.AddDisplayFunction("Overhead", DisplaySelfOverhead);
+    if (raw_period_) {
+      displayer.AddDisplayFunction("Overhead", DisplaySelfPeriod);
+    } else {
+      displayer.AddDisplayFunction("Overhead", DisplaySelfOverhead);
+    }
   }
   if (print_sample_count) {
     displayer.AddDisplayFunction("Sample", DisplaySampleCount);
