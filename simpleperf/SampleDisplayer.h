@@ -36,6 +36,11 @@ std::string DisplayAccumulatedOverhead(const EntryT* sample,
   return android::base::StringPrintf("%.2f%%", percentage);
 }
 
+template <typename EntryT>
+std::string DisplayAccumulatedPeriod(const EntryT* sample) {
+  return android::base::StringPrintf("%" PRIu64, sample->period + sample->accumulated_period);
+}
+
 template <typename EntryT, typename InfoT>
 std::string DisplaySelfOverhead(const EntryT* sample, const InfoT* info) {
   uint64_t period = sample->period;
@@ -56,6 +61,7 @@ std::string DisplaySelfOverhead(const EntryT* sample, const InfoT* info) {
     return android::base::StringPrintf("0x%" PRIx64, sample->display_part); \
   }
 
+BUILD_DISPLAY_UINT64_FUNCTION(DisplaySelfPeriod, period);
 BUILD_DISPLAY_UINT64_FUNCTION(DisplaySampleCount, sample_count);
 
 template <typename EntryT>
