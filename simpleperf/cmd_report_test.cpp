@@ -454,6 +454,13 @@ TEST_F(ReportCommandTest, invalid_perf_data) {
   ASSERT_FALSE(ReportCmd()->Run({"-i", GetTestData(INVALID_PERF_DATA)}));
 }
 
+TEST_F(ReportCommandTest, raw_period_option) {
+  Report(PERF_DATA, {"--raw-period"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("GlobalFunc"), std::string::npos);
+  ASSERT_EQ(content.find("%"), std::string::npos);
+}
+
 #if defined(__linux__)
 #include "event_selection_set.h"
 
