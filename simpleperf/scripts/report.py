@@ -82,20 +82,53 @@ class ReportItem(object):
       strs.append('%s' % self.call_tree)
     return '\n'.join(strs)
 
+class EventReport(object):
 
-def parse_report_items(lines):
-  report_items = []
+  """Representing report for one event attr."""
+
+  def __init__(self, common_report_context):
+    self.context = common_report_context[:]
+    self.title_line = None
+    self.report_items = []
+
+
+def parse_event_reports(lines):
+  # Parse common report context
+  common_report_context = []
+  line_id = 0
+  while line_id < len(lines):
+    line = lines[line_id]
+    if not line or line.find('Event:') == 0:
+      break
+    common_report_context.append(line)
+    line_id += 1
+
+  event_reports = []
+  in_report_context = True
+  cur_event_report = EventReport(common_report_context)
   cur_report_item = None
   call_tree_stack = {}
   vertical_columns = []
   last_node = None
 
-  for line in lines:
+  for line in lines[line_id:]:
     if not line:
+      in_report_context = not in_report_context
+      if in_report_context:
+        cur_event_report = EventReport(common_report_context)
       continue
-    if not line[0].isspace():
+
+    if in_report_context:
+      cur_event_report.context.append(line)
+      if line.find('Event:') == 0:
+        event_reports.append(cur_event_report)
+      continue
+
+    if cur_event_report.title_line is None:
+      cur_event_report.title_line = line
+    elif not line[0].isspace():
       cur_report_item = ReportItem(line)
-      report_items.append(cur_report_item)
+      cur_event_report.report_items.append(cur_report_item)
       # Each report item can have different column depths.
       vertical_columns = []
     else:
@@ -135,7 +168,7 @@ def parse_report_items(lines):
         call_tree_stack[depth] = node
         last_node = node
 
-  return report_items
+  return event_reports
 
 
 class ReportWindow(object):
@@ -224,22 +257,15 @@ def display_report_file(report_file):
   fh.close()
 
   lines = [x.rstrip() for x in lines]
+  event_reports = parse_event_reports(lines)
 
-  blank_line_index = -1
-  for i in range(len(lines)):
-    if not lines[i]:
-      blank_line_index = i
-      break
-  assert blank_line_index != -1
-  assert blank_line_index + 1 < len(lines)
-
-  report_context = lines[:blank_line_index]
-  title_line = lines[blank_line_index + 1]
-  report_items = parse_report_items(lines[blank_line_index + 2:])
-
-  root = Tk()
-  ReportWindow(root, report_context, title_line, report_items)
-  root.mainloop()
+  if event_reports:
+    root = Tk()
+    for i in range(len(event_reports)):
+      report = event_reports[i]
+      parent = root if i == 0 else Toplevel(root)
+      ReportWindow(parent, report.context, report.title_line, report.report_items)
+    root.mainloop()
 
 
 def call_simpleperf_report(args, report_file):

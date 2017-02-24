@@ -187,6 +187,7 @@ void Record::Dump(size_t indent) const {
 
 uint64_t Record::Timestamp() const { return sample_id.time_data.time; }
 uint32_t Record::Cpu() const { return sample_id.cpu_data.cpu; }
+uint64_t Record::Id() const { return sample_id.id_data.id; }
 
 void Record::UpdateBinary(const char* new_binary) {
   if (own_binary_) {
@@ -380,6 +381,8 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, const char* p)
   p += header_size();
   sample_type = attr.sample_type;
 
+  // Set a default id value to report correctly even if ID is not recorded.
+  id_data.id = 0;
   if (sample_type & PERF_SAMPLE_IDENTIFIER) {
     MoveFromBinaryFormat(id_data, p);
   }
@@ -670,6 +673,7 @@ void SampleRecord::DumpData(size_t indent) const {
 
 uint64_t SampleRecord::Timestamp() const { return time_data.time; }
 uint32_t SampleRecord::Cpu() const { return cpu_data.cpu; }
+uint64_t SampleRecord::Id() const { return id_data.id; }
 
 BuildIdRecord::BuildIdRecord(const char* p) : Record(p) {
   const char* end = p + size();

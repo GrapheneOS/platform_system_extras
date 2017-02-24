@@ -134,7 +134,7 @@ class RecordFileReader {
   // Otherwise return false.
   bool ReadRecord(std::unique_ptr<Record>& record, bool sorted = true);
 
-  size_t GetAttrIndexOfRecord(const SampleRecord& record);
+  size_t GetAttrIndexOfRecord(const Record* record);
 
   std::vector<std::string> ReadCmdlineFeature();
   std::vector<BuildIdRecord> ReadBuildIdFeature();

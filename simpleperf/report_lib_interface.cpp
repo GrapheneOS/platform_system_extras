@@ -231,7 +231,7 @@ Event* ReportLib::GetEventOfCurrentSample() {
       }
     }
     size_t attr_index =
-        record_file_reader_->GetAttrIndexOfRecord(*current_record_);
+        record_file_reader_->GetAttrIndexOfRecord(current_record_.get());
     current_event_.name = event_attrs_[attr_index].name.c_str();
     update_flag_ |= UPDATE_FLAG_OF_EVENT;
   }
