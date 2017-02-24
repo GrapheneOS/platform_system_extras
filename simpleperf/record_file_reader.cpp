@@ -299,8 +299,8 @@ void RecordFileReader::ProcessEventIdRecord(const EventIdRecord& r) {
   }
 }
 
-size_t RecordFileReader::GetAttrIndexOfRecord(const SampleRecord& record) {
-  auto it = event_id_to_attr_map_.find(record.id_data.id);
+size_t RecordFileReader::GetAttrIndexOfRecord(const Record* record) {
+  auto it = event_id_to_attr_map_.find(record->Id());
   if (it != event_id_to_attr_map_.end()) {
     return it->second;
   }
