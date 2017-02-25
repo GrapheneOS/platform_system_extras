@@ -221,7 +221,7 @@ class BinaryCacheBuilder(object):
         if os.path.isfile(file):
             os.remove(file)
         if self.adb.switch_to_root():
-            self.adb.run(['shell', '"echo 0>/proc/sys/kernel/kptr_restrict"'])
+            self.adb.run(['shell', '"echo 0 >/proc/sys/kernel/kptr_restrict"'])
             self.adb.run(['pull', '/proc/kallsyms', file])
 
 
