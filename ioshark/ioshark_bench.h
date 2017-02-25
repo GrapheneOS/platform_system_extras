@@ -46,6 +46,7 @@ struct files_db_s {
 	int fileno;
 	size_t	size;
 	int fd;
+	int readonly;
 	int debug_open_flags;
 	struct files_db_s *next;
 };
@@ -96,6 +97,12 @@ files_db_get_filename(void *node)
 	return (((struct files_db_s *)node)->filename);
 }
 
+static inline int
+files_db_readonly(void *node)
+{
+	return (((struct files_db_s *)node)->readonly);
+}
+
 static inline u_int64_t
 get_msecs(struct timeval *tv)
 {
@@ -122,7 +129,7 @@ update_delta_time(struct timeval *start,
 
 void *files_db_create_handle(void);
 void *files_db_lookup_byfileno(void *handle, int fileno);
-void *files_db_add_byfileno(void *handle, int fileno);
+void *files_db_add_byfileno(void *handle, int fileno, int readonly);
 void files_db_update_fd(void *node, int fd);
 void files_db_unlink_files(void *db_handle);
 void files_db_close_files(void *handle);
@@ -141,13 +148,7 @@ void ioshark_handle_mmap(void *db_node,
 void capture_util_state_before(void);
 void report_cpu_disk_util(void);
 
-
-
-
-
-
-
-
-
-
-
+char *get_ro_filename(int ix);
+void init_filename_cache(void);
+void free_filename_cache(void);
+int is_readonly_mount(char *filename, size_t size);

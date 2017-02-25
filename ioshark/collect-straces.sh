@@ -88,6 +88,4 @@ tar xf trace.tar
 compile_tracefiles
 
 # tar up the .wl files just created
-tar zcf wl.tgz *.wl
-
-
+tar cf wl.tar ioshark_filenames *.wl

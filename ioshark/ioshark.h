@@ -40,6 +40,7 @@ struct ioshark_header {
 struct ioshark_file_state {
 	int	fileno;	/* 1..num_files, with files name ioshark.<fileno> */
 	size_t	size;
+	int	global_filename_ix;
 };
 
 enum file_op {
@@ -105,4 +106,14 @@ struct ioshark_file_operation {
 			mode_t	mode;
 		} open_a;
 	} u;
+};
+
+#define MAX_IOSHARK_PATHLEN	512
+
+/*
+ * Global table of all fileames
+ */
+struct ioshark_filename_struct
+{
+	char path[MAX_IOSHARK_PATHLEN];
 };

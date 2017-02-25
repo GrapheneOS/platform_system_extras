@@ -31,6 +31,8 @@ static struct files_db_s *files_db_buckets[FILE_DB_HASHSIZE];
 static int current_fileno = 1;
 static int num_objects = 0;
 
+static int filename_cache_lookup(char *filename);;
+
 void
 files_db_write_objects(FILE *fp)
 {
@@ -44,8 +46,11 @@ files_db_write_objects(FILE *fp)
 		while (db_node != NULL) {
 			st.fileno = db_node->fileno;
 			st.size = db_node->size;
+			st.global_filename_ix =
+				db_node->global_filename_ix;
 			if (fwrite(&st, sizeof(st), 1, fp) != 1) {
-				fprintf(stderr, "%s Write error trace.outfile\n",
+				fprintf(stderr,
+					"%s Write error trace.outfile\n",
 					progname);
 				exit(EXIT_FAILURE);
 			}
@@ -84,6 +89,8 @@ void *files_db_add(char *filename)
 	hash %= FILE_DB_HASHSIZE;
 	db_node = malloc(sizeof(struct files_db_s));
 	db_node->filename = strdup(filename);
+	db_node->global_filename_ix =
+		filename_cache_lookup(filename);
 	db_node->fileno = current_fileno++;
 	db_node->next = files_db_buckets[hash];
 	db_node->size = 0;
@@ -96,6 +103,114 @@ int
 files_db_get_total_obj(void)
 {
 	return num_objects;
+}
+
+static struct ioshark_filename_struct *filename_cache;
+static int filename_cache_num_entries;
+static int filename_cache_size;
+
+void
+init_filename_cache(void)
+{
+	static FILE *filename_cache_fp;
+	struct stat st;
+	int file_exists = 1;
+
+	if (stat("ioshark_filenames", &st) < 0) {
+		if (errno != ENOENT) {
+			fprintf(stderr, "%s Can't stat ioshark_filenames file\n",
+				progname);
+			exit(EXIT_FAILURE);
+		} else {
+			file_exists = 0;
+			filename_cache_num_entries = 0;
+		}
+	} else {
+		filename_cache_num_entries = st.st_size /
+			sizeof(struct ioshark_filename_struct);
+	}
+	if (file_exists) {
+		filename_cache_fp = fopen("ioshark_filenames", "r");
+		if (filename_cache_fp == NULL) {
+			fprintf(stderr, "%s Cannot open ioshark_filenames file\n",
+				progname);
+			exit(EXIT_FAILURE);
+		}
+	}
+	/* Preallocate a fixed size of entries */
+	filename_cache_size = filename_cache_num_entries + 1024;
+	filename_cache = calloc(filename_cache_size,
+				sizeof(struct ioshark_filename_struct));
+	if (filename_cache == NULL) {
+		fprintf(stderr, "%s Can't allocate memory - this is fatal\n",
+			__func__);
+		exit(EXIT_FAILURE);
+	}
+	if (fread(filename_cache,
+		  sizeof(struct ioshark_filename_struct),
+		  filename_cache_num_entries,
+		  filename_cache_fp) != (size_t)filename_cache_num_entries) {
+		fprintf(stderr, "%s Can't read ioshark_filenames file\n",
+			progname);
+		exit(EXIT_FAILURE);
+	}
+	if (file_exists)
+		fclose(filename_cache_fp);
+}
+
+static int
+filename_cache_lookup(char *filename)
+{
+	int ret;
+	int i;
+
+	for (i = 0 ; i < filename_cache_num_entries ; i++) {
+		if (strcmp(filename_cache[i].path, filename) == 0)
+			return i;
+	}
+	if (filename_cache_num_entries >= filename_cache_size) {
+		int newsize;
+
+		/* reallocate the filename cache up first */
+		filename_cache_size += 1024;
+		newsize = filename_cache_size *
+			sizeof(struct ioshark_filename_struct);
+		filename_cache = realloc(filename_cache, newsize);
+		if (filename_cache == NULL) {
+			fprintf(stderr,
+				"%s Can't allocate memory - this is fatal\n",
+				__func__);
+			exit(EXIT_FAILURE);
+		}
+	}
+	strcpy(filename_cache[filename_cache_num_entries].path,
+	       filename);
+	ret = filename_cache_num_entries;
+	filename_cache_num_entries++;
+	return ret;
+}
+
+void
+store_filename_cache(void)
+{
+	static FILE *filename_cache_fp;
+
+	filename_cache_fp = fopen("ioshark_filenames", "w+");
+	if (filename_cache_fp == NULL) {
+		fprintf(stderr, "%s Cannot open ioshark_filenames file\n",
+			progname);
+		exit(EXIT_FAILURE);
+	}
+	if (fwrite(filename_cache,
+		   sizeof(struct ioshark_filename_struct),
+		   filename_cache_num_entries,
+		   filename_cache_fp) != (size_t)filename_cache_num_entries) {
+		fprintf(stderr, "%s Can't read ioshark_filenames file\n",
+			progname);
+		exit(EXIT_FAILURE);
+	}
+	fclose(filename_cache_fp);
+	free(filename_cache);
 }
 
 

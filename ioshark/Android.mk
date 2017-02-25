@@ -33,5 +33,13 @@ LOCAL_MODULE := compile_ioshark
 LOCAL_MODULE_TAGS := debug
 include $(BUILD_HOST_EXECUTABLE)
 
+include $(CLEAR_VARS)
+#LOCAL_32_BIT_ONLY = true
+LOCAL_MODULE_HOST_OS := linux
+LOCAL_SRC_FILES := dump_ioshark_filenames.c
+LOCAL_CFLAGS := -g -O2 -Wall -Werror -D_GNU_SOURCE
+LOCAL_MODULE := dump_ioshark_filenames
+LOCAL_MODULE_TAGS := debug
+include $(BUILD_HOST_EXECUTABLE)
 
 
