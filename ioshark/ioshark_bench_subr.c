@@ -26,6 +26,9 @@
 #include <fcntl.h>
 #include <string.h>
 #include <assert.h>
+#include <sys/vfs.h>
+#include <sys/statvfs.h>
+#include <sys/mman.h>
 #include "ioshark.h"
 #include "ioshark_bench.h"
 
@@ -60,7 +63,7 @@ void *files_db_lookup_byfileno(void *handle, int fileno)
 	return db_node;
 }
 
-void *files_db_add_byfileno(void *handle, int fileno)
+void *files_db_add_byfileno(void *handle, int fileno, int readonly)
 {
 	u_int32_t	hash = fileno % FILE_DB_HASHSIZE;
 	struct files_db_handle *h = (struct files_db_handle *)handle;
@@ -72,6 +75,7 @@ void *files_db_add_byfileno(void *handle, int fileno)
 		db_node = malloc(sizeof(struct files_db_s));
 		db_node->fileno = fileno;
 		db_node->filename = NULL;
+		db_node->readonly = readonly;
 		db_node->size = 0;
 		db_node->fd = -1;
 		db_node->next = h->files_db_buckets[hash];
@@ -99,24 +103,30 @@ files_db_fsync_discard_files(void *handle)
 
 			if (db_node->fd == -1) {
 				int fd;
+				int openflags;
 
-				/*
+				/*n
 				 * File was closed, let's open it so we can
 				 * fsync and fadvise(DONTNEED) it.
 				 */
 				do_close = 1;
+				if (files_db_readonly(db_node))
+					openflags = O_RDONLY;
+				else
+					openflags = O_RDWR;
 				fd = open(files_db_get_filename(db_node),
-					  O_RDWR);
+					  openflags);
 				if (fd < 0) {
 					fprintf(stderr,
-						"%s: open(%s O_RDWR) error %d\n",
+						"%s: open(%s %x) error %d\n",
 						progname, db_node->filename,
+						openflags,
 						errno);
 					exit(EXIT_FAILURE);
 				}
 				db_node->fd = fd;
 			}
-			if (fsync(db_node->fd) < 0) {
+			if (!db_node->readonly && fsync(db_node->fd) < 0) {
 				fprintf(stderr, "%s: Cannot fsync %s\n",
 					__func__, db_node->filename);
 				exit(1);
@@ -192,10 +202,13 @@ files_db_unlink_files(void *handle)
 				exit(1);
 			}
 			db_node->fd = -1;
-			if (unlink(db_node->filename) < 0) {
-				fprintf(stderr, "%s: Cannot unlink %s:%s\n",
-					__func__, db_node->filename, strerror(errno));
-				exit(1);
+			if (is_readonly_mount(db_node->filename, db_node->size) == 0) {
+				if (unlink(db_node->filename) < 0) {
+					fprintf(stderr, "%s: Cannot unlink %s:%s\n",
+						__func__, db_node->filename,
+						strerror(errno));
+					exit(EXIT_FAILURE);
+				}
 			}
 			db_node = db_node->next;
 		}
@@ -488,8 +501,6 @@ capture_util_state_before(void)
 	read_cpu_util_state(&before);
 }
 
-extern int verbose;
-
 void
 report_cpu_disk_util(void)
 {
@@ -546,4 +557,88 @@ report_cpu_disk_util(void)
 		printf("Disk util = %.2f%%\n", disk_util);
 	else
 		printf("%.2f", disk_util);
+}
+
+
+static struct ioshark_filename_struct *filename_cache;
+static int filename_cache_num_entries;
+
+char *
+get_ro_filename(int ix)
+{
+	if (ix >= filename_cache_num_entries)
+		return NULL;
+	return filename_cache[ix].path;
+}
+
+void
+init_filename_cache(void)
+{
+	int fd;
+	struct stat st;
+
+	fd = open("ioshark_filenames", O_RDONLY);
+	if (fd < 0) {
+		fprintf(stderr, "%s Can't open ioshark_filenames file\n",
+			progname);
+		exit(EXIT_FAILURE);
+	}
+	if (fstat(fd, &st) < 0) {
+		fprintf(stderr, "%s Can't fstat ioshark_filenames file\n",
+			progname);
+		exit(EXIT_FAILURE);
+	}
+	filename_cache_num_entries = st.st_size /
+		sizeof(struct ioshark_filename_struct);
+	filename_cache = mmap(NULL, st.st_size, PROT_READ,
+			      MAP_SHARED | MAP_LOCKED | MAP_POPULATE,
+			      fd, 0);
+	if (filename_cache == MAP_FAILED) {
+		fprintf(stderr, "%s Can't fstat ioshark_filenames file: %s\n",
+			progname, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+	close(fd);
+}
+
+void
+free_filename_cache(void)
+{
+	size_t mmap_size;
+
+	mmap_size = filename_cache_num_entries *
+		sizeof(struct ioshark_filename_struct);
+	munmap(filename_cache, mmap_size);
+}
+
+/*
+ * Is the passed in filename a regular file ? (eg. not a directory).
+ * Second, is it in a read-only partition ?
+ */
+int
+is_readonly_mount(char *filename, size_t size)
+{
+	struct statfs statfsbuf;
+	struct stat statbuf;
+
+	if (stat(filename, &statbuf) < 0) {
+		/* File possibly deleted */
+		return 0;
+	}
+	if (!S_ISREG(statbuf.st_mode)) {
+		/* Is it a regular file ? */
+		return 0;
+	}
+	if ((size_t)statbuf.st_size < size) {
+		/* Size of existing file is smaller than we expect */
+		return 0;
+	}
+	if (statfs(filename, &statfsbuf) < 0) {
+		/* This shouldn't happen */
+		return 0;
+	}
+	if ((statfsbuf.f_flags & ST_RDONLY) == 0)
+		return 0;
+	else
+		return 1;
 }

@@ -21,6 +21,7 @@ struct files_db_s {
 	int fileno;
 	struct files_db_s *next;
 	size_t	size;
+	int	global_filename_ix;
 };
 
 /* Lifted from Wikipedia Jenkins Hash function page */
@@ -73,6 +74,8 @@ void files_db_write_objects(FILE *fp);
 void *files_db_add(char *filename);
 void *files_db_lookup(char *filename);
 int files_db_get_total_obj(void);
+void init_filename_cache(void);
+void store_filename_cache(void);
 
 
 

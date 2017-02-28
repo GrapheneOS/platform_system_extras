@@ -28,9 +28,20 @@
 #include <assert.h>
 #include <pthread.h>
 #include <sys/statfs.h>
+#include <sys/resource.h>
 #include "ioshark.h"
 #define IOSHARK_MAIN
 #include "ioshark_bench.h"
+
+/*
+ * Note on "quick" mode where we do reads on existing /system,
+ * /vendor and other files in ro partitions, instead of creating
+ * them. The ioshark compiler builds up a table of all the files
+ * in /system, /vendor and other ro partitions. For files in this
+ * list, the benchmark skips the pre-creation of these files and
+ * reads them directly.
+ * The code relevant to this is in *filename_cache*.
+ */
 
 char *progname;
 
@@ -56,6 +67,7 @@ pthread_t tid[MAX_THREADS];
 int do_delay = 0;
 int verbose = 0;
 int summary_mode = 0;
+int quick_mode = 0;
 
 #if 0
 static long gettid()
@@ -66,7 +78,9 @@ static long gettid()
 
 void usage()
 {
-	fprintf(stderr, "%s [-d preserve_delays] [-n num_iterations] [-t num_threads] <list of parsed input files>\n",
+	fprintf(stderr, "%s [-d preserve_delays] [-n num_iterations] [-t num_threads] -q -v | -s <list of parsed input files>\n",
+		progname);
+	fprintf(stderr, "%s -s, -v are mutually exclusive\n",
 		progname);
 	exit(EXIT_FAILURE);
 }
@@ -150,9 +164,11 @@ create_files(struct thread_state_s *state)
 {
 	int i;
 	struct ioshark_file_state file_state;
-	char path[512];
+	char path[MAX_IOSHARK_PATHLEN];
 	void *db_node;
 	struct rw_bytes_s rw_bytes;
+	char *filename;
+	int readonly;
 
 	memset(&rw_bytes, 0, sizeof(struct rw_bytes_s));
 	for (i = 0 ; i < state->num_files ; i++) {
@@ -162,15 +178,31 @@ create_files(struct thread_state_s *state)
 				progname);
 			exit(EXIT_FAILURE);
 		}
-		sprintf(path, "file.%d.%d",
-			(int)(state - thread_state),
-			file_state.fileno);
-		create_file(path, file_state.size,
-			    &rw_bytes);
+		/*
+		 * Check to see if the file is in a readonly partition,
+		 * in which case, we don't have to pre-create the file
+		 * we can just read the existing file.
+		 */
+		filename =
+			get_ro_filename(file_state.global_filename_ix);
+		assert(filename != NULL);
+		if (quick_mode == 0 ||
+		    is_readonly_mount(filename, file_state.size) == 0) {
+			sprintf(path, "file.%d.%d",
+				(int)(state - thread_state),
+				file_state.fileno);
+			create_file(path, file_state.size,
+				    &rw_bytes);
+			filename = path;
+			readonly = 0;
+		} else {
+			readonly = 1;
+		}
 		db_node = files_db_add_byfileno(state->db_handle,
-						file_state.fileno);
+						file_state.fileno,
+						readonly);
 		files_db_update_size(db_node, file_state.size);
-		files_db_update_filename(db_node, path);
+		files_db_update_filename(db_node, filename);
 	}
 	update_byte_counts(&aggr_create_rw_bytes, &rw_bytes);
 }
@@ -416,15 +448,24 @@ do_io(struct thread_state_s *state)
 		}
 		if (file_op.file_op != IOSHARK_OPEN &&
 		    files_db_get_fd(db_node) == -1) {
+			int openflags;
+
 			/*
 			 * This is a hack to workaround the fact that we did not
-			 * see an open() for this file until now. open() the file
-			 * O_RDWR, so that we can perform the IO.
+			 * see an open() for this file until now. open() the
+			 * file O_RDWR, so that we can perform the IO.
 			 */
-			fd = open(files_db_get_filename(db_node), O_RDWR);
+			if (files_db_readonly(db_node))
+				openflags = O_RDONLY;
+			else
+				openflags = O_RDWR;
+			fd = open(files_db_get_filename(db_node),
+				  openflags);
 			if (fd < 0) {
-				fprintf(stderr, "%s: open(%s O_RDWR) error %d\n",
-					progname, files_db_get_filename(db_node),
+				fprintf(stderr, "%s: open(%s %x) error %d\n",
+					progname,
+					files_db_get_filename(db_node),
+					openflags,
 					errno);
 				exit(EXIT_FAILURE);
 			}
@@ -520,11 +561,16 @@ get_start_end(int *start_ix)
 					progname);
 				exit(EXIT_FAILURE);
 			}
-			if (file_state.size > free_fs_bytes) {
-				fclose(fp);
-				goto out;
+			if (quick_mode == 0 ||
+			    !is_readonly_mount(
+				    get_ro_filename(file_state.global_filename_ix),
+				    file_state.size)) {
+				if (file_state.size > free_fs_bytes) {
+					fclose(fp);
+					goto out;
+				}
+				free_fs_bytes -= file_state.size;
 			}
-			free_fs_bytes -= file_state.size;
 		}
 		fclose(fp);
 	}
@@ -568,6 +614,40 @@ wait_for_threads(int num_threads)
 	}
 }
 
+#define IOSHARK_FD_LIM		8192
+
+static void
+sizeup_fd_limits(void)
+{
+	struct rlimit r;
+
+	getrlimit(RLIMIT_NOFILE, &r);
+	if (r.rlim_cur >= IOSHARK_FD_LIM)
+		/* cur limit already at what we want */
+		return;
+	/*
+	 * Size up both the Max and Cur to IOSHARK_FD_LIM.
+	 * If we are not running as root, this will fail,
+	 * catch that below and exit.
+	 */
+	if (r.rlim_max < IOSHARK_FD_LIM)
+		r.rlim_max = IOSHARK_FD_LIM;
+	r.rlim_cur = IOSHARK_FD_LIM;
+	if (setrlimit(RLIMIT_NOFILE, &r) < 0) {
+		fprintf(stderr, "%s: Can't setrlimit (RLIMIT_NOFILE, 8192)\n",
+			progname);
+		exit(EXIT_FAILURE);
+	}
+	getrlimit(RLIMIT_NOFILE, &r);
+	if (r.rlim_cur < IOSHARK_FD_LIM) {
+		fprintf(stderr, "%s: Can't setrlimit up to 8192\n",
+			progname);
+		fprintf(stderr, "%s: Running as root ?\n",
+			progname);
+		exit(EXIT_FAILURE);
+	}
+}
+
 int
 main(int argc, char **argv)
 {
@@ -582,7 +662,7 @@ main(int argc, char **argv)
 	struct thread_state_s *state;
 
 	progname = argv[0];
-        while ((c = getopt(argc, argv, "dn:st:v")) != EOF) {
+        while ((c = getopt(argc, argv, "dn:st:qv")) != EOF) {
                 switch (c) {
                 case 'd':
 			do_delay = 1;
@@ -596,6 +676,14 @@ main(int argc, char **argv)
 			break;
                 case 't':
 			num_threads = atoi(optarg);
+			break;
+                case 'q':
+			/*
+			 * If quick mode is enabled, then we won't
+			 * pre-create files that we are doing IO on that
+			 * live in readonly partitions (/system, /vendor etc)
+			 */
+			quick_mode = 1;
 			break;
                 case 'v':
 			verbose = 1;
@@ -614,13 +702,14 @@ main(int argc, char **argv)
 	if (optind == argc)
                 usage();
 
+	sizeup_fd_limits();
+
 	for (i = optind; i < argc; i++) {
 		infile = argv[i];
 		if (stat(infile, &st) < 0) {
 			fprintf(stderr, "%s: Can't stat %s\n",
 				progname, infile);
 			exit(EXIT_FAILURE);
-			continue;
 		}
 		if (st.st_size == 0) {
 			fprintf(stderr, "%s: Empty file %s\n",
@@ -649,6 +738,9 @@ main(int argc, char **argv)
 	timerclear(&aggregate_file_remove_time);
 	timerclear(&aggregate_IO_time);
 
+	if (quick_mode)
+		init_filename_cache();
+
 	capture_util_state_before();
 
 	/*
@@ -667,6 +759,8 @@ main(int argc, char **argv)
 		/* Create files once */
 		if (!summary_mode)
 			printf("Doing Pre-creation of Files\n");
+		if (quick_mode && !summary_mode)
+			printf("Skipping Pre-creation of read-only Files\n");
 		if (num_threads == 0 || num_threads > num_files)
 			num_threads = num_files;
 		(void)system("echo 3 > /proc/sys/vm/drop_caches");
@@ -765,4 +859,6 @@ main(int argc, char **argv)
 		report_cpu_disk_util();
 		printf("\n");
 	}
+	if (quick_mode)
+		free_filename_cache();
 }

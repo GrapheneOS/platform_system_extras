@@ -459,6 +459,7 @@ int main(int argc, char **argv)
 			progname, infile);
 		exit(EXIT_FAILURE);
 	}
+	init_filename_cache();
 	get_start_time(&start_time);
 	fp = fopen(infile, "r");
 	if (fp == NULL) {
@@ -574,4 +575,5 @@ int main(int argc, char **argv)
 		in_mem_file_op_head = in_mem_file_op_head->next;
 		free(temp);
 	}
+	store_filename_cache();
 }
