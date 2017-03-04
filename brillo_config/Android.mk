@@ -20,8 +20,8 @@ ifdef OSRELEASED_DIRECTORY
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := product_id
-LOCAL_MODULE_CLASS := ETC
-LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/$(OSRELEASED_DIRECTORY)
+LOCAL_MODULE_CLASS := FAKE
+LOCAL_MODULE_PATH := $(TARGET_OUT_OEM)/$(OSRELEASED_DIRECTORY)
 include $(BUILD_SYSTEM)/base_rules.mk
 
 # Attempt to populate the product id from a file in the product path.
@@ -31,15 +31,17 @@ LOADED_BRILLO_PRODUCT_ID := $(call cfgtree-get-if-exists,brillo/product_id)
 # interaction will not work if this is not set correctly.
 $(LOCAL_BUILT_MODULE): BRILLO_PRODUCT_ID ?= "$(LOADED_BRILLO_PRODUCT_ID)"
 $(LOCAL_BUILT_MODULE):
-	$(hide)mkdir -p $(dir $@)
+	$(hide) mkdir -p $(dir $@)
 	echo $(BRILLO_PRODUCT_ID) > $@
+	$(hide) mkdir -p $(TARGET_OUT_ETC)/$(OSRELEASED_DIRECTORY)
+	ln -sf /oem/$(OSRELEASED_DIRECTORY)/product_id $(TARGET_OUT_ETC)/$(OSRELEASED_DIRECTORY)
+
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := product_version
-LOCAL_MODULE_CLASS := ETC
-LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/$(OSRELEASED_DIRECTORY)
+LOCAL_MODULE_CLASS := FAKE
+LOCAL_MODULE_PATH := $(TARGET_OUT_OEM)/$(OSRELEASED_DIRECTORY)
 include $(BUILD_SYSTEM)/base_rules.mk
-
 
 # The version is set to 0.0.0 if the user did not set the actual version and
 # a version cannot be loaded from the product cfgtree.
@@ -63,11 +65,13 @@ endif
 # If you don' want this to change at every build, you can define BUILD_NUMBER in
 # your product makefile and increase it manually.
 $(LOCAL_BUILT_MODULE):
-	$(hide)mkdir -p $(dir $@)
+	$(hide) mkdir -p $(dir $@)
 ifeq ($(shell echo $(BUILD_NUMBER) | grep -E '[^0-9]'),)
 	echo $(BRILLO_PRODUCT_VERSION).$(BUILD_NUMBER) > $@
 else
 	echo $(BRILLO_PRODUCT_VERSION).$(BUILD_DATETIME) > $@
 endif
+	$(hide) mkdir -p $(TARGET_OUT_ETC)/$(OSRELEASED_DIRECTORY)
+	ln -sf /oem/$(OSRELEASED_DIRECTORY)/product_version $(TARGET_OUT_ETC)/$(OSRELEASED_DIRECTORY)
 
 endif
