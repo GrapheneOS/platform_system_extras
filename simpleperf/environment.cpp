@@ -406,22 +406,29 @@ bool CheckPerfEventLimit() {
   return true;
 }
 
+bool GetMaxSampleFrequency(uint64_t* max_sample_freq) {
+  std::string s;
+  if (!android::base::ReadFileToString("/proc/sys/kernel/perf_event_max_sample_rate", &s)) {
+    PLOG(DEBUG) << "failed to read /proc/sys/kernel/perf_event_max_sample_rate";
+    return false;
+  }
+  s = android::base::Trim(s);
+  if (!android::base::ParseUint(s.c_str(), max_sample_freq)) {
+    LOG(ERROR) << "failed to parse /proc/sys/kernel/perf_event_max_sample_rate: " << s;
+    return false;
+  }
+  return true;
+}
+
 bool CheckSampleFrequency(uint64_t sample_freq) {
   if (sample_freq == 0) {
     LOG(ERROR) << "Sample frequency can't be zero.";
     return false;
   }
-  std::string s;
-  if (!android::base::ReadFileToString("/proc/sys/kernel/perf_event_max_sample_rate", &s)) {
-    PLOG(DEBUG) << "failed to read /proc/sys/kernel/perf_event_max_sample_rate";
-    // Omit the check if perf_event_max_sample_rate doesn't exist.
-    return true;
-  }
-  s = android::base::Trim(s);
   uint64_t max_sample_freq;
-  if (!android::base::ParseUint(s.c_str(), &max_sample_freq)) {
-    LOG(ERROR) << "failed to parse /proc/sys/kernel/perf_event_max_sample_rate: " << s;
-    return false;
+  if (!GetMaxSampleFrequency(&max_sample_freq)) {
+    // Omit the check if can't read perf_event_max_sample_rate.
+    return true;
   }
   if (sample_freq > max_sample_freq) {
     LOG(ERROR) << "Sample frequency " << sample_freq << " is out of range [1, "

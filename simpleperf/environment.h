@@ -69,6 +69,7 @@ bool GetThreadName(pid_t tid, std::string* name);
 bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>* tid_set);
 
 bool CheckPerfEventLimit();
+bool GetMaxSampleFrequency(uint64_t* max_sample_freq);
 bool CheckSampleFrequency(uint64_t sample_freq);
 bool CheckKernelSymbolAddresses();
 
