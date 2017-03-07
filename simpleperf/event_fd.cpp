@@ -32,6 +32,7 @@
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 
+#include "environment.h"
 #include "event_attr.h"
 #include "event_type.h"
 #include "perf_event.h"
@@ -51,7 +52,15 @@ std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr,
   if (group_event_fd != nullptr) {
     group_fd = group_event_fd->perf_event_fd_;
   }
-  int perf_event_fd = perf_event_open(attr, tid, cpu, group_fd, 0);
+  perf_event_attr real_attr = attr;
+  if (attr.freq) {
+    uint64_t max_sample_freq;
+    if (GetMaxSampleFrequency(&max_sample_freq) && max_sample_freq < attr.sample_freq) {
+      PLOG(INFO) << "Adjust sample freq to max allowed sample freq " << max_sample_freq;
+      real_attr.sample_freq = max_sample_freq;
+    }
+  }
+  int perf_event_fd = perf_event_open(real_attr, tid, cpu, group_fd, 0);
   if (perf_event_fd == -1) {
     if (report_error) {
       PLOG(ERROR) << "open perf_event_file (event " << event_name << ", tid "
@@ -77,7 +86,7 @@ std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr,
     return nullptr;
   }
   return std::unique_ptr<EventFd>(
-      new EventFd(attr, perf_event_fd, event_name, tid, cpu));
+      new EventFd(real_attr, perf_event_fd, event_name, tid, cpu));
 }
 
 EventFd::~EventFd() {
