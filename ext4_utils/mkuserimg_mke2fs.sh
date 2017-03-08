@@ -95,7 +95,7 @@ if [[ "$1" == "-i" ]]; then
 fi
 
 if [[ "$1" == "-e" ]]; then
-  if [[ MKE2FS_EXTENDED_OPTS ]]; then
+  if [[ $MKE2FS_EXTENDED_OPTS ]]; then
     MKE2FS_EXTENDED_OPTS+=","
   fi
   MKE2FS_EXTENDED_OPTS+="stripe_width=$(($2/BLOCKSIZE))"
@@ -103,7 +103,7 @@ if [[ "$1" == "-e" ]]; then
 fi
 
 if [[ "$1" == "-o" ]]; then
-  if [[ MKE2FS_EXTENDED_OPTS ]]; then
+  if [[ $MKE2FS_EXTENDED_OPTS ]]; then
     MKE2FS_EXTENDED_OPTS+=","
   fi
   # stride should be the max of 8kb and the logical block size
@@ -111,11 +111,13 @@ if [[ "$1" == "-o" ]]; then
   shift; shift
 fi
 
-if [[ MKE2FS_EXTENDED_OPTS ]]; then
+if [[ $MKE2FS_EXTENDED_OPTS ]]; then
   MKE2FS_OPTS+=" -E $MKE2FS_EXTENDED_OPTS"
 fi
 
-E2FSDROID_OPTS+=" -S $1"
+if [[ $1 ]]; then
+  E2FSDROID_OPTS+=" -S $1"
+fi
 
 case $EXT_VARIANT in
   ext4) ;;
