@@ -45,8 +45,8 @@
 
 char *progname;
 
-#define MAX_INPUT_FILES		1024
-#define MAX_THREADS		1024
+#define MAX_INPUT_FILES		8192
+#define MAX_THREADS		8192
 
 struct thread_state_s {
 	char *filename;
@@ -185,7 +185,8 @@ create_files(struct thread_state_s *state)
 		 */
 		filename =
 			get_ro_filename(file_state.global_filename_ix);
-		assert(filename != NULL);
+		if (quick_mode)
+			assert(filename != NULL);
 		if (quick_mode == 0 ||
 		    is_readonly_mount(filename, file_state.size) == 0) {
 			sprintf(path, "file.%d.%d",
@@ -395,7 +396,6 @@ do_io(struct thread_state_s *state)
 	void *db_node;
 	struct ioshark_header header;
 	struct ioshark_file_operation file_op;
-	u_int64_t prev_delay = 0;
 	int fd;
 	int i;
 	char *buf = NULL;
@@ -434,9 +434,8 @@ do_io(struct thread_state_s *state)
 			struct timeval start;
 
 			(void)gettimeofday(&start, (struct timezone *)NULL);
-			usleep(file_op.delta_us - prev_delay);
+			usleep(file_op.delta_us);
 			update_delta_time(&start, &total_delay_time);
-			prev_delay = file_op.delta_us;
 		}
 		db_node = files_db_lookup_byfileno(state->db_handle,
 						   file_op.fileno);
@@ -689,7 +688,7 @@ main(int argc, char **argv)
 			verbose = 1;
 			break;
  	        default:
-                        usage();
+			usage();
 		}
 	}
 
@@ -778,7 +777,6 @@ main(int argc, char **argv)
 		}
 		wait_for_threads(num_threads);
 		update_delta_time(&time_for_pass, &aggregate_file_create_time);
-
 		/* Do the IOs N times */
 		for (i = 0 ; i < num_iterations ; i++) {
 			(void)system("echo 3 > /proc/sys/vm/drop_caches");

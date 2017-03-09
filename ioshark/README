@@ -3,11 +3,11 @@ can find more documentation on IOshark at :
 https://docs.google.com/a/google.com/document/d/1Bhq7iNPVc_JzwRrkmZqcPjMvWgpHX0r3Ncq-ZsRNOBA/edit?usp=sharing
 
 The short summary of what IOshark is : IOshark has 2 components, one
-is a strace compiler that takes straces fed into it and compiles this
-into bytecodes (stored in *.wl files). The compiler runs on a Linux
-host. The second component (which runs on the device) is the tester
-that takes as input the bytecode files (*.wl files) and executes them
-on the device.
+is a strace+ftrace compiler that takes straces and select ftraces fed
+into it and compiles this into bytecodes (stored in *.wl files). The
+compiler runs on a Linux host. The second component (which runs on the
+device) is the tester that takes as input the bytecode files (*.wl
+files) and executes them on the device.
 
 How to Run :
 ----------
@@ -25,3 +25,6 @@ seen in the original straces.
 -t <N> : Limit to N threads. By default (without this option), IOshark
 will launch as many threads as there are input files, so 1 thread/file.
 -v : verbose. Chatty mode.
+-s : One line summary.
+-q : Don't create the files in read-only partitions like /system and
+/vendor. Instead do reads on those files.

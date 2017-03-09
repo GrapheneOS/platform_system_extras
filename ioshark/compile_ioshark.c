@@ -79,7 +79,8 @@ struct flags_map_s fileop_map[] = {
 	{ "openat", IOSHARK_OPEN },
 	{ "fsync", IOSHARK_FSYNC },
 	{ "fdatasync", IOSHARK_FDATASYNC },
-	{ "close", IOSHARK_CLOSE }
+	{ "close", IOSHARK_CLOSE },
+	{ "ftrace", IOSHARK_MAPPED_PREAD }
 };
 
 struct in_mem_file_op {
@@ -94,14 +95,81 @@ void usage(void)
 	fprintf(stderr, "%s in_file out_file\n", progname);
 }
 
-u_int64_t
-get_delta_ts(char *buf, struct timeval *start_tv)
+void
+init_prev_time(struct timeval *tv)
+{
+	tv->tv_sec = tv->tv_usec = 0;
+}
+
+/*
+ * delta ts is the time delta from the previous IO in this tracefile.
+ */
+static u_int64_t
+get_delta_ts(char *buf, struct timeval *prev)
 {
 	struct timeval op_tv, tv_res;
 
 	sscanf(buf, "%lu.%lu", &op_tv.tv_sec, &op_tv.tv_usec);
-	timersub(&op_tv, start_tv, &tv_res);
+	/* First item */
+	if (prev->tv_sec == 0 && prev->tv_usec == 0)
+		tv_res.tv_sec = tv_res.tv_usec = 0;
+	else
+		timersub(&op_tv, prev, &tv_res);
+	*prev = op_tv;
 	return (tv_res.tv_usec + (tv_res.tv_sec * 1000000));
+}
+
+void
+get_tracetype(char *buf, char *trace_type)
+{
+	char *s, *s2;
+
+	*trace_type = '\0';
+	s = strchr(buf, ' ');
+	if (s == NULL) {
+		fprintf(stderr,
+			"%s Malformed Trace Type ? %s\n",
+			progname, __func__);
+		exit(EXIT_FAILURE);
+	}
+	while (*s == ' ')
+		s++;
+	if (sscanf(s, "%s", trace_type) != 1) {
+		fprintf(stderr,
+			"%s Malformed Trace Type ? %s\n",
+			progname, __func__);
+		exit(EXIT_FAILURE);
+	}
+	if (strcmp(trace_type, "strace") != 0 &&
+	    strcmp(trace_type, "ftrace") != 0) {
+		fprintf(stderr,
+			"%s Unknown/Missing Trace Type (has to be strace|ftrace) %s\n",
+			progname, __func__);
+		exit(EXIT_FAILURE);
+	}
+	/*
+	 * Remove the keyword "strace"/"ftrace" from the buffer
+	 */
+	s2 = strchr(s, ' ');
+	if (s2 == NULL) {
+		fprintf(stderr,
+			"%s Malformed Trace Type ? %s\n",
+			progname, __func__);
+		exit(EXIT_FAILURE);
+	}
+	while (*s2 == ' ')
+		s2++;
+	if (*s2  == '\0') {
+		/*
+		 * Premature end of input record
+		 */
+		fprintf(stderr,
+			"%s Mal-formed strace/ftrace record %s:%s\n",
+			progname, __func__, buf);
+		exit(EXIT_FAILURE);
+	}
+	/* strcpy() expects non-overlapping buffers, but bcopy doesn't */
+	bcopy(s2, s, strlen(s2) + 1);
 }
 
 void
@@ -109,24 +177,39 @@ get_pathname(char *buf, char *pathname, enum file_op file_op)
 {
 	char *s, *s2, save;
 
-	if (file_op == IOSHARK_OPEN)
-		s = strchr(buf, '"');
-	else
-		s = strchr(buf, '<');
-	if (s == NULL) {
-		fprintf(stderr, "%s: Malformed line: %s\n",
-			__func__, buf);
-		exit(EXIT_FAILURE);
-	}
-	s += 1;
-	if (file_op == IOSHARK_OPEN)
-		s2 = strchr(s, '"');
-	else
-		s2 = strchr(s, '>');
-	if (s2 == NULL) {
-		fprintf(stderr, "%s: Malformed line: %s\n",
-			__func__, buf);
-		exit(EXIT_FAILURE);
+	if (file_op == IOSHARK_MAPPED_PREAD) {
+		s = strchr(buf, '/');
+		if (s == NULL) {
+			fprintf(stderr, "%s: Malformed line: %s\n",
+				__func__, buf);
+			exit(EXIT_FAILURE);
+		}
+		s2 = strchr(s, ' ');
+		if (s2 == NULL) {
+			fprintf(stderr, "%s: Malformed line: %s\n",
+				__func__, buf);
+			exit(EXIT_FAILURE);
+		}
+	} else {
+		if (file_op == IOSHARK_OPEN)
+			s = strchr(buf, '"');
+		else
+			s = strchr(buf, '<');
+		if (s == NULL) {
+			fprintf(stderr, "%s: Malformed line: %s\n",
+				__func__, buf);
+			exit(EXIT_FAILURE);
+		}
+		s += 1;
+		if (file_op == IOSHARK_OPEN)
+			s2 = strchr(s, '"');
+		else
+			s2 = strchr(s, '>');
+		if (s2 == NULL) {
+			fprintf(stderr, "%s: Malformed line: %s\n",
+				__func__, buf);
+			exit(EXIT_FAILURE);
+		}
 	}
 	save = *s2;
 	*s2 = '\0';
@@ -287,6 +370,35 @@ get_prw64_offset_len(char *buf,
 	sscanf(s_offset + 2, "%ju", offset);
 }
 
+
+void
+get_ftrace_offset_len(char *buf,
+		      off_t *offset,
+		      u_int64_t *len)
+{
+	char *s_offset;
+
+	s_offset = strchr(buf, '/');
+	if (s_offset == NULL) {
+		fprintf(stderr, "%s: Malformed line 1: %s\n",
+			__func__, buf);
+		exit(EXIT_FAILURE);
+	}
+	s_offset = strchr(s_offset, ' ');
+	if (s_offset == NULL) {
+		fprintf(stderr, "%s: Malformed line 2: %s\n",
+			__func__, buf);
+		exit(EXIT_FAILURE);
+	}
+	while (*s_offset == ' ')
+		s_offset++;
+	if (sscanf(s_offset, "%ju %ju", offset, len) != 2) {
+		fprintf(stderr, "%s: Malformed line 3: %s\n",
+			__func__, buf);
+		exit(EXIT_FAILURE);
+	}
+}
+
 void
 get_openat_flags_mode(char *buf, char *flags, mode_t *mode)
 {
@@ -401,25 +513,6 @@ map_syscall(char *syscall)
 			  ARRAY_SIZE(fileop_map));
 }
 
-void
-get_start_time(struct timeval *tv)
-{
-	FILE *fp;
-
-	tv->tv_usec = 0;
-	fp = fopen("trace.begin", "r");
-	if (fp == NULL) {
-		fprintf(stderr, "%s Can't open trace.begin\n",
-			__func__);
-		exit(EXIT_FAILURE);
-	}
-	if (fscanf(fp, "%lu", &tv->tv_sec) != 1) {
-		fprintf(stderr, "%s Can't read seconds from trace.begin\n",
-			__func__);
-		exit(EXIT_FAILURE);
-	}
-}
-
 /*
  * For each tracefile, we first create in-memory structures, then once
  * we've processed each tracefile completely, we write out the in-memory
@@ -440,7 +533,8 @@ int main(int argc, char **argv)
 	struct in_mem_file_op *in_mem_fop;
 	struct stat st;
 	char *infile, *outfile;
-	struct timeval start_time;
+	struct timeval prev_time;
+	char trace_type[64];
 
 	progname = argv[0];
 	if (argc != 3) {
@@ -459,8 +553,8 @@ int main(int argc, char **argv)
 			progname, infile);
 		exit(EXIT_FAILURE);
 	}
+	init_prev_time(&prev_time);
 	init_filename_cache();
-	get_start_time(&start_time);
 	fp = fopen(infile, "r");
 	if (fp == NULL) {
 		fprintf(stderr, "%s Can't open %s\n",
@@ -473,9 +567,13 @@ int main(int argc, char **argv)
 			s++;
 		in_mem_fop = malloc(sizeof(struct in_mem_file_op));
 		disk_file_op = &in_mem_fop->disk_file_op;
-		disk_file_op->delta_us = get_delta_ts(s, &start_time);
-		get_syscall(s, syscall);
-		disk_file_op->file_op = map_syscall(syscall);
+		disk_file_op->delta_us = get_delta_ts(s, &prev_time);
+		get_tracetype(s, trace_type);
+		if (strcmp(trace_type, "strace") == 0) {
+			get_syscall(s, syscall);
+			disk_file_op->file_op = map_syscall(syscall);
+		} else
+			disk_file_op->file_op = map_syscall("ftrace");
 		get_pathname(s, path, disk_file_op->file_op);
 		db_node = files_db_add(path);
 		disk_file_op->fileno = files_db_get_fileno(db_node);
@@ -528,6 +626,16 @@ int main(int argc, char **argv)
 		case IOSHARK_FDATASYNC:
 			break;
 		case IOSHARK_CLOSE:
+			break;
+		case IOSHARK_MAPPED_PREAD:
+			/* Convert a mmap'ed read into a PREAD64 */
+			disk_file_op->file_op = IOSHARK_PREAD64;
+			get_ftrace_offset_len(s,
+					      &disk_file_op->prw_offset,
+					      (u_int64_t *)&disk_file_op->prw_len);
+			files_db_update_size(db_node,
+					     disk_file_op->prw_offset +
+					     disk_file_op->prw_len);
 			break;
 		default:
 			break;

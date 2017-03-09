@@ -41,11 +41,17 @@ compile_tracefiles()
 	    egrep -v '\/sys\/devices\/system\/' bar > bar0
 	    mv bar0 bar
 	    fgrep -v '= -1'	bar > foo
-	    mv foo bar
+	    rm bar
+	    # begin_time is seconds since epoch
+	    begin_time=`cat trace.begin`
+	    # replace seconds since epoch with SECONDS SINCE BOOT in the
+	    # strace files
+	    awk -v begin="$begin_time" '{ printf "%f strace ", $1 - begin; $1=""; print $0}' foo > bar
 	    if [ -s bar ]
 	    then
 		echo parsing $i
-		compile_ioshark bar $i.wl
+		pid=${i##*.}
+		compile_ioshark bar $pid.wl
 		rm -f bar
 	    else
 		rm -f $i bar
@@ -58,7 +64,6 @@ compile_tracefiles()
 
 adb root && adb wait-for-device
 
-#adb shell 'ps -ef' | grep zygote > zygote_pids
 adb shell 'ps' | grep zygote > zygote_pids
 
 fgrep -v grep zygote_pids > bar
@@ -88,4 +93,5 @@ tar xf trace.tar
 compile_tracefiles
 
 # tar up the .wl files just created
+rm -f wl.tar
 tar cf wl.tar ioshark_filenames *.wl
