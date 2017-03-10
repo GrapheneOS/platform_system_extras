@@ -42,9 +42,6 @@ MOUNT_POINT=$4
 SIZE=$5
 shift; shift; shift; shift; shift
 
-# selinux requires ext_attr.
-MKE2FS_OPTS+="-O ext_attr "
-
 if [ "$1" = "-j" ]; then
   if [ "$2" = "0" ]; then
     MKE2FS_OPTS+="-O ^has_journal"
@@ -146,7 +143,7 @@ cat /dev/null >$OUTPUT_FILE
 
 MAKE_EXT4FS_CMD="mke2fs $MKE2FS_OPTS -t $EXT_VARIANT -b $BLOCKSIZE $OUTPUT_FILE $SIZE"
 echo $MAKE_EXT4FS_CMD
-$MAKE_EXT4FS_CMD
+MKE2FS_CONFIG=./system/extras/ext4_utils/mke2fs.conf $MAKE_EXT4FS_CMD
 if [ $? -ne 0 ]; then
   exit 4
 fi
