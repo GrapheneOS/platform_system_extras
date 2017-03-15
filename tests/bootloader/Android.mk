@@ -6,7 +6,7 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := bootloader_unit_test
-LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_TAGS := tests
 
 bootloader_py_files := $(call find-subdir-files, *.py)
 
@@ -20,7 +20,6 @@ $(GEN) : $(bootloader_zip_path)/% : $(LOCAL_PATH)/%
 	$(transform-generated-source)
 
 LOCAL_PICKUP_FILES := $(bootloader_zip_prefix)/nativetest
-
-bootloader_unit_test: $(GEN)
+LOCAL_ADDITIONAL_DEPENDENCIES := $(GEN)
 
 include $(BUILD_PHONY_PACKAGE)
