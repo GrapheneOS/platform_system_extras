@@ -767,6 +767,14 @@ An example is report_sample.py.
     $stackcollapse-perf.pl out.perf >out.folded
     $./flamegraph.pl out.folded >a.svg
 
+### Visualize using pprof
+pprof is a tool for visualization and analysis of profiling data. It can
+be got from https://github.com/google/pprof. pprof_proto_generator.py can
+generate profiling data in a format acceptable by pprof.
+
+    $python pprof_proto_generator.py
+    $pprof -pdf pprof.profile
+
 ### Annotate source code
 annotate.py reads perf.data and binaries in binary_cache. Then it knows which
 source file:line each sample hits. So it can annotate source code. annotate.py

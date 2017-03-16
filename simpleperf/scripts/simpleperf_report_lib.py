@@ -17,6 +17,7 @@
 
 """simpleperf_report_lib.py: a python wrapper of libsimpleperf_report.so.
    Used to access samples in perf.data.
+
 """
 
 import ctypes as ct
@@ -64,11 +65,18 @@ class EventStruct(ct.Structure):
     _fields_ = [('name', ct.c_char_p)]
 
 
+class MappingStruct(ct.Structure):
+    _fields_ = [('start', ct.c_uint64),
+                ('end', ct.c_uint64),
+                ('pgoff', ct.c_uint64)]
+
+
 class SymbolStruct(ct.Structure):
     _fields_ = [('dso_name', ct.c_char_p),
                 ('vaddr_in_file', ct.c_uint64),
                 ('symbol_name', ct.c_char_p),
-                ('symbol_addr', ct.c_uint64)]
+                ('symbol_addr', ct.c_uint64),
+                ('mapping', ct.POINTER(MappingStruct))]
 
 
 class CallChainEntryStructure(ct.Structure):
@@ -105,6 +113,7 @@ class SymbolStructUsingStr(object):
         self.vaddr_in_file = symbol.vaddr_in_file
         self.symbol_name = _char_pt_to_str(symbol.symbol_name)
         self.symbol_addr = symbol.symbol_addr
+        self.mapping = symbol.mapping
 
 
 class CallChainEntryStructureUsingStr(object):
