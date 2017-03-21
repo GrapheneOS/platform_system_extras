@@ -47,11 +47,18 @@ struct Event {
   const char* name;
 };
 
+struct Mapping {
+  uint64_t start;
+  uint64_t end;
+  uint64_t pgoff;
+};
+
 struct SymbolEntry {
   const char* dso_name;
   uint64_t vaddr_in_file;
   const char* symbol_name;
   uint64_t symbol_addr;
+  Mapping* mapping;
 };
 
 struct CallChainEntry {
@@ -130,6 +137,7 @@ class ReportLib {
  private:
   Sample* GetCurrentSample();
   bool OpenRecordFileIfNecessary();
+  Mapping* AddMapping(const MapEntry& map);
 
   std::unique_ptr<android::base::ScopedLogSeverity> log_severity_;
   std::string record_filename_;
@@ -141,6 +149,7 @@ class ReportLib {
   Event current_event_;
   SymbolEntry current_symbol_;
   CallChain current_callchain_;
+  std::vector<std::unique_ptr<Mapping>> current_mappings_;
   std::vector<CallChainEntry> callchain_entries_;
   std::string build_id_string_;
   int update_flag_;
@@ -198,6 +207,7 @@ Sample* ReportLib::GetNextSample() {
     }
   }
   update_flag_ = 0;
+  current_mappings_.clear();
   return GetCurrentSample();
 }
 
@@ -250,6 +260,7 @@ SymbolEntry* ReportLib::GetSymbolOfCurrentSample() {
     current_symbol_.vaddr_in_file = vaddr_in_file;
     current_symbol_.symbol_name = symbol->DemangledName();
     current_symbol_.symbol_addr = symbol->addr;
+    current_symbol_.mapping = AddMapping(*map);
     update_flag_ |= UPDATE_FLAG_OF_SYMBOL;
   }
   return &current_symbol_;
@@ -296,6 +307,7 @@ CallChain* ReportLib::GetCallChainOfCurrentSample() {
           entry.symbol.vaddr_in_file = vaddr_in_file;
           entry.symbol.symbol_name = symbol->DemangledName();
           entry.symbol.symbol_addr = symbol->addr;
+          entry.symbol.mapping = AddMapping(*map);
           callchain_entries_.push_back(entry);
         }
       }
@@ -305,6 +317,15 @@ CallChain* ReportLib::GetCallChainOfCurrentSample() {
     update_flag_ |= UPDATE_FLAG_OF_CALLCHAIN;
   }
   return &current_callchain_;
+}
+
+Mapping* ReportLib::AddMapping(const MapEntry& map) {
+  current_mappings_.emplace_back(std::unique_ptr<Mapping>(new Mapping));
+  Mapping* mapping = current_mappings_.back().get();
+  mapping->start = map.start_addr;
+  mapping->end = map.start_addr + map.len;
+  mapping->pgoff = map.pgoff;
+  return mapping;
 }
 
 const char* ReportLib::GetBuildIdForPath(const char* path) {
