@@ -15,13 +15,8 @@
 #
 LOCAL_PATH := $(call my-dir)
 
-SIMPLEPERF_SCRIPT_LIST := annotate.config annotate.py app_profiler.config \
-                          app_profiler.py binary_cache_builder.config \
-                          binary_cache_builder.py report_sample.py \
-                          report.py simpleperf_report_lib.py utils.py \
-                          ../README.md
-
-SIMPLEPERF_SCRIPT_LIST := $(addprefix $(LOCAL_PATH)/, $(SIMPLEPERF_SCRIPT_LIST))
+SIMPLEPERF_SCRIPT_LIST := $(wildcard $(LOCAL_PATH)/*.py $(LOCAL_PATH)/*.config) \
+                          $(LOCAL_PATH)/../README.md
 
 $(HOST_OUT_EXECUTABLES)/simpleperf_script.zip : $(SIMPLEPERF_SCRIPT_LIST)
 	zip -j - $^ >$@
