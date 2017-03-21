@@ -29,6 +29,25 @@ import sys
 from simpleperf_report_lib import *
 from utils import *
 
+class SourceLine(object):
+    def __init__(self, file, function, line):
+        self.file = file
+        self.function = function
+        self.line = line
+
+    @property
+    def file_key(self):
+        return self.file
+
+    @property
+    def function_key(self):
+        return (self.file, self.function)
+
+    @property
+    def line_key(self):
+        return (self.file, self.line)
+
+
 # TODO: using addr2line can't convert from function_start_address to
 # source_file:line very well for java code. Because in .debug_line section,
 # there is some distance between function_start_address and the address
@@ -36,10 +55,10 @@ from utils import *
 class Addr2Line(object):
     """collect information of how to map [dso_name,vaddr] to [source_file:line].
     """
-    def __init__(self, annotator, addr2line_path):
+    def __init__(self, addr2line_path, symfs_dir=None):
         self.dso_dict = dict()
-        self.annotator = annotator
         self.addr2line_path = addr2line_path
+        self.symfs_dir = symfs_dir
 
 
     def add_addr(self, dso_name, addr):
@@ -55,6 +74,8 @@ class Addr2Line(object):
         self.file_list = []
         # map from file to id with file_list[id] == file
         self.file_dict = {}
+        self.file_list.append('')
+        self.file_dict[''] = 0
 
         for dso_name in self.dso_dict.keys():
             self._convert_addrs_to_lines(dso_name, self.dso_dict[dso_name])
@@ -62,42 +83,59 @@ class Addr2Line(object):
 
 
     def _convert_addrs_to_lines(self, dso_name, dso):
-        dso_path = self.annotator.find_dso_path(dso_name)
+        dso_path = self._find_dso_path(dso_name)
         if dso_path is None:
             log_warning("can't find dso '%s'" % dso_name)
             dso.clear()
             return
-        addrs = sorted(dso.keys());
+        addrs = sorted(dso.keys())
         addr_str = []
         for addr in addrs:
             addr_str.append('0x%x' % addr)
         addr_str = '\n'.join(addr_str)
-        subproc = subprocess.Popen([self.addr2line_path, '-e', dso_path],
+        subproc = subprocess.Popen([self.addr2line_path, '-e', dso_path, '-aifC'],
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         (stdoutdata, _) = subproc.communicate(addr_str)
-        stdoutdata = stdoutdata.split('\n')
+        stdoutdata = stdoutdata.strip().split('\n')
         if len(stdoutdata) < len(addrs):
             log_fatal("addr2line didn't output enough lines")
-        for i in range(len(addrs)):
-            strs = stdoutdata[i].split(':')
-            if len(strs) == 2 and strs[0].find('?') == -1:
-                file = strs[0].strip()
-                if strs[1].find('?') == -1:
-                    line = 0
-                    for c in strs[1]:
-                        if c.isdigit():
-                            line = line * 10 + ord(c) - ord('0')
-                        else:
-                            break
+        addr_pos = 0
+        out_pos = 0
+        while addr_pos < len(addrs) and out_pos < len(stdoutdata):
+            addr_line = stdoutdata[out_pos]
+            out_pos += 1
+            assert addr_line[:2] == "0x"
+            assert out_pos < len(stdoutdata)
+            assert addrs[addr_pos] == int(addr_line, 16)
+            source_lines = []
+            while out_pos < len(stdoutdata) and stdoutdata[out_pos][:2] != "0x":
+                function = stdoutdata[out_pos]
+                out_pos += 1
+                assert out_pos < len(stdoutdata)
+                file, line = stdoutdata[out_pos].split(':')
+                line = line.split()[0]  # Remove comments after line number
+                out_pos += 1
+                if file.find('?') != -1:
+                    file = 0
                 else:
-                    line = None
-                id = self.file_dict.get(file)
-                if id is None:
-                    id = len(self.file_list)
-                    self.file_list.append(file)
-                    self.file_dict[file] = id
-                dso[addrs[i]] = (id, line)
+                    file = self._get_file_id(file)
+                if line.find('?') != -1:
+                    line = 0
+                else:
+                    line = int(line)
+                source_lines.append(SourceLine(file, function, line))
+                dso[addrs[addr_pos]] = source_lines
+                addr_pos += 1
+        assert addr_pos == len(addrs)
 
+
+    def _get_file_id(self, file):
+        id = self.file_dict.get(file)
+        if id is None:
+            id = len(self.file_list)
+            self.file_list.append(file)
+            self.file_dict[file] = id
+        return id
 
     def _combine_source_files(self):
         """It is possible that addr2line gives us different names for the same
@@ -135,14 +173,28 @@ class Addr2Line(object):
                     self.file_list[from_id] = self.file_list[to_id]
 
 
-    def get_source(self, dso_name, addr):
+    def get_sources(self, dso_name, addr):
         dso = self.dso_dict.get(dso_name)
         if dso is None:
-            return (None, None)
-        item = dso.get(addr)
-        if item is None:
-            return (None, None)
-        return (self.file_list[item[0]], item[1])
+            return []
+        item = dso.get(addr, [])
+        source_lines = []
+        for source in item:
+            source_lines.append(SourceLine(self.file_list[source.file],
+                                           source.function, source.line))
+        return source_lines
+
+
+    def _find_dso_path(self, dso):
+        if dso[0] != '/' or dso == '//anon':
+            return None
+        if self.symfs_dir:
+            dso_path = os.path.join(self.symfs_dir, dso[1:])
+            if os.path.isfile(dso_path):
+                return dso_path
+        if os.path.isfile(dso):
+            return dso
+        return None
 
 
 class Period(object):
@@ -200,7 +252,7 @@ class FilePeriod(object):
 
     def add_function_period(self, function_name, function_start_line, period):
         a = self.function_dict.get(function_name)
-        if a is None:
+        if not a:
             if function_start_line is None:
                 function_start_line = -1
             self.function_dict[function_name] = a = [function_start_line, Period()]
@@ -230,41 +282,25 @@ class SourceFileAnnotator(object):
 
         # init member variables
         self.config = config
-        self.symfs_dir = None
-        self.kallsyms = None
-        self.comm_filter = None
-        self.pid_filter = None
-        self.tid_filter = None
-        self.dso_filter = None
-        symfs_dir = config['symfs_dir']
-        if symfs_dir:
-            self.symfs_dir = symfs_dir
-        kallsyms = config['kallsyms']
-        if kallsyms:
-            self.kallsyms = kallsyms
-        comm_filter = config['comm_filters']
-        if comm_filter:
-            self.comm_filter = set(comm_filter)
-        pid_filter = config['pid_filters']
-        if pid_filter:
-            self.pid_filter = set()
-            for pid in pid_filter:
-                self.pid_filter.add(int(pid))
-        tid_filter = config['tid_filters']
-        if tid_filter:
-            self.tid_filter = set()
-            for tid in tid_filter:
-                self.tid_filter.add(int(tid))
-        dso_filter = config['dso_filters']
-        if dso_filter:
-            self.dso_filter = set(dso_filter)
+        self.symfs_dir = config.get('symfs_dir')
+        self.kallsyms = config.get('kallsyms')
+        self.comm_filter = set(config['comm_filters']) if config.get('comm_filters') else None
+        if config.get('pid_filters'):
+            self.pid_filter = {int(x) for x in config['pid_filters']}
+        else:
+            self.pid_filter = None
+        if config.get('tid_filters'):
+            self.tid_filter = {int(x) for x in config['tid_filters']}
+        else:
+            self.tid_filter = None
+        self.dso_filter = set(config['dso_filters']) if config.get('dso_filters') else None
 
         output_dir = config['annotate_dest_dir']
         if os.path.isdir(output_dir):
             shutil.rmtree(output_dir)
         os.makedirs(output_dir)
 
-        self.addr2line = Addr2Line(self, self.config['addr2line_path'])
+        self.addr2line = Addr2Line(self.config['addr2line_path'], symfs_dir)
 
 
     def annotate(self):
@@ -282,9 +318,10 @@ class SourceFileAnnotator(object):
         """
         for perf_data in self.config['perf_data_list']:
             lib = ReportLib()
-            if self.symfs_dir is not None:
+            lib.SetRecordFile(perf_data)
+            if self.symfs_dir:
                 lib.SetSymfs(self.symfs_dir)
-            if self.kallsyms is not None:
+            if self.kallsyms:
                 lib.SetKallsymsFile(self.kallsyms)
             while True:
                 sample = lib.GetNextSample()
@@ -306,38 +343,26 @@ class SourceFileAnnotator(object):
 
     def _filter_sample(self, sample):
         """Return true if the sample can be used."""
-        if self.comm_filter is not None:
+        if self.comm_filter:
             if sample.thread_comm not in self.comm_filter:
                 return False
-        if self.pid_filter is not None:
+        if self.pid_filter:
             if sample.pid not in self.pid_filter:
                 return False
-        if self.tid_filter is not None:
+        if self.tid_filter:
             if sample.tid not in self.tid_filter:
                 return False
         return True
 
 
     def _filter_symbol(self, symbol):
-        if self.dso_filter is None or symbol.dso_name in self.dso_filter:
+        if not self.dso_filter or symbol.dso_name in self.dso_filter:
             return True
         return False
 
 
     def _convert_addrs_to_lines(self):
         self.addr2line.convert_addrs_to_lines()
-
-
-    def find_dso_path(self, dso):
-        if dso[0] != '/' or dso == '//anon':
-            return None
-        if self.symfs_dir is not None:
-            dso_path = os.path.join(self.symfs_dir, dso[1:])
-            if os.path.isfile(dso_path):
-                return dso_path
-        if os.path.isfile(dso):
-            return dso
-        return None
 
 
     def _generate_periods(self):
@@ -349,9 +374,10 @@ class SourceFileAnnotator(object):
         self.file_periods = dict()
         for perf_data in self.config['perf_data_list']:
             lib = ReportLib()
-            if self.symfs_dir is not None:
+            lib.SetRecordFile(perf_data)
+            if self.symfs_dir:
                 lib.SetSymfs(self.symfs_dir)
-            if self.kallsyms is not None:
+            if self.kallsyms:
                 lib.SetKallsymsFile(self.kallsyms)
             while True:
                 sample = lib.GetNextSample()
@@ -386,18 +412,20 @@ class SourceFileAnnotator(object):
                     # Add period to dso.
                     self._add_dso_period(symbol.dso_name, period, used_dso_dict)
                     # Add period to source file.
-                    source = self.addr2line.get_source(symbol.dso_name, symbol.vaddr_in_file)
-                    if source[0] is not None:
-                        self._add_file_period(source[0], period, used_file_dict)
-                        # Add period to line.
-                        if source[1] is not None:
-                            self._add_line_period(source, period, used_line_dict)
+                    sources = self.addr2line.get_sources(symbol.dso_name, symbol.vaddr_in_file)
+                    for source in sources:
+                        if source.file:
+                            self._add_file_period(source, period, used_file_dict)
+                            # Add period to line.
+                            if source.line:
+                                self._add_line_period(source, period, used_line_dict)
                     # Add period to function.
-                    source = self.addr2line.get_source(symbol.dso_name, symbol.symbol_addr)
-                    if source[0] is not None:
-                        self._add_file_period(source[0], period, used_file_dict)
-                        self._add_function_period(source, symbol.symbol_name, period,
-                                                  used_function_dict)
+                    sources = self.addr2line.get_sources(symbol.dso_name, symbol.symbol_addr)
+                    for source in sources:
+                        if source.file:
+                            self._add_file_period(source, period, used_file_dict)
+                            if source.function:
+                                self._add_function_period(source, period, used_function_dict)
 
                 if is_sample_used:
                     self.period += sample.period
@@ -412,27 +440,27 @@ class SourceFileAnnotator(object):
             dso_period.add_period(period)
 
 
-    def _add_file_period(self, file, period, used_file_dict):
-        if not used_file_dict.has_key(file):
-            used_file_dict[file] = True
-            file_period = self.file_periods.get(file)
+    def _add_file_period(self, source, period, used_file_dict):
+        if not used_file_dict.has_key(source.file_key):
+            used_file_dict[source.file_key] = True
+            file_period = self.file_periods.get(source.file)
             if file_period is None:
-                file_period = self.file_periods[file] = FilePeriod(file)
+                file_period = self.file_periods[source.file] = FilePeriod(source.file)
             file_period.add_period(period)
 
 
     def _add_line_period(self, source, period, used_line_dict):
-        if not used_line_dict.has_key(source):
-            used_line_dict[source] = True
-            file_period = self.file_periods[source[0]]
-            file_period.add_line_period(source[1], period)
+        if not used_line_dict.has_key(source.line_key):
+            used_line_dict[source.line_key] = True
+            file_period = self.file_periods[source.file]
+            file_period.add_line_period(source.line, period)
 
 
-    def _add_function_period(self, source, function_name, period, used_function_dict):
-        if not used_function_dict.has_key((source[0], function_name)):
-            used_function_dict[(source[0], function_name)] = True
-            file_period = self.file_periods[source[0]]
-            file_period.add_function_period(function_name, source[1], period)
+    def _add_function_period(self, source, period, used_function_dict):
+        if not used_function_dict.has_key(source.function_key):
+            used_function_dict[source.function_key] = True
+            file_period = self.file_periods[source.file]
+            file_period.add_function_period(source.function, source.line, period)
 
 
     def _write_summary(self):
@@ -461,7 +489,6 @@ class SourceFileAnnotator(object):
                 values = sorted(values,
                                 cmp=lambda x, y: cmp(y[2].acc_period, x[2].acc_period))
                 for value in values:
-                    func = file_period.function_dict[func_name]
                     f.write('\tfunction (%s): line %d, %s\n' % (
                         value[0], value[1], self._get_percentage_str(value[2])))
                 f.write('\n')
