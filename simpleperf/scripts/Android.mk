@@ -18,6 +18,8 @@ LOCAL_PATH := $(call my-dir)
 SIMPLEPERF_SCRIPT_LIST := $(wildcard $(LOCAL_PATH)/*.py $(LOCAL_PATH)/*.config) \
                           $(LOCAL_PATH)/../README.md
 
+SIMPLEPERF_SCRIPT_LIST := $(filter-out $(LOCAL_PATH)/update.py,$(SIMPLEPERF_SCRIPT_LIST))
+
 $(HOST_OUT_EXECUTABLES)/simpleperf_script.zip : $(SIMPLEPERF_SCRIPT_LIST)
 	zip -j - $^ >$@
 
