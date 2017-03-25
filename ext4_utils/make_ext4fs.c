@@ -753,16 +753,16 @@ int make_ext4fs_internal(int fd, const char *_directory, const char *_target_out
 	if (info.len <= 0)
 		info.len = get_file_size(fd);
 
-	if (info.len <= 0) {
-		fprintf(stderr, "Need size of filesystem\n");
-		return EXIT_FAILURE;
-	}
-
 	if (info.block_size <= 0)
 		info.block_size = compute_block_size();
 
 	/* Round down the filesystem length to be a multiple of the block size */
 	info.len &= ~((u64)info.block_size - 1);
+
+	if (info.len <= 0) {
+		fprintf(stderr, "filesystem size too small\n");
+		return EXIT_FAILURE;
+	}
 
 	if (info.journal_blocks == 0)
 		info.journal_blocks = compute_journal_blocks();
