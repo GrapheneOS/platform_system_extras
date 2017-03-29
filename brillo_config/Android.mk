@@ -24,17 +24,21 @@ LOCAL_MODULE_CLASS := FAKE
 LOCAL_MODULE_PATH := $(TARGET_OUT_OEM)/$(OSRELEASED_DIRECTORY)
 include $(BUILD_SYSTEM)/base_rules.mk
 
-# Attempt to populate the product id from a file in the product path.
-LOADED_BRILLO_PRODUCT_ID := $(call cfgtree-get-if-exists,brillo/product_id)
-
-# We don't really have a default value for the product id as the backend
-# interaction will not work if this is not set correctly.
-$(LOCAL_BUILT_MODULE): BRILLO_PRODUCT_ID ?= "$(LOADED_BRILLO_PRODUCT_ID)"
 $(LOCAL_BUILT_MODULE):
 	$(hide) mkdir -p $(dir $@)
 	echo $(BRILLO_PRODUCT_ID) > $@
 	$(hide) mkdir -p $(TARGET_OUT_ETC)/$(OSRELEASED_DIRECTORY)
 	ln -sf /oem/$(OSRELEASED_DIRECTORY)/product_id $(TARGET_OUT_ETC)/$(OSRELEASED_DIRECTORY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := system_id
+LOCAL_MODULE_CLASS := ETC
+LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/$(OSRELEASED_DIRECTORY)
+include $(BUILD_SYSTEM)/base_rules.mk
+
+$(LOCAL_BUILT_MODULE):
+	$(hide) mkdir -p $(dir $@)
+	echo $(BRILLO_SYSTEM_ID) > $@
 
 
 include $(CLEAR_VARS)
@@ -43,14 +47,8 @@ LOCAL_MODULE_CLASS := FAKE
 LOCAL_MODULE_PATH := $(TARGET_OUT_OEM)/$(OSRELEASED_DIRECTORY)
 include $(BUILD_SYSTEM)/base_rules.mk
 
-# The version is set to 0 if the user did not set the actual version and
-# a version cannot be loaded from the product cfgtree.
+# The version is set to 0 if the user did not set the actual version.
 # This allows us to have a valid version number while being easy to filter.
-ifeq ($(BRILLO_PRODUCT_VERSION),)
-# Load from file first
-BRILLO_PRODUCT_VERSION := $(call cfgtree-get-if-exists,brillo/product_version)
-endif
-# If the version is still empty, override it with 0
 ifeq ($(BRILLO_PRODUCT_VERSION),)
 BRILLO_PRODUCT_VERSION := "0"
 endif
@@ -72,14 +70,8 @@ LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/$(OSRELEASED_DIRECTORY)
 include $(BUILD_SYSTEM)/base_rules.mk
 
-# The version is set to 0.0 if the user did not set the actual version and
-# a version cannot be loaded from the product cfgtree.
+# The version is set to 0.0 if the user did not set the actual version.
 # This allows us to have a valid version number while being easy to filter.
-ifeq ($(BRILLO_SYSTEM_VERSION),)
-# Load from file first
-BRILLO_SYSTEM_VERSION := $(call cfgtree-get-if-exists,brillo/system_version)
-endif
-# If the version is still empty, override it with 0.0
 ifeq ($(BRILLO_SYSTEM_VERSION),)
 BRILLO_SYSTEM_VERSION := "0.0"
 endif
