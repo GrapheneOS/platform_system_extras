@@ -41,23 +41,6 @@
 static const std::string arbitrary_sequence_number = "42";
 static const int vold_command_timeout_ms = 60 * 1000;
 
-int e4crypt_create_device_key(const char* dir,
-                              int ensure_dir_exists(const char*))
-{
-    // Make sure folder exists. Use make_dir to set selinux permissions.
-    std::string unencrypted_dir = std::string(dir) + e4crypt_unencrypted_folder;
-    if (ensure_dir_exists(unencrypted_dir.c_str())) {
-        PLOG(ERROR) << "Failed to create " << unencrypted_dir;
-        return -1;
-    }
-
-    const char* argv[] = { "/system/bin/vdc", "--wait", "cryptfs", "enablefilecrypto" };
-    int rc = android_fork_execvp_ext(arraysize(argv), (char**) argv, NULL, false,
-                                     LOG_KLOG, false, NULL, NULL, 0);
-    LOG(INFO) << "enablefilecrypto result: " << rc;
-    return rc;
-}
-
 int e4crypt_install_keyring()
 {
     key_serial_t device_keyring = add_key("keyring", "e4crypt", 0, 0,
