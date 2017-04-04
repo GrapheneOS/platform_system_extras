@@ -15,15 +15,16 @@ test_c_flags := \
 
 # Required Tests
 cts_src_files := \
-    aslr_test.cpp \
     multicast_test.cpp \
     pstore_test.cpp \
     sysvipc_test.cpp \
     logger_test.cpp
 
 # Required plus Recommended Tests
+# TODO: move aslr_test.cpp back to cts_src_files b/36888825
 test_src_files := \
     $(cts_src_files) \
+    aslr_test.cpp \
     aslr_rec_test.cpp \
     mmc_max_speed_test.cpp \
 
