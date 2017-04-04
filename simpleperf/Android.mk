@@ -331,7 +331,6 @@ include $(BUILD_NATIVE_TEST)
 # simpleperf_unit_test host
 include $(CLEAR_VARS)
 LOCAL_MODULE := simpleperf_unit_test
-LOCAL_COMPATIBILITY_SUITE := device-tests
 LOCAL_MODULE_HOST_OS := darwin linux windows
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
 LOCAL_CPPFLAGS_darwin := $(simpleperf_cppflags_host_darwin)
@@ -369,7 +368,6 @@ include $(BUILD_NATIVE_TEST)
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
 LOCAL_MODULE := simpleperf_cpu_hotplug_test
-LOCAL_COMPATIBILITY_SUITE := device-tests
 LOCAL_MODULE_HOST_OS := linux
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
 LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
