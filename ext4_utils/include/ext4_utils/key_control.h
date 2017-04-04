@@ -24,7 +24,7 @@ key_serial_t add_key(const char *type,
                      size_t plen,
                      key_serial_t ringid);
 
-long keyctl_revoke(key_serial_t id);
+long keyctl_unlink(key_serial_t key, key_serial_t keyring);
 
 long keyctl_setperm(key_serial_t id, int permissions);
 
