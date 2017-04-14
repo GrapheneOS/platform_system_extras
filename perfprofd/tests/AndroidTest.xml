@@ -17,6 +17,9 @@
     <target_preparer class="com.android.tradefed.targetprep.PushFilePreparer">
         <option name="cleanup" value="true" />
         <option name="push" value="perfprofd_test->/data/local/tmp/perfprofd_test" />
+        <option name="push" value="canned.perf.data->/data/local/tmp/perfprofd_test" />
+        <option name="push" value="callchain.canned.perf.data->/data/local/tmp/perfprofd_test" />
+
     </target_preparer>
     <option name="test-suite-tag" value="apct" />
     <test class="com.android.tradefed.testtype.GTest" >
