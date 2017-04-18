@@ -137,6 +137,8 @@ class RecordCommand : public Command {
 "               will be unwound while recording by default. But it may lose\n"
 "               records as stacking unwinding can be time consuming. Use this\n"
 "               option to unwind the user's stack after recording.\n"
+"--start_profiling_fd fd_no    After starting profiling, write \"STARTED\" to\n"
+"                              <fd_no>, then close <fd_no>.\n"
 "--symfs <dir>    Look for files with symbols relative to this directory.\n"
 "                 This option is used to provide files with symbol table and\n"
 "                 debug information, which are used by --dump-symbols and -g.\n"
@@ -163,7 +165,8 @@ class RecordCommand : public Command {
         record_filename_("perf.data"),
         start_sampling_time_in_ns_(0),
         sample_record_count_(0),
-        lost_record_count_(0) {
+        lost_record_count_(0),
+        start_profiling_fd_(-1) {
     // Stop profiling if parent exits.
     prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
   }
@@ -219,6 +222,7 @@ class RecordCommand : public Command {
 
   uint64_t sample_record_count_;
   uint64_t lost_record_count_;
+  int start_profiling_fd_;
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
@@ -320,6 +324,12 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
                << " ns";
   if (workload != nullptr && !workload->IsStarted() && !workload->Start()) {
     return false;
+  }
+  if (start_profiling_fd_ != -1) {
+    if (!android::base::WriteStringToFd("STARTED", start_profiling_fd_)) {
+      PLOG(ERROR) << "failed to write to start_profiling_fd_";
+    }
+    close(start_profiling_fd_);
   }
   if (!loop->RunLoop()) {
     return false;
@@ -512,6 +522,14 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       event_selection_set_.AddMonitoredProcesses(pids);
     } else if (args[i] == "--post-unwind") {
       post_unwind_ = true;
+    } else if (args[i] == "--start_profiling_fd") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (!android::base::ParseInt(args[i].c_str(), &start_profiling_fd_, 0)) {
+        LOG(ERROR) << "Invalid start_profiling_fd: " << args[i];
+        return false;
+      }
     } else if (args[i] == "--symfs") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
