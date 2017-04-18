@@ -582,6 +582,12 @@ but not well on arm).
     angler:/data/data/com.example.sudogame $./simpleperf record -p 10324 --call-graph fp --symfs . --duration 30
     simpleperf I 01-01 10:03:58 11267 11267 cmd_record.cpp:341] Samples recorded: 56736. Samples lost: 0.
 
+**Recording stack frame based call graph doesn't work well on arm architecture,**
+**even if compiled using -O0 -g -fno-omit-frame-pointer options. It is because**
+**the kernel can't unwind user stack containing both arm/thumb code. So please**
+**consider using dwarf based call graph on arm architecture, or profiling in**
+**aarch64 environment.**
+
 #### Report call graph
 Report accumulated period. In the table below, the first column is “Children”,
 it is the cpu cycle percentage of a function and functions called by that

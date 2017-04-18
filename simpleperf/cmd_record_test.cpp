@@ -136,6 +136,18 @@ TEST(record_cmd, fp_callchain_sampling) {
   ASSERT_TRUE(RunRecordCmd({"--call-graph", "fp"}));
 }
 
+TEST(record_cmd, fp_callchain_sampling_warning_on_arm) {
+  if (GetBuildArch() != ARCH_ARM) {
+    GTEST_LOG_(INFO) << "This test does nothing as it only tests on arm arch.";
+    return;
+  }
+  ASSERT_EXIT(
+      {
+        exit(RunRecordCmd({"--call-graph", "fp"}) ? 0 : 1);
+      },
+      testing::ExitedWithCode(0), "doesn't work well on arm");
+}
+
 TEST(record_cmd, system_wide_fp_callchain_sampling) {
   TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-a", "--call-graph", "fp"})));
 }
