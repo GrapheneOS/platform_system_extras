@@ -559,6 +559,13 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     }
   }
 
+  if (fp_callchain_sampling_) {
+    if (GetBuildArch() == ARCH_ARM) {
+      LOG(WARNING) << "`--callgraph fp` option doesn't work well on arm architecture, "
+                   << "consider using `-g` option or profiling on aarch64 architecture.";
+    }
+  }
+
   if (system_wide_collection_ && event_selection_set_.HasMonitoredTarget()) {
     LOG(ERROR) << "Record system wide and existing processes/threads can't be "
                   "used at the same time.";
