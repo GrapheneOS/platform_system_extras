@@ -126,7 +126,8 @@ class ReportCmdSampleTreeBuilder
     symbol_filter_ = symbol_filter;
   }
 
-  SampleTree GetSampleTree() const {
+  SampleTree GetSampleTree() {
+    AddCallChainDuplicateInfo();
     SampleTree sample_tree;
     sample_tree.samples = GetSamples();
     sample_tree.total_samples = total_samples_;
@@ -300,6 +301,7 @@ class ReportCommand : public Command {
 "-b    Use the branch-to addresses in sampled take branches instead of the\n"
 "      instruction addresses. Only valid for perf.data recorded with -b/-j\n"
 "      option.\n"
+"--brief-callgraph     Print brief call graph.\n"
 "--children    Print the overhead accumulated by appearing in the callchain.\n"
 "--comms comm1,comm2,...   Report only for selected comms.\n"
 "--dsos dso1,dso2,...      Report only for selected dsos.\n"
@@ -351,7 +353,8 @@ class ReportCommand : public Command {
         callgraph_show_callee_(false),
         callgraph_max_stack_(UINT32_MAX),
         callgraph_percent_limit_(0),
-        raw_period_(false) {}
+        raw_period_(false),
+        brief_callgraph_(false) {}
 
   bool Run(const std::vector<std::string>& args);
 
@@ -386,6 +389,7 @@ class ReportCommand : public Command {
   uint32_t callgraph_max_stack_;
   double callgraph_percent_limit_;
   bool raw_period_;
+  bool brief_callgraph_;
 
   std::string report_filename_;
 };
@@ -432,6 +436,8 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   for (size_t i = 0; i < args.size(); ++i) {
     if (args[i] == "-b") {
       use_branch_address_ = true;
+    } else if (args[i] == "--brief-callgraph") {
+      brief_callgraph_ = true;
     } else if (args[i] == "--children") {
       accumulate_callchain_ = true;
     } else if (args[i] == "--comms" || args[i] == "--dsos") {
@@ -640,7 +646,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
             ReportCmdCallgraphDisplayerWithVaddrInFile());
       } else {
         displayer.AddExclusiveDisplayFunction(ReportCmdCallgraphDisplayer(
-            callgraph_max_stack_, callgraph_percent_limit_));
+            callgraph_max_stack_, callgraph_percent_limit_, brief_callgraph_));
       }
     }
   }
@@ -650,6 +656,10 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
 
   SampleComparator<SampleEntry> sort_comparator;
   sort_comparator.AddCompareFunction(CompareTotalPeriod);
+  if (print_callgraph_) {
+    sort_comparator.AddCompareFunction(CompareCallGraphDuplicated);
+  }
+  sort_comparator.AddCompareFunction(ComparePeriod);
   sort_comparator.AddComparator(comparator);
   sample_tree_sorter_.reset(new ReportCmdSampleTreeSorter(sort_comparator));
   sample_tree_displayer_.reset(new ReportCmdSampleTreeDisplayer(displayer));
