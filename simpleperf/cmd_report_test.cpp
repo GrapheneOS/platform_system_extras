@@ -464,6 +464,12 @@ TEST_F(ReportCommandTest, raw_period_option) {
   ASSERT_EQ(content.find("%"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, brief_callgraph_option) {
+  Report(CALLGRAPH_FP_PERF_DATA, {"-g", "--brief-callgraph"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("skipped in brief callgraph mode"), std::string::npos);
+}
+
 #if defined(__linux__)
 #include "event_selection_set.h"
 
