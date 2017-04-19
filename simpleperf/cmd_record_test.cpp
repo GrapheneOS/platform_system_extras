@@ -16,6 +16,9 @@
 
 #include <gtest/gtest.h>
 
+#include <unistd.h>
+
+#include <android-base/file.h>
 #include <android-base/stringprintf.h>
 #include <android-base/test_utils.h>
 
@@ -406,4 +409,22 @@ TEST(record_cmd, donot_stop_when_having_targets) {
   ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "-p", pid, "--duration", "3"}));
   uint64_t end_time_in_ns = GetSystemClock();
   ASSERT_GT(end_time_in_ns - start_time_in_ns, static_cast<uint64_t>(2e9));
+}
+
+TEST(record_cmd, start_profiling_fd_option) {
+  int pipefd[2];
+  ASSERT_EQ(0, pipe(pipefd));
+  int read_fd = pipefd[0];
+  int write_fd = pipefd[1];
+  ASSERT_EXIT(
+      {
+        close(read_fd);
+        exit(RunRecordCmd({"--start_profiling_fd", std::to_string(write_fd)}) ? 0 : 1);
+      },
+      testing::ExitedWithCode(0), "");
+  close(write_fd);
+  std::string s;
+  ASSERT_TRUE(android::base::ReadFdToString(read_fd, &s));
+  close(read_fd);
+  ASSERT_EQ("STARTED", s);
 }
