@@ -111,6 +111,8 @@ def parse_event_reports(lines):
   vertical_columns = []
   last_node = None
 
+  has_skipped_callgraph = False
+
   for line in lines[line_id:]:
     if not line:
       in_report_context = not in_report_context
@@ -139,6 +141,10 @@ def parse_event_reports(lines):
 
       if not line.strip('| \t'):
         continue
+      if line.find('skipped in brief callgraph mode') != -1:
+        has_skipped_callgraph = True
+        continue
+
       if line.find('-') == -1:
         line = line.strip('| \t')
         function_name = line
@@ -167,6 +173,9 @@ def parse_event_reports(lines):
           call_tree_stack[depth - 1].add_child(node)
         call_tree_stack[depth] = node
         last_node = node
+
+  if has_skipped_callgraph:
+      log_warning('some callgraphs are skipped in brief callgraph mode')
 
   return event_reports
 
@@ -230,20 +239,19 @@ class ReportWindow(object):
 
   def display_call_tree(self, tree, parent_id, node, indent):
     id = parent_id
-    indent_str = '  ' * indent
+    indent_str = '    ' * indent
 
     if node.percentage != 100.0:
-      percentage_str = '%.2f%%' % node.percentage
+      percentage_str = '%.2f%% ' % node.percentage
     else:
       percentage_str = ''
-    first_open = True if node.percentage == 100.0 else False
 
     for i in range(len(node.call_stack)):
       s = indent_str
-      s += '+ ' if node.children else '  '
+      s += '+ ' if node.children and i == len(node.call_stack) - 1 else '  '
       s += percentage_str if i == 0 else ' ' * len(percentage_str)
       s += node.call_stack[i]
-      child_open = first_open if i == 0 else True
+      child_open = False if i == len(node.call_stack) - 1 and indent > 1 else True
       id = tree.insert(id, 'end', None, values=[s], open=child_open,
                        tag='set_font')
 
