@@ -321,7 +321,7 @@ LOCAL_SRC_FILES := \
   $(simpleperf_unit_test_src_files_linux) \
 
 LOCAL_STATIC_LIBRARIES += libsimpleperf $(simpleperf_static_libraries_target)
-LOCAL_TEST_DATA := $(call find-test-data-in-subdirs,$(LOCAL_PATH),*,testdata)
+LOCAL_TEST_DATA := $(call find-test-data-in-subdirs,$(LOCAL_PATH),"*",testdata)
 LOCAL_MULTILIB := both
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 include $(LLVM_DEVICE_BUILD_MK)
