@@ -54,3 +54,16 @@ TEST(cmd_report_sample, protobuf_option) {
   ASSERT_TRUE(android::base::ReadFileToString(tmpfile2.path, &data));
   ASSERT_NE(data.find("file:"), std::string::npos);
 }
+
+TEST(cmd_report_sample, no_skipped_file_id) {
+  TemporaryFile tmpfile;
+  TemporaryFile tmpfile2;
+  ASSERT_TRUE(ReportSampleCmd()->Run({"-i", GetTestData(PERF_DATA_WITH_WRONG_IP_IN_CALLCHAIN),
+                                     "-o", tmpfile.path, "--protobuf"}));
+  ASSERT_TRUE(ReportSampleCmd()->Run({"--dump-protobuf-report", tmpfile.path, "-o",
+                                      tmpfile2.path}));
+  // If wrong ips in callchain are omitted, "unknown" file path will not be generated.
+  std::string data;
+  ASSERT_TRUE(android::base::ReadFileToString(tmpfile2.path, &data));
+  ASSERT_EQ(data.find("unknown"), std::string::npos);
+}
