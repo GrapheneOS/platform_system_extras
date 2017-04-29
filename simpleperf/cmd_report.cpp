@@ -99,6 +99,7 @@ struct SampleTree {
   std::vector<SampleEntry*> samples;
   uint64_t total_samples;
   uint64_t total_period;
+  uint64_t total_error_callchains;
 };
 
 BUILD_COMPARE_VALUE_FUNCTION(CompareVaddrInFile, vaddr_in_file);
@@ -112,7 +113,8 @@ class ReportCmdSampleTreeBuilder
       : SampleTreeBuilder(sample_comparator),
         thread_tree_(thread_tree),
         total_samples_(0),
-        total_period_(0) {}
+        total_period_(0),
+        total_error_callchains_(0) {}
 
   void SetFilters(const std::unordered_set<int>& pid_filter,
                   const std::unordered_set<int>& tid_filter,
@@ -132,6 +134,7 @@ class ReportCmdSampleTreeBuilder
     sample_tree.samples = GetSamples();
     sample_tree.total_samples = total_samples_;
     sample_tree.total_period = total_period_;
+    sample_tree.total_error_callchains = total_error_callchains_;
     return sample_tree;
   }
 
@@ -179,6 +182,11 @@ class ReportCmdSampleTreeBuilder
                                      const uint64_t& acc_info) override {
     const ThreadEntry* thread = sample->thread;
     const MapEntry* map = thread_tree_->FindMap(thread, ip, in_kernel);
+    if (thread_tree_->IsUnknownDso(map->dso)) {
+      // The unwinders can give wrong ip addresses, which can't map to a valid dso. Skip them.
+      total_error_callchains_++;
+      return nullptr;
+    }
     uint64_t vaddr_in_file;
     const Symbol* symbol = thread_tree_->FindSymbol(map, ip, &vaddr_in_file);
     std::unique_ptr<SampleEntry> callchain_sample(new SampleEntry(
@@ -242,6 +250,7 @@ class ReportCmdSampleTreeBuilder
 
   uint64_t total_samples_;
   uint64_t total_period_;
+  uint64_t total_error_callchains_;
 };
 
 struct SampleTreeBuilderOptions {
@@ -808,6 +817,11 @@ bool ReportCommand::PrintReport() {
     fprintf(report_fp, "Event: %s (type %u, config %llu)\n", attr.name.c_str(),
             attr.attr.type, attr.attr.config);
     fprintf(report_fp, "Samples: %" PRIu64 "\n", sample_tree.total_samples);
+    if (sample_tree.total_error_callchains != 0) {
+      fprintf(report_fp, "Error Callchains: %" PRIu64 ", %f%%\n",
+              sample_tree.total_error_callchains,
+              sample_tree.total_error_callchains * 100.0 / sample_tree.total_samples);
+    }
     fprintf(report_fp, "Event count: %" PRIu64 "\n\n", sample_tree.total_period);
     sample_tree_displayer_->DisplaySamples(report_fp, sample_tree.samples, &sample_tree);
   }

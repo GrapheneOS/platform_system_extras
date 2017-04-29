@@ -88,12 +88,10 @@ class ReportSampleCommand : public Command {
   bool DumpProtobufReport(const std::string& filename);
   bool ProcessRecord(std::unique_ptr<Record> record);
   bool PrintSampleRecordInProtobuf(const SampleRecord& record);
-  void GetCallEntry(const ThreadEntry* thread, bool in_kernel, uint64_t ip,
-                    uint64_t* pvaddr_in_file, uint32_t* pfile_id,
-                    int32_t* psymbol_id);
-  void GetCallEntry(const ThreadEntry* thread, bool in_kernel, uint64_t ip,
-                    uint64_t* pvaddr_in_file, Dso** pdso,
-                    const Symbol** psymbol);
+  bool GetCallEntry(const ThreadEntry* thread, bool in_kernel, uint64_t ip, bool omit_unknown_dso,
+                    uint64_t* pvaddr_in_file, uint32_t* pfile_id, int32_t* psymbol_id);
+  bool GetCallEntry(const ThreadEntry* thread, bool in_kernel, uint64_t ip, bool omit_unknown_dso,
+                    uint64_t* pvaddr_in_file, Dso** pdso, const Symbol** psymbol);
   bool PrintLostSituationInProtobuf();
   bool PrintFileInfoInProtobuf();
   bool PrintSampleRecord(const SampleRecord& record);
@@ -364,8 +362,9 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
   bool in_kernel = r.InKernel();
   const ThreadEntry* thread =
       thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-  GetCallEntry(thread, in_kernel, r.ip_data.ip, &vaddr_in_file, &file_id,
-               &symbol_id);
+  bool ret = GetCallEntry(thread, in_kernel, r.ip_data.ip, false, &vaddr_in_file, &file_id,
+                          &symbol_id);
+  CHECK(ret);
   proto::Sample_CallChainEntry* callchain = sample->add_callchain();
   callchain->set_vaddr_in_file(vaddr_in_file);
   callchain->set_file_id(file_id);
@@ -395,8 +394,9 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
             continue;
           }
         }
-        GetCallEntry(thread, in_kernel, ip, &vaddr_in_file, &file_id,
-                     &symbol_id);
+        if (!GetCallEntry(thread, in_kernel, ip, true, &vaddr_in_file, &file_id, &symbol_id)) {
+          break;
+        }
         callchain = sample->add_callchain();
         callchain->set_vaddr_in_file(vaddr_in_file);
         callchain->set_file_id(file_id);
@@ -412,14 +412,17 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
   return true;
 }
 
-void ReportSampleCommand::GetCallEntry(const ThreadEntry* thread,
+bool ReportSampleCommand::GetCallEntry(const ThreadEntry* thread,
                                        bool in_kernel, uint64_t ip,
+                                       bool omit_unknown_dso,
                                        uint64_t* pvaddr_in_file,
                                        uint32_t* pfile_id,
                                        int32_t* psymbol_id) {
   Dso* dso;
   const Symbol* symbol;
-  GetCallEntry(thread, in_kernel, ip, pvaddr_in_file, &dso, &symbol);
+  if (!GetCallEntry(thread, in_kernel, ip, omit_unknown_dso, pvaddr_in_file, &dso, &symbol)) {
+    return false;
+  }
   if (!dso->GetDumpId(pfile_id)) {
     *pfile_id = dso->CreateDumpId();
   }
@@ -430,18 +433,24 @@ void ReportSampleCommand::GetCallEntry(const ThreadEntry* thread,
   } else {
     *psymbol_id = -1;
   }
+  return true;
 }
 
-void ReportSampleCommand::GetCallEntry(const ThreadEntry* thread,
+bool ReportSampleCommand::GetCallEntry(const ThreadEntry* thread,
                                        bool in_kernel, uint64_t ip,
+                                       bool omit_unknown_dso,
                                        uint64_t* pvaddr_in_file, Dso** pdso,
                                        const Symbol** psymbol) {
   const MapEntry* map = thread_tree_.FindMap(thread, ip, in_kernel);
+  if (omit_unknown_dso && thread_tree_.IsUnknownDso(map->dso)) {
+    return false;
+  }
   *psymbol = thread_tree_.FindSymbol(map, ip, pvaddr_in_file, pdso);
   // If we can't find symbol, use the dso shown in the map.
   if (*psymbol == thread_tree_.UnknownSymbol()) {
     *pdso = map->dso;
   }
+  return true;
 }
 
 bool ReportSampleCommand::PrintLostSituationInProtobuf() {
@@ -511,7 +520,8 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r) {
   bool in_kernel = r.InKernel();
   const ThreadEntry* thread =
       thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-  GetCallEntry(thread, in_kernel, r.ip_data.ip, &vaddr_in_file, &dso, &symbol);
+  bool ret = GetCallEntry(thread, in_kernel, r.ip_data.ip, false, &vaddr_in_file, &dso, &symbol);
+  CHECK(ret);
   FprintIndented(report_fp_, 1, "vaddr_in_file: %" PRIx64 "\n", vaddr_in_file);
   FprintIndented(report_fp_, 1, "file: %s\n", dso->Path().c_str());
   FprintIndented(report_fp_, 1, "symbol: %s\n", symbol->DemangledName());
@@ -541,7 +551,9 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r) {
             continue;
           }
         }
-        GetCallEntry(thread, in_kernel, ip, &vaddr_in_file, &dso, &symbol);
+        if (!GetCallEntry(thread, in_kernel, ip, true, &vaddr_in_file, &dso, &symbol)) {
+          break;
+        }
         FprintIndented(report_fp_, 2, "vaddr_in_file: %" PRIx64 "\n",
                        vaddr_in_file);
         FprintIndented(report_fp_, 2, "file: %s\n", dso->Path().c_str());
