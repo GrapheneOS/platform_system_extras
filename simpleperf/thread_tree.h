@@ -100,6 +100,7 @@ class ThreadTree {
   const Symbol* FindSymbol(const MapEntry* map, uint64_t ip,
                            uint64_t* pvaddr_in_file, Dso** pdso = nullptr);
   const Symbol* FindKernelSymbol(uint64_t ip);
+  bool IsUnknownDso(const Dso* dso) const { return dso == unknown_dso_.get(); }
   const Symbol* UnknownSymbol() const { return &unknown_symbol_; }
 
   void ShowIpForUnknownSymbol() { show_ip_for_unknown_symbol_ = true; }

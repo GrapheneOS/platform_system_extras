@@ -322,6 +322,7 @@ std::vector<Dso*> ThreadTree::GetAllDsos() const {
   for (auto& p : user_dso_tree_) {
     result.push_back(p.second.get());
   }
+  result.push_back(unknown_dso_.get());
   return result;
 }
 
