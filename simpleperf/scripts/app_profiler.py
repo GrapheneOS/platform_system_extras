@@ -177,7 +177,8 @@ class AppProfiler(object):
 
 
     def _find_app_process(self):
-        result, output = self.adb.run_and_return_output(['shell', 'ps'])
+        ps_args = ['-e'] if self.android_version >= 8 else []
+        result, output = self.adb.run_and_return_output(['shell', 'ps'] + ps_args)
         if not result:
             return None
         output = output.split('\n')
