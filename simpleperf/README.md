@@ -1,17 +1,112 @@
-# Simpleperf Introduction
-## What is simpleperf
-Simpleperf is a native profiling tool for Android. Its command-line interface
-supports broadly the same options as the linux-tools perf, but also supports
-various Android-specific improvements.
+# Simpleperf
 
-Simpleperf is part of the Android Open Source Project. The source code is at
-https://android.googlesource.com/platform/system/extras/+/master/simpleperf/.
-The latest document is at
-https://android.googlesource.com/platform/system/extras/+show/master/simpleperf/README.md.
-Bugs and feature requests can be submitted at
-http://github.com/android-ndk/ndk/issues.
+Simpleperf is a native profiling tool for Android. It can be used to profile
+both Android applications and native processes running on Android. It can
+profile both Java and C++ code on Android. It can be used on Android L
+and above.
 
-## How simpleperf works
+Simpleperf is part of the Android Open Source Project. The source code is [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/).
+The latest document is [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/README.md).
+Bugs and feature requests can be submitted at http://github.com/android-ndk/ndk/issues.
+
+
+## Table of Contents
+
+- [Simpleperf introduction](#simpleperf-introduction)
+    - [Why simpleperf](#why-simpleperf)
+    - [Tools in simpleperf](#tools-in-simpleperf)
+    - [Simpleperf's profiling principle](#simpleperfs-profiling-principle)
+    - [Main simpleperf commands](#main-simpleperf-commands)
+        - [Simpleperf list](#simpleperf-list)
+        - [Simpleperf stat](#simpleperf-stat)
+        - [Simpleperf record](#simpleperf-record)
+        - [Simpleperf report](#simpleperf-report)
+- [Android application profiling](#android-application-profiling)
+    - [Prepare an Android application](#prepare-an-android-application)
+    - [Record and report profiling data (using command-lines)](#record-and-report-profiling-data-using-commandlines)
+    - [Record and report profiling data (using python scripts)](#record-and-report-profiling-data-using-python-scripts)
+    - [Record and report call graph](#record-and-report-call-graph)
+    - [Visualize profiling data](#visualize-profiling-data)
+    - [Annotate source code](#annotate-source-code)
+
+
+## Simpleperf introduction
+
+### Why simpleperf
+
+Simpleperf works similar to linux-tools-perf, but it has some specific features for
+Android profiling:
+
+1. Aware of Android environment
+
+    a. It can profile embedded shared libraries in apk.
+
+    b. It reads symbols and debug information from .gnu_debugdata section.
+
+    c. It gives suggestions when errors occur.
+
+    d. When recording with -g option, unwind the stack before writting to file to
+    save storage space.
+
+    e. It supports adding additional information (like symbols) in perf.data, to
+    support recording on device and reporting on host.
+
+2. Using python scripts for profiling tasks
+
+3. Easy to release
+
+    a. Simpleperf executables on device are built as static binaries. They can be
+    pushed on any Android device and run.
+
+    b. Simpleperf executables on host are built as static binaries, and support
+    different hosts: mac, linux and windows.
+
+
+### Tools in simpleperf
+
+Simpleperf is periodically released with Android ndk, located at `simpleperf/`.
+The latest release can be found [here](https://android.googlesource.com/platform/prebuilts/simpleperf/).
+Simpleperf tools contain executables, shared libraries and python scripts.
+
+**Simpleperf executables running on Android device**
+Simpleperf executables running on Android device are located at `bin/android/`.
+Each architecture has one executable, like `bin/android/arm64/simpleperf`. It
+can record and report profiling data. It provides a command-line interface
+broadly the same as the linux-tools perf, and also supports some additional
+features for Android-specific profiling.
+
+**Simpleperf executables running on hosts**
+Simpleperf executables running on hosts are located at `bin/darwin`, `bin/linux`
+and `bin/windows`. Each host and architecture has one executable, like
+`bin/linux/x86_64/simpleperf`. It provides a command-line interface for
+reporting profiling data on hosts.
+
+**Simpleperf report shared libraries used on host**
+Simpleperf report shared libraries used on host are located at `bin/darwin`,
+`bin/linux` and `bin/windows`. Each host and architecture has one library, like
+`bin/linux/x86_64/libsimpleperf_report.so`. It is a library for parsing
+profiling data.
+
+**Python scripts**
+Python scripts are written to help different profiling tasks.
+
+`annotate.py` is used to annotate source files based on profiling data.
+
+`app_profiler.py` is used to profile Android applications.
+
+`binary_cache_builder.py` is used to pull libraries from Android devices.
+
+`pprof_proto_generator.py` is used to convert profiling data to format used by pprof.
+
+`report.py` is used to provide a GUI interface to report profiling result.
+
+`report_sample.py` is used to generate flamegraph.
+
+`simpleperf_report_lib.py` provides a python interface for parsing profiling data.
+
+
+### Simpleperf's profiling principle
+
 Modern CPUs have a hardware component called the performance monitoring unit
 (PMU). The PMU has several hardware counters, counting events like how many cpu
 cycles have happened, how many instructions have executed, or how many cache
@@ -45,8 +140,10 @@ mapped buffer.
 The report command reads a "perf.data" file and any shared libraries used by
 the profiled processes, and outputs a report showing where the time was spent.
 
-## Main simpleperf commands
-Simpleperf supports several subcommands, including list, stat, record, report.
+
+### Main simpleperf commands
+
+Simpleperf supports several subcommands, including list, stat, record and report.
 Each subcommand supports different options. This section only covers the most
 important subcommands and options. To see all subcommands and options,
 use --help.
@@ -57,7 +154,9 @@ use --help.
     # Print help message for record subcommand.
     $simpleperf record --help
 
-### simpleperf list
+
+#### Simpleperf list
+
 simpleperf list is used to list all events available on the device. Different
 devices may support different events because of differences in hardware and
 kernel.
@@ -75,7 +174,9 @@ kernel.
       task-clock
       ...
 
-### simpleperf stat
+
+#### Simpleperf stat
+
 simpleperf stat is used to get a raw event counter information of the profiled program
 or system-wide. By passing options, we can select which events to use, which
 processes/threads to monitor, how long to monitor and the print interval.
@@ -95,7 +196,7 @@ Below is an example.
 
     Total test time: 10.023829 seconds.
 
-#### Select events
+**Select events**
 We can select which events to use via -e option. Below are examples:
 
     # Stat event cpu-cycles.
@@ -143,7 +244,7 @@ time. If we want to have some events monitored at the same time, we can use
 
     Total test time: 1.029843 seconds.
 
-#### Select target to monitor
+**Select target to monitor**
 We can select which processes or threads to monitor via -p option or -t option.
 Monitoring a process is the same as monitoring all threads in the process.
 Simpleperf can also fork a child process to run the new command and then monitor
@@ -158,7 +259,7 @@ the child process. Below are examples.
     # Start a child process running `ls`, and stat it.
     $simpleperf stat ls
 
-#### Decide how long to monitor
+**Decide how long to monitor**
 When monitoring existing threads, we can use --duration option to decide how long
 to monitor. When monitoring a child process running a new command, simpleperf
 monitors until the child process ends. In this case, we can use Ctrl-C to stop monitoring
@@ -174,7 +275,7 @@ at any time. Below are examples.
     $simpleperf stat -p 11904 --duration 10
     ^C
 
-#### Decide the print interval
+**Decide the print interval**
 When monitoring perf counters, we can also use --interval option to decide the print
 interval. Below are examples.
 
@@ -185,7 +286,7 @@ interval. Below are examples.
     # system wide profiling needs root privilege
     $su 0 simpleperf stat -a --duration 10 --interval 300
 
-#### Display counters in systrace
+**Display counters in systrace**
 simpleperf can also work with systrace to dump counters in the collected trace.
 Below is an example to do a system wide stat
 
@@ -195,7 +296,9 @@ Below is an example to do a system wide stat
     (HOST)$external/chromium-trace/systrace.py --time=10 -o new.html sched gfx view
     # open the collected new.html in browser and perf counters will be shown up
 
-### simpleperf record
+
+#### Simpleperf record
+
 simpleperf record is used to dump records of the profiled program. By passing
 options, we can select which events to use, which processes/threads to monitor,
 what frequency to dump records, how long to monitor, and where to store records.
@@ -206,7 +309,7 @@ what frequency to dump records, how long to monitor, and where to store records.
     $simpleperf record -p 7394 --duration 10
     simpleperf I 07-11 21:44:11 17522 17522 cmd_record.cpp:316] Samples recorded: 21430. Samples lost: 0.
 
-#### Select events
+**Select events**
 In most cases, the cpu-cycles event is used to evaluate consumed cpu time.
 As a hardware event, it is both accurate and efficient. We can also use other
 events via -e option. Below is an example.
@@ -214,7 +317,7 @@ events via -e option. Below is an example.
     # Record using event instructions.
     $simpleperf record -e instructions -p 11904 --duration 10
 
-#### Select target to monitor
+**Select target to monitor**
 The way to select target in record command is similar to that in stat command.
 Below are examples.
 
@@ -227,7 +330,7 @@ Below are examples.
     # Record a child process running `ls`.
     $simpleperf record ls
 
-#### Set the frequency to record
+**Set the frequency to record**
 We can set the frequency to dump records via the -f or -c options. For example,
 -f 4000 means dumping approximately 4000 records every second when the monitored
 thread runs. If a monitored thread runs 0.2s in one second (it can be preempted
@@ -241,7 +344,7 @@ means dumping one record whenever 10000 events happen. Below are examples.
     # Record with sample period 100000: sample 1 time every 100000 events.
     $simpleperf record -c 100000 -t 11904,11905 --duration 10
 
-#### Decide how long to monitor
+**Decide how long to monitor**
 The way to decide how long to monitor in record command is similar to that in
 stat command. Below are examples.
 
@@ -255,14 +358,16 @@ stat command. Below are examples.
     $simpleperf record -p 11904 --duration 10
     ^C
 
-#### Set the path to store records
+**Set the path to store records**
 By default, simpleperf stores records in perf.data in current directory. We can
 use -o option to set the path to store records. Below is an example.
 
     # Write records to data/perf2.data.
     $simpleperf record -p 11904 -o data/perf2.data --duration 10
 
-### simpleperf report
+
+#### Simpleperf report
+
 simpleperf report is used to report based on perf.data generated by simpleperf
 record command. Report command groups records into different sample entries,
 sorts sample entries based on how many events each sample entry contains, and
@@ -293,13 +398,13 @@ time used in each function.
     13.82%    4088    sudogame  7394  7394  randomBlock_r(Board&, int, int, int, int, int)
     6.24%     1756    sudogame  7394  7394  @plt
 
-#### Set the path to read records
+**Set the path to read records**
 By default, simpleperf reads perf.data in current directory. We can use -i
 option to select another file to read records.
 
     $simpleperf report -i data/perf2.data
 
-#### Set the path to find executable binaries
+**Set the path to find executable binaries**
 If reporting function symbols, simpleperf needs to read executable binaries
 used by the monitored processes to get symbol table and debug information. By
 default, the paths are the executable binaries used by monitored processes while
@@ -315,7 +420,7 @@ Below is an example.
     # In this case, when simpleperf wants to read executable binary /A/b,
     # it prefers file in /debug_dir/A/b to file in /A/b.
 
-#### Filter records
+**Filter records**
 When reporting, it happens that not all records are of interest. Simpleperf
 supports five filters to select records of interest. Below are examples.
 
@@ -334,7 +439,7 @@ supports five filters to select records of interest. Below are examples.
     # Report records in function checkValid or canFindSolution_r.
     $simpleperf report --symbols "checkValid(Board const&, int, int);canFindSolution_r(Board&, int, int)"
 
-#### Decide how to group records into sample entries
+**Decide how to group records into sample entries**
 Simpleperf uses --sort option to decide how to group sample entries. Below are
 examples.
 
@@ -354,189 +459,214 @@ examples.
     # thread, and belong to the same function in the same binary.
     $simpleperf report
 
-## Features of simpleperf
-Simpleperf works similar to linux-tools-perf, but it has following improvements:
-1. Aware of Android environment. Simpleperf handles some Android specific
-situations when profiling. For example, it can profile embedded shared libraries
-in apk, read symbol table and debug information from .gnu_debugdata section. If
-possible, it gives suggestions when facing errors, like how to disable
-perf_harden to enable profiling.
-2. Support unwinding while recording. If we want to use -g option to record and
-report call-graph of a program, we need to dump user stack and register set in
-each record, and then unwind the stack to find the call chain. Simpleperf
-supports unwinding while recording, so it doesn’t need to store user stack in
-perf.data. So we can profile for a longer time with limited space on device.'
-3. Support scripts to make profiling on Android more convenient.
-4. Build in static binaries. Simpleperf is a static binary, so it doesn’t need
-supporting shared libraries to run. It means there is no limitation of Android
-version that simpleperf can run on, although some devices don’t support
-profiling.
 
-# Simpleperf tools in ndk
-Simpleperf tools in ndk contain three parts: simpleperf executable running on
-Android device, simpleperf executable running on host, and python scripts.
+## Android application profiling
 
-## Simpleperf on device
-Simpleperf running on device is located at bin/android directory. It contains
-static binaries running on Android on different architectures. They can be used
-to profile processes running device, and generate perf.data.
+This section shows how to profile an Android application.
+[Here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo/README.md) are examples. And we use
+[SimpleperfExamplePureJava]((https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo/SimpleperfExamplePureJava) project to show the profiling results.
 
-## Simpleperf on host
-Simpleperfs running on host are located at bin/darwin, bin/linux and
-bin/windows.They can be used to parse perf.data on host.
+Simpleperf only supports profiling native instructions in binaries in ELF
+format. If the Java code is executed by interpreter, or with jit cache, it
+can’t be profiled by simpleperf. As Android supports Ahead-of-time compilation,
+it can compile Java bytecode into native instructions with debug information.
+On devices with Android version <= M, we need root privilege to compile Java
+bytecode with debug information. However, on devices with Android version >= N,
+we don't need root privilege to do so.
 
-## Scripts
-Scripts are used to make it convenient to profile and parse profiling results.
-app_profiler.py is used to profile an android application. It prepares
-profiling environments, downloads simpleperf on device, generates and pulls
-perf.data on host. It is configured by app_profiler.config.
-binary_cache_builder.py is used to pull native binaries from device to host.
-It is used by app_profiler.py.
-annotate.py is used to annotate source files using perf.data. It is configured
-by annotate.config.
-report.py reports perf.data in a GUI window.
-simpleperf_report_lib.py is used to enumerate samples in perf.data. Internally
-it uses libsimpleperf_report.so to parse perf.data. It can be used to translate
-samples in perf.data to other forms. One example using simpleperf_report_lib.py
-is report_sample.py.
+Profiling an Android application involves three steps:
+1. Prepare the application.
+2. Record profiling data.
+3. Report profiling data.
 
-# Examples of using simpleperf tools
-This section shows how to use simpleperf tools to profile an Android
-application.
+To profile, we can use either command lines or python scripts. Below shows both.
 
-## Prepare a debuggable Application
-The package name of the application is com.example.sudogame. It has both java
-code and c++ code. We need to run a copy of the app with
-android:debuggable=”true” in its AndroidManifest.xml <application> element,
-because we can’t use run-as for non-debuggable apps. The application should
-has been installed on device, and we can connect device via adb.
 
-## Profile using command line
-To record profiling data, we need to download simpleperf and native libraries
-with debug information on device, run simpleperf to generate profiling data
-file: perf.data, and run simpleperf to report perf.data. Below are the steps.
+### Prepare an Android application
 
-### 1. Enable profiling
+Before profiling, we need to install the application to be profiled on an Android device.
+To get valid profiling results, please check following points:
+
+**1. The application should be debuggable.**
+It means [android:debuggable](https://developer.android.com/guide/topics/manifest/application-element.html#debug)
+should be true. So we need to use debug [build type](https://developer.android.com/studio/build/build-variants.html#build-types)
+instead of release build type. It is understandable because we can't profile others' apps.
+However, on a rooted Android device, the application doesn't need to be debuggable.
+
+**2. Run on an Android device >= L.**
+Profiling on emulators are not yet supported. And to profile Java code, we need
+the jvm running in oat mode, which is only available >= L.
+
+**3. On Android O, add `wrap.sh` in the apk.**
+To profile Java code, we need the jvm running in oat mode. But on Android O,
+debuggable applications are forced to run in jit mode. To work around this,
+we need to add a `wrap.sh` in the apk. So if you are running on Android O device,
+Check [here]((https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo/SimpleperfExamplePureJava/app/profiling.gradle)
+for how to add `wrap.sh` in the apk.
+
+**4. Make sure C++ code is compiled with optimizing flags.**
+If the application contains C++ code, it can be compiled with -O0 flag in debug build type.
+This makes C++ code slow. Check [here]((https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo/SimpleperfExamplePureJava/app/profiling.gradle)
+for how to avoid that.
+
+**5. Use native libraries with debug info in the apk when possible.**
+If the application contains C++ code or pre-compiled native libraries, try to use
+unstripped libraries in the apk. This helps simpleperf generating better profiling
+results. Check [here]((https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo/SimpleperfExamplePureJava/app/profiling.gradle)
+for how to use unstripped libraries.
+
+Here we use [SimpleperfExamplePureJava]((https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo/SimpleperfExamplePureJava) as an example.
+It builds an app-profiling.apk for profiling.
+
+    $git clone https://android.googlesource.com/platform/system/extras
+    $cd extras/simpleperf/demo
+    # Open SimpleperfExamplesPureJava project with Android studio,
+    # and build this project sucessfully, otherwise the `./gradlew` command below will fail.
+    $cd SimpleperfExamplePureJava
+    $./gradlew clean assemble
+    $adb install -r app/build/outputs/apk/app-profiling.apk
+
+
+### Record and report profiling data (using command-lines)
+
+We recommend using python scripts for profiling because they are more convenient.
+But using command-line will give us a better understanding of the profile process
+step by step. So we first show how to use command lines.
+
+**1. Enable profiling**
 
     $adb shell setprop security.perf_harden 0
 
-### 2. Find the process running the app
-Run `ps` in the app’s context. On >=O devices, run `ps -e` instead.
+**2. Fully compile the app**
 
-    $adb shell
-    angler:/ $ run-as com.example.sudogame
-    angler:/data/data/com.example.sudogame $ ps
-    u0_a93    10324 570   1030480 58104 SyS_epoll_ 00f41b7528 S com.example.sudogame
-    u0_a93    10447 10441 7716   1588  sigsuspend 753c515d34 S sh
-    u0_a93    10453 10447 9112   1644           0 7ba07ff664 R ps
+We need to compile Java bytecode into native instructions to profile Java code
+in the application. This needs different commands on different Android versions.
 
-So process 10324 runs the app.
+On Android >= N:
 
-### 3. Download simpleperf to the app’s data directory
-First we need to find out which architecture the app is using. There are many
-ways, here we just check the map of the process.
+    $adb shell setprop debug.generate-debug-info true
+    $adb shell cmd package compile -f -m speed com.example.simpleperf.simpleperfexamplepurejava
+    # Restart the app to take effect
+    $adb shell am force-stop com.example.simpleperf.simpleperfexamplepurejava
 
-    angler:/data/data/com.example.sudogame $cat /proc/10324/maps | grep boot.art
-    70f34000-7144e000 r--p 00000000 fd:00 1082  /system/framework/arm/boot.oat
+On Android M devices, We need root privilege to force Android to fully compile
+Java code into native instructions in ELF binaries with debug information. We
+also need root privilege to read compiled native binaries (because installd
+writes them to a directory whose uid/gid is system:install). So profiling Java
+code can only be done on rooted devices.
 
-The file path shows it is arm. So we download simpleperf in arm directory on
-device.
+    $adb root
+    $adb shell setprop dalvik.vm.dex2oat-flags -g
 
-    $adb push bin/android/arm/simpleperf /data/local/tmp
-    $adb shell
-    angler:/ $ run-as com.example.sudogame
-    angler:/data/data/com.example.sudogame $ cp /data/local/tmp/simpleperf .
+    # Reinstall the app.
+    $adb install -r app/build/outputs/apk/app-profiling.apk
 
-### 4. Record perf.data
+On Android L devices, we also need root privilege to compile the app with debug info
+and access the native binaries.
 
-    angler:/data/data/com.example.sudogame $./simpleperf record -p 10324 --duration 30
-    simpleperf I 01-01 09:26:39 10598 10598 cmd_record.cpp:341] Samples recorded: 49471. Samples lost: 0.
-    angler:/data/data/com.example.sudogame $ls -lh perf.data
-    -rw-rw-rw- 1 u0_a93 u0_a93 2.6M 2017-01-01 09:26 perf.data
+    $adb root
+    $adb shell setprop dalvik.vm.dex2oat-flags --include-debug-symbols
 
-Don’t forget to run the app while recording. Otherwise, we may get no samples
-because the process is always sleeping.
+    # Reinstall the app.
+    $adb install -r app/build/outputs/apk/app-profiling.apk
 
-### 5. Report perf.data
-There are different ways to report perf.data. Below shows some examples.
 
-Report samples in different threads.
+**3. Find the app process**
 
-    angler:/data/data/com.example.sudogame $./simpleperf report --sort pid,tid,comm
-    Cmdline: /data/data/com.example.sudogame/simpleperf record -p 10324 --duration 30
-    Arch: arm64
-    Event: cpu-cycles (type 0, config 0)
-    Samples: 49471
-    Event count: 16700769019
+    # Start the app if needed
+    $adb shell am start -n com.example.simpleperf.simpleperfexamplepurejava/.MainActivity
 
-    Overhead  Pid    Tid    Command
-    66.31%    10324  10324  xample.sudogame
-    30.97%    10324  10340  RenderThread
+    # Run `ps` in the app's context. On Android >= O devicces, run `ps -e` instead.
+    $adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ps | grep simpleperf
+    u0_a151   6885  3346  1590504 53980 SyS_epoll_ 6fc2024b6c S com.example.simpleperf.simpleperfexamplepurejava
+
+So the id of the app process is `6885`. We will use this number in the command lines below,
+please replace this number with what you get by running `ps` command.
+
+**4. Download simpleperf to the app's data directory**
+
+    # Find which architecture the app is using.
+    $adb shell run-as com.example.simpleperf.simpleperfexamplepurejava cat /proc/6885/maps | grep boot.oat
+    708e6000-70e33000 r--p 00000000 103:09 1214                              /system/framework/arm64/boot.oat
+
+    # The app uses /arm64/boot.oat, so push simpleperf in bin/android/arm64/ to device.
+    $cd ../../scripts/
+    $adb push bin/android/arm64/simpleperf /data/local/tmp
+    $adb shell chmod a+x /data/local/tmp/simpleperf
+    $adb shell run-as com.example.simpleperf.simpleperfexamplepurejava cp /data/local/tmp/simpleperf .
+
+
+**5. Record perf.data**
+
+    $adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ./simpleperf record -p 6885 --duration 10 --dump-symbols
+    simpleperf I 04-27 20:41:11  6940  6940 cmd_record.cpp:357] Samples recorded: 40008. Samples lost: 0.
+
+    $adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ls -lh perf.data
+    simpleperf I 04-27 20:31:40  5999  5999 cmd_record.cpp:357] Samples recorded: 39949. Samples lost: 0.
+
+The profiling data is recorded at perf.data.
+
+Normally we need to use the app when profiling, otherwise we may record no samples.
+But in this case, the MainActivity starts a busy thread. So we don't need to use
+the app while profiling.
+
+There are many options to record profiling data, check [record command](#simpleperf-record) for details.
+
+**6. Report perf.data**
+
+    # Pull perf.data on host.
+    $adb shell run-as com.example.simpleperf.simpleperfexamplepurejava cat perf.data >perf.data
+
+    # Report samples using corresponding simpleperf executable on host.
+    $bin/linux/x86_64/simpleperf report
     ...
+    Overhead  Command   Pid   Tid   Shared Object                                                                     Symbol
+    83.54%    Thread-2  6885  6900  /data/app/com.example.simpleperf.simpleperfexamplepurejava-2/oat/arm64/base.odex  void com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()
+    16.11%    Thread-2  6885  6900  /data/app/com.example.simpleperf.simpleperfexamplepurejava-2/oat/arm64/base.odex  int com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.callFunction(int)
 
-Report samples in different binaries in the main thread.
+There are many ways to show reports, check [report command](#simpleperf-report) for details.
 
-    angler:/data/data/com.example.sudogame $./simpleperf report --tids 10324 --sort dso -n
-    ...
-    Overhead  Sample  Shared Object
-    37.71%    9970    /system/lib/libc.so
-    35.45%    9786    [kernel.kallsyms]
-    8.71%     3305    /system/lib/libart.so
-    6.44%     2405    /system/framework/arm/boot-framework.oat
-    5.64%     1480    /system/lib/libcutils.so
-    1.55%     426     /data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so
-    ...
 
-Report samples in different functions in libsudo-game-jni.so in the main thread.
+### Record and report profiling data (using python scripts)
 
-    angler:/data/data/com.example.sudogame $./simpleperf report --tids 10324 --dsos  /data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so --sort symbol -n
-    ...
-    Overhead  Sample  Symbol
-    8.94%     35      libsudo-game-jni.so[+1d54]
-    5.71%     25      libsudo-game-jni.so[+1dae]
-    5.70%     23      @plt
-    5.09%     22      libsudo-game-jni.so[+1d88]
-    4.54%     19      libsudo-game-jni.so[+1d82]
-    3.61%     14      libsudo-game-jni.so[+1f3c]
-    ...
+Besides command lines, We can use `app-profiler.py` to profile Android applications.
+It downloads simpleperf on device, records perf.data, and collects profiling
+results and native binaries on host. It is configured by `app-profiler.config`.
 
-In the above result, most symbols are binary name[+virual_addr]. It is because
-libsudo-game-jni.so used on device has stripped .symbol section. We can
-download libsudo-game-jni.so having debug information on device. In android
-studio project, it locates at
-app/build/intermediates/binaries/debug/arm/obj/armeabi-v7a/libsudo-game-jni.so.
-We have to download libsudo-game-jni.so to the same relative path as recorded
-in perf.data (otherwise, simpleperf can’t find it). In this case, it is
-/data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so.
+**1. Fill `app-profiler.config`**
 
-Report symbols using libraries with debug information.
+    Change `app_package_name` line to  app_package_name="com.example.simpleperf.simpleperfexamplepurejava"
+    Change `apk_file_path` line to apk_file_path = "../SimpleperfExamplePureJava/app/build/outputs/apk/app-profiling.apk"
+    Change `android_studio_project_dir` line to android_studio_project_dir = "../SimpleperfExamplePureJava/"
+    Change `record_options` line to record_options = "--dump-symbols --duration 10"
 
-    $adb push app/build/intermediates/binaries/debug/arm/obj/armeabi-v7a/libsudo-game-jni.so /data/local/tmp
-    $adb shell
-    angler:/ $ run-as com.example.sudogame
-    angler:/data/data/com.example.sudogame $ mkdir -p data/app/com.example.sudogame-1/lib/arm
-    angler:/data/data/com.example.sudogame $cp /data/local/tmp/libsudo-game-jni.so data/app/com.example.sudogame-1/lib/arm
-    angler:/data/data/com.example.sudogame $./simpleperf report --tids 10324 --dsos  /data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so --sort symbol -n --symfs .
-    ...
-    Overhead  Sample  Symbol
-    75.18%    317     checkValid(Board const&, int, int)
-    14.43%    60      canFindSolution_r(Board&, int, int)
-    5.70%     23      @plt
-    3.51%     20      randomBlock_r(Board&, int, int, int, int, int)
-    ...
+`apk_file_path` is needed to fully compile the application on Android L/M. It is
+not necessary on Android >= N.
 
-Report samples in one function
+`android_studio_project_dir` is used to search native libraries in the
+application. It is not necessary for profiling.
 
-    angler:/data/data/com.example.sudogame $./simpleperf report --tids 10324 --dsos  /data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so --symbols “checkValid(Board const&, int, int)” --sort vaddr_in_file -n --symfs .
-    ...
-    Overhead  Sample  VaddrInFile
-    11.89%    35      0x1d54
-    7.59%     25      0x1dae
-    6.77%     22      0x1d88
-    6.03%     19      0x1d82
-    ...
+`record_options` can be set to any option accepted by simpleperf record command.
 
-### 6. Record and report call graph
+**2. Run `app-profiler.py`**
+
+    $python app_profiler.py
+
+
+If running successfully, it will collect profiling data in perf.data in current
+directory, and related native binaries in binary_cache/.
+
+**3. Report perf.data**
+
+We can use `report.py` to report perf.data.
+
+    $python report.py
+
+We can add any option accepted by `simpleperf report` command to `report.py`.
+
+
+### Record and report call graph
+
 A call graph is a tree showing function call relations. Below is an example.
 
     main() {
@@ -555,217 +685,68 @@ A call graph is a tree showing function call relations. Below is an example.
            |
            |-> FunctionTwo
 
+
 #### Record dwarf based call graph
-To generate call graph, simpleperf needs to generate call chain for each record.
-Simpleperf requests kernel to dump user stack and user register set for each
-record, then it backtraces the user stack to find the function call chain. To
-parse the call chain, it needs support of dwarf call frame information, which
-usually resides in .eh_frame or .debug_frame section of the binary.  So we need
-to use --symfs to point out where is libsudo-game-jni.so with debug information.
 
-    angler:/data/data/com.example.sudogame $./simpleperf record -p 10324 -g --symfs . --duration 30
-    simpleperf I 01-01 09:59:42 11021 11021 cmd_record.cpp:341] Samples recorded: 60700. Samples lost: 1240.
+When using command lines, add `-g` option like below:
 
-Note that kernel can’t dump user stack >= 64K, so the dwarf based call graph
-doesn’t contain call chains consuming >= 64K stack. What’s more, because we
-need to dump stack in each record, it is likely to lost records. Usually, it
-doesn’t matter to lost some records.
+    $adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ./simpleperf record -g -p 6685 --duration 10 --dump-symbols
+
+When using python scripts, change `app-profiler.config` as below:
+
+    Change `record_options` line to record_options = "--dump-symbols --duration 10 -g"
+
+Recording dwarf based call graph needs support of debug information
+in native binaries. So if using native libraries in the application,
+it is better to contain non-stripped native libraries in the apk.
+
 
 #### Record stack frame based call graph
-Another way to generate call graph is to rely on the kernel parsing the call
-chain for each record. To make it possible, kernel has to be able to identify
-the stack frame of each function call. This is not always possible, because
-compilers can optimize away stack frames, or use a stack frame style not
-recognized by the kernel. So how well it works depends (It works well on arm64,
-but not well on arm).
 
-    angler:/data/data/com.example.sudogame $./simpleperf record -p 10324 --call-graph fp --symfs . --duration 30
-    simpleperf I 01-01 10:03:58 11267 11267 cmd_record.cpp:341] Samples recorded: 56736. Samples lost: 0.
+When using command lines, add `--call-graph fp` option like below:
 
-**Recording stack frame based call graph doesn't work well on arm architecture,**
-**even if compiled using -O0 -g -fno-omit-frame-pointer options. It is because**
-**the kernel can't unwind user stack containing both arm/thumb code. So please**
-**consider using dwarf based call graph on arm architecture, or profiling in**
-**aarch64 environment.**
+    $adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ./simpleperf record --call-graph fp -p 6685 --duration 10 --dump-symbols
+
+When using python scripts, change `app-profiler.config` as below:
+
+    Change `record_options` line to record_options = "--dump-symbols --duration 10 --call-graph fp"
+
+Recording stack frame based call graphs needs support of stack frame
+register. Notice that on arm architecture, the stack frame register
+is not well supported, even if compiled using -O0 -g -fno-omit-frame-pointer
+options. It is because the kernel can't unwind user stack containing both
+arm/thumb code. **So please consider using dwarf based call graph on arm
+architecture, or profiling in arm64 environment.**
+
 
 #### Report call graph
-Report accumulated period. In the table below, the first column is “Children”,
-it is the cpu cycle percentage of a function and functions called by that
-function. The second column is “Self”, it is the cpu cycle percentage of just a
-function. For example, checkValid() itself takes 1.28% cpus, but it takes
-29.43% by running itself and calling other functions.
 
-    angler:/data/data/com.example.sudogame $./simpleperf report --children --symfs .
+To report call graph using command lines, add `-g --brief-callgraph` option.
+
+    $bin/linux/x86_64/simpleperf report -g --brief-callgraph
     ...
-    Children  Self   Command          Pid    Tid    Shared Object                                                 Symbol
-    31.94%    0.00%  xample.sudogame  10324  10324  [kernel.kallsyms]                                             [kernel.kallsyms][+ffffffc000204268]
-    31.10%    0.92%  xample.sudogame  10324  10324  /system/lib/libc.so                                           writev
-    29.43%    1.28%  xample.sudogame  10324  10324  /data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so  checkValid(Board const&, int, int)
-    28.43%    0.34%  xample.sudogame  10324  10324  /system/lib/liblog.so                                         __android_log_print
-    28.24%    0.00%  xample.sudogame  10324  10324  /system/lib/libcutils.so                                      libcutils.so[+107b7]
-    28.10%    0.27%  xample.sudogame  10324  10324  /data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so  canFindSolution_r(Board&, int, int)
-    ...
+    Children  Self    Command          Pid    Tid    Shared Object                                                                     Symbol
+    99.97%    0.00%   Thread-2         10859  10876  /system/framework/arm64/boot.oat                                                  java.lang.Thread.run
+       |
+       -- java.lang.Thread.run
+          |
+           -- void com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()
+               |--83.66%-- [hit in function]
+               |
+               |--16.22%-- int com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.callFunction(int)
+               |    |--99.97%-- [hit in function]
 
-Report call graph.
-
-    angler:/data/data/com.example.sudogame $./simpleperf report -g --symfs . >report
-    angler:/data/data/com.example.sudogame $exit
-    angler:/ $cp /data/data/com.example.sudogame/report /data/local/tmp
-    angler:/ $exit
-    $adb pull /data/local/tmp/report .
-    $cat report
-    ...
-    29.43%    1.28%  xample.sudogame  10324  10324  /data/app/com.example.sudogame-1/lib/arm/libsudo-game-jni.so  checkValid(Board const&, int, int)
-           |
-           -- checkValid(Board const&, int, int)
-              |
-              |--95.50%-- __android_log_print
-              |    |--0.68%-- [hit in function]
-              |    |
-              |    |--51.84%-- __android_log_buf_write
-              |    |    |--2.07%-- [hit in function]
-              |    |    |
-              |    |    |--30.74%-- libcutils.so[+c69d]
-    ...
-
-Report call graph in callee mode. We can also show how a function is called by
-other functions.
-
-    angler:/data/data/com.example.sudogame $./simpleperf report -g callee --symfs . >report
-    $adb shell run-as com.example.sudogame cat report >report
-    $cat report
-    …
-    28.43%    0.34%  xample.sudogame  10324  10324  /system/lib/liblog.so                                         __android_log_print
-           |
-           -- __android_log_print
-              |
-              |--97.82%-- checkValid(Board const&, int, int)
-              |    |--0.13%-- [hit in function]
-              |    |
-              |    |--94.89%-- canFindSolution_r(Board&, int, int)
-              |    |    |--0.01%-- [hit in function]
-              |    |    |
-    ...
-
-## Profile java code
-Simpleperf only supports profiling native instructions in binaries in ELF
-format. If the java code is executed by interpreter, or with jit cache, it
-can’t be profiled by simpleperf. As Android supports Ahead-of-time compilation,
-it can compile java bytecode into native instructions with debug information.
-On devices with Android version <= M, we need root privilege to compile java
-bytecode with debug information. However, on devices with Android version >= N,
-we don't need root privilege to do so.
-
-### On Android N
-#### 1. Fully compile java code into native instructions.
-
-    $adb shell setprop debug.generate-debug-info true
-    $adb shell cmd package compile -f -m speed com.example.sudogame
-    // restart the app to take effect
-
-#### 2. Record perf.data
-
-    angler:/data/data/com.example.sudogame $./simpleperf record -p 11826 -g --symfs . --duration 30
-    simpleperf I 01-01 10:31:40 11859 11859 cmd_record.cpp:341] Samples recorded: 50576. Samples lost: 2139.
-
-#### 3. Report perf.data
-
-    angler:/data/data/com.example.sudogame $./simpleperf report -g --symfs . >report
-    angler:/data/data/com.example.sudogame $exit
-    angler:/ $cp /data/data/com.example.sudogame/report /data/local/tmp
-    angler:/ $exit
-    $adb pull /data/local/tmp/report .
-    $cat report
-    ...
-    21.14%    0.00%  xample.sudogame  11826  11826  /data/app/com.example.sudogame-1/oat/arm/base.odex            boolean com.example.sudogame.MainActivity.onOptionsItemSelected(android.view.MenuItem)
-           |
-           -- boolean com.example.sudogame.MainActivity.onOptionsItemSelected(android.view.MenuItem)
-              |
-               --99.99%-- void com.example.sudogame.GameView.startNewGame()
-                   |--0.01%-- [hit in function]
-                   |
-                   |--99.87%-- void com.example.sudogame.GameModel.reInit()
-                   |    |--0.01%-- [hit in function]
-                   |    |
-                   |    |--89.65%-- boolean com.example.sudogame.GameModel.canFindSolution(int[][])
-                   |    |    |
-                   |    |    |--99.95%-- Java_com_example_sudogame_GameModel_canFindSolution
-                   |    |    |    |
-                   |    |    |    |--99.49%-- canFindSolution(Board&)
-                   |    |    |    |    |--0.01%-- [hit in function]
-                   |    |    |    |    |
-                   |    |    |    |    |--99.97%-- canFindSolution_r(Board&, int, int)
-                   |    |    |    |    |           canFindSolution_r(Board&, int, int)
-    ...
-
-### On Android M
-On M devices, We need root privilege to force Android fully compiling java code
-into native instructions in ELF binaries with debug information. We also need
-root privilege to read compiled native binaries (because installd writes them
-to a directory whose uid/gid is system:install). So profiling java code can
-only be done on rooted devices.
-
-    $adb root
-    $adb shell setprop dalvik.vm.dex2oat-flags -g
-
-    # Reinstall the app.
-    $adb install -r app-debug.apk
-
-    # Change to the app’s data directory.
-    $ adb root && adb shell
-    device# cd `run-as com.example.sudogame pwd`
-
-    # Record as root as simpleperf needs to read the generated native binary.
-    device#./simpleperf record -p 25636 -g --symfs . -f 1000 --duration 30
-    simpleperf I 01-02 07:18:20 27182 27182 cmd_record.cpp:323] Samples recorded: 23552. Samples lost: 39.
-
-### On Android L
-On L devices, we also need root privilege to compile the app with debug info
-and access the native binaries.
-
-    $adb root
-    $adb shell setprop dalvik.vm.dex2oat-flags --include-debug-symbols
-
-    # Reinstall the app.
-    $adb install -r app-debug.apk
-
-## Profile using scripts
-Although using command line is flexible, it can be too complex. So we have
-python scripts to help running commands.
-
-### Record using app_profiler.py
-app_profiler.py is used to profile an Android application. It sets up profiling
-environment, downloads simpleperf and native libraries with debug information,
-runs simpleperf to generate perf.data, and pulls perf.data and binaries from
-device to host.
-It is configured by app_profiler.config. Below is an example.
-
-app_profiler.config:
-
-    app_package_name = “com.example.sudogame”
-    android_studio_project_dir = “/AndroidStudioProjects/SudoGame”  # absolute path of the project
-    ...
-    record_options = "-e cpu-cycles:u -f 4000 -g --dump-symbols --duration 30"
-    ...
-
-run app_profiler.py:
-
-    $python app_profiler.py
-    ...
-    INFO:root:profiling is finished.
-
-It pulls generated perf.data on host, and collects binaries from device in
-binary_cache.
-
-### Report using report.py
+To report call graph using python scripts, add `-g` option.
 
     $python report.py -g
+    # Double-click an item started with '+' to show its callgraph.
 
-It generates a GUI interface to report data.
+### Visualize profiling data
 
-### Process samples using simpleperf_report_lib.py
-simpleperf_report_lib.py provides an interface reading samples from perf.data.
-An example is report_sample.py.
+`simpleperf_report_lib.py` provides an interface reading samples from perf.data.
+By using it, You can write python scripts to read perf.data or convert perf.data
+to other formats. Below are two examples.
+
 
 ### Show flamegraph
 
@@ -773,7 +754,9 @@ An example is report_sample.py.
     $stackcollapse-perf.pl out.perf >out.folded
     $./flamegraph.pl out.folded >a.svg
 
+
 ### Visualize using pprof
+
 pprof is a tool for visualization and analysis of profiling data. It can
 be got from https://github.com/google/pprof. pprof_proto_generator.py can
 generate profiling data in a format acceptable by pprof.
@@ -781,51 +764,44 @@ generate profiling data in a format acceptable by pprof.
     $python pprof_proto_generator.py
     $pprof -pdf pprof.profile
 
+
 ### Annotate source code
-annotate.py reads perf.data and binaries in binary_cache. Then it knows which
-source file:line each sample hits. So it can annotate source code. annotate.py
-is configured by annotate.config. Below is an example.
 
-annotate.config:
+`annotate.py` reads perf.data, binaries in `binary-cache` (collected by `app-profiler.py`)
+and source code, and generates annoated source code in `annotated_files/`.
 
-    ...
-    source_dirs = [“/AndroidStudio/SudoGame”]  # It is a directory containing source code.
-    ...
+It is configured by `annotate.config`.
 
-run annotate.py:
+**1. Fill `annotate.config`**
+
+    Change `source_dirs` line to source_dirs = ["../SimpleperfExamplePureJava"]
+    Change `addr2line_path` line to addr2line_path = "addr2line"
+
+`addr2line` is need to annotate source code. It can be found in Android ndk release.
+Please set `addr2line_path` to the location of `addr2line` if it can't be found
+in PATH environment variable.
+
+**2. Run `annotate.py`**
 
     $python annotate.py
 
-It generates annotated_files directory.
-annotated_files/summary file contains summary information for each source file.
-An example is as below.
 
-    /AndroidStudioProjects/SudoGame/app/src/main/jni/sudo-game-jni.cpp: accumulated_period: 25.587937%, period: 1.250961%
-      function (checkValid(Board const&, int, int)): line 99, accumulated_period: 23.564356%, period: 0.908457%
-      function (canFindSolution_r(Board&, int, int)): line 135, accumulated_period: 22.260125%, period: 0.142359%
-      function (canFindSolution(Board&)): line 166, accumulated_period: 22.233101%, period: 0.000000%
-      function (Java_com_example_sudogame_GameModel_canFindSolution): line 470, accumulated_period: 21.983184%, period: 0.000000%
-      function (Java_com_example_sudogame_GameModel_initRandomBoard): line 430, accumulated_period: 2.226896%, period: 0.000000%
+**3. Read annotated code**
 
-      line 27: accumulated_period: 0.011729%, period: 0.000000%
-      line 32: accumulated_period: 0.004362%, period: 0.000000%
-      line 33: accumulated_period: 0.004427%, period: 0.000000%
-      line 36: accumulated_period: 0.003303%, period: 0.000000%
-      line 39: accumulated_period: 0.010367%, period: 0.004123%
-      line 41: accumulated_period: 0.162219%, period: 0.000000%
+The annotated source code is located at `annotated_files/`.
+`annotated_files/summary` shows how each source file is annotated.
 
-annotated_files/ also contains annotated source files which are found by
-annotate.py. For example, part of checkValid() function in libsudo-game-jni.cpp
-is annotated as below.
+One annotated source file is `annotated_files/java/com/example/simpleperf/simpleperfexamplepurejava/MainActivity.java`.
+It's content is similar to below:
 
-    /* [func] acc_p: 23.564356%, p: 0.908457% */static bool checkValid(const Board& board, int curR, int curC) {
-    /* acc_p: 0.037933%, p: 0.037933%         */    int digit = board.digits[curR][curC];
-    /* acc_p: 0.162355%, p: 0.162355%         */    for (int r = 0; r < BOARD_ROWS; ++r) {
-    /* acc_p: 0.020880%, p: 0.020880%         */        if (r == curR) {
-    /* acc_p: 0.034691%, p: 0.034691%         */            continue;
-                                                        }
-    /* acc_p: 0.176490%, p: 0.176490%         */        if (board.digits[r][curC] == digit) {
-    /* acc_p: 14.957673%, p: 0.059022%        */            LOGI("conflict (%d, %d) (%d, %d)", curR, curC, r, curC);
-    /* acc_p: 0.016296%, p: 0.016296%         */            return false;
-                                                        }
-                                                    }
+    // [file] shows how much time is spent in current file.
+    /* [file] acc_p: 99.966552%, p: 99.837438% */package com.example.simpleperf.simpleperfexamplepurejava;
+    ...
+    // [func] shows how much time is spent in current function.
+    /* [func] acc_p: 16.213395%, p: 16.209250% */            private int callFunction(int a) {
+    ...
+    // This shows how much time is spent in current line.
+    // acc_p field means how much time is spent in current line and functions called by current line.
+    // p field means how much time is spent just in current line.
+    /* acc_p: 99.966552%, p: 83.628188%        */                    i = callFunction(i);
+
