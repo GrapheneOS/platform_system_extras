@@ -106,7 +106,6 @@ class Addr2Line(object):
             out_pos += 1
             assert addr_line[:2] == "0x"
             assert out_pos < len(stdoutdata)
-            assert addrs[addr_pos] == int(addr_line, 16)
             source_lines = []
             while out_pos < len(stdoutdata) and stdoutdata[out_pos][:2] != "0x":
                 function = stdoutdata[out_pos]
@@ -607,7 +606,10 @@ class SourceFileAnnotator(object):
             for line in range(1, len(lines) + 1):
                 annotate = annotates.get(line)
                 if annotate is None:
-                    annotate = empty_annotate
+                    if not lines[line-1].strip():
+                        annotate = ''
+                    else:
+                        annotate = empty_annotate
                 else:
                     annotate = '/* ' + annotate + (
                         ' ' * (max_annotate_cols - len(annotate))) + ' */'
