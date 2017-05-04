@@ -941,7 +941,7 @@ bool RecordCommand::DumpAdditionalFeatures(
     return false;
   }
 
-  size_t feature_count = 4;
+  size_t feature_count = 5;
   if (branch_sampling_) {
     feature_count++;
   }
@@ -984,6 +984,13 @@ bool RecordCommand::DumpAdditionalFeatures(
       !record_file_writer_->WriteBranchStackFeature()) {
     return false;
   }
+
+  std::unordered_map<std::string, std::string> info_map;
+  info_map["simpleperf_version"] = GetSimpleperfVersion();
+  if (!record_file_writer_->WriteMetaInfoFeature(info_map)) {
+    return false;
+  }
+
   if (!record_file_writer_->EndWriteFeatures()) {
     return false;
   }
