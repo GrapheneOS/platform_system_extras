@@ -24,8 +24,6 @@
 #include "command.h"
 #include "utils.h"
 
-constexpr int SIMPLEPERF_VERSION = 1;
-
 int main(int argc, char** argv) {
   android::base::InitLogging(argv, android::base::StderrLogger);
   std::vector<std::string> args;
@@ -46,8 +44,7 @@ int main(int argc, char** argv) {
         return 1;
       }
     } else if (strcmp(argv[i], "--version") == 0) {
-      LOG(INFO) << "Simpleperf version " << SIMPLEPERF_VERSION << ", revision "
-                << SIMPLEPERF_REVISION;
+      LOG(INFO) << "Simpleperf version " << GetSimpleperfVersion();
       return 0;
     } else {
       args.push_back(argv[i]);

@@ -428,3 +428,13 @@ TEST(record_cmd, start_profiling_fd_option) {
   close(read_fd);
   ASSERT_EQ("STARTED", s);
 }
+
+TEST(record_cmd, record_meta_info_feature) {
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader != nullptr);
+  std::unordered_map<std::string, std::string> info_map;
+  ASSERT_TRUE(reader->ReadMetaInfoFeature(&info_map));
+  ASSERT_NE(info_map.find("simpleperf_version"), info_map.end());
+}
