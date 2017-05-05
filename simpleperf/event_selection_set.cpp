@@ -450,7 +450,7 @@ bool EventSelectionSet::OpenUserSpaceSamplersOnGroup(EventSelectionGroup& group,
   return true;
 }
 
-static bool ReadCounter(const EventFd* event_fd, CounterInfo* counter) {
+static bool ReadCounter(EventFd* event_fd, CounterInfo* counter) {
   if (!event_fd->ReadCounter(&counter->counter)) {
     return false;
   }
