@@ -523,6 +523,8 @@ It builds an app-profiling.apk for profiling.
     # Open SimpleperfExamplesPureJava project with Android studio,
     # and build this project sucessfully, otherwise the `./gradlew` command below will fail.
     $cd SimpleperfExamplePureJava
+
+    # On windows, use "gradlew" instead.
     $./gradlew clean assemble
     $adb install -r app/build/outputs/apk/app-profiling.apk
 
@@ -618,6 +620,7 @@ There are many options to record profiling data, check [record command](#simplep
     $adb shell run-as com.example.simpleperf.simpleperfexamplepurejava cat perf.data >perf.data
 
     # Report samples using corresponding simpleperf executable on host.
+    # On windows, use "bin\windows\x86_64\simpleperf" instead.
     $bin/linux/x86_64/simpleperf report
     ...
     Overhead  Command   Pid   Tid   Shared Object                                                                     Symbol
