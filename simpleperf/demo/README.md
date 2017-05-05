@@ -35,6 +35,8 @@ steps:
     # Open SimpleperfExamplesPureJava project with Android Studio,
     # and build this project sucessfully, otherwise the `./gradlew` command below will fail.
     $cd SimpleperfExamplePureJava
+
+    # On windows, use "gradlew" instead.
     $./gradlew clean assemble
     $adb install -r app/build/outputs/apk/app-profiling.apk
 
@@ -49,6 +51,7 @@ steps:
 3. Show profiling data:
 
     a. show call graph in txt mode
+        # On windows, use "bin\windows\x86\simpleperf" instead.
         $bin/linux/x86_64/simpleperf report -g --brief-callgraph | more
           If on other hosts, use corresponding simpleperf binary.
     b. show call graph in gui mode
@@ -72,6 +75,8 @@ steps:
     # Open SimpleperfExamplesPureJava project with Android Studio,
     # and build this project sucessfully, otherwise the `./gradlew` command below will fail.
     $cd SimpleperfExampleWithNative
+
+    # On windows, use "gradlew" instead.
     $./gradlew clean assemble
     $adb install -r app/build/outputs/apk/app-profiling.apk
 
@@ -86,6 +91,7 @@ steps:
 3. Show profiling data:
 
     a. show call graph in txt mode
+        # On windows, use "bin\windows\x86\simpleperf" instead.
         $bin/linux/x86_64/simpleperf report -g --brief-callgraph | more
           If on other hosts, use corresponding simpleperf binary.
     b. show call graph in gui mode
