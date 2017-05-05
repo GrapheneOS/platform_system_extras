@@ -65,6 +65,8 @@ def get_host_binary_path(binary_name):
     if is_windows():
         if binary_name.endswith('.so'):
             binary_name = binary_name[0:-3] + '.dll'
+        elif binary_name.find('.') == -1:
+            binary_name += '.exe'
         dir = os.path.join(dir, 'windows')
     elif sys.platform == 'darwin': # OSX
         if binary_name.endswith('.so'):

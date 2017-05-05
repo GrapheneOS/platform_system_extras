@@ -167,14 +167,9 @@ class ReportLib(object):
         self.convert_to_str = (sys.version_info >= (3, 0))
 
     def _load_dependent_lib(self):
-        # As the windows dll is built with mingw we need to also find "libwinpthread-1.dll".
-        # Load it before libsimpleperf_report.dll if it does exist in the same folder as this script.
+        # As the windows dll is built with mingw we need to load "libwinpthread-1.dll".
         if is_windows():
-            libwinpthread_path = os.path.join(get_script_dir(), "libwinpthread-1.dll")
-            if os.path.exists(libwinpthread_path):
-                self._libwinpthread = ct.CDLL(libwinpthread_path)
-            else:
-                log_fatal('%s is missing' % libwinpthread_path)
+            self._libwinpthread = ct.CDLL(get_host_binary_path('libwinpthread-1.dll'))
 
     def Close(self):
         if self._instance is None:
