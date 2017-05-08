@@ -38,15 +38,16 @@
 #define F2FS_DYN_LIB "libf2fs_fmt_host_dyn.so"
 
 int (*f2fs_format_device_dl)(void);
-void (*f2fs_init_configuration_dl)(struct f2fs_configuration *);
+void (*f2fs_init_configuration_dl)(void);
+struct f2fs_configuration *c_dl;
 
 int f2fs_format_device(void) {
 	assert(f2fs_format_device_dl);
 	return f2fs_format_device_dl();
 }
-void f2fs_init_configuration(struct f2fs_configuration *config) {
+void f2fs_init_configuration(void) {
 	assert(f2fs_init_configuration_dl);
-	f2fs_init_configuration_dl(config);
+	f2fs_init_configuration_dl();
 }
 
 int dlopenf2fs() {
@@ -58,7 +59,8 @@ int dlopenf2fs() {
 	}
 	f2fs_format_device_dl = dlsym(f2fs_lib, "f2fs_format_device");
 	f2fs_init_configuration_dl = dlsym(f2fs_lib, "f2fs_init_configuration");
-	if (!f2fs_format_device_dl || !f2fs_init_configuration_dl) {
+	c_dl = dlsym(f2fs_lib, "c");
+	if (!f2fs_format_device_dl || !f2fs_init_configuration_dl || !c_dl) {
 		return -1;
 	}
 	return 0;
