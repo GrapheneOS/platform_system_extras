@@ -31,7 +31,6 @@ import os.path
 import profile_pb2
 import re
 import shutil
-import subprocess
 import sys
 import time
 
