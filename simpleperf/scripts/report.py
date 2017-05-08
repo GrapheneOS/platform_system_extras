@@ -28,9 +28,11 @@ import os.path
 import re
 import subprocess
 import sys
-from tkFont import *
-from Tkinter import *
-from ttk import *
+
+from tkinter import *
+from tkinter.font import Font
+from tkinter.ttk import *
+
 from utils import *
 
 PAD_X = 3

@@ -37,17 +37,11 @@ def _is_null(p):
 
 
 def _char_pt(str):
-    if sys.version_info < (3, 0):
-        return str
-    # In python 3, str are wide strings whereas the C api expects 8 bit strings, hence we have to convert
-    # For now using utf-8 as the encoding.
-    return str.encode('utf-8')
+    return str_to_bytes(str)
 
 
 def _char_pt_to_str(char_pt):
-    if sys.version_info < (3, 0):
-        return char_pt
-    return char_pt.decode('utf-8')
+    return bytes_to_str(char_pt)
 
 
 class SampleStruct(ct.Structure):

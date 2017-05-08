@@ -39,7 +39,7 @@ class BinaryCacheBuilder(object):
         config_names = ['perf_data_path', 'symfs_dirs', 'adb_path',
                         'readelf_path', 'binary_cache_dir']
         for name in config_names:
-            if not config.has_key(name):
+            if name not in config:
                 log_fatal('config for "%s" is missing' % name)
 
         self.perf_data_path = config.get('perf_data_path')
@@ -82,7 +82,7 @@ class BinaryCacheBuilder(object):
 
             for symbol in symbols:
                 dso_name = symbol.dso_name
-                if not binaries.has_key(dso_name):
+                if dso_name not in binaries:
                     binaries[dso_name] = lib.GetBuildIdForPath(dso_name)
         self.binaries = binaries
 
@@ -182,6 +182,7 @@ class BinaryCacheBuilder(object):
         if not self.readelf_path:
             return ""
         output = subprocess.check_output([self.readelf_path, '-n', file])
+        output = bytes_to_str(output)
         result = re.search(r'Build ID:\s*(\S+)', output)
         if result:
             build_id = result.group(1)
@@ -197,6 +198,7 @@ class BinaryCacheBuilder(object):
         if not self.readelf_path:
             return False
         output = subprocess.check_output([self.readelf_path, '-S', file])
+        output = bytes_to_str(output)
         if output.find('.symtab') != -1:
             return True
         return False

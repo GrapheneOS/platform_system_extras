@@ -49,7 +49,7 @@ class AppProfiler(object):
                         'record_options', 'perf_data_path', 'adb_path', 'readelf_path',
                         'binary_cache_dir']
         for name in config_names:
-            if not config.has_key(name):
+            if name not in config:
                 log_fatal('config [%s] is missing' % name)
         native_lib_dir = config.get('native_lib_dir')
         if native_lib_dir and not os.path.isdir(native_lib_dir):
