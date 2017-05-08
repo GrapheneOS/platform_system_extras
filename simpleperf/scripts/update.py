@@ -59,10 +59,10 @@ install_list = [
     InstallEntry('sdk', 'libsimpleperf_report32.dll', 'windows/x86/libsimpleperf_report.dll', True),
 
     # libwinpthread-1.dll on windows host
-    InstallEntry('local', '../../../../prebuilts/gcc/linux-x86/host/x86_64-w64-mingw32-4.8/x86_64-w64-mingw32/bin/libwinpthread-1.dll',
-                 'windows/x86_64/libwinpthread-1.dll', False),
-    InstallEntry('local', '../../../../prebuilts/gcc/linux-x86/host/x86_64-w64-mingw32-4.8/x86_64-w64-mingw32/lib32/libwinpthread-1.dll',
-                 'windows/x86/libwinpthread-1.dll', False),
+    InstallEntry('local:../../../../prebuilts/gcc/linux-x86/host/x86_64-w64-mingw32-4.8/x86_64-w64-mingw32/bin/libwinpthread-1.dll',
+                 'libwinpthread-1.dll', 'windows/x86_64/libwinpthread-1.dll', False),
+    InstallEntry('local:../../../../prebuilts/gcc/linux-x86/host/x86_64-w64-mingw32-4.8/x86_64-w64-mingw32/lib32/libwinpthread-1.dll',
+                 'libwinpthread-1_32.dll', 'windows/x86/libwinpthread-1.dll', False),
 ]
 
 
@@ -78,15 +78,16 @@ def check_call(cmd):
     subprocess.check_call(cmd)
 
 
-def fetch_artifact(branch, build, target, pattern):
+def fetch_artifact(branch, build, target, name):
     """Fetches and artifact from the build server."""
-    if target == 'local':
+    if target.startswith('local:'):
+        shutil.copyfile(target[6:], name)
         return
     logger().info('Fetching %s from %s %s (artifacts matching %s)', build,
-                  target, branch, pattern)
+                  target, branch, name)
     fetch_artifact_path = '/google/data/ro/projects/android/fetch_artifact'
     cmd = [fetch_artifact_path, '--branch', branch, '--target', target,
-           '--bid', build, pattern]
+           '--bid', build, name]
     check_call(cmd)
 
 
