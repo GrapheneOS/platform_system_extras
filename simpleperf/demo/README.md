@@ -20,8 +20,8 @@ meaning of each directory is as below:
 
 It can be downloaded as below:
 
-    $git clone https://android.googlesource.com/platform/system/extras
-    $cd extras/simpleperf/demo
+    $ git clone https://android.googlesource.com/platform/system/extras
+    $ cd extras/simpleperf/demo
 
 ## Profiling Java application
 
@@ -31,37 +31,40 @@ It can be downloaded as below:
 
 steps:
 1. Build and install app:
+```
+# Open SimpleperfExamplesPureJava project with Android Studio,
+# and build this project sucessfully, otherwise the `./gradlew` command below will fail.
+$ cd SimpleperfExamplePureJava
 
-    # Open SimpleperfExamplesPureJava project with Android Studio,
-    # and build this project sucessfully, otherwise the `./gradlew` command below will fail.
-    $cd SimpleperfExamplePureJava
-
-    # On windows, use "gradlew" instead.
-    $./gradlew clean assemble
-    $adb install -r app/build/outputs/apk/app-profiling.apk
+# On windows, use "gradlew" instead.
+$ ./gradlew clean assemble
+$ adb install -r app/build/outputs/apk/app-profiling.apk
+```
 
 2. Record profiling data:
-
-    $cd ../../scripts/
-    $gvim app_profiler.config
-      change app_package_name line to: app_package_name = "com.example.simpleperf.simpleperfexamplepurejava"
-    $python app_profiler.py
-      It runs the application and collects profiling data in perf.data, binaries on device in binary_cache/.
+```
+$ cd ../../scripts/
+$ gvim app_profiler.config
+    change app_package_name line to: app_package_name = "com.example.simpleperf.simpleperfexamplepurejava"
+$ python app_profiler.py
+    It runs the application and collects profiling data in perf.data, binaries on device in binary_cache/.
+```
 
 3. Show profiling data:
-
-    a. show call graph in txt mode
-        # On windows, use "bin\windows\x86\simpleperf" instead.
-        $bin/linux/x86_64/simpleperf report -g --brief-callgraph | more
-          If on other hosts, use corresponding simpleperf binary.
-    b. show call graph in gui mode
-        $python report.py -g
-    c. show samples in source code
-        $gvim annotate.config
-          change source_dirs line to: source_dirs = ["../demo/SimpleperfExamplePureJava"]
-        $python annotate.py
-        $gvim annotated_files/java/com/example/simpleperf/simpleperfexamplepurejava/MainActivity.java
-          check the annoated source file MainActivity.java.
+```
+a. show call graph in txt mode
+    # On windows, use "bin\windows\x86\simpleperf" instead.
+    $ bin/linux/x86_64/simpleperf report -g --brief-callgraph | more
+        If on other hosts, use corresponding simpleperf binary.
+b. show call graph in gui mode
+    $ python report.py -g
+c. show samples in source code
+    $ gvim annotate.config
+        change source_dirs line to: source_dirs = ["../demo/SimpleperfExamplePureJava"]
+    $ python annotate.py
+    $ gvim annotated_files/java/com/example/simpleperf/simpleperfexamplepurejava/MainActivity.java
+        check the annoated source file MainActivity.java.
+```
 
 ## Profiling Java/C++ application
 
@@ -71,35 +74,37 @@ steps:
 
 steps:
 1. Build and install app:
+```
+# Open SimpleperfExamplesPureJava project with Android Studio,
+# and build this project sucessfully, otherwise the `./gradlew` command below will fail.
+$ cd SimpleperfExampleWithNative
 
-    # Open SimpleperfExamplesPureJava project with Android Studio,
-    # and build this project sucessfully, otherwise the `./gradlew` command below will fail.
-    $cd SimpleperfExampleWithNative
-
-    # On windows, use "gradlew" instead.
-    $./gradlew clean assemble
-    $adb install -r app/build/outputs/apk/app-profiling.apk
+# On windows, use "gradlew" instead.
+$ ./gradlew clean assemble
+$ adb install -r app/build/outputs/apk/app-profiling.apk
+```
 
 2. Record profiling data:
-
-    $cd ../../scripts/
-    $gvim app_profiler.config
-      change app_package_name line to: app_package_name = "com.example.simpleperf.simpleperfexamplewithnative"
-    $python app_profiler.py
-      It runs the application and collects profiling data in perf.data, binaries on device in binary_cache/.
+```
+$ cd ../../scripts/
+$ gvim app_profiler.config
+    change app_package_name line to: app_package_name = "com.example.simpleperf.simpleperfexamplewithnative"
+$ python app_profiler.py
+    It runs the application and collects profiling data in perf.data, binaries on device in binary_cache/.
+```
 
 3. Show profiling data:
-
-    a. show call graph in txt mode
-        # On windows, use "bin\windows\x86\simpleperf" instead.
-        $bin/linux/x86_64/simpleperf report -g --brief-callgraph | more
-          If on other hosts, use corresponding simpleperf binary.
-    b. show call graph in gui mode
-        $python report.py -g
-    c. show samples in source code
-        $gvim annotate.config
-          change source_dirs line to: source_dirs = ["../demo/SimpleperfExampleWithNative"]
-        $python annotate.py
-        $find . -name "native-lib.cpp" | xargs gvim
-          check the annoated source file native-lib.cpp.
-
+```
+a. show call graph in txt mode
+    # On windows, use "bin\windows\x86\simpleperf" instead.
+    $ bin/linux/x86_64/simpleperf report -g --brief-callgraph | more
+        If on other hosts, use corresponding simpleperf binary.
+b. show call graph in gui mode
+    $ python report.py -g
+c. show samples in source code
+    $ gvim annotate.config
+        change source_dirs line to: source_dirs = ["../demo/SimpleperfExampleWithNative"]
+    $ python annotate.py
+    $ find . -name "native-lib.cpp" | xargs gvim
+        check the annoated source file native-lib.cpp.
+```
