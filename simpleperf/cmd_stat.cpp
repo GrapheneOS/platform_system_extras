@@ -238,6 +238,14 @@ class CounterSummaries {
                                            sap_mid);
       }
     }
+    if (android::base::EndsWith(s.type_name, "-refill")) {
+      std::string other_name = s.type_name.substr(0, s.type_name.size() - strlen("-refill"));
+      const CounterSummary* other = FindSummary(other_name, s.modifier);
+      if (other != nullptr && other->IsMonitoredAtTheSameTime(s) && other->count != 0) {
+        double miss_rate = static_cast<double>(s.count) / other->count;
+        return android::base::StringPrintf("%f%%%cmiss rate", miss_rate * 100, sap_mid);
+      }
+    }
     double rate = s.count / (duration_in_sec / s.scale);
     if (rate > 1e9) {
       return android::base::StringPrintf("%.3lf%cG/sec", rate / 1e9, sap_mid);
