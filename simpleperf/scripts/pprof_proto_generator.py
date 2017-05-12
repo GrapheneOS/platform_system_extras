@@ -256,7 +256,10 @@ class PprofProfileGenerator(object):
         self.lib = ReportLib()
 
         if config.get('binary_cache_dir'):
-            self.lib.SetSymfs(config['binary_cache_dir'])
+            if not os.path.isdir(config.get('binary_cache_dir')):
+                config['binary_cache_dir'] = ''
+            else:
+                self.lib.SetSymfs(config['binary_cache_dir'])
         if config.get('record_file'):
             self.lib.SetRecordFile(config['record_file'])
         if config.get('kallsyms'):
@@ -315,7 +318,8 @@ class PprofProfileGenerator(object):
                 self.add_sample(sample)
 
         # 2. Generate line info for locations and functions.
-        self.gen_source_lines()
+        if self.config.get('binary_cache_dir'):
+            self.gen_source_lines()
 
         # 3. Produce samples/locations/functions in profile
         for sample in self.sample_list:
@@ -510,8 +514,12 @@ class PprofProfileGenerator(object):
         profile_mapping.build_id = mapping.build_id_id
         profile_mapping.has_filenames = True
         profile_mapping.has_functions = True
-        profile_mapping.has_line_numbers = True
-        profile_mapping.has_inline_frames = True
+        if self.config.get('binary_cache_dir'):
+            profile_mapping.has_line_numbers = True
+            profile_mapping.has_inline_frames = True
+        else:
+            profile_mapping.has_line_numbers = False
+            profile_mapping.has_inline_frames = False
 
     def gen_profile_location(self, location):
         profile_location = self.profile.location.add()
