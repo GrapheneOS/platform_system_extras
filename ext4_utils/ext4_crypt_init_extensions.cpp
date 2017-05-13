@@ -31,10 +31,10 @@
 #include <android-base/strings.h>
 #include <cutils/properties.h>
 #include <cutils/sockets.h>
+#include <keyutils.h>
 #include <logwrap/logwrap.h>
 
 #include "ext4_utils/ext4_crypt.h"
-#include "ext4_utils/key_control.h"
 
 #define TAG "ext4_utils"
 
