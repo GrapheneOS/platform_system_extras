@@ -600,7 +600,7 @@ please replace this number with what you get by running `ps` command.
 
 **5. Record perf.data**
 
-    $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ./simpleperf record -p 6885 --duration 10 --dump-symbols
+    $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ./simpleperf record -p 6885 --duration 10
     simpleperf I 04-27 20:41:11  6940  6940 cmd_record.cpp:357] Samples recorded: 40008. Samples lost: 0.
 
     $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ls -lh perf.data
@@ -641,7 +641,7 @@ results and native binaries on host. It is configured by `app-profiler.config`.
     Change `app_package_name` line to  app_package_name="com.example.simpleperf.simpleperfexamplepurejava"
     Change `apk_file_path` line to apk_file_path = "../SimpleperfExamplePureJava/app/build/outputs/apk/app-profiling.apk"
     Change `android_studio_project_dir` line to android_studio_project_dir = "../SimpleperfExamplePureJava/"
-    Change `record_options` line to record_options = "--dump-symbols --duration 10"
+    Change `record_options` line to record_options = "--duration 10"
 
 `apk_file_path` is needed to fully compile the application on Android L/M. It is
 not necessary on Android >= N.
@@ -693,11 +693,11 @@ A call graph is a tree showing function call relations. Below is an example.
 
 When using command lines, add `-g` option like below:
 
-    $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ./simpleperf record -g -p 6685 --duration 10 --dump-symbols
+    $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ./simpleperf record -g -p 6685 --duration 10
 
 When using python scripts, change `app-profiler.config` as below:
 
-    Change `record_options` line to record_options = "--dump-symbols --duration 10 -g"
+    Change `record_options` line to record_options = "--duration 10 -g"
 
 Recording dwarf based call graph needs support of debug information
 in native binaries. So if using native libraries in the application,
@@ -708,11 +708,11 @@ it is better to contain non-stripped native libraries in the apk.
 
 When using command lines, add `--call-graph fp` option like below:
 
-    $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ./simpleperf record --call-graph fp -p 6685 --duration 10 --dump-symbols
+    $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ./simpleperf record --call-graph fp -p 6685 --duration 10
 
 When using python scripts, change `app-profiler.config` as below:
 
-    Change `record_options` line to record_options = "--dump-symbols --duration 10 --call-graph fp"
+    Change `record_options` line to record_options = "--duration 10 --call-graph fp"
 
 Recording stack frame based call graphs needs support of stack frame
 register. Notice that on arm architecture, the stack frame register
@@ -724,9 +724,9 @@ architecture, or profiling in arm64 environment.**
 
 #### Report call graph
 
-To report call graph using command lines, add `-g --brief-callgraph` option.
+To report call graph using command lines, add `-g` option.
 
-    $ bin/linux/x86_64/simpleperf report -g --brief-callgraph
+    $ bin/linux/x86_64/simpleperf report -g
     ...
     Children  Self    Command          Pid    Tid    Shared Object                                                                     Symbol
     99.97%    0.00%   Thread-2         10859  10876  /system/framework/arm64/boot.oat                                                  java.lang.Thread.run

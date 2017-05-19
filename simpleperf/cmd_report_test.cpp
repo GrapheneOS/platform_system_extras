@@ -131,10 +131,9 @@ TEST_F(ReportCommandTest, children_option) {
 
 static bool CheckCalleeMode(std::vector<std::string>& lines) {
   bool found = false;
-  for (size_t i = 0; i + 2 < lines.size(); ++i) {
+  for (size_t i = 0; i + 1 < lines.size(); ++i) {
     if (lines[i].find("GlobalFunc") != std::string::npos &&
-        lines[i + 1].find('|') != std::string::npos &&
-        lines[i + 2].find("main") != std::string::npos) {
+        lines[i + 1].find("main") != std::string::npos) {
       found = true;
       break;
     }
@@ -144,10 +143,9 @@ static bool CheckCalleeMode(std::vector<std::string>& lines) {
 
 static bool CheckCallerMode(std::vector<std::string>& lines) {
   bool found = false;
-  for (size_t i = 0; i + 2 < lines.size(); ++i) {
+  for (size_t i = 0; i + 1 < lines.size(); ++i) {
     if (lines[i].find("main") != std::string::npos &&
-        lines[i + 1].find('|') != std::string::npos &&
-        lines[i + 2].find("GlobalFunc") != std::string::npos) {
+        lines[i + 1].find("GlobalFunc") != std::string::npos) {
       found = true;
       break;
     }
@@ -433,7 +431,7 @@ TEST_F(ReportCommandTest, max_stack_and_percent_limit_option) {
   Report(PERF_DATA_MAX_STACK_AND_PERCENT_LIMIT, {"-g", "--max-stack", "0"});
   ASSERT_TRUE(success);
   ASSERT_EQ(content.find("89.03"), std::string::npos);
-  Report(PERF_DATA_MAX_STACK_AND_PERCENT_LIMIT, {"-g", "--max-stack", "1"});
+  Report(PERF_DATA_MAX_STACK_AND_PERCENT_LIMIT, {"-g", "--max-stack", "2"});
   ASSERT_TRUE(success);
   ASSERT_NE(content.find("89.03"), std::string::npos);
 
@@ -464,10 +462,13 @@ TEST_F(ReportCommandTest, raw_period_option) {
   ASSERT_EQ(content.find("%"), std::string::npos);
 }
 
-TEST_F(ReportCommandTest, brief_callgraph_option) {
-  Report(CALLGRAPH_FP_PERF_DATA, {"-g", "--brief-callgraph"});
+TEST_F(ReportCommandTest, full_callgraph_option) {
+  Report(CALLGRAPH_FP_PERF_DATA, {"-g"});
   ASSERT_TRUE(success);
   ASSERT_NE(content.find("skipped in brief callgraph mode"), std::string::npos);
+  Report(CALLGRAPH_FP_PERF_DATA, {"-g", "--full-callgraph"});
+  ASSERT_TRUE(success);
+  ASSERT_EQ(content.find("skipped in brief callgraph mode"), std::string::npos);
 }
 
 #if defined(__linux__)
