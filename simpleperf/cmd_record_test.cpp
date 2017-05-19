@@ -254,11 +254,11 @@ static void CheckKernelSymbol(const std::string& path, bool need_kallsyms,
 
 TEST(record_cmd, kernel_symbol) {
   TemporaryFile tmpfile;
-  ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
+  ASSERT_TRUE(RunRecordCmd({"--no-dump-symbols"}, tmpfile.path));
   bool success;
   CheckKernelSymbol(tmpfile.path, true, &success);
   ASSERT_TRUE(success);
-  ASSERT_TRUE(RunRecordCmd({"--no-dump-kernel-symbols"}, tmpfile.path));
+  ASSERT_TRUE(RunRecordCmd({"--no-dump-symbols", "--no-dump-kernel-symbols"}, tmpfile.path));
   CheckKernelSymbol(tmpfile.path, false, &success);
   ASSERT_TRUE(success);
 }
@@ -303,14 +303,14 @@ static void CheckDsoSymbolRecords(const std::string& path,
   *success = true;
 }
 
-TEST(record_cmd, dump_symbols) {
+TEST(record_cmd, no_dump_symbols) {
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
   bool success;
-  CheckDsoSymbolRecords(tmpfile.path, false, &success);
-  ASSERT_TRUE(success);
-  ASSERT_TRUE(RunRecordCmd({"--dump-symbols"}, tmpfile.path));
   CheckDsoSymbolRecords(tmpfile.path, true, &success);
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(RunRecordCmd({"--no-dump-symbols"}, tmpfile.path));
+  CheckDsoSymbolRecords(tmpfile.path, false, &success);
   ASSERT_TRUE(success);
   if (IsDwarfCallChainSamplingSupported()) {
     std::vector<std::unique_ptr<Workload>> workloads;
@@ -318,10 +318,10 @@ TEST(record_cmd, dump_symbols) {
     std::string pid = std::to_string(workloads[0]->GetPid());
     ASSERT_TRUE(RunRecordCmd({"-p", pid, "-g"}, tmpfile.path));
     bool success;
-    CheckDsoSymbolRecords(tmpfile.path, false, &success);
-    ASSERT_TRUE(success);
-    ASSERT_TRUE(RunRecordCmd({"-p", pid, "-g", "--dump-symbols"}, tmpfile.path));
     CheckDsoSymbolRecords(tmpfile.path, true, &success);
+    ASSERT_TRUE(success);
+    ASSERT_TRUE(RunRecordCmd({"-p", pid, "-g", "--no-dump-symbols"}, tmpfile.path));
+    CheckDsoSymbolRecords(tmpfile.path, false, &success);
     ASSERT_TRUE(success);
   }
 }
@@ -333,7 +333,7 @@ TEST(record_cmd, dump_kernel_symbols) {
   }
   system("echo 0 >/proc/sys/kernel/kptr_restrict");
   TemporaryFile tmpfile;
-  ASSERT_TRUE(RunRecordCmd({"--dump-symbols", "-a", "-o", tmpfile.path, "sleep", "1"}));
+  ASSERT_TRUE(RunRecordCmd({"-a", "-o", tmpfile.path, "sleep", "1"}));
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
   ASSERT_TRUE(reader != nullptr);
   std::map<int, SectionDesc> section_map = reader->FeatureSectionDescriptors();
