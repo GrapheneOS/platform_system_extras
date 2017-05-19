@@ -54,7 +54,7 @@ $ python app_profiler.py
 ```
 a. show call graph in txt mode
     # On windows, use "bin\windows\x86\simpleperf" instead.
-    $ bin/linux/x86_64/simpleperf report -g --brief-callgraph | more
+    $ bin/linux/x86_64/simpleperf report -g | more
         If on other hosts, use corresponding simpleperf binary.
 b. show call graph in gui mode
     $ python report.py -g
@@ -97,7 +97,7 @@ $ python app_profiler.py
 ```
 a. show call graph in txt mode
     # On windows, use "bin\windows\x86\simpleperf" instead.
-    $ bin/linux/x86_64/simpleperf report -g --brief-callgraph | more
+    $ bin/linux/x86_64/simpleperf report -g | more
         If on other hosts, use corresponding simpleperf binary.
 b. show call graph in gui mode
     $ python report.py -g
