@@ -29,6 +29,7 @@
 #include <android-base/parsedouble.h>
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
+#include <android-base/test_utils.h>
 
 #include "command.h"
 #include "dwarf_unwind.h"
@@ -227,12 +228,14 @@ class RecordCommand : public Command {
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
+  // 0. Do some environment preparation.
   if (!CheckPerfEventLimit()) {
     return false;
   }
   if (!InitPerfClock()) {
     return false;
   }
+  PrepareVdsoFile();
 
   // 1. Parse options, and use default measured event type if not given.
   std::vector<std::string> workload_args;
