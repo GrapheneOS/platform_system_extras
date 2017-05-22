@@ -331,7 +331,6 @@ TEST(record_cmd, dump_kernel_symbols) {
     GTEST_LOG_(INFO) << "Test requires root privilege";
     return;
   }
-  system("echo 0 >/proc/sys/kernel/kptr_restrict");
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({"-a", "-o", tmpfile.path, "sleep", "1"}));
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);

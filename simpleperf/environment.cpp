@@ -451,10 +451,16 @@ bool CheckKernelSymbolAddresses() {
     LOG(ERROR) << "failed to parse " << kptr_restrict_file << ": " << s;
     return false;
   }
+  // Accessible to everyone?
   if (value == 0) {
     return true;
   }
+  // Accessible to root?
   if (value == 1 && IsRoot()) {
+    return true;
+  }
+  // Can we make it accessible to us?
+  if (IsRoot() && android::base::WriteStringToFile("1", kptr_restrict_file)) {
     return true;
   }
   LOG(WARNING) << "Access to kernel symbol addresses is restricted. If "
