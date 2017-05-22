@@ -89,5 +89,6 @@ static inline int gettid() {
 #endif
 
 ArchType GetMachineArch();
+void PrepareVdsoFile();
 
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_

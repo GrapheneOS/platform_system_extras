@@ -123,7 +123,7 @@ class ThreadTree {
  private:
   ThreadEntry* CreateThread(int pid, int tid);
   Dso* FindKernelDsoOrNew(const std::string& filename);
-  Dso* FindUserDsoOrNew(const std::string& filename);
+  Dso* FindUserDsoOrNew(const std::string& filename, uint64_t start_addr = 0);
   MapEntry* AllocateMap(const MapEntry& value);
   void FixOverlappedMap(MapSet* maps, const MapEntry* map);
 
