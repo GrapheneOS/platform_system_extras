@@ -130,7 +130,7 @@ void ThreadTree::AddThreadMap(int pid, int tid, uint64_t start_addr,
                               uint64_t len, uint64_t pgoff, uint64_t time,
                               const std::string& filename) {
   ThreadEntry* thread = FindThreadOrNew(pid, tid);
-  Dso* dso = FindUserDsoOrNew(filename);
+  Dso* dso = FindUserDsoOrNew(filename, start_addr);
   MapEntry* map =
       AllocateMap(MapEntry(start_addr, len, pgoff, time, dso, false));
   FixOverlappedMap(thread->maps, map);
@@ -138,10 +138,11 @@ void ThreadTree::AddThreadMap(int pid, int tid, uint64_t start_addr,
   CHECK(pair.second);
 }
 
-Dso* ThreadTree::FindUserDsoOrNew(const std::string& filename) {
+Dso* ThreadTree::FindUserDsoOrNew(const std::string& filename, uint64_t start_addr) {
   auto it = user_dso_tree_.find(filename);
   if (it == user_dso_tree_.end()) {
-    user_dso_tree_[filename] = Dso::CreateDso(DSO_ELF_FILE, filename);
+    bool force_64bit = start_addr > UINT_MAX;
+    user_dso_tree_[filename] = Dso::CreateDso(DSO_ELF_FILE, filename, force_64bit);
     it = user_dso_tree_.find(filename);
   }
   return it->second.get();
