@@ -132,7 +132,7 @@ SIZE=$((SIZE / BLOCKSIZE))
 
 MAKE_EXT4FS_CMD="mke2fs $MKE2FS_OPTS -t $EXT_VARIANT -b $BLOCKSIZE $OUTPUT_FILE $SIZE"
 echo $MAKE_EXT4FS_CMD
-$MAKE_EXT4FS_CMD
+MKE2FS_CONFIG=./system/extras/ext4_utils/mke2fs.conf $MAKE_EXT4FS_CMD
 if [ $? -ne 0 ]; then
   exit 4
 fi
