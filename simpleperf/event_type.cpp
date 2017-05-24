@@ -23,11 +23,13 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/strings.h>
 
 #include "event_attr.h"
 #include "utils.h"
 
-#define EVENT_TYPE_TABLE_ENTRY(name, type, config) {name, type, config},
+#define EVENT_TYPE_TABLE_ENTRY(name, type, config, description, limited_arch) \
+          {name, type, config, description, limited_arch},
 
 static const std::vector<EventType> static_event_type_array = {
 #include "event_type_table.h"
@@ -54,7 +56,7 @@ static const std::vector<EventType> GetTracepointEventTypes() {
         LOG(DEBUG) << "unexpected id '" << id_content << "' in " << id_path;
         continue;
       }
-      result.push_back(EventType(system_name + ":" + event_name, PERF_TYPE_TRACEPOINT, id));
+      result.push_back(EventType(system_name + ":" + event_name, PERF_TYPE_TRACEPOINT, id, "", ""));
     }
   }
   std::sort(result.begin(), result.end(),
@@ -77,7 +79,7 @@ const std::vector<EventType>& GetAllEventTypes() {
 const EventType* FindEventTypeByName(const std::string& name) {
   const EventType* result = nullptr;
   for (auto& event_type : GetAllEventTypes()) {
-    if (event_type.name == name) {
+    if (android::base::EqualsIgnoreCase(event_type.name, name)) {
       result = &event_type;
       break;
     }
