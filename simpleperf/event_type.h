@@ -36,8 +36,10 @@ enum {
 // the event type is supported by the kernel.
 
 struct EventType {
-  EventType(const std::string& name, uint32_t type, uint64_t config)
-      : name(name), type(type), config(config) {
+  EventType(const std::string& name, uint32_t type, uint64_t config,
+            const std::string& description, const std::string& limited_arch)
+      : name(name), type(type), config(config), description(description),
+        limited_arch(limited_arch) {
   }
 
   EventType() : type(0), config(0) {
@@ -46,6 +48,8 @@ struct EventType {
   std::string name;
   uint32_t type;
   uint64_t config;
+  std::string description;
+  std::string limited_arch;
 };
 
 const std::vector<EventType>& GetAllEventTypes();
