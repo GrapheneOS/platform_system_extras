@@ -14,6 +14,7 @@
 
 cc_library {
     name: "libpagemap",
+    vendor_available: true,
     srcs: [
         "pm_kernel.c",
         "pm_process.c",
