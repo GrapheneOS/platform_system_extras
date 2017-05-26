@@ -107,9 +107,16 @@ class AdbHelper(object):
     def run_and_return_output(self, adb_args):
         adb_args = [self.adb_path] + adb_args
         log_debug('run adb cmd: %s' % adb_args)
-        subproc = subprocess.Popen(adb_args, stdout=subprocess.PIPE)
-        (stdoutdata, _) = subproc.communicate()
-        result = (subproc.returncode == 0)
+        if adb_args[-1][0] == '>':
+            stdout_file = adb_args[-1][1:]
+            with open(stdout_file, 'wb') as stdout_fh:
+                returncode = subprocess.call(adb_args[:-1], stdout=stdout_fh)
+            stdoutdata = ''
+        else:
+            subproc = subprocess.Popen(adb_args, stdout=subprocess.PIPE)
+            (stdoutdata, _) = subproc.communicate()
+            returncode = subproc.returncode
+        result = (returncode == 0)
         if stdoutdata:
             stdoutdata = bytes_to_str(stdoutdata)
             log_debug(stdoutdata)
