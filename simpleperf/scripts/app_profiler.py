@@ -271,10 +271,7 @@ class AppProfiler(object):
 
 
     def collect_profiling_data(self):
-        self.run_in_app_dir(['chmod', 'a+rw', 'perf.data'])
-        self.adb.check_run(['shell', 'cp',
-            '/data/data/%s/perf.data' % self.config['app_package_name'], '/data/local/tmp'])
-        self.adb.check_run(['pull', '/data/local/tmp/perf.data', self.config['perf_data_path']])
+        self.run_in_app_dir(['cat', 'perf.data', '>' + self.config['perf_data_path']])
         config = copy.copy(self.config)
         config['symfs_dirs'] = []
         if self.config['native_lib_dir']:
