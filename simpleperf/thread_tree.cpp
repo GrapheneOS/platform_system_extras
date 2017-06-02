@@ -327,4 +327,12 @@ std::vector<Dso*> ThreadTree::GetAllDsos() const {
   return result;
 }
 
+std::vector<const ThreadEntry*> ThreadTree::GetAllThreads() const {
+  std::vector<const ThreadEntry*> threads;
+  for (auto& pair : thread_tree_) {
+    threads.push_back(pair.second.get());
+  }
+  return threads;
+}
+
 }  // namespace simpleperf
