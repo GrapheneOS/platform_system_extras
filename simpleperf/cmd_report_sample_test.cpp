@@ -79,3 +79,15 @@ TEST(cmd_report_sample, sample_has_event_count) {
   ASSERT_TRUE(android::base::ReadFileToString(tmpfile2.path, &data));
   ASSERT_NE(data.find("event_count:"), std::string::npos);
 }
+
+TEST(cmd_report_sample, has_thread_record) {
+  TemporaryFile tmpfile;
+  TemporaryFile tmpfile2;
+  ASSERT_TRUE(ReportSampleCmd()->Run({"-i", GetTestData(PERF_DATA_WITH_SYMBOLS),
+                                      "-o", tmpfile.path, "--protobuf"}));
+  ASSERT_TRUE(ReportSampleCmd()->Run(
+      {"--dump-protobuf-report", tmpfile.path, "-o", tmpfile2.path}));
+  std::string data;
+  ASSERT_TRUE(android::base::ReadFileToString(tmpfile2.path, &data));
+  ASSERT_NE(data.find("thread:"), std::string::npos);
+}
