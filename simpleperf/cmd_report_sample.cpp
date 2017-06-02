@@ -92,8 +92,10 @@ class ReportSampleCommand : public Command {
                     uint64_t* pvaddr_in_file, uint32_t* pfile_id, int32_t* psymbol_id);
   bool GetCallEntry(const ThreadEntry* thread, bool in_kernel, uint64_t ip, bool omit_unknown_dso,
                     uint64_t* pvaddr_in_file, Dso** pdso, const Symbol** psymbol);
+  bool WriteRecordInProtobuf(proto::Record& proto_record);
   bool PrintLostSituationInProtobuf();
   bool PrintFileInfoInProtobuf();
+  bool PrintThreadInfoInProtobuf();
   bool PrintSampleRecord(const SampleRecord& record);
   void PrintLostSituation();
 
@@ -176,6 +178,9 @@ bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
     if (!PrintFileInfoInProtobuf()) {
+      return false;
+    }
+    if (!PrintThreadInfoInProtobuf()) {
       return false;
     }
     coded_os_->WriteLittleEndian32(0);
@@ -313,6 +318,12 @@ bool ReportSampleCommand::DumpProtobufReport(const std::string& filename) {
         return false;
       }
       files.push_back(file.symbol_size());
+    } else if (proto_record.has_thread()) {
+      auto& thread = proto_record.thread();
+      FprintIndented(report_fp_, 0, "thread:\n");
+      FprintIndented(report_fp_, 1, "thread_id: %u\n", thread.thread_id());
+      FprintIndented(report_fp_, 1, "process_id: %u\n", thread.process_id());
+      FprintIndented(report_fp_, 1, "thread_name: %s\n", thread.thread_name().c_str());
     } else {
       LOG(ERROR) << "unexpected record type ";
       return false;
@@ -404,9 +415,13 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
       }
     }
   }
+  return WriteRecordInProtobuf(proto_record);
+}
+
+bool ReportSampleCommand::WriteRecordInProtobuf(proto::Record& proto_record) {
   coded_os_->WriteLittleEndian32(proto_record.ByteSize());
   if (!proto_record.SerializeToCodedStream(coded_os_)) {
-    LOG(ERROR) << "failed to write sample to protobuf";
+    LOG(ERROR) << "failed to write record to protobuf";
     return false;
   }
   return true;
@@ -458,12 +473,7 @@ bool ReportSampleCommand::PrintLostSituationInProtobuf() {
   proto::LostSituation* lost = proto_record.mutable_lost();
   lost->set_sample_count(sample_count_);
   lost->set_lost_count(lost_count_);
-  coded_os_->WriteLittleEndian32(proto_record.ByteSize());
-  if (!proto_record.SerializeToCodedStream(coded_os_)) {
-    LOG(ERROR) << "failed to write lost situation to protobuf";
-    return false;
-  }
-  return true;
+  return WriteRecordInProtobuf(proto_record);
 }
 
 static bool CompareDsoByDumpId(Dso* d1, Dso* d2) {
@@ -500,9 +510,26 @@ bool ReportSampleCommand::PrintFileInfoInProtobuf() {
       std::string* symbol = file->add_symbol();
       *symbol = sym->DemangledName();
     }
-    coded_os_->WriteLittleEndian32(proto_record.ByteSize());
-    if (!proto_record.SerializeToCodedStream(coded_os_)) {
-      LOG(ERROR) << "failed to write file info to protobuf";
+    if (!WriteRecordInProtobuf(proto_record)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ReportSampleCommand::PrintThreadInfoInProtobuf() {
+  std::vector<const ThreadEntry*> threads = thread_tree_.GetAllThreads();
+  auto compare_thread_id = [](const ThreadEntry* t1, const ThreadEntry* t2) {
+    return t1->tid < t2->tid;
+  };
+  std::sort(threads.begin(), threads.end(), compare_thread_id);
+  for (auto& thread : threads) {
+    proto::Record proto_record;
+    proto::Thread* proto_thread = proto_record.mutable_thread();
+    proto_thread->set_thread_id(thread->tid);
+    proto_thread->set_process_id(thread->pid);
+    proto_thread->set_thread_name(thread->comm);
+    if (!WriteRecordInProtobuf(proto_record)) {
       return false;
     }
   }
