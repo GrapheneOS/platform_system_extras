@@ -59,10 +59,17 @@ message File {
   repeated string symbol = 3;
 }
 
+message Thread {
+  optional uint32 thread_id = 1;
+  optional uint32 process_id = 2;
+  optional string thread_name = 3;
+}
+
 message Record {
   oneof record_data {
     Sample sample = 1;
     LostSituation lost = 2;
     File file = 3;
+    Thread thread = 4;
   }
 }
