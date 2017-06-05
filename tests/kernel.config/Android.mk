@@ -16,10 +16,11 @@ test_c_flags := \
 # Required Tests
 cts_src_files := \
     aslr_test.cpp \
+    logger_test.cpp \
     multicast_test.cpp \
+    nfs_test.cpp \
     pstore_test.cpp \
     sysvipc_test.cpp \
-    logger_test.cpp
 
 # Required plus Recommended Tests
 test_src_files := \
@@ -33,6 +34,7 @@ LOCAL_MODULE_TAGS := tests
 LOCAL_CFLAGS := $(test_c_flags)
 LOCAL_CFLAGS := -DHAS_KCMP
 LOCAL_SRC_FILES := $(test_src_files)
+LOCAL_SHARED_LIBRARIES := libbase
 include $(BUILD_NATIVE_TEST)
 
 include $(CLEAR_VARS)
@@ -45,6 +47,7 @@ LOCAL_MODULE_PATH := $(TARGET_OUT_DATA)/nativetest
 LOCAL_MULTILIB := both
 LOCAL_MODULE_STEM_32 := $(LOCAL_MODULE)32
 LOCAL_MODULE_STEM_64 := $(LOCAL_MODULE)64
+LOCAL_SHARED_LIBRARIES := libbase
 LOCAL_STATIC_LIBRARIES := libgtest libgtest_main
 
 LOCAL_COMPATIBILITY_SUITE := cts
