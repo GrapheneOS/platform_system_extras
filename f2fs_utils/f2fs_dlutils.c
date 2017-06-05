@@ -39,7 +39,6 @@
 
 int (*f2fs_format_device_dl)(void);
 void (*f2fs_init_configuration_dl)(void);
-struct f2fs_configuration *c_dl;
 
 int f2fs_format_device(void) {
 	assert(f2fs_format_device_dl);
@@ -59,8 +58,7 @@ int dlopenf2fs() {
 	}
 	f2fs_format_device_dl = dlsym(f2fs_lib, "f2fs_format_device");
 	f2fs_init_configuration_dl = dlsym(f2fs_lib, "f2fs_init_configuration");
-	c_dl = dlsym(f2fs_lib, "c");
-	if (!f2fs_format_device_dl || !f2fs_init_configuration_dl || !c_dl) {
+	if (!f2fs_format_device_dl || !f2fs_init_configuration_dl) {
 		return -1;
 	}
 	return 0;
