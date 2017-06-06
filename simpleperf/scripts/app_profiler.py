@@ -121,7 +121,7 @@ class AppProfiler(object):
         self.adb.set_property('security.perf_harden', '0')
         if self.is_root_device:
             # We can enable kernel symbols
-            self.adb.run(['shell', 'echo', '0', '>/proc/sys/kernel/kptr_restrict'])
+            self.adb.run(['shell', 'echo 0 >/proc/sys/kernel/kptr_restrict'])
 
 
     def _recompile_app(self):
@@ -271,7 +271,7 @@ class AppProfiler(object):
 
 
     def collect_profiling_data(self):
-        self.run_in_app_dir(['cat', 'perf.data', '>' + self.config['perf_data_path']])
+        self.run_in_app_dir(['cat', 'perf.data'], self.config['perf_data_path'])
         config = copy.copy(self.config)
         config['symfs_dirs'] = []
         if self.config['native_lib_dir']:
@@ -280,13 +280,13 @@ class AppProfiler(object):
         binary_cache_builder.build_binary_cache()
 
 
-    def run_in_app_dir(self, args):
+    def run_in_app_dir(self, args, stdout_file=None):
         if self.is_root_device:
             cmd = 'cd /data/data/' + self.config['app_package_name'] + ' && ' + (' '.join(args))
-            return self.adb.check_run_and_return_output(['shell', cmd])
+            return self.adb.check_run_and_return_output(['shell', cmd], stdout_file)
         else:
             return self.adb.check_run_and_return_output(
-                ['shell', 'run-as', self.config['app_package_name']] + args)
+                ['shell', 'run-as', self.config['app_package_name']] + args, stdout_file)
 
 
 if __name__ == '__main__':
