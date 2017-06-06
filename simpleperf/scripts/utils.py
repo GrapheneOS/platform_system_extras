@@ -104,13 +104,12 @@ class AdbHelper(object):
         return self.run_and_return_output(adb_args)[0]
 
 
-    def run_and_return_output(self, adb_args):
+    def run_and_return_output(self, adb_args, stdout_file=None):
         adb_args = [self.adb_path] + adb_args
         log_debug('run adb cmd: %s' % adb_args)
-        if adb_args[-1][0] == '>':
-            stdout_file = adb_args[-1][1:]
+        if stdout_file:
             with open(stdout_file, 'wb') as stdout_fh:
-                returncode = subprocess.call(adb_args[:-1], stdout=stdout_fh)
+                returncode = subprocess.call(adb_args, stdout=stdout_fh)
             stdoutdata = ''
         else:
             subproc = subprocess.Popen(adb_args, stdout=subprocess.PIPE)
@@ -123,13 +122,12 @@ class AdbHelper(object):
         log_debug('run adb cmd: %s  [result %s]' % (adb_args, result))
         return (result, stdoutdata)
 
-
     def check_run(self, adb_args):
         self.check_run_and_return_output(adb_args)
 
 
-    def check_run_and_return_output(self, adb_args):
-        result, stdoutdata = self.run_and_return_output(adb_args)
+    def check_run_and_return_output(self, adb_args, stdout_file=None):
+        result, stdoutdata = self.run_and_return_output(adb_args, stdout_file)
         if not result:
             log_fatal('run "adb %s" failed' % adb_args)
         return stdoutdata
