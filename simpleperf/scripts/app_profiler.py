@@ -265,9 +265,35 @@ class AppProfiler(object):
 
 
     def start_and_wait_profiling(self):
-        self.run_in_app_dir([
-            './simpleperf', 'record', self.config['record_options'], '-p',
-            str(self.app_pid), '--symfs', '.'])
+        subproc = None
+        returncode = None
+        try:
+            args = self.get_run_in_app_dir_args([
+                './simpleperf', 'record', self.config['record_options'], '-p',
+                str(self.app_pid), '--symfs', '.'])
+            adb_args = [self.adb.adb_path] + args
+            log_debug('run adb cmd: %s' % adb_args)
+            subproc = subprocess.Popen(adb_args)
+            returncode = subproc.wait()
+        except KeyboardInterrupt:
+            if subproc:
+                self.stop_profiling()
+                returncode = 0
+        log_debug('run adb cmd: %s [result %s]' % (adb_args, returncode == 0))
+
+
+    def stop_profiling(self):
+        """ Stop profiling by sending SIGINT to simpleperf, and wait until it exits
+            to make sure perf.data is completely generated."""
+        has_killed = False
+        while True:
+            (result, _) = self.run_in_app_dir(['pidof', 'simpleperf'], check_result=False)
+            if not result:
+                break
+            if not has_killed:
+                has_killed = True
+                self.run_in_app_dir(['pkill', '-l', '2', 'simpleperf'], check_result=False)
+            time.sleep(1)
 
 
     def collect_profiling_data(self):
@@ -280,13 +306,20 @@ class AppProfiler(object):
         binary_cache_builder.build_binary_cache()
 
 
-    def run_in_app_dir(self, args, stdout_file=None):
-        if self.is_root_device:
-            cmd = 'cd /data/data/' + self.config['app_package_name'] + ' && ' + (' '.join(args))
-            return self.adb.check_run_and_return_output(['shell', cmd], stdout_file)
+    def run_in_app_dir(self, args, stdout_file=None, check_result=True):
+        args = self.get_run_in_app_dir_args(args)
+        if check_result:
+            return self.adb.check_run_and_return_output(args, stdout_file)
         else:
-            return self.adb.check_run_and_return_output(
-                ['shell', 'run-as', self.config['app_package_name']] + args, stdout_file)
+            return self.adb.run_and_return_output(args, stdout_file)
+
+
+    def get_run_in_app_dir_args(self, args):
+        if self.is_root_device:
+            return ['shell', 'cd /data/data/' + self.config['app_package_name'] + ' && ' +
+                      (' '.join(args))]
+        else:
+            return ['shell', 'run-as', self.config['app_package_name']] + args
 
 
 if __name__ == '__main__':
