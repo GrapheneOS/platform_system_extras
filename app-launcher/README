@@ -6,13 +6,15 @@ measures various system metrics, computes basic stats for the metrics
 and reports that stats.
 
 Launching app-launcher :
-app-launcher -a|-b|-u [-v] num-iterations
+app-launcher -a|-b|-u [-c|-v|-s <serial number>] num-iterations
 -a:Run on all cores
 -b:Run only big cores
 -c:pagecached. Don't drop pagecache before each launch (not default)
 -h:Dump help menu'
 -u:user experience, no change to cpu/gpu frequencies or governors'
--v : Optional, Verbose mode, prints stats on a lot of metrics.
+-v:Optional, Verbose mode, prints stats on a lot of metrics.
+-s <serial number>:Optional, specify serial number if multiple devices are
+                   attached to host
 num-iterations : Must be >= 100 to get statistically valid data.
 
 Note, under -a|-b, we lock the CPU and GPU frequencies.
