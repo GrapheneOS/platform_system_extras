@@ -29,9 +29,14 @@ import re
 import subprocess
 import sys
 
-from tkinter import *
-from tkinter.font import Font
-from tkinter.ttk import *
+try:
+    from tkinter import *
+    from tkinter.font import Font
+    from tkinter.ttk import *
+except ImportError:
+    from Tkinter import *
+    from tkFont import Font
+    from ttk import *
 
 from utils import *
 
@@ -190,7 +195,7 @@ class ReportWindow(object):
     frame = Frame(master)
     frame.pack(fill=BOTH, expand=1)
 
-    font = Font(family='courier', size=10)
+    font = Font(family='courier', size=12)
 
     # Report Context
     for line in report_context:
