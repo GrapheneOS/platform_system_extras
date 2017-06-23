@@ -28,6 +28,8 @@ Bugs and feature requests can be submitted at http://github.com/android-ndk/ndk/
     - [Record and report call graph](#record-and-report-call-graph)
     - [Visualize profiling data](#visualize-profiling-data)
     - [Annotate source code](#annotate-source-code)
+- [Answers to common issues](#answers-to-common-issues)
+    - [The correct way to pull perf.data on host](#the-correct-way-to-pull-perfdata-on-host)
 
 
 ## Simpleperf introduction
@@ -617,7 +619,8 @@ There are many options to record profiling data, check [record command](#simplep
 **6. Report perf.data**
 
     # Pull perf.data on host.
-    $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava cat perf.data >perf.data
+    $ adb shell "run-as com.example.simpleperf.simpleperfexamplepurejava cat perf.data | tee /data/local/tmp/perf.data >/dev/null"
+    $ adb pull /data/local/tmp/perf.data
 
     # Report samples using corresponding simpleperf executable on host.
     # On windows, use "bin\windows\x86_64\simpleperf" instead.
@@ -627,6 +630,7 @@ There are many options to record profiling data, check [record command](#simplep
     83.54%    Thread-2  6885  6900  /data/app/com.example.simpleperf.simpleperfexamplepurejava-2/oat/arm64/base.odex  void com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()
     16.11%    Thread-2  6885  6900  /data/app/com.example.simpleperf.simpleperfexamplepurejava-2/oat/arm64/base.odex  int com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.callFunction(int)
 
+See [here](#the-correct-way-to-pull-perfdata-on-host) for why we use tee rather than just >.
 There are many ways to show reports, check [report command](#simpleperf-report) for details.
 
 
@@ -808,3 +812,15 @@ It's content is similar to below:
     // p field means how much time is spent just in current line.
     /* acc_p: 99.966552%, p: 83.628188%        */                    i = callFunction(i);
 
+
+## Answers to common issues
+
+### The correct way to pull perf.data on host
+As perf.data is generated in app's context, it can't be pulled directly to host.
+One way is to `adb shell run-as xxx cat perf.data >perf.data`. However, it
+doesn't work well on Windows, because the content can be modified when it goes
+through the pipe. So we first copy it from app's context to shell's context,
+then pull it on host. The commands are as below:
+
+    $adb shell "run-as xxx cat perf.data | tee /data/local/tmp/perf.data >/dev/null"
+    $adb pull /data/local/tmp/perf.data
