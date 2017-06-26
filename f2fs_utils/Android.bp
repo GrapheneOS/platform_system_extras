@@ -69,39 +69,6 @@ cc_library_host_static {
     },
 }
 
-cc_binary_host {
-    name: "make_f2fs",
-
-    srcs: ["make_f2fs_main.c"],
-
-    // libf2fs_dlutils_host will dlopen("libf2fs_fmt_host_dyn")
-    host_ldlibs: [
-        "-ldl",
-    ],
-
-    ldflags: [
-        "-rdynamic"
-    ],
-
-    // The following libf2fs_* are from system/extras/f2fs_utils,
-    // and do not use code in external/f2fs-tools.
-    static_libs: [
-        "libf2fs_utils_host",
-        "libf2fs_ioutils_host",
-        "libf2fs_dlutils_host",
-        "libsparse",
-        "libz",
-    ],
-
-    required: ["libf2fs_fmt_host_dyn"],
-
-    target: {
-        darwin: {
-            enabled: false,
-        },
-    },
-}
-
 cc_library_shared {
     name: "libf2fs_dlutils",
 
