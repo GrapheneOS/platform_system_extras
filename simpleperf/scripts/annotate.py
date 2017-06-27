@@ -515,7 +515,7 @@ class SourceFileAnnotator(object):
 
     def _collect_source_files(self):
         self.source_file_dict = dict()
-        source_file_suffix = ['h', 'c', 'cpp', 'cc', 'java']
+        source_file_suffix = ['h', 'c', 'cpp', 'cc', 'java', 'kt']
         for source_dir in self.config['source_dirs']:
             for root, _, files in os.walk(source_dir):
                 for file in files:
