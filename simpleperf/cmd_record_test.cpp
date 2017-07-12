@@ -437,3 +437,13 @@ TEST(record_cmd, record_meta_info_feature) {
   ASSERT_TRUE(reader->ReadMetaInfoFeature(&info_map));
   ASSERT_NE(info_map.find("simpleperf_version"), info_map.end());
 }
+
+// See http://b/63135835.
+TEST(record_cmd, cpu_clock_for_a_long_time) {
+  std::vector<std::unique_ptr<Workload>> workloads;
+  CreateProcesses(1, &workloads);
+  std::string pid = std::to_string(workloads[0]->GetPid());
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run(
+      {"-e", "cpu-clock", "-o", tmpfile.path, "-p", pid, "--duration", "3"}));
+}
