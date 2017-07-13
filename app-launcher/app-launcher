@@ -238,6 +238,17 @@ cpufreq_angler () {
     done
 }
 
+cpufreq_go() {
+    echo "Setting Governor to performance"
+    adb shell 'echo 0 > /proc/hps/enabled'
+    for i in 0 1 2 3
+    do
+	adb shell "echo 1 > /sys/devices/system/cpu/cpu$i/online"
+	adb shell "echo performance > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_governor"
+	adb shell "echo 1092000 > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq"
+    done
+}
+
 get_taimen_walleye_devnames () {
     # This bit of code required to get the block dev for /system and /vendor
     # Suffix can be _a or _b, depending on what the active /system partition is
@@ -297,10 +308,17 @@ get_fugu_devnames () {
     system_bdev_set=true
 }
 
-get_volantis_devnames () {
-    # Hardcoding all of the mmcblk0 device for now
+dev_name_default_mmc () {
     system_block_device=mmcblk0
     system_bdev_set=true
+}
+
+get_volantis_devnames () {
+    dev_name_default_mmc
+}
+
+get_go_devnames () {
+    dev_name_default_mmc
 }
 
 system_stats_before() {
@@ -415,6 +433,17 @@ launch_phone_apps() {
     getstats $BASHPID-youtube-$model YouTube
 }
 
+launch_go_apps() {
+    launch_app com.android.chrome com.google.android.apps.chrome.Main > $BASHPID-chrome-$model
+    getstats $BASHPID-chrome-$model Chrome
+    launch_app com.google.android.gm .ConversationListActivityGmail > $BASHPID-gmail-$model
+    getstats $BASHPID-gmail-$model Gmail
+    launch_app com.google.android.videos .mobile.usecase.home.RootActivity > $BASHPID-movies-$model
+    getstats $BASHPID-movies-$model Movies
+    launch_app com.android.vending com.google.android.finsky.activities.MainActivity > $BASHPID-play-$model
+    getstats $BASHPID-play-$model Play
+}
+
 usage() {
     echo 'Usage: app-launcher [-c|-v|-s <serial num>] -a|-b|-u num-iterations'
     echo 'where num-iterations >= 100'
@@ -497,6 +526,13 @@ echo Found $model Device
 
 system_bdev_set=false
 case $model in
+    # Android Go
+    aosp_gobo | full_k37_y33_gms)
+	if [ $user_experience == false ]; then
+	    cpufreq_go
+        fi
+	get_go_devnames
+        ;;
     taimen | muskie | walleye)
         if [ $user_experience == false ]; then
             cpufreq_taimen_walleye
@@ -538,11 +574,18 @@ setup
 #
 # launch each app in turn
 #
-if [ $model == "fugu" ]; then
-    launch_fugu_apps
-else # Phone Apps
-    launch_phone_apps
-fi
+case $model in
+    # Android Go
+    aosp_gobo | full_k37_y33_gms)
+	launch_go_apps
+	;;
+    fugu)
+	launch_fugu_apps
+        ;;
+    *)
+	launch_phone_apps
+        ;;
+esac
 
 # cleanup
 rm $BASHPID*
