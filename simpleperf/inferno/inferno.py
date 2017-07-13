@@ -63,25 +63,33 @@ def collect_data(adb_client, process):
         unwinding_parameter = "--call-graph fp"
         print "Unwinding with frame pointers."
 
+    # Check whether sampling will be frequency based or event based.
+    sampling_parameter = "-f %s" % process.args.sample_frequency
+    if process.args.events:
+        tokens = process.args.events.split(" ")
+        if len(tokens) == 2:
+            num_events = tokens[0]
+            event_name = tokens[1]
+            sampling_parameter = "-c %s -e '%s'" % (num_events, event_name)
+        else:
+            print "Event format string not recognized. Expected \"requency event_name\"."
+            print "Got : [" + ",".join(tokens) + "]"
+            return False
+        print "Using event sampling (%s)." % sampling_parameter
+    else:
+        print "Using frequency sampling (%s)." % sampling_parameter
+
     process.cmd = "./simpleperf record \
     -o /data/local/tmp/perf.data \
     %s \
     -p %s \
     --duration %s \
-    -f %s" % (
+    %s" % (
         unwinding_parameter,
         process.pid,
         process.args.capture_duration,
-        process.args.sample_frequency)
+        sampling_parameter)
 
-    # TODO Add arg to configure what events to listen on:
-    # -e instructions
-    # -e cpu-cycles
-    # -e cache-references
-    # -e cache-misses
-    # -e branch-instructions
-    # -e branch-misses
-    # Also add the granularity with -c 100000
     print("Process '%s' PID = %d" % (process.name, process.pid))
 
     if process.args.skip_collection:
@@ -257,8 +265,15 @@ def main():
     parser.add_argument('-sc','--skip_collection', default=False, help='Skip data collection', action="store_true")
     parser.add_argument('-f', '--sample_frequency', default=6000, help='Sample frequency')
     parser.add_argument('-w', '--svg_width', type=int, default=1124)
-    parser.add_argument('-sb', '--skip_push_binary', help='Skip pushing simpleperf before profiling', default=False, action="store_true")
-    parser.add_argument('-du', '--dwarf_unwinding', help='Perform unwinding using dwarf instead of fp.', default=False, action='store_true')
+    parser.add_argument('-sb', '--skip_push_binary', help='Skip pushing simpleperf before profiling',
+                        default=False, action="store_true")
+    parser.add_argument('-du', '--dwarf_unwinding', help='Perform unwinding using dwarf instead of fp.',
+                        default=False, action='store_true')
+    parser.add_argument('-e', '--events',
+                        help='Sample based on event occurences instead of frequency. '
+                             'Format expected is "event_counts event_name". e.g: "10000 cpu-cyles". A few examples of \
+                              nmames: cpu-cycles, cache-references, cache-misses, branch-instructions, branch-misses',
+                        default="")
     args = parser.parse_args()
 
     # Since we may attempt to sample privileged process, let's try to be root.
