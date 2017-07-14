@@ -616,3 +616,13 @@ bool RunInAppContext(const std::string& app_package_name, const std::string& cmd
   }
   return true;
 }
+
+static std::string default_package_name;
+
+void SetDefaultAppPackageName(const std::string& package_name) {
+  default_package_name = package_name;
+}
+
+const std::string& GetDefaultAppPackageName() {
+  return default_package_name;
+}

@@ -51,10 +51,22 @@ bool Workload::RunCmd(const std::vector<std::string>& args, bool report_error) {
   return ret == 0;
 }
 
+Workload::Workload(const std::vector<std::string>& args, const std::function<void ()>& function)
+    : work_state_(NotYetCreateNewProcess),
+      child_proc_args_(args),
+      child_proc_function_(function),
+      work_pid_(-1),
+      start_signal_fd_(-1),
+      exec_child_fd_(-1) {
+  kill_function_ = [](pid_t pid) {
+    kill(pid, SIGKILL);
+  };
+}
+
 Workload::~Workload() {
   if (work_pid_ != -1 && work_state_ != NotYetCreateNewProcess) {
     if (!Workload::WaitChildProcess(false, false, nullptr)) {
-      kill(work_pid_, SIGKILL);
+      kill_function_(work_pid_);
       Workload::WaitChildProcess(true, true, nullptr);
     }
   }

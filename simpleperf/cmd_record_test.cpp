@@ -345,7 +345,7 @@ TEST(record_cmd, symfs_option) { ASSERT_TRUE(RunRecordCmd({"--symfs", "/"})); }
 TEST(record_cmd, duration_option) {
   TemporaryFile tmpfile;
   ASSERT_TRUE(RecordCmd()->Run({"--duration", "1.2", "-p",
-                                std::to_string(getpid()), "-o", tmpfile.path}));
+                                std::to_string(getpid()), "-o", tmpfile.path, "--in-app"}));
   ASSERT_TRUE(
       RecordCmd()->Run({"--duration", "1", "-o", tmpfile.path, "sleep", "2"}));
 }
@@ -378,7 +378,7 @@ TEST(record_cmd, stop_when_no_more_targets) {
   });
   thread.detach();
   while (tid == 0);
-  ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "-t", std::to_string(tid)}));
+  ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "-t", std::to_string(tid), "--in-app"}));
 }
 
 TEST(record_cmd, donot_stop_when_having_targets) {
