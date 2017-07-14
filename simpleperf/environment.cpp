@@ -17,6 +17,7 @@
 #include "environment.h"
 
 #include <inttypes.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/utsname.h>
@@ -37,9 +38,11 @@
 #include <sys/system_properties.h>
 #endif
 
+#include "IOEventLoop.h"
 #include "read_elf.h"
 #include "thread_tree.h"
 #include "utils.h"
+#include "workload.h"
 
 class LineReader {
  public:
@@ -511,4 +514,105 @@ void PrepareVdsoFile() {
     return;
   }
   Dso::SetVdsoFile(std::move(tmpfile), sizeof(size_t) == sizeof(uint64_t));
+}
+
+int WaitForAppProcess(const std::string& package_name) {
+  size_t loop_count = 0;
+  while (true) {
+    std::vector<pid_t> pids = GetAllProcesses();
+    for (pid_t pid : pids) {
+      std::string cmdline;
+      if (!android::base::ReadFileToString("/proc/" + std::to_string(pid) + "/cmdline", &cmdline)) {
+        // Maybe we don't have permission to read it.
+        continue;
+      }
+      cmdline = android::base::Basename(cmdline);
+      if (cmdline == package_name) {
+        if (loop_count > 0u) {
+          LOG(INFO) << "Got process " << pid << " for package " << package_name;
+        }
+        return pid;
+      }
+    }
+    if (++loop_count == 1u) {
+      LOG(INFO) << "Waiting for process of app " << package_name;
+    }
+    usleep(1000);
+  }
+}
+
+bool RunInAppContext(const std::string& app_package_name, const std::string& cmd,
+                     const std::vector<std::string>& args, size_t workload_args_size,
+                     const std::string& output_filepath) {
+  // 1. Test if the package exists.
+  if (!Workload::RunCmd({"run-as", app_package_name, "echo", ">/dev/null"}, false)) {
+    LOG(ERROR) << "Package " << app_package_name << "doesn't exist or isn't debuggable.";
+    return false;
+  }
+
+  // 2. Copy simpleperf binary to the package.
+  std::string simpleperf_path;
+  if (!android::base::Readlink("/proc/self/exe", &simpleperf_path)) {
+    PLOG(ERROR) << "ReadLink failed";
+    return false;
+  }
+  if (!Workload::RunCmd({"run-as", app_package_name, "cp", simpleperf_path, "simpleperf"})) {
+    return false;
+  }
+
+  // 3. Prepare to start child process to profile.
+  std::string output_basename = output_filepath.empty() ? "" :
+                                    android::base::Basename(output_filepath);
+  std::vector<std::string> new_args =
+      {"run-as", app_package_name, "./simpleperf", cmd, "--in-app"};
+  for (size_t i = 0; i < args.size(); ++i) {
+    if (i >= args.size() - workload_args_size || args[i] != "-o") {
+      new_args.push_back(args[i]);
+    } else {
+      new_args.push_back(args[i++]);
+      new_args.push_back(output_basename);
+    }
+  }
+  std::unique_ptr<Workload> workload = Workload::CreateWorkload(new_args);
+  if (!workload) {
+    return false;
+  }
+
+  IOEventLoop loop;
+  bool need_to_kill_child = false;
+  if (!loop.AddSignalEvents({SIGINT, SIGTERM, SIGHUP},
+                            [&]() { need_to_kill_child = true; return loop.ExitLoop(); })) {
+    return false;
+  }
+  if (!loop.AddSignalEvent(SIGCHLD, [&]() { return loop.ExitLoop(); })) {
+    return false;
+  }
+
+  // 4. Create child process to run run-as, and wait for the child process.
+  if (!workload->Start()) {
+    return false;
+  }
+  if (!loop.RunLoop()) {
+    return false;
+  }
+  if (need_to_kill_child) {
+    // The child process can exit before we kill it, so don't report kill errors.
+    Workload::RunCmd({"run-as", app_package_name, "pkill", "simpleperf"}, false);
+  }
+  int exit_code;
+  if (!workload->WaitChildProcess(&exit_code) || exit_code != 0) {
+    return false;
+  }
+
+  // 5. If there is any output file, copy it from the app's directory.
+  if (!output_filepath.empty()) {
+    if (!Workload::RunCmd({"run-as", app_package_name, "cat", output_basename,
+                           ">" + output_filepath})) {
+      return false;
+    }
+    if (!Workload::RunCmd({"run-as", app_package_name, "rm", output_basename})) {
+      return false;
+    }
+  }
+  return true;
 }
