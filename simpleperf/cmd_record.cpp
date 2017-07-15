@@ -181,6 +181,7 @@ class RecordCommand : public Command {
         in_app_context_(false) {
     // Stop profiling if parent exits.
     prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
+    app_package_name_ = GetDefaultAppPackageName();
   }
 
   bool Run(const std::vector<std::string>& args);

@@ -24,6 +24,7 @@
 
 static const std::string SLEEP_SEC = "0.001";
 
+void RunWorkloadFunction();
 void CreateProcesses(size_t count, std::vector<std::unique_ptr<Workload>>* workloads);
 
 void ParseSymbol(const ElfFileSymbol& symbol, std::map<std::string, ElfFileSymbol>* symbols);
