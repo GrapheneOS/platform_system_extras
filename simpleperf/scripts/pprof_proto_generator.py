@@ -255,15 +255,16 @@ class PprofProfileGenerator(object):
         self.config = config
         self.lib = ReportLib()
 
-        if config.get('binary_cache_dir'):
-            if not os.path.isdir(config.get('binary_cache_dir')):
-                config['binary_cache_dir'] = ''
-            else:
-                self.lib.SetSymfs(config['binary_cache_dir'])
+        config['binary_cache_dir'] = 'binary_cache'
+        if not os.path.isdir(config['binary_cache_dir']):
+            config['binary_cache_dir'] = None
+        else:
+            self.lib.SetSymfs(config['binary_cache_dir'])
         if config.get('record_file'):
             self.lib.SetRecordFile(config['record_file'])
-        if config.get('kallsyms'):
-            self.lib.SetKallsymsFile(config['kallsyms'])
+        kallsyms = 'binary_cache/kallsyms'
+        if os.path.isfile(kallsyms):
+            self.lib.SetKallsymsFile(kallsyms)
         self.comm_filter = set(config['comm_filters']) if config.get('comm_filters') else None
         if config.get('pid_filters'):
             self.pid_filter = {int(x) for x in config['pid_filters']}
@@ -318,8 +319,7 @@ class PprofProfileGenerator(object):
                 self.add_sample(sample)
 
         # 2. Generate line info for locations and functions.
-        if self.config.get('binary_cache_dir'):
-            self.gen_source_lines()
+        self.gen_source_lines()
 
         # 3. Produce samples/locations/functions in profile
         for sample in self.sample_list:
@@ -446,6 +446,15 @@ class PprofProfileGenerator(object):
 
     def gen_source_lines(self):
         # 1. Create Addr2line instance
+        if not self.config.get('binary_cache_dir'):
+            log_info("Can't generate line information because binary_cache is missing.")
+            return
+        if not self.config['addr2line_path'] or not is_executable_available(
+            self.config['addr2line_path']):
+            if not find_tool_path('addr2line'):
+                log_info("Can't generate line information because can't find addr2line.")
+                return
+
         addr2line = Addr2Line(self.config['addr2line_path'], self.config['binary_cache_dir'])
 
         # 2. Put all needed addresses to it.
@@ -542,16 +551,38 @@ class PprofProfileGenerator(object):
 
 def main():
     parser = argparse.ArgumentParser(description='Generate pprof profile data in pprof.profile.')
-    parser.add_argument('--show', nargs=1, help='print existing profile.pprof')
-    parser.add_argument('--config', nargs=1, default='pprof_proto_generator.config',
-                        help='Set config file, default is gen_pprof_proto.config.')
-    args = parser.parse_args(sys.argv[1:])
+    parser.add_argument('--show', nargs='?', action='append', help='print existing pprof.profile.')
+    parser.add_argument('-i', '--perf_data_path', default='perf.data', help=
+"""The path of profiling data.""")
+    parser.add_argument('-o', '--output_file', default='pprof.profile', help=
+"""The path of generated pprof profile data.""")
+    parser.add_argument('--comm', nargs='+', action='append', help=
+"""Use samples only in threads with selected names.""")
+    parser.add_argument('--pid', nargs='+', action='append', help=
+"""Use samples only in processes with selected process ids.""")
+    parser.add_argument('--tid', nargs='+', action='append', help=
+"""Use samples only in threads with selected thread ids.""")
+    parser.add_argument('--dso', nargs='+', action='append', help=
+"""Use samples only in selected binaries.""")
+    parser.add_argument('--addr2line', help=
+"""Set the path of addr2line.""")
+
+    args = parser.parse_args()
     if args.show:
-        profile = load_pprof_profile(args.show[0])
+        show_file = args.show[0] if args.show[0] else 'pprof.profile'
+        profile = load_pprof_profile(show_file)
         printer = PprofProfilePrinter(profile)
         printer.show()
         return
-    config = load_config(args.config)
+
+    config = {}
+    config['perf_data_path'] = args.perf_data_path
+    config['output_file'] = args.output_file
+    config['comm_filters'] = flatten_arg_list(args.comm)
+    config['pid_filters'] = flatten_arg_list(args.pid)
+    config['tid_filters'] = flatten_arg_list(args.tid)
+    config['dso_filters'] = flatten_arg_list(args.dso)
+    config['addr2line_path'] = args.addr2line
     generator = PprofProfileGenerator(config)
     profile = generator.gen()
     store_pprof_profile(config['output_file'], profile)
