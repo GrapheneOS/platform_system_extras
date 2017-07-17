@@ -31,7 +31,6 @@ Bugs and feature requests can be submitted at http://github.com/android-ndk/ndk/
 - [Answers to common issues](#answers-to-common-issues)
     - [The correct way to pull perf.data on host](#the-correct-way-to-pull-perfdata-on-host)
 
-
 ## Simpleperf introduction
 
 ### Why simpleperf
@@ -777,23 +776,16 @@ generate profiling data in a format acceptable by pprof.
 `annotate.py` reads perf.data, binaries in `binary-cache` (collected by `app-profiler.py`)
 and source code, and generates annoated source code in `annotated_files/`.
 
-It is configured by `annotate.config`.
+**1. Run annotate.py**
 
-**1. Fill `annotate.config`**
+    $ python annotate.py -s ../SimpleperfExamplePureJava
 
-    Change `source_dirs` line to source_dirs = ["../SimpleperfExamplePureJava"]
-    Change `addr2line_path` line to addr2line_path = "addr2line"
+`addr2line` is need to annotate source code. It can be found in Android ndk
+release, in paths like toolchains/aarch64-linux-android-4.9/prebuilt/linux-x86_64/bin/aarch64-linux-android-addr2line.
+Please use `--addr2line` option to set the path of `addr2line` if annotate.py
+can't find it.
 
-`addr2line` is need to annotate source code. It can be found in Android ndk release.
-Please set `addr2line_path` to the location of `addr2line` if it can't be found
-in PATH environment variable.
-
-**2. Run `annotate.py`**
-
-    $ python annotate.py
-
-
-**3. Read annotated code**
+**2. Read annotated code**
 
 The annotated source code is located at `annotated_files/`.
 `annotated_files/summary` shows how each source file is annotated.
