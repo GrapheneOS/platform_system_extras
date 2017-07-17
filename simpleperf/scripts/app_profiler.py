@@ -43,27 +43,34 @@ class AppProfiler(object):
        3. Collect profiling data.
     """
     def __init__(self, config):
-        # check config variables
-        config_names = ['app_package_name', 'native_lib_dir', 'apk_file_path',
-                        'recompile_app', 'launch_activity', 'launch_inst_test',
-                        'record_options', 'perf_data_path', 'adb_path', 'readelf_path',
-                        'binary_cache_dir']
-        for name in config_names:
-            if name not in config:
-                log_fatal('config [%s] is missing' % name)
-        native_lib_dir = config.get('native_lib_dir')
-        if native_lib_dir and not os.path.isdir(native_lib_dir):
-            log_fatal('[native_lib_dir] "%s" is not a dir' % native_lib_dir)
-        apk_file_path = config.get('apk_file_path')
-        if apk_file_path and not os.path.isfile(apk_file_path):
-            log_fatal('[apk_file_path] "%s" is not a file' % apk_file_path)
+        self.check_config(config)
         self.config = config
-        self.adb = AdbHelper(self.config['adb_path'])
+        self.adb = AdbHelper()
         self.is_root_device = False
         self.android_version = 0
         self.device_arch = None
         self.app_arch = None
         self.app_pid = None
+
+
+    def check_config(self, config):
+        config_names = ['app_package_name', 'native_lib_dir', 'apk_file_path',
+                        'recompile_app', 'launch_activity', 'launch_inst_test',
+                        'record_options', 'perf_data_path']
+        for name in config_names:
+            if name not in config:
+                log_exit('config [%s] is missing' % name)
+        if not config['app_package_name']:
+            log_exit("The package name of the application hasn't been set")
+        native_lib_dir = config.get('native_lib_dir')
+        if native_lib_dir and not os.path.isdir(native_lib_dir):
+            log_exit('[native_lib_dir] "%s" is not a dir' % native_lib_dir)
+        apk_file_path = config.get('apk_file_path')
+        if apk_file_path and not os.path.isfile(apk_file_path):
+            log_exit('[apk_file_path] "%s" is not a file' % apk_file_path)
+        if config['recompile_app']:
+            if not config['launch_activity'] and not config['launch_inst_test']:
+                log_exit('one of launch_activity and launch_inst_test is needed for recompile app')
 
 
     def profile(self):
@@ -159,13 +166,13 @@ class AppProfiler(object):
             activity = self.config['app_package_name'] + '/' + self.config['launch_activity']
             result = self.adb.run(['shell', 'am', 'start', '-n', activity])
             if not result:
-                log_fatal("Can't start activity %s" % activity)
+                log_exit("Can't start activity %s" % activity)
         else:
             runner = self.config['app_package_name'] + '/android.support.test.runner.AndroidJUnitRunner'
             result = self.adb.run(['shell', 'am', 'instrument', '-e', 'class',
                                    self.config['launch_inst_test'], runner])
             if not result:
-                log_fatal("Can't start instrumentation test  %s" % self.config['launch_inst_test'])
+                log_exit("Can't start instrumentation test  %s" % self.config['launch_inst_test'])
 
         for i in range(10):
             pid = self._find_app_process()
@@ -173,7 +180,7 @@ class AppProfiler(object):
                 return
             time.sleep(1)
             log_info('Wait for the app process for %d seconds' % (i + 1))
-        log_fatal("Can't find the app process")
+        log_exit("Can't find the app process")
 
 
     def _find_app_process(self):
@@ -192,7 +199,7 @@ class AppProfiler(object):
     def _get_app_environment(self):
         self.app_pid = self._find_app_process()
         if self.app_pid is None:
-            log_fatal("can't find process for app [%s]" % self.config['app_package_name'])
+            log_exit("can't find process for app [%s]" % self.config['app_package_name'])
         if self.device_arch in ['aarch64', 'x86_64']:
             output = self.run_in_app_dir(['cat', '/proc/%d/maps' % self.app_pid])
             if output.find('linker64') != -1:
@@ -300,12 +307,14 @@ class AppProfiler(object):
         self.run_in_app_dir(['cat perf.data | tee /data/local/tmp/perf.data >/dev/null'])
         self.adb.check_run_and_return_output(['pull', '/data/local/tmp/perf.data',
                                               self.config['perf_data_path']])
-        config = copy.copy(self.config)
-        config['symfs_dirs'] = []
-        if self.config['native_lib_dir']:
-            config['symfs_dirs'].append(self.config['native_lib_dir'])
-        binary_cache_builder = BinaryCacheBuilder(config)
-        binary_cache_builder.build_binary_cache()
+        if self.config['collect_binaries']:
+            config = copy.copy(self.config)
+            config['binary_cache_dir'] = 'binary_cache'
+            config['symfs_dirs'] = []
+            if self.config['native_lib_dir']:
+                config['symfs_dirs'].append(self.config['native_lib_dir'])
+            binary_cache_builder = BinaryCacheBuilder(config)
+            binary_cache_builder.build_binary_cache()
 
 
     def run_in_app_dir(self, args, stdout_file=None, check_result=True):
@@ -323,13 +332,62 @@ class AppProfiler(object):
         else:
             return ['shell', 'run-as', self.config['app_package_name']] + args
 
-
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(
-        description='Profile an android app. See configurations in app_profiler.config.')
-    parser.add_argument('--config', default='app_profiler.config',
-                        help='Set configuration file. Default is app_profiler.config.')
+        description=
+"""Profile an android app. See configurations in app_profiler.config.""")
+    parser.add_argument('--config', default='app_profiler.config', help=
+"""Set configuration file. Default is app_profiler.config. The configurations
+can be overridden by options in cmdline.""")
+    parser.add_argument('-p', '--package_name', help=
+"""The package name of the profiled Android app.""")
+    parser.add_argument('-lib', '--native_lib_dir', help=
+"""Path to find debug version of native shared libraries used in the app.""")
+    parser.add_argument('-nc', '--skip_recompile', action='store_true', help=
+"""By default we recompile java bytecode to native instructions to profile java
+code. It takes some time. You can skip it if the code has been compiled or you
+don't need to profile java code.""")
+    parser.add_argument('--apk', help=
+"""Apk file of the profiled app, used on Android version <= M, which needs to
+reinstall the app to recompile it.""")
+    parser.add_argument('-a', '--activity', help=
+"""Start an activity before profiling. It can be used to profile the startup
+time of an activity. Default is .MainActivity.""")
+    parser.add_argument('-t', '--test', help=
+"""Start an instrumentation test before profiling. It can be used to profile
+an instrumentation test.""")
+    parser.add_argument('-r', '--record_options', help=
+"""Set options for `simpleperf record` command. Default is "-e cpu-cycles:u -f 4000 -g --duration 10".""")
+    parser.add_argument('-o', '--perf_data_path', help=
+"""The path to store profiling data. Default is perf.data.""")
+    parser.add_argument('-nb', '--skip_collect_binaries', action='store_true', help=
+"""By default we collect binaries used in profiling data from device to
+binary_cache directory. It can be used to annotate source code. This option skips it.""")
     args = parser.parse_args()
     config = load_config(args.config)
+    if args.package_name:
+        config['app_package_name'] = args.package_name
+    if args.native_lib_dir:
+        config['native_lib_dir'] = args.native_lib_dir
+    if args.skip_recompile:
+        config['recompile_app'] = False
+    if args.apk:
+        config['apk'] = args.apk
+    if args.activity:
+        config['launch_activity'] = args.activity
+        config['launch_inst_test'] = None
+    if args.test:
+        config['launch_inst_test'] = args.test
+        config['launch_activity'] = None
+    if args.record_options:
+        config['record_options'] = args.record_options
+    if args.perf_data_path:
+        config['perf_data_path'] = args.perf_data_path
+    if args.skip_collect_binaries:
+        config['collect_binaries'] = False
+
     profiler = AppProfiler(config)
     profiler.profile()
+
+if __name__ == '__main__':
+    main()

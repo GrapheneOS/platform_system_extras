@@ -46,10 +46,7 @@ $ adb install -r app/build/outputs/apk/app-profiling.apk
 2. Record profiling data:
 ```
 $ cd ../../scripts/
-$ gvim app_profiler.config
-    change app_package_name line to: app_package_name = "com.example.simpleperf.simpleperfexamplepurejava"
-$ python app_profiler.py
-    It runs the application and collects profiling data in perf.data, binaries on device in binary_cache/.
+$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplepurejava
 ```
 
 3. Show profiling data:
@@ -61,9 +58,7 @@ a. show call graph in txt mode
 b. show call graph in gui mode
     $ python report.py -g
 c. show samples in source code
-    $ gvim annotate.config
-        change source_dirs line to: source_dirs = ["../demo/SimpleperfExamplePureJava"]
-    $ python annotate.py
+    $ python annotate.py -s ../demo/SimpleperfExamplePureJava
     $ gvim annotated_files/java/com/example/simpleperf/simpleperfexamplepurejava/MainActivity.java
         check the annoated source file MainActivity.java.
 ```
@@ -89,9 +84,7 @@ $ adb install -r app/build/outputs/apk/app-profiling.apk
 2. Record profiling data:
 ```
 $ cd ../../scripts/
-$ gvim app_profiler.config
-    change app_package_name line to: app_package_name = "com.example.simpleperf.simpleperfexamplewithnative"
-$ python app_profiler.py
+$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative
     It runs the application and collects profiling data in perf.data, binaries on device in binary_cache/.
 ```
 
@@ -104,9 +97,7 @@ a. show call graph in txt mode
 b. show call graph in gui mode
     $ python report.py -g
 c. show samples in source code
-    $ gvim annotate.config
-        change source_dirs line to: source_dirs = ["../demo/SimpleperfExampleWithNative"]
-    $ python annotate.py
+    $ python annotate.py -s ../demo/SimpleperfExampleWithNative
     $ find . -name "native-lib.cpp" | xargs gvim
         check the annoated source file native-lib.cpp.
 ```
@@ -132,9 +123,7 @@ $ adb install -r app/build/outputs/apk/profiling/app-profiling.apk
 2. Record profiling data:
 ```
 $ cd ../../scripts/
-$ gvim app_profiler.config
-    change app_package_name line to: app_package_name = "com.example.simpleperf.simpleperfexampleofkotlin"
-$ python app_profiler.py
+$ python app_profiler.py -p com.example.simpleperf.simpleperfexampleofkotlin
     It runs the application and collects profiling data in perf.data, binaries on device in binary_cache/.
 ```
 
@@ -147,9 +136,7 @@ a. show call graph in txt mode
 b. show call graph in gui mode
     $ python report.py -g
 c. show samples in source code
-    $ gvim annotate.config
-        change source_dirs line to: source_dirs = ["../demo/SimpleperfExampleOfKotlin"]
-    $ python annotate.py
+    $ python annotate.py -s ../demo/SimpleperfExampleOfKotlin
     $ find . -name "MainActivity.kt" | xargs gvim
         check the annoated source file MainActivity.kt.
 ```
