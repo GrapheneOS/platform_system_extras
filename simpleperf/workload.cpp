@@ -45,7 +45,7 @@ bool Workload::RunCmd(const std::vector<std::string>& args, bool report_error) {
   std::string arg_str = android::base::Join(args, ' ');
   int ret = system(arg_str.c_str());
   if (ret != 0 && report_error) {
-    PLOG(ERROR) << "Failed to run cmd " << arg_str;
+    LOG(ERROR) << "Failed to run cmd " << arg_str << ", exitcode " << ret;
     return false;
   }
   return ret == 0;
