@@ -24,6 +24,7 @@ import os
 import os.path
 import subprocess
 import sys
+import time
 
 def get_script_dir():
     return os.path.dirname(os.path.realpath(__file__))
@@ -167,18 +168,19 @@ def find_tool_path(toolname):
 
 
 class AdbHelper(object):
-    def __init__(self):
+    def __init__(self, enable_switch_to_root=True):
         adb_path = find_tool_path('adb')
         if not adb_path:
             log_exit("Can't find adb in PATH environment.")
         self.adb_path = adb_path
+        self.enable_switch_to_root = enable_switch_to_root
 
 
     def run(self, adb_args):
         return self.run_and_return_output(adb_args)[0]
 
 
-    def run_and_return_output(self, adb_args, stdout_file=None):
+    def run_and_return_output(self, adb_args, stdout_file=None, log_output=True):
         adb_args = [self.adb_path] + adb_args
         log_debug('run adb cmd: %s' % adb_args)
         if stdout_file:
@@ -192,7 +194,8 @@ class AdbHelper(object):
         result = (returncode == 0)
         if stdoutdata and adb_args[1] != 'push' and adb_args[1] != 'pull':
             stdoutdata = bytes_to_str(stdoutdata)
-            log_debug(stdoutdata)
+            if log_output:
+                log_debug(stdoutdata)
         log_debug('run adb cmd: %s  [result %s]' % (adb_args, result))
         return (result, stdoutdata)
 
@@ -200,14 +203,29 @@ class AdbHelper(object):
         self.check_run_and_return_output(adb_args)
 
 
-    def check_run_and_return_output(self, adb_args, stdout_file=None):
-        result, stdoutdata = self.run_and_return_output(adb_args, stdout_file)
+    def check_run_and_return_output(self, adb_args, stdout_file=None, log_output=True):
+        result, stdoutdata = self.run_and_return_output(adb_args, stdout_file, log_output)
         if not result:
             log_exit('run "adb %s" failed' % adb_args)
         return stdoutdata
 
 
+    def _unroot(self):
+        result, stdoutdata = self.run_and_return_output(['shell', 'whoami'])
+        if not result:
+            return
+        if stdoutdata.find('root') == -1:
+            return
+        log_info('unroot adb')
+        self.run(['unroot'])
+        self.run(['wait-for-device'])
+        time.sleep(1)
+
+
     def switch_to_root(self):
+        if not self.enable_switch_to_root:
+            self._unroot()
+            return False
         result, stdoutdata = self.run_and_return_output(['shell', 'whoami'])
         if not result:
             return False
@@ -217,6 +235,8 @@ class AdbHelper(object):
         if build_type == 'user':
             return False
         self.run(['root'])
+        time.sleep(1)
+        self.run(['wait-for-device'])
         result, stdoutdata = self.run_and_return_output(['shell', 'whoami'])
         if result and stdoutdata.find('root') != -1:
             return True
