@@ -307,6 +307,7 @@ class StatCommand : public Command {
 #if 0
 // Below options are only used internally and shouldn't be visible to the public.
 "--in-app         We are already running in the app's context.\n"
+"--tracepoint-events file_name   Read tracepoint events from [file_name] instead of tracefs.\n"
 #endif
                 // clang-format on
                 ),
@@ -359,7 +360,7 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   if (!app_package_name_.empty() && !in_app_context_) {
     if (!IsRoot()) {
       return RunInAppContext(app_package_name_, "stat", args, workload_args.size(),
-                             output_filename_);
+                             output_filename_, !event_selection_set_.GetTracepointEvents().empty());
     }
   }
   if (event_selection_set_.empty()) {
@@ -554,6 +555,13 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       event_selection_set_.AddMonitoredThreads(tids);
+    } else if (args[i] == "--tracepoint-events") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (!SetTracepointEventsFilePath(args[i])) {
+        return false;
+      }
     } else if (args[i] == "--verbose") {
       verbose_mode_ = true;
     } else {
