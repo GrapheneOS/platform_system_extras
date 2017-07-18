@@ -429,3 +429,34 @@ TEST(record_cmd, cpu_clock_for_a_long_time) {
   ASSERT_TRUE(RecordCmd()->Run(
       {"-e", "cpu-clock", "-o", tmpfile.path, "-p", pid, "--duration", "3"}));
 }
+
+TEST(record_cmd, dump_regs_for_tracepoint_events) {
+  // Check if the kernel can dump registers for tracepoint events.
+  // If not, probably a kernel patch below is missing:
+  // "5b09a094f2 arm64: perf: Fix callchain parse error with kernel tracepoint events"
+  std::vector<std::unique_ptr<Workload>> workloads;
+  CreateProcesses(1, &workloads);
+  std::string pid = std::to_string(workloads[0]->GetPid());
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "-p", pid, "-e", "sched:sched_switch",
+                                "-g", "--no-unwind", "--duration", "1"}));
+
+  // If the kernel patch is missing, all regs dumped in sample records are zero.
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+  CHECK(reader != nullptr);
+  std::unique_ptr<Record> r;
+  bool regs_all_zero = true;
+  while (reader->ReadRecord(r) && r && regs_all_zero) {
+    if (r->type() != PERF_RECORD_SAMPLE) {
+      continue;
+    }
+    SampleRecord* s = static_cast<SampleRecord*>(r.get());
+    for (size_t i = 0; i < s->regs_user_data.reg_nr; ++i) {
+      if (s->regs_user_data.regs[i] != 0u) {
+        regs_all_zero = false;
+        break;
+      }
+    }
+  }
+  ASSERT_FALSE(regs_all_zero);
+}

@@ -153,6 +153,7 @@ class RecordCommand : public Command {
 #if 0
 // Below options are only used internally and shouldn't be visible to the public.
 "--in-app         We are already running in the app's context.\n"
+"--tracepoint-events file_name   Read tracepoint events from [file_name] instead of tracefs.\n"
 #endif
             // clang-format on
             ),
@@ -241,14 +242,9 @@ class RecordCommand : public Command {
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
-  // 0. Do some environment preparation.
   if (!CheckPerfEventLimit()) {
     return false;
   }
-  if (!InitPerfClock()) {
-    return false;
-  }
-  PrepareVdsoFile();
 
   // 1. Parse options, and use default measured event type if not given.
   std::vector<std::string> workload_args;
@@ -261,7 +257,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     // root.
     if (!IsRoot()) {
       return RunInAppContext(app_package_name_, "record", args, workload_args.size(),
-                             record_filename_);
+                             record_filename_, !event_selection_set_.GetTracepointEvents().empty());
     }
   }
   if (event_selection_set_.empty()) {
@@ -272,9 +268,15 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   if (!SetEventSelectionFlags()) {
     return false;
   }
-  ScopedCurrentArch scoped_arch(GetMachineArch());
 
-  // 2. Create workload.
+  // 2. Do some environment preparation.
+  ScopedCurrentArch scoped_arch(GetMachineArch());
+  if (!InitPerfClock()) {
+    return false;
+  }
+  PrepareVdsoFile();
+
+  // 3. Create workload.
   std::unique_ptr<Workload> workload;
   if (!workload_args.empty()) {
     workload = Workload::CreateWorkload(workload_args);
@@ -310,7 +312,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     need_to_check_targets = true;
   }
 
-  // 3. Open perf_event_files, create mapped buffers for perf_event_files.
+  // 4. Open perf_event_files, create mapped buffers for perf_event_files.
   if (!event_selection_set_.OpenEventFiles(cpus_)) {
     return false;
   }
@@ -319,12 +321,12 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     return false;
   }
 
-  // 4. Create perf.data.
+  // 5. Create perf.data.
   if (!CreateAndInitRecordFile()) {
     return false;
   }
 
-  // 5. Add read/signal/periodic Events.
+  // 6. Add read/signal/periodic Events.
   auto callback =
       std::bind(&RecordCommand::ProcessRecord, this, std::placeholders::_1);
   if (!event_selection_set_.PrepareToReadMmapEventData(callback)) {
@@ -348,7 +350,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     }
   }
 
-  // 6. Write records in mapped buffers of perf_event_files to output file while
+  // 7. Write records in mapped buffers of perf_event_files to output file while
   //    workload is running.
   start_sampling_time_in_ns_ = GetPerfClock();
   LOG(VERBOSE) << "start_sampling_time is " << start_sampling_time_in_ns_
@@ -369,7 +371,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     return false;
   }
 
-  // 7. Dump additional features, and close record file.
+  // 8. Dump additional features, and close record file.
   if (!DumpAdditionalFeatures(args)) {
     return false;
   }
@@ -377,14 +379,14 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     return false;
   }
 
-  // 8. Unwind dwarf callchain.
+  // 9. Unwind dwarf callchain.
   if (post_unwind_) {
     if (!PostUnwind(args)) {
       return false;
     }
   }
 
-  // 9. Show brief record result.
+  // 10. Show brief record result.
   LOG(INFO) << "Samples recorded: " << sample_record_count_
             << ". Samples lost: " << lost_record_count_ << ".";
   if (sample_record_count_ + lost_record_count_ != 0) {
@@ -584,6 +586,13 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       event_selection_set_.AddMonitoredThreads(tids);
+    } else if (args[i] == "--tracepoint-events") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (!SetTracepointEventsFilePath(args[i])) {
+        return false;
+      }
     } else {
       ReportUnknownOption(args, i);
       return false;
@@ -726,8 +735,8 @@ bool RecordCommand::DumpKernelSymbol() {
 bool RecordCommand::DumpTracingData() {
   std::vector<const EventType*> tracepoint_event_types =
       event_selection_set_.GetTracepointEvents();
-  if (tracepoint_event_types.empty()) {
-    return true;  // No need to dump tracing data.
+  if (tracepoint_event_types.empty() || !CanRecordRawData()) {
+    return true;  // No need to dump tracing data, or can't do it.
   }
   std::vector<char> tracing_data;
   if (!GetTracingData(tracepoint_event_types, &tracing_data)) {

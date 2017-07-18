@@ -38,6 +38,7 @@
 #include <sys/system_properties.h>
 #endif
 
+#include "event_type.h"
 #include "IOEventLoop.h"
 #include "read_elf.h"
 #include "thread_tree.h"
@@ -352,6 +353,11 @@ static bool ReadPerfEventParanoid(int* value) {
   return true;
 }
 
+bool CanRecordRawData() {
+  int value;
+  return IsRoot() || (ReadPerfEventParanoid(&value) && value == -1);
+}
+
 static const char* GetLimitLevelDescription(int limit_level) {
   switch (limit_level) {
     case -1: return "unlimited";
@@ -541,16 +547,34 @@ int WaitForAppProcess(const std::string& package_name) {
   }
 }
 
+class ScopedFile {
+ public:
+  ScopedFile(const std::string& filepath, std::string app_package_name = "")
+      : filepath_(filepath), app_package_name_(app_package_name) {}
+
+  ~ScopedFile() {
+    if (app_package_name_.empty()) {
+      unlink(filepath_.c_str());
+    } else {
+      Workload::RunCmd({"run-as", app_package_name_, "rm", "-rf", filepath_});
+    }
+  }
+
+ private:
+  std::string filepath_;
+  std::string app_package_name_;
+};
+
 bool RunInAppContext(const std::string& app_package_name, const std::string& cmd,
                      const std::vector<std::string>& args, size_t workload_args_size,
-                     const std::string& output_filepath) {
+                     const std::string& output_filepath, bool need_tracepoint_events) {
   // 1. Test if the package exists.
   if (!Workload::RunCmd({"run-as", app_package_name, "echo", ">/dev/null"}, false)) {
     LOG(ERROR) << "Package " << app_package_name << "doesn't exist or isn't debuggable.";
     return false;
   }
 
-  // 2. Copy simpleperf binary to the package.
+  // 2. Copy simpleperf binary to the package. Create tracepoint_file if needed.
   std::string simpleperf_path;
   if (!android::base::Readlink("/proc/self/exe", &simpleperf_path)) {
     PLOG(ERROR) << "ReadLink failed";
@@ -559,12 +583,29 @@ bool RunInAppContext(const std::string& app_package_name, const std::string& cmd
   if (!Workload::RunCmd({"run-as", app_package_name, "cp", simpleperf_path, "simpleperf"})) {
     return false;
   }
+  ScopedFile scoped_simpleperf("simpleperf", app_package_name);
+  std::unique_ptr<ScopedFile> scoped_tracepoint_file;
+  const std::string tracepoint_file = "/data/local/tmp/tracepoint_events";
+  if (need_tracepoint_events) {
+    // Since we can't read tracepoint events from tracefs in app's context, we need to prepare
+    // them in tracepoint_file in shell's context, and pass the path of tracepoint_file to the
+    // child process using --tracepoint-events option.
+    if (!android::base::WriteStringToFile(GetTracepointEvents(), tracepoint_file)) {
+      PLOG(ERROR) << "Failed to store tracepoint events";
+      return false;
+    }
+    scoped_tracepoint_file.reset(new ScopedFile(tracepoint_file));
+  }
 
   // 3. Prepare to start child process to profile.
   std::string output_basename = output_filepath.empty() ? "" :
                                     android::base::Basename(output_filepath);
   std::vector<std::string> new_args =
       {"run-as", app_package_name, "./simpleperf", cmd, "--in-app"};
+  if (need_tracepoint_events) {
+    new_args.push_back("--tracepoint-events");
+    new_args.push_back(tracepoint_file);
+  }
   for (size_t i = 0; i < args.size(); ++i) {
     if (i >= args.size() - workload_args_size || args[i] != "-o") {
       new_args.push_back(args[i]);
