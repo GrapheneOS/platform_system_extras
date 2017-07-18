@@ -72,6 +72,7 @@ bool CheckPerfEventLimit();
 bool GetMaxSampleFrequency(uint64_t* max_sample_freq);
 bool CheckSampleFrequency(uint64_t sample_freq);
 bool CheckKernelSymbolAddresses();
+bool CanRecordRawData();
 
 #if defined(__linux__)
 static inline uint64_t GetSystemClock() {
@@ -94,7 +95,7 @@ void PrepareVdsoFile();
 int WaitForAppProcess(const std::string& package_name);
 bool RunInAppContext(const std::string& app_package_name, const std::string& cmd,
                      const std::vector<std::string>& args, size_t workload_args_size,
-                     const std::string& output_filepath);
+                     const std::string& output_filepath, bool need_tracepoint_events);
 
 // Below two functions are only used in cts tests, to force stat/record cmd to run in app's context.
 void SetDefaultAppPackageName(const std::string& package_name);

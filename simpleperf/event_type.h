@@ -52,6 +52,8 @@ struct EventType {
   std::string limited_arch;
 };
 
+bool SetTracepointEventsFilePath(const std::string& filepath);
+std::string GetTracepointEvents();
 const std::vector<EventType>& GetAllEventTypes();
 const EventType* FindEventTypeByName(const std::string& name);
 
