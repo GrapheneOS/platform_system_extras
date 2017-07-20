@@ -16,6 +16,9 @@
 
 #include "event_selection_set.h"
 
+#include <atomic>
+#include <thread>
+
 #include <android-base/logging.h>
 
 #include "environment.h"
@@ -51,6 +54,53 @@ bool IsDwarfCallChainSamplingSupported() {
   attr.sample_regs_user = GetSupportedRegMask(GetBuildArch());
   attr.sample_stack_user = 8192;
   return IsEventAttrSupported(attr);
+}
+
+bool IsDumpingRegsForTracepointEventsSupported() {
+  const EventType* event_type = FindEventTypeByName("sched:sched_switch");
+  if (event_type == nullptr) {
+    return false;
+  }
+  std::atomic<bool> done(false);
+  std::atomic<pid_t> thread_id(0);
+  std::thread thread([&]() {
+    thread_id = gettid();
+    while (!done) {
+      usleep(1);
+    }
+    usleep(1);  // Make a sched out to generate one sample.
+  });
+  while (thread_id == 0) {
+    usleep(1);
+  }
+  perf_event_attr attr = CreateDefaultPerfEventAttr(*event_type);
+  attr.freq = 0;
+  attr.sample_period = 1;
+  std::unique_ptr<EventFd> event_fd =
+      EventFd::OpenEventFile(attr, thread_id, -1, nullptr);
+  if (event_fd == nullptr) {
+    return false;
+  }
+  if (!event_fd->CreateMappedBuffer(4, true)) {
+    return false;
+  }
+  done = true;
+  thread.join();
+
+  std::vector<char> buffer;
+  size_t buffer_pos = 0;
+  size_t size = event_fd->GetAvailableMmapData(buffer, buffer_pos);
+  std::vector<std::unique_ptr<Record>> records =
+      ReadRecordsFromBuffer(attr, buffer.data(), size);
+  for (auto& r : records) {
+    if (r->type() == PERF_RECORD_SAMPLE) {
+      auto& record = *static_cast<SampleRecord*>(r.get());
+      if (record.ip_data.ip != 0) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 bool EventSelectionSet::BuildAndCheckEventSelection(
@@ -114,6 +164,16 @@ bool EventSelectionSet::AddEventGroup(
   groups_.push_back(std::move(group));
   UnionSampleType();
   return true;
+}
+
+std::vector<const EventType*> EventSelectionSet::GetEvents() const {
+  std::vector<const EventType*> result;
+  for (const auto& group : groups_) {
+    for (const auto& selection : group) {
+      result.push_back(&selection.event_type_modifier.event_type);
+    }
+  }
+  return result;
 }
 
 std::vector<const EventType*> EventSelectionSet::GetTracepointEvents() const {
