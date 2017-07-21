@@ -72,6 +72,7 @@ TEST(record_cmd, event_option) {
 TEST(record_cmd, freq_option) {
   ASSERT_TRUE(RunRecordCmd({"-f", "99"}));
   ASSERT_TRUE(RunRecordCmd({"-F", "99"}));
+  ASSERT_TRUE(RunRecordCmd({"-f", std::to_string(UINT_MAX)}));
 }
 
 TEST(record_cmd, output_file_option) {

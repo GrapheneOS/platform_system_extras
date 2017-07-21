@@ -496,9 +496,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         LOG(ERROR) << "Invalid sample frequency: " << args[i];
         return false;
       }
-      if (!CheckSampleFrequency(sample_freq_)) {
-        return false;
-      }
+      sample_freq_ = AdjustSampleFrequency(sample_freq_);
       use_sample_freq_ = true;
     } else if (args[i] == "-g") {
       fp_callchain_sampling_ = false;
