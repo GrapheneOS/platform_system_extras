@@ -16,7 +16,8 @@
 LOCAL_PATH := $(call my-dir)
 
 SIMPLEPERF_SCRIPT_LIST := $(wildcard $(LOCAL_PATH)/*.py $(LOCAL_PATH)/*.config) \
-                          $(LOCAL_PATH)/../README.md
+                          $(LOCAL_PATH)/../README.md \
+                          $(LOCAL_PATH)/testdata
 
 SIMPLEPERF_SCRIPT_LIST := $(filter-out $(LOCAL_PATH)/update.py,$(SIMPLEPERF_SCRIPT_LIST))
 
