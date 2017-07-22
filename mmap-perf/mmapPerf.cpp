@@ -1,4 +1,5 @@
-#include "benchmark/benchmark_api.h"
+#include <benchmark/benchmark.h>
+
 #include <string>
 #include <cstring>
 #include <cstdlib>
