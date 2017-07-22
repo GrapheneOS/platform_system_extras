@@ -538,15 +538,20 @@ class SourceFileAnnotator(object):
         source_files = self.source_file_dict.get(filename)
         if source_files is None:
             return None
-        match_count = 0
-        result = None
+        best_path_count = 0
+        best_path = None
+        best_suffix_len = 0
         for path in source_files:
-            if path.find(file) != -1:
-                match_count += 1
-                result = path
-        if match_count > 1:
+            suffix_len = len(os.path.commonprefix((path[::-1], file[::-1])))
+            if suffix_len > best_suffix_len:
+                best_suffix_len = suffix_len
+                best_path = path
+                best_path_count = 1
+            elif suffix_len == best_suffix_len:
+                best_path_count += 1
+        if best_path_count > 1:
             log_warning('multiple source for %s, select %s' % (file, result))
-        return result
+        return best_path
 
 
     def _annotate_files(self):
