@@ -151,6 +151,7 @@ static const std::string GetFeatureName(int feature) {
       {FEAT_PMU_MAPPINGS, "pmu_mappings"},
       {FEAT_GROUP_DESC, "group_desc"},
       {FEAT_FILE, "file"},
+      {FEAT_META_INFO, "meta_info"},
   };
   auto it = feature_name_map.find(feature);
   if (it != feature_name_map.end()) {
