@@ -73,6 +73,7 @@ class EventSelectionSet {
 
   bool AddEventType(const std::string& event_name);
   bool AddEventGroup(const std::vector<std::string>& event_names);
+  std::vector<const EventType*> GetEvents() const;
   std::vector<const EventType*> GetTracepointEvents() const;
   bool HasInplaceSampler() const;
   std::vector<EventAttrWithId> GetEventAttrWithId() const;
@@ -186,5 +187,6 @@ class EventSelectionSet {
 
 bool IsBranchSamplingSupported();
 bool IsDwarfCallChainSamplingSupported();
+bool IsDumpingRegsForTracepointEventsSupported();
 
 #endif  // SIMPLE_PERF_EVENT_SELECTION_SET_H_
