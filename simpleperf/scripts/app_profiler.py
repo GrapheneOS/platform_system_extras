@@ -45,12 +45,13 @@ class AppProfiler(object):
     def __init__(self, config):
         self.check_config(config)
         self.config = config
-        self.adb = AdbHelper()
+        self.adb = AdbHelper(enable_switch_to_root=not config['disable_adb_root'])
         self.is_root_device = False
         self.android_version = 0
         self.device_arch = None
         self.app_arch = None
         self.app_pid = None
+        self.has_symfs_on_device = False
 
 
     def check_config(self, config):
@@ -184,12 +185,15 @@ class AppProfiler(object):
 
 
     def _find_app_process(self):
-        ps_args = ['-e'] if self.android_version >= 8 else []
-        result, output = self.adb.run_and_return_output(['shell', 'ps'] + ps_args)
+        # On Android >= N, pidof is available. Otherwise, we can use ps.
+        if self.android_version >= 7:
+            result, output = self.adb.run_and_return_output(['shell', 'pidof',
+                                                             self.config['app_package_name']])
+            return int(output) if result else None
+        result, output = self.adb.run_and_return_output(['shell', 'ps'], log_output=False)
         if not result:
             return None
-        output = output.split('\n')
-        for line in output:
+        for line in output.split('\n'):
             strs = line.split()
             if len(strs) > 2 and strs[-1].find(self.config['app_package_name']) != -1:
                 return int(strs[1])
@@ -201,7 +205,7 @@ class AppProfiler(object):
         if self.app_pid is None:
             log_exit("can't find process for app [%s]" % self.config['app_package_name'])
         if self.device_arch in ['aarch64', 'x86_64']:
-            output = self.run_in_app_dir(['cat', '/proc/%d/maps' % self.app_pid])
+            output = self.run_in_app_dir(['cat', '/proc/%d/maps' % self.app_pid], log_output=False)
             if output.find('linker64') != -1:
                 self.app_arch = self.device_arch
             else:
@@ -234,7 +238,7 @@ class AppProfiler(object):
                     filename_dict[file] = path
                 else:
                     log_info('%s is worse than %s' % (path, old_path))
-        maps = self.run_in_app_dir(['cat', '/proc/%d/maps' % self.app_pid])
+        maps = self.run_in_app_dir(['cat', '/proc/%d/maps' % self.app_pid], log_output=False)
         searched_lib = dict()
         for item in maps.split():
             if item.endswith('.so') and searched_lib.get(item) is None:
@@ -248,6 +252,7 @@ class AppProfiler(object):
                 self.adb.check_run(['push', path, '/data/local/tmp'])
                 self.run_in_app_dir(['mkdir', '-p', dirname])
                 self.run_in_app_dir(['cp', '/data/local/tmp/' + filename, dirname])
+                self.has_symfs_on_device = True
 
 
     def _is_lib_better(self, new_path, old_path):
@@ -275,9 +280,11 @@ class AppProfiler(object):
         subproc = None
         returncode = None
         try:
-            args = self.get_run_in_app_dir_args([
-                './simpleperf', 'record', self.config['record_options'], '-p',
-                str(self.app_pid), '--symfs', '.'])
+            args = ['./simpleperf', 'record', self.config['record_options'],
+                    '-p', str(self.app_pid)]
+            if self.has_symfs_on_device:
+                args += ['--symfs', '.']
+            args = self.get_run_in_app_dir_args(args)
             adb_args = [self.adb.adb_path] + args
             log_debug('run adb cmd: %s' % adb_args)
             subproc = subprocess.Popen(adb_args)
@@ -317,12 +324,12 @@ class AppProfiler(object):
             binary_cache_builder.build_binary_cache()
 
 
-    def run_in_app_dir(self, args, stdout_file=None, check_result=True):
+    def run_in_app_dir(self, args, stdout_file=None, check_result=True, log_output=True):
         args = self.get_run_in_app_dir_args(args)
         if check_result:
-            return self.adb.check_run_and_return_output(args, stdout_file)
+            return self.adb.check_run_and_return_output(args, stdout_file, log_output=log_output)
         else:
-            return self.adb.run_and_return_output(args, stdout_file)
+            return self.adb.run_and_return_output(args, stdout_file, log_output=log_output)
 
 
     def get_run_in_app_dir_args(self, args):
@@ -339,7 +346,7 @@ def main():
     parser.add_argument('--config', default='app_profiler.config', help=
 """Set configuration file. Default is app_profiler.config. The configurations
 can be overridden by options in cmdline.""")
-    parser.add_argument('-p', '--package_name', help=
+    parser.add_argument('-p', '--app', help=
 """The package name of the profiled Android app.""")
     parser.add_argument('-lib', '--native_lib_dir', help=
 """Path to find debug version of native shared libraries used in the app.""")
@@ -363,10 +370,12 @@ an instrumentation test.""")
     parser.add_argument('-nb', '--skip_collect_binaries', action='store_true', help=
 """By default we collect binaries used in profiling data from device to
 binary_cache directory. It can be used to annotate source code. This option skips it.""")
+    parser.add_argument('--disable_adb_root', action='store_true', help=
+"""Force adb to run in non root mode.""")
     args = parser.parse_args()
     config = load_config(args.config)
-    if args.package_name:
-        config['app_package_name'] = args.package_name
+    if args.app:
+        config['app_package_name'] = args.app
     if args.native_lib_dir:
         config['native_lib_dir'] = args.native_lib_dir
     if args.skip_recompile:
@@ -385,6 +394,7 @@ binary_cache directory. It can be used to annotate source code. This option skip
         config['perf_data_path'] = args.perf_data_path
     if args.skip_collect_binaries:
         config['collect_binaries'] = False
+    config['disable_adb_root'] = args.disable_adb_root
 
     profiler = AppProfiler(config)
     profiler.profile()

@@ -30,6 +30,7 @@ Bugs and feature requests can be submitted at http://github.com/android-ndk/ndk/
     - [Annotate source code](#annotate-source-code)
 - [Answers to common issues](#answers-to-common-issues)
     - [The correct way to pull perf.data on host](#the-correct-way-to-pull-perfdata-on-host)
+    - [Why we suggest profiling on android >= N devices](#why-we-suggest-profiling-on-android-n-devices)
 
 ## Simpleperf introduction
 
@@ -494,12 +495,12 @@ should be true. So we need to use debug [build type](https://developer.android.c
 instead of release build type. It is understandable because we can't profile others' apps.
 However, on a rooted Android device, the application doesn't need to be debuggable.
 
-**2. Run on an Android device >= L.**
-Profiling on emulators are not yet supported. And to profile Java code, we need
-the jvm running in oat mode, which is only available >= L.
+**2. Run on an Android >= N device.**
+We suggest profiling on an Android >= N device. The reason is [here](#why-we-suggest-profiling-on-android-n-devices).
+
 
 **3. On Android O, add `wrap.sh` in the apk.**
-To profile Java code, we need the jvm running in oat mode. But on Android O,
+To profile Java code, we need ART running in oat mode. But on Android O,
 debuggable applications are forced to run in jit mode. To work around this,
 we need to add a `wrap.sh` in the apk. So if you are running on Android O device,
 Check [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo/SimpleperfExamplePureJava/app/profiling.gradle)
@@ -579,12 +580,13 @@ and access the native binaries.
     # Start the app if needed
     $ adb shell am start -n com.example.simpleperf.simpleperfexamplepurejava/.MainActivity
 
-    # Run `ps` in the app's context. On Android >= O devicces, run `ps -e` instead.
-    $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ps | grep simpleperf
-    u0_a151   6885  3346  1590504 53980 SyS_epoll_ 6fc2024b6c S com.example.simpleperf.simpleperfexamplepurejava
+    $ adb shell pidof com.example.simpleperf.simpleperfexamplepurejava
+    6885
 
 So the id of the app process is `6885`. We will use this number in the command lines below,
-please replace this number with what you get by running `ps` command.
+please replace this number with what you get by running `pidof` command.
+On Android <= M, pidof may not exist or work well, and you can try
+`ps | grep com.example.simpleperf.simpleperfexamplepurejava` instead.
 
 **4. Download simpleperf to the app's data directory**
 
@@ -621,9 +623,8 @@ There are many options to record profiling data, check [record command](#simplep
     $ adb shell "run-as com.example.simpleperf.simpleperfexamplepurejava cat perf.data | tee /data/local/tmp/perf.data >/dev/null"
     $ adb pull /data/local/tmp/perf.data
 
-    # Report samples using corresponding simpleperf executable on host.
-    # On windows, use "bin\windows\x86_64\simpleperf" instead.
-    $ bin/linux/x86_64/simpleperf report
+    # Report samples using report.py, report.py is a python wrapper of simpleperf report command.
+    $ python report.py
     ...
     Overhead  Command   Pid   Tid   Shared Object                                                                     Symbol
     83.54%    Thread-2  6885  6900  /data/app/com.example.simpleperf.simpleperfexamplepurejava-2/oat/arm64/base.odex  void com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()
@@ -637,32 +638,19 @@ There are many ways to show reports, check [report command](#simpleperf-report) 
 
 Besides command lines, We can use `app-profiler.py` to profile Android applications.
 It downloads simpleperf on device, records perf.data, and collects profiling
-results and native binaries on host. It is configured by `app-profiler.config`.
+results and native binaries on host.
 
-**1. Fill `app-profiler.config`**
+**1. Record perf.data by running `app-profiler.py`**
 
-    Change `app_package_name` line to  app_package_name="com.example.simpleperf.simpleperfexamplepurejava"
-    Change `apk_file_path` line to apk_file_path = "../SimpleperfExamplePureJava/app/build/outputs/apk/app-profiling.apk"
-    Change `android_studio_project_dir` line to android_studio_project_dir = "../SimpleperfExamplePureJava/"
-    Change `record_options` line to record_options = "--duration 10"
-
-`apk_file_path` is needed to fully compile the application on Android L/M. It is
-not necessary on Android >= N.
-
-`android_studio_project_dir` is used to search native libraries in the
-application. It is not necessary for profiling.
-
-`record_options` can be set to any option accepted by simpleperf record command.
-
-**2. Run `app-profiler.py`**
-
-    $ python app_profiler.py
+    $ python app_profiler.py --app com.example.simpleperf.simpleperfexamplepurejava \
+         --apk ../SimpleperfExamplePureJava/app/build/outputs/apk/app-profiling.apk \
+         -r "-e cpu-cycles:u --duration 10"
 
 
 If running successfully, it will collect profiling data in perf.data in current
 directory, and related native binaries in binary_cache/.
 
-**3. Report perf.data**
+**2. Report perf.data**
 
 We can use `report.py` to report perf.data.
 
@@ -698,9 +686,11 @@ When using command lines, add `-g` option like below:
 
     $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ./simpleperf record -g -p 6685 --duration 10
 
-When using python scripts, change `app-profiler.config` as below:
+When using app_profiler.py, add "-g" in record option as below:
 
-    Change `record_options` line to record_options = "--duration 10 -g"
+    $ python app_profiler.py --app com.example.simpleperf.simpleperfexamplepurejava \
+        --apk ../SimpleperfExamplePureJava/app/build/outputs/apk/app-profiling.apk \
+        -r "-e cpu-cycles:u --duration 10 -g"
 
 Recording dwarf based call graph needs support of debug information
 in native binaries. So if using native libraries in the application,
@@ -713,9 +703,11 @@ When using command lines, add `--call-graph fp` option like below:
 
     $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ./simpleperf record --call-graph fp -p 6685 --duration 10
 
-When using python scripts, change `app-profiler.config` as below:
+When using app_profiler.py, add "--call-graph fp" in record option as below:
 
-    Change `record_options` line to record_options = "--duration 10 --call-graph fp"
+    $ python app_profiler.py --app com.example.simpleperf.simpleperfexamplepurejava \
+        --apk ../SimpleperfExamplePureJava/app/build/outputs/apk/app-profiling.apk \
+        -r "-e cpu-cycles:u --duration 10 --call-graph fp"
 
 Recording stack frame based call graphs needs support of stack frame
 register. Notice that on arm architecture, the stack frame register
@@ -742,9 +734,12 @@ To report call graph using command lines, add `-g` option.
                |--16.22%-- int com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.callFunction(int)
                |    |--99.97%-- [hit in function]
 
-To report call graph using python scripts, add `-g` option.
+To report call graph using report.py, add `-g` option.
 
+    # In text mode
     $ python report.py -g
+    # In GUI mode
+    $ python report.py -g --gui
     # Double-click an item started with '+' to show its callgraph.
 
 ### Visualize profiling data
@@ -808,6 +803,7 @@ It's content is similar to below:
 ## Answers to common issues
 
 ### The correct way to pull perf.data on host
+
 As perf.data is generated in app's context, it can't be pulled directly to host.
 One way is to `adb shell run-as xxx cat perf.data >perf.data`. However, it
 doesn't work well on Windows, because the content can be modified when it goes
@@ -816,6 +812,19 @@ then pull it on host. The commands are as below:
 
     $adb shell "run-as xxx cat perf.data | tee /data/local/tmp/perf.data >/dev/null"
     $adb pull /data/local/tmp/perf.data
+
+
+### Why we suggest profiling on Android >= N devices?
+```
+1. Running on a device reflects a real running situation, so we suggest
+profiling on real devices instead of emulators.
+2. To profile Java code, we need ART running in oat mode, which is only
+available >= L for rooted devices, and >= N for non-rooted devices.
+3. Old Android versions are likely to be shipped with old kernels (< 3.18),
+which may not support profiling features like dwarf based call graph.
+4. Old Android versions are likely to be shipped with Arm32 chips. In Arm32
+mode, stack frame based call graph doesn't work well.
+```
 
 ## Inferno
 
