@@ -471,6 +471,21 @@ TEST_F(ReportCommandTest, full_callgraph_option) {
   ASSERT_EQ(content.find("skipped in brief callgraph mode"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, report_offcpu_time) {
+  Report(PERF_DATA_WITH_TRACE_OFFCPU, {"--children"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("Time in ns"), std::string::npos);
+  bool found = false;
+  for (auto& line : lines) {
+    if (line.find("SleepFunction") != std::string::npos) {
+      ASSERT_NE(line.find("46.29%"), std::string::npos);
+      found = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(found);
+}
+
 #if defined(__linux__)
 #include "event_selection_set.h"
 

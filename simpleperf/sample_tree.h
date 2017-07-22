@@ -53,7 +53,7 @@
 template <typename EntryT, typename AccumulateInfoT>
 class SampleTreeBuilder {
  public:
-  explicit SampleTreeBuilder(SampleComparator<EntryT> comparator)
+  explicit SampleTreeBuilder(const SampleComparator<EntryT>& comparator)
       : sample_set_(comparator),
         accumulate_callchain_(false),
         sample_comparator_(comparator),
