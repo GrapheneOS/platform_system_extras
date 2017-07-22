@@ -40,3 +40,9 @@ bool IsRoot();
       GTEST_LOG_(INFO) << "Didn't test \"" << #TestStatement << "\" requires root privileges";     \
     }                                                                                              \
   } while (0)
+
+#if defined(__ANDROID__)
+#define TEST_REQUIRE_HOST_ROOT()
+#else
+#define TEST_REQUIRE_HOST_ROOT()  if (!IsRoot()) return
+#endif
