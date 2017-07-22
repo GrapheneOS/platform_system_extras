@@ -48,7 +48,7 @@ class BinaryCacheBuilder(object):
         for symfs_dir in self.symfs_dirs:
             if not os.path.isdir(symfs_dir):
                 log_exit("symfs_dir '%s' is not a directory" % symfs_dir)
-        self.adb = AdbHelper()
+        self.adb = AdbHelper(enable_switch_to_root=not config['disable_adb_root'])
         self.readelf_path = find_tool_path('readelf')
         if not self.readelf_path and self.symfs_dirs:
             log_warning("Debug shared libraries on host are not used because can't find readelf.")
@@ -236,10 +236,13 @@ def main():
     parser.add_argument('-lib', '--native_lib_dir', nargs='+', help=
 """Path to find debug version of native shared libraries used in the app.""",
                         action='append')
+    parser.add_argument('--disable_adb_root', action='store_true', help=
+"""Force adb to run in non root mode.""")
     args = parser.parse_args()
     config = {}
     config['perf_data_path'] = args.perf_data_path
     config['symfs_dirs'] = flatten_arg_list(args.native_lib_dir)
+    config['disable_adb_root'] = args.disable_adb_root
 
     builder = BinaryCacheBuilder(config)
     builder.build_binary_cache()

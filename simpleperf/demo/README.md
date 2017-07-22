@@ -52,14 +52,12 @@ $ python app_profiler.py -p com.example.simpleperf.simpleperfexamplepurejava
 3. Show profiling data:
 ```
 a. show call graph in txt mode
-    # On windows, use "bin\windows\x86\simpleperf" instead.
-    $ bin/linux/x86_64/simpleperf report -g | more
-        If on other hosts, use corresponding simpleperf binary.
+    $ python report.py -g | more
 b. show call graph in gui mode
-    $ python report.py -g
+    $ python report.py -g --gui
 c. show samples in source code
     $ python annotate.py -s ../demo/SimpleperfExamplePureJava
-    $ gvim annotated_files/java/com/example/simpleperf/simpleperfexamplepurejava/MainActivity.java
+    $ find annotated_files -name "MainActivity.java"
         check the annoated source file MainActivity.java.
 ```
 
@@ -91,14 +89,12 @@ $ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative
 3. Show profiling data:
 ```
 a. show call graph in txt mode
-    # On windows, use "bin\windows\x86\simpleperf" instead.
-    $ bin/linux/x86_64/simpleperf report -g | more
-        If on other hosts, use corresponding simpleperf binary.
+    $ python report.py -g | more
 b. show call graph in gui mode
-    $ python report.py -g
+    $ python report.py -g --gui
 c. show samples in source code
     $ python annotate.py -s ../demo/SimpleperfExampleWithNative
-    $ find . -name "native-lib.cpp" | xargs gvim
+    $ find annotated_files -name "native-lib.cpp"
         check the annoated source file native-lib.cpp.
 ```
 
@@ -130,13 +126,10 @@ $ python app_profiler.py -p com.example.simpleperf.simpleperfexampleofkotlin
 3. Show profiling data:
 ```
 a. show call graph in txt mode
-    # On windows, use "bin\windows\x86\simpleperf" instead.
-    $ bin/linux/x86_64/simpleperf report -g | more
-        If on other hosts, use corresponding simpleperf binary.
+    $ python report.py -g | more
 b. show call graph in gui mode
-    $ python report.py -g
+    $ python report.py -g --gui
 c. show samples in source code
     $ python annotate.py -s ../demo/SimpleperfExampleOfKotlin
-    $ find . -name "MainActivity.kt" | xargs gvim
-        check the annoated source file MainActivity.kt.
+    $ find . -name "MainActivity.kt"
 ```
