@@ -253,19 +253,6 @@ class AdbHelper(object):
         return self.run(['shell', 'setprop', name, value])
 
 
-def load_config(config_file):
-    if not os.path.exists(config_file):
-        log_exit("can't find config_file: %s" % config_file)
-    config = {}
-    if is_python3():
-        with open(config_file, 'r') as fh:
-            source = fh.read()
-            exec(source, config)
-    else:
-        execfile(config_file, config)
-    return config
-
-
 def flatten_arg_list(arg_list):
     res = []
     if arg_list:

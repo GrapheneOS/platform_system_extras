@@ -29,7 +29,6 @@ Bugs and feature requests can be submitted at http://github.com/android-ndk/ndk/
     - [Visualize profiling data](#visualize-profiling-data)
     - [Annotate source code](#annotate-source-code)
 - [Answers to common issues](#answers-to-common-issues)
-    - [The correct way to pull perf.data on host](#the-correct-way-to-pull-perfdata-on-host)
     - [Why we suggest profiling on android >= N devices](#why-we-suggest-profiling-on-android-n-devices)
 
 ## Simpleperf introduction
@@ -575,9 +574,8 @@ and access the native binaries.
     $ adb install -r app/build/outputs/apk/app-profiling.apk
 
 
-**3. Find the app process**
+**3. Start the app if needed**
 
-    # Start the app if needed
     $ adb shell am start -n com.example.simpleperf.simpleperfexamplepurejava/.MainActivity
 
     $ adb shell pidof com.example.simpleperf.simpleperfexamplepurejava
@@ -590,26 +588,30 @@ On Android <= M, pidof may not exist or work well, and you can try
 
 **4. Download simpleperf to the app's data directory**
 
-    # Find which architecture the app is using.
+    # Find which architecture the app is using. On arm devices, it must be arm.
+    # But on arm64 devices, it can be either arm or arm64. If you are not sure,
+    # you can find it out in the app process's map.
+    $ adb shell pidof com.example.simpleperf.simpleperfexamplepurejava
+    6885
     $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava cat /proc/6885/maps | grep boot.oat
     708e6000-70e33000 r--p 00000000 103:09 1214                              /system/framework/arm64/boot.oat
 
     # The app uses /arm64/boot.oat, so push simpleperf in bin/android/arm64/ to device.
+
+    # Now download the simpleperf for the app's architecture on device.
     $ cd ../../scripts/
     $ adb push bin/android/arm64/simpleperf /data/local/tmp
     $ adb shell chmod a+x /data/local/tmp/simpleperf
-    $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava cp /data/local/tmp/simpleperf .
 
 
 **5. Record perf.data**
 
-    $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ./simpleperf record -p 6885 --duration 10
+    $ adb shell /data/local/tmp/simpleperf record \
+      --app com.example.simpleperf.simpleperfexamplepurejava --duration 10 \
+      -o /data/local/tmp/perf.data
     simpleperf I 04-27 20:41:11  6940  6940 cmd_record.cpp:357] Samples recorded: 40008. Samples lost: 0.
 
-    $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ls -lh perf.data
-    simpleperf I 04-27 20:31:40  5999  5999 cmd_record.cpp:357] Samples recorded: 39949. Samples lost: 0.
-
-The profiling data is recorded at perf.data.
+The profiling data is recorded at /data/local/tmp/perf.data.
 
 Normally we need to use the app when profiling, otherwise we may record no samples.
 But in this case, the MainActivity starts a busy thread. So we don't need to use
@@ -620,7 +622,6 @@ There are many options to record profiling data, check [record command](#simplep
 **6. Report perf.data**
 
     # Pull perf.data on host.
-    $ adb shell "run-as com.example.simpleperf.simpleperfexamplepurejava cat perf.data | tee /data/local/tmp/perf.data >/dev/null"
     $ adb pull /data/local/tmp/perf.data
 
     # Report samples using report.py, report.py is a python wrapper of simpleperf report command.
@@ -630,7 +631,6 @@ There are many options to record profiling data, check [record command](#simplep
     83.54%    Thread-2  6885  6900  /data/app/com.example.simpleperf.simpleperfexamplepurejava-2/oat/arm64/base.odex  void com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()
     16.11%    Thread-2  6885  6900  /data/app/com.example.simpleperf.simpleperfexamplepurejava-2/oat/arm64/base.odex  int com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.callFunction(int)
 
-See [here](#the-correct-way-to-pull-perfdata-on-host) for why we use tee rather than just >.
 There are many ways to show reports, check [report command](#simpleperf-report) for details.
 
 
@@ -684,7 +684,9 @@ A call graph is a tree showing function call relations. Below is an example.
 
 When using command lines, add `-g` option like below:
 
-    $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ./simpleperf record -g -p 6685 --duration 10
+    $ adb shell /data/local/tmp/simpleperf record -g \
+    --app com.example.simpleperf.simpleperfexamplepurejava --duration 10 \
+    -o /data/local/tmp/perf.data
 
 When using app_profiler.py, add "-g" in record option as below:
 
@@ -701,7 +703,9 @@ it is better to contain non-stripped native libraries in the apk.
 
 When using command lines, add `--call-graph fp` option like below:
 
-    $ adb shell run-as com.example.simpleperf.simpleperfexamplepurejava ./simpleperf record --call-graph fp -p 6685 --duration 10
+    $ adb shell /data/local/tmp/simpleperf record --call-graph fp \
+    --app com.example.simpleperf.simpleperfexamplepurejava --duration 10 \
+    -o /data/local/tmp/perf.data
 
 When using app_profiler.py, add "--call-graph fp" in record option as below:
 
@@ -721,7 +725,7 @@ architecture, or profiling in arm64 environment.**
 
 To report call graph using command lines, add `-g` option.
 
-    $ bin/linux/x86_64/simpleperf report -g
+    $ python report.py -g
     ...
     Children  Self    Command          Pid    Tid    Shared Object                                                                     Symbol
     99.97%    0.00%   Thread-2         10859  10876  /system/framework/arm64/boot.oat                                                  java.lang.Thread.run
@@ -734,11 +738,8 @@ To report call graph using command lines, add `-g` option.
                |--16.22%-- int com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.callFunction(int)
                |    |--99.97%-- [hit in function]
 
-To report call graph using report.py, add `-g` option.
+To report call graph in gui mode, add `--gui` option.
 
-    # In text mode
-    $ python report.py -g
-    # In GUI mode
     $ python report.py -g --gui
     # Double-click an item started with '+' to show its callgraph.
 
@@ -801,18 +802,6 @@ It's content is similar to below:
 
 
 ## Answers to common issues
-
-### The correct way to pull perf.data on host
-
-As perf.data is generated in app's context, it can't be pulled directly to host.
-One way is to `adb shell run-as xxx cat perf.data >perf.data`. However, it
-doesn't work well on Windows, because the content can be modified when it goes
-through the pipe. So we first copy it from app's context to shell's context,
-then pull it on host. The commands are as below:
-
-    $adb shell "run-as xxx cat perf.data | tee /data/local/tmp/perf.data >/dev/null"
-    $adb pull /data/local/tmp/perf.data
-
 
 ### Why we suggest profiling on Android >= N devices?
 ```
