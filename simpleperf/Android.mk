@@ -128,7 +128,6 @@ libsimpleperf_src_files_windows := \
 
 # libsimpleperf target
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := libsimpleperf
 LOCAL_MODULE_TAGS := debug
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
@@ -145,7 +144,6 @@ include $(BUILD_STATIC_LIBRARY)
 
 # libsimpleperf host
 include $(CLEAR_VARS)
-#LOCAL_CLANG := true  # Comment it to build on windows.
 LOCAL_MODULE := libsimpleperf
 LOCAL_MODULE_HOST_OS := darwin linux windows
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
@@ -171,7 +169,6 @@ include $(BUILD_HOST_STATIC_LIBRARY)
 
 # simpleperf target
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := simpleperf
 LOCAL_MODULE_TAGS := debug
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
@@ -227,7 +224,6 @@ endif
 
 # libsimpleperf_record.a on target
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := libsimpleperf_record
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := record_lib_interface.cpp
@@ -241,7 +237,6 @@ include $(BUILD_STATIC_LIBRARY)
 
 # libsimpleperf_record.so on target
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := libsimpleperf_record
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := record_lib_interface.cpp
@@ -255,7 +250,6 @@ include $(BUILD_SHARED_LIBRARY)
 
 # libsimpleperf_record.a on host
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := libsimpleperf_record
 LOCAL_MODULE_HOST_OS := linux
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
@@ -272,7 +266,6 @@ include $(BUILD_HOST_STATIC_LIBRARY)
 
 # libsimpleperf_record.so on host
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := libsimpleperf_record
 LOCAL_MODULE_HOST_OS := linux
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
@@ -325,7 +318,6 @@ endif
 
 # libsimpleperf_inplace_sampler.so on target
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := libsimpleperf_inplace_sampler
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := inplace_sampler_lib.cpp
@@ -338,7 +330,6 @@ include $(BUILD_SHARED_LIBRARY)
 
 # libsimpleperf_inplace_sampler.so on host
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := libsimpleperf_inplace_sampler
 LOCAL_MODULE_HOST_OS := linux
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
@@ -380,7 +371,6 @@ simpleperf_unit_test_src_files_linux := \
 
 # simpleperf_unit_test target
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := simpleperf_unit_test
 LOCAL_COMPATIBILITY_SUITE := device-tests
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
@@ -420,7 +410,6 @@ simpleperf_cpu_hotplug_test_src_files := \
 
 # simpleperf_cpu_hotplug_test target
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := simpleperf_cpu_hotplug_test
 LOCAL_COMPATIBILITY_SUITE := device-tests
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
@@ -433,7 +422,6 @@ include $(BUILD_NATIVE_TEST)
 
 # simpleperf_cpu_hotplug_test linux host
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := simpleperf_cpu_hotplug_test
 LOCAL_MODULE_HOST_OS := linux
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
@@ -457,7 +445,6 @@ libsimpleperf_cts_test_src_files := \
 
 # libsimpleperf_cts_test target
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := libsimpleperf_cts_test
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target) -DRUN_IN_APP_CONTEXT="\"com.android.simpleperf\""
 LOCAL_SRC_FILES := $(libsimpleperf_cts_test_src_files)
@@ -469,7 +456,6 @@ include $(BUILD_STATIC_TEST_LIBRARY)
 
 # libsimpleperf_cts_test linux host
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := libsimpleperf_cts_test
 LOCAL_MODULE_HOST_OS := linux
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
@@ -487,7 +473,6 @@ include $(BUILD_HOST_STATIC_TEST_LIBRARY)
 
 # simpleperf_record_test target
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := simpleperf_record_test
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := record_lib_test.cpp
@@ -497,7 +482,6 @@ include $(BUILD_NATIVE_TEST)
 
 # simpleperf_record_test linux host
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_MODULE := simpleperf_record_test
 LOCAL_MODULE_HOST_OS := linux
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)

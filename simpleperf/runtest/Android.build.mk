@@ -19,7 +19,6 @@ simpleperf_runtest_cppflags := -Wall -Wextra -Werror -Wunused \
                                -O0 \
 
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_CPPFLAGS := $(simpleperf_runtest_cppflags)
 LOCAL_SRC_FILES := $(module_src_files)
 LOCAL_SHARED_LIBRARIES := libsimpleperf_inplace_sampler
@@ -32,7 +31,6 @@ LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.build.mk
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
 LOCAL_CPPFLAGS := $(simpleperf_runtest_cppflags)
 LOCAL_SRC_FILES := $(module_src_files)
 LOCAL_SHARED_LIBRARIES := libsimpleperf_inplace_sampler
