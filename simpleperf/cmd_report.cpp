@@ -771,7 +771,6 @@ bool ReportCommand::ReadMetaInfoFromRecordFile() {
 
 bool ReportCommand::ReadEventAttrFromRecordFile() {
   std::vector<EventAttrWithId> attrs = record_file_reader_->AttrSection();
-  LOG(ERROR) << "attrs.size() = " << attrs.size();
   for (const auto& attr_with_id : attrs) {
     EventAttrWithName attr;
     attr.attr = *attr_with_id.attr;
@@ -795,7 +794,6 @@ bool ReportCommand::ReadEventAttrFromRecordFile() {
   if (trace_offcpu_) {
     size_t i;
     for (i = 0; i < event_attrs_.size(); ++i) {
-      LOG(ERROR) << "event_attrs[" << i << "].name = " << event_attrs_[i].name;
       if (event_attrs_[i].name == "sched:sched_switch") {
         break;
       }

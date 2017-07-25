@@ -521,4 +521,17 @@ TEST_F(ReportCommandTest, report_dwarf_callgraph_of_nativelib_in_apk) {
   }
 }
 
+TEST_F(ReportCommandTest, exclude_kernel_callchain) {
+  TEST_REQUIRE_HOST_ROOT();
+  std::vector<std::unique_ptr<Workload>> workloads;
+  CreateProcesses(1, &workloads);
+  std::string pid = std::to_string(workloads[0]->GetPid());
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run({"--trace-offcpu", "-e", "cpu-cycles:u", "-p", pid,
+                                "--duration", "2", "-o", tmpfile.path, "-g"}));
+  ReportRaw(tmpfile.path, {"-g"});
+  ASSERT_TRUE(success);
+  ASSERT_EQ(content.find("[kernel.kallsyms]"), std::string::npos);
+}
+
 #endif

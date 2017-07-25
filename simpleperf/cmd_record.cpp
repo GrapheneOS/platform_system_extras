@@ -182,7 +182,8 @@ class RecordCommand : public Command {
         lost_record_count_(0),
         start_profiling_fd_(-1),
         in_app_context_(false),
-        trace_offcpu_(false) {
+        trace_offcpu_(false),
+        exclude_kernel_callchain_(false) {
     // Stop profiling if parent exits.
     prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
     app_package_name_ = GetDefaultAppPackageName();
@@ -245,6 +246,7 @@ class RecordCommand : public Command {
   std::string app_package_name_;
   bool in_app_context_;
   bool trace_offcpu_;
+  bool exclude_kernel_callchain_;
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
@@ -271,6 +273,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   }
+  exclude_kernel_callchain_ = event_selection_set_.ExcludeKernel();
   if (trace_offcpu_ && !TraceOffCpu()) {
     return false;
   }
@@ -890,6 +893,12 @@ bool RecordCommand::ProcessRecord(Record* record) {
     }
   }
   if (record->type() == PERF_RECORD_SAMPLE) {
+    if (record->InKernel() && exclude_kernel_callchain_) {
+      if (static_cast<SampleRecord*>(record)->ExcludeKernelCallChain() == 0u) {
+        // If current record contains no user callchain, skip it.
+        return true;
+      }
+    }
     sample_record_count_++;
   } else if (record->type() == PERF_RECORD_LOST) {
     lost_record_count_ += static_cast<LostRecord*>(record)->lost;
