@@ -22,6 +22,7 @@
 
 #include "dso.h"
 #include "event_attr.h"
+#include "event_type.h"
 #include "record_file.h"
 #include "thread_tree.h"
 #include "utils.h"
@@ -71,6 +72,11 @@ struct CallChain {
   CallChainEntry* entries;
 };
 
+struct MetaInfoEntry {
+  const char* key;
+  const char* value;
+};
+
 // Create a new instance,
 // pass the instance to the other functions below.
 ReportLib* CreateReportLib() EXPORT;
@@ -90,6 +96,7 @@ SymbolEntry* GetSymbolOfCurrentSample(ReportLib* report_lib) EXPORT;
 CallChain* GetCallChainOfCurrentSample(ReportLib* report_lib) EXPORT;
 
 const char* GetBuildIdForPath(ReportLib* report_lib, const char* path) EXPORT;
+MetaInfoEntry* GetNextMetaInfo(ReportLib* report_lib) EXPORT;
 }
 
 struct EventAttrWithName {
@@ -111,8 +118,10 @@ class ReportLib {
             new android::base::ScopedLogSeverity(android::base::INFO)),
         record_filename_("perf.data"),
         current_thread_(nullptr),
-        update_flag_(0)
-         {}
+        update_flag_(0),
+        trace_offcpu_(false) {
+    current_meta_info_.key = current_meta_info_.value = nullptr;
+  }
 
   bool SetLogSeverity(const char* log_level);
 
@@ -133,6 +142,7 @@ class ReportLib {
   CallChain* GetCallChainOfCurrentSample();
 
   const char* GetBuildIdForPath(const char* path);
+  MetaInfoEntry* GetNextMetaInfo();
 
  private:
   Sample* GetCurrentSample();
@@ -154,6 +164,12 @@ class ReportLib {
   std::string build_id_string_;
   int update_flag_;
   std::vector<EventAttrWithName> event_attrs_;
+
+  std::unordered_map<std::string, std::string> meta_info_map_;
+  MetaInfoEntry current_meta_info_;
+  std::unique_ptr<ScopedEventTypes> scoped_event_types_;
+  bool trace_offcpu_;
+  std::unordered_map<pid_t, std::unique_ptr<SampleRecord>> next_sample_cache_;
 };
 
 bool ReportLib::SetLogSeverity(const char* log_level) {
@@ -184,6 +200,18 @@ bool ReportLib::OpenRecordFileIfNecessary() {
       return false;
     }
     record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
+    if (record_file_reader_->HasFeature(PerfFileFormat::FEAT_META_INFO) &&
+        !record_file_reader_->ReadMetaInfoFeature(&meta_info_map_)) {
+      return false;
+    }
+    auto it = meta_info_map_.find("event_type_info");
+    if (it != meta_info_map_.end()) {
+      scoped_event_types_.reset(new ScopedEventTypes(it->second));
+    }
+    it = meta_info_map_.find("trace_offcpu");
+    if (it != meta_info_map_.end()) {
+      trace_offcpu_ = it->second == "true";
+    }
   }
   return true;
 }
@@ -202,6 +230,17 @@ Sample* ReportLib::GetNextSample() {
     }
     thread_tree_.Update(*record);
     if (record->type() == PERF_RECORD_SAMPLE) {
+      if (trace_offcpu_) {
+        SampleRecord* r = static_cast<SampleRecord*>(record.release());
+        auto it = next_sample_cache_.find(r->tid_data.tid);
+        if (it == next_sample_cache_.end()) {
+          next_sample_cache_[r->tid_data.tid].reset(r);
+          continue;
+        } else {
+          record.reset(it->second.release());
+          it->second.reset(r);
+        }
+      }
       current_record_.reset(static_cast<SampleRecord*>(record.release()));
       break;
     }
@@ -223,7 +262,13 @@ Sample* ReportLib::GetCurrentSample() {
     current_sample_.time = r.time_data.time;
     current_sample_.in_kernel = r.InKernel();
     current_sample_.cpu = r.cpu_data.cpu;
-    current_sample_.period = r.period_data.period;
+    if (trace_offcpu_) {
+      uint64_t next_time = std::max(next_sample_cache_[r.tid_data.tid]->time_data.time,
+                                    r.time_data.time + 1);
+      current_sample_.period = next_time - r.time_data.time;
+    } else {
+      current_sample_.period = r.period_data.period;
+    }
     update_flag_ |= UPDATE_FLAG_OF_SAMPLE;
   }
   return &current_sample_;
@@ -342,6 +387,23 @@ const char* ReportLib::GetBuildIdForPath(const char* path) {
   return build_id_string_.c_str();
 }
 
+MetaInfoEntry* ReportLib::GetNextMetaInfo() {
+  if (!OpenRecordFileIfNecessary()) {
+    return nullptr;
+  }
+  auto it = meta_info_map_.begin();
+  if (current_meta_info_.key != nullptr) {
+    it = meta_info_map_.find(current_meta_info_.key);
+    ++it;
+  }
+  if (it == meta_info_map_.end()) {
+    return nullptr;
+  }
+  current_meta_info_.key = it->first.c_str();
+  current_meta_info_.value = it->second.c_str();
+  return &current_meta_info_;
+}
+
 // Exported methods working with a client created instance
 ReportLib* CreateReportLib() {
   return new ReportLib();
@@ -389,4 +451,8 @@ CallChain* GetCallChainOfCurrentSample(ReportLib* report_lib) {
 
 const char* GetBuildIdForPath(ReportLib* report_lib, const char* path) {
   return report_lib->GetBuildIdForPath(path);
+}
+
+MetaInfoEntry* GetNextMetaInfo(ReportLib* report_lib) {
+  return report_lib->GetNextMetaInfo();
 }
