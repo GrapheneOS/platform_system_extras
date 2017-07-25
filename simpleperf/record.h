@@ -387,6 +387,7 @@ struct SampleRecord : public Record {
                uint64_t period, const std::vector<uint64_t>& ips);
 
   void ReplaceRegAndStackWithCallChain(const std::vector<uint64_t>& ips);
+  size_t ExcludeKernelCallChain();
   uint64_t Timestamp() const override;
   uint32_t Cpu() const override;
   uint64_t Id() const override;
