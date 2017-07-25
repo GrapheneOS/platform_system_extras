@@ -75,6 +75,7 @@ class EventSelectionSet {
   bool AddEventGroup(const std::vector<std::string>& event_names);
   std::vector<const EventType*> GetEvents() const;
   std::vector<const EventType*> GetTracepointEvents() const;
+  bool ExcludeKernel() const;
   bool HasInplaceSampler() const;
   std::vector<EventAttrWithId> GetEventAttrWithId() const;
 
