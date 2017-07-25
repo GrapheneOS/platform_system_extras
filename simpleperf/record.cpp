@@ -594,6 +594,31 @@ void SampleRecord::ReplaceRegAndStackWithCallChain(
   *reinterpret_cast<uint64_t*>(p) = callchain_data.ip_nr;
 }
 
+size_t SampleRecord::ExcludeKernelCallChain() {
+  size_t user_callchain_length = 0u;
+  if (sample_type & PERF_SAMPLE_CALLCHAIN) {
+    size_t i;
+    for (i = 0; i < callchain_data.ip_nr; ++i) {
+      if (callchain_data.ips[i] == PERF_CONTEXT_USER) {
+        i++;
+        if (i < callchain_data.ip_nr) {
+          ip_data.ip = callchain_data.ips[i];
+          if (sample_type & PERF_SAMPLE_IP) {
+            *reinterpret_cast<uint64_t*>(const_cast<char*>(binary_ + header_size())) = ip_data.ip;
+          }
+          header.misc = (header.misc & ~PERF_RECORD_MISC_KERNEL) | PERF_RECORD_MISC_USER;
+          reinterpret_cast<perf_event_header*>(const_cast<char*>(binary_))->misc = header.misc;
+        }
+        break;
+      } else {
+        const_cast<uint64_t*>(callchain_data.ips)[i] = PERF_CONTEXT_USER;
+      }
+    }
+    user_callchain_length = callchain_data.ip_nr - i;
+  }
+  return user_callchain_length;
+}
+
 void SampleRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "sample_type: 0x%" PRIx64 "\n", sample_type);
   if (sample_type & PERF_SAMPLE_IP) {

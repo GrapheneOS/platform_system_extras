@@ -189,6 +189,17 @@ std::vector<const EventType*> EventSelectionSet::GetTracepointEvents() const {
   return result;
 }
 
+bool EventSelectionSet::ExcludeKernel() const {
+  for (const auto& group : groups_) {
+    for (const auto& selection : group) {
+      if (!selection.event_type_modifier.exclude_kernel) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 bool EventSelectionSet::HasInplaceSampler() const {
   for (const auto& group : groups_) {
     for (const auto& sel : group) {
