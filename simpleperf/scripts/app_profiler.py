@@ -218,8 +218,7 @@ class AppProfiler(object):
     def _download_simpleperf(self):
         simpleperf_binary = get_target_binary_path(self.app_arch, 'simpleperf')
         self.adb.check_run(['push', simpleperf_binary, '/data/local/tmp'])
-        self.run_in_app_dir(['cp', '/data/local/tmp/simpleperf', '.'])
-        self.run_in_app_dir(['chmod', 'a+x', 'simpleperf'])
+        self.adb.check_run(['shell', 'chmod', 'a+x', '/data/local/tmp/simpleperf'])
 
 
     def _download_native_libs(self):
@@ -245,13 +244,12 @@ class AppProfiler(object):
                 searched_lib[item] = True
                 # Use '/' as path separator as item comes from android environment.
                 filename = item[item.rfind('/') + 1:]
-                dirname = item[1:item.rfind('/')]
+                dirname = '/data/local/tmp' + item[:item.rfind('/')]
                 path = filename_dict.get(filename)
                 if path is None:
                     continue
-                self.adb.check_run(['push', path, '/data/local/tmp'])
-                self.run_in_app_dir(['mkdir', '-p', dirname])
-                self.run_in_app_dir(['cp', '/data/local/tmp/' + filename, dirname])
+                self.adb.check_run(['shell', 'mkdir', '-p', dirname])
+                self.adb.check_run(['push', path, dirname])
                 self.has_symfs_on_device = True
 
 
@@ -280,12 +278,11 @@ class AppProfiler(object):
         subproc = None
         returncode = None
         try:
-            args = ['./simpleperf', 'record', self.config['record_options'],
-                    '-p', str(self.app_pid)]
+            args = ['/data/local/tmp/simpleperf', 'record', self.config['record_options'],
+                    '--app', self.config['app_package_name'], '-o', '/data/local/tmp/perf.data']
             if self.has_symfs_on_device:
-                args += ['--symfs', '.']
-            args = self.get_run_in_app_dir_args(args)
-            adb_args = [self.adb.adb_path] + args
+                args += ['--symfs', '/data/local/tmp/native_libs']
+            adb_args = [self.adb.adb_path, 'shell'] + args
             log_debug('run adb cmd: %s' % adb_args)
             subproc = subprocess.Popen(adb_args)
             returncode = subproc.wait()
@@ -301,17 +298,16 @@ class AppProfiler(object):
             to make sure perf.data is completely generated."""
         has_killed = False
         while True:
-            (result, _) = self.run_in_app_dir(['pidof', 'simpleperf'], check_result=False)
+            (result, _) = self.adb.run(['pidof', 'simpleperf'], check_result=False)
             if not result:
                 break
             if not has_killed:
                 has_killed = True
-                self.run_in_app_dir(['pkill', '-l', '2', 'simpleperf'], check_result=False)
+                self.adb.run(['pkill', '-l', '2', 'simpleperf'], check_result=False)
             time.sleep(1)
 
 
     def collect_profiling_data(self):
-        self.run_in_app_dir(['cat perf.data | tee /data/local/tmp/perf.data >/dev/null'])
         self.adb.check_run_and_return_output(['pull', '/data/local/tmp/perf.data',
                                               self.config['perf_data_path']])
         if self.config['collect_binaries']:
@@ -342,10 +338,7 @@ class AppProfiler(object):
 def main():
     parser = argparse.ArgumentParser(
         description=
-"""Profile an android app. See configurations in app_profiler.config.""")
-    parser.add_argument('--config', default='app_profiler.config', help=
-"""Set configuration file. Default is app_profiler.config. The configurations
-can be overridden by options in cmdline.""")
+"""Profile an android app.""")
     parser.add_argument('-p', '--app', help=
 """The package name of the profiled Android app.""")
     parser.add_argument('-lib', '--native_lib_dir', help=
@@ -363,37 +356,32 @@ time of an activity. Default is .MainActivity.""")
     parser.add_argument('-t', '--test', help=
 """Start an instrumentation test before profiling. It can be used to profile
 an instrumentation test.""")
-    parser.add_argument('-r', '--record_options', help=
-"""Set options for `simpleperf record` command. Default is "-e cpu-cycles:u -f 4000 -g --duration 10".""")
-    parser.add_argument('-o', '--perf_data_path', help=
-"""The path to store profiling data. Default is perf.data.""")
+    parser.add_argument('-r', '--record_options', default="-e cpu-cycles:u -g --duration 10", help=
+"""Set options for `simpleperf record` command.""")
+    parser.add_argument('-o', '--perf_data_path', default="perf.data", help=
+"""The path to store profiling data.""")
     parser.add_argument('-nb', '--skip_collect_binaries', action='store_true', help=
 """By default we collect binaries used in profiling data from device to
 binary_cache directory. It can be used to annotate source code. This option skips it.""")
     parser.add_argument('--disable_adb_root', action='store_true', help=
 """Force adb to run in non root mode.""")
     args = parser.parse_args()
-    config = load_config(args.config)
-    if args.app:
-        config['app_package_name'] = args.app
-    if args.native_lib_dir:
-        config['native_lib_dir'] = args.native_lib_dir
-    if args.skip_recompile:
-        config['recompile_app'] = False
-    if args.apk:
-        config['apk'] = args.apk
-    if args.activity:
-        config['launch_activity'] = args.activity
-        config['launch_inst_test'] = None
-    if args.test:
-        config['launch_inst_test'] = args.test
-        config['launch_activity'] = None
-    if args.record_options:
-        config['record_options'] = args.record_options
-    if args.perf_data_path:
-        config['perf_data_path'] = args.perf_data_path
-    if args.skip_collect_binaries:
-        config['collect_binaries'] = False
+    config = {}
+    config['app_package_name'] = args.app
+    config['native_lib_dir'] = args.native_lib_dir
+    config['recompile_app'] = not args.skip_recompile
+    config['apk_file_path'] = args.apk
+
+    if args.activity and args.test:
+        log_exit("-a and -t can't be used at the same time.")
+    if not args.activity and not args.test:
+        args.activity = '.MainActivity'
+    config['launch_activity'] = args.activity
+    config['launch_inst_test'] = args.test
+
+    config['record_options'] = args.record_options
+    config['perf_data_path'] = args.perf_data_path
+    config['collect_binaries'] = not args.skip_collect_binaries
     config['disable_adb_root'] = args.disable_adb_root
 
     profiler = AppProfiler(config)
