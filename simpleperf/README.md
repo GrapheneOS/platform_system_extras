@@ -866,7 +866,7 @@ visualize in which part of an app the CPU cycles are spent.
 
 ### How to use it
 
-Open a terminal and from `simpleperf` directory type:
+Open a terminal and from `simpleperf` or `simpleperf/scripts` directory type:
 ```
 ./inferno.sh  (on Linux/Mac)
 ./inferno.bat (on Windows)
