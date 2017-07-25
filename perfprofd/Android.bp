@@ -11,7 +11,6 @@ perfprofd_cppflags = [
 
 cc_library_static {
     name: "libperfprofdcore",
-    clang: true,
 
     local_include_dirs: ["quipper/kernel-headers"],
     export_include_dirs: ["."],
@@ -41,7 +40,6 @@ cc_library_static {
 //
 cc_library_static {
     name: "libperfprofdutils",
-    clang: true,
 
         cppflags: perfprofd_cppflags,
     srcs: ["perfprofdutils.cc"],
@@ -52,7 +50,6 @@ cc_library_static {
 //
 cc_binary {
     name: "perfprofd",
-    clang: true,
 
     srcs: ["perfprofdmain.cc"],
     static_libs: [
