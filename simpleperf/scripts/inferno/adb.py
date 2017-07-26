@@ -2,7 +2,7 @@ import subprocess
 import abc
 import os
 
-BIN_PATH = "../scripts/bin/android/%s/simpleperf"
+BIN_PATH = "bin/android/%s/simpleperf"
 
 class Abi:
     ARM    = 1
