@@ -29,11 +29,13 @@
 
 """
 
-from scripts.simpleperf_report_lib import *
+from simpleperf_report_lib import ReportLib
 import argparse
 from data_types import *
 from svg_renderer import *
 import datetime
+import os
+import subprocess
 import webbrowser
 from adb_non_root import AdbNonRoot
 from adb_root import AdbRoot
