@@ -41,6 +41,7 @@ import sys
 import tempfile
 import unittest
 from utils import *
+from simpleperf_report_lib import ReportLib
 
 has_google_protobuf = True
 try:
@@ -416,6 +417,81 @@ class TestExampleOfKotlinRoot(TestExamplesBase):
 
     def test_app_profiler(self):
         self.common_test_app_profiler()
+
+
+class TestReportLib(unittest.TestCase):
+    def setUp(self):
+        self.report_lib = ReportLib()
+        self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_symbols.data'))
+
+    def tearDown(self):
+        self.report_lib.Close()
+
+    def test_build_id(self):
+        build_id = self.report_lib.GetBuildIdForPath('/data/t2')
+        self.assertEqual(build_id, '0x70f1fe24500fc8b0d9eb477199ca1ca21acca4de')
+
+    def test_symbol_addr(self):
+        found_func2 = False
+        while self.report_lib.GetNextSample():
+            sample = self.report_lib.GetCurrentSample()
+            symbol = self.report_lib.GetSymbolOfCurrentSample()
+            if symbol.symbol_name == 'func2(int, int)':
+                found_func2 = True
+                self.assertEqual(symbol.symbol_addr, 0x4004ed)
+        self.assertTrue(found_func2)
+
+    def test_sample(self):
+        found_sample = False
+        while self.report_lib.GetNextSample():
+            sample = self.report_lib.GetCurrentSample()
+            if sample.ip == 0x4004ff and sample.time == 7637889424953:
+                found_sample = True
+                self.assertEqual(sample.pid, 15926)
+                self.assertEqual(sample.tid, 15926)
+                self.assertEqual(sample.thread_comm, 't2')
+                self.assertEqual(sample.cpu, 5)
+                self.assertEqual(sample.period, 694614)
+                event = self.report_lib.GetEventOfCurrentSample()
+                self.assertEqual(event.name, 'cpu-cycles')
+                callchain = self.report_lib.GetCallChainOfCurrentSample()
+                self.assertEqual(callchain.nr, 0)
+        self.assertTrue(found_sample)
+
+    def test_meta_info(self):
+        self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_trace_offcpu.data'))
+        meta_info = self.report_lib.MetaInfo()
+        self.assertEqual(meta_info["simpleperf_version"], "1.65f91c7ed862")
+        self.assertEqual(meta_info["system_wide_collection"], "false")
+        self.assertEqual(meta_info["trace_offcpu"], "true")
+        self.assertEqual(meta_info["event_type_info"], "cpu-cycles,0,0\nsched:sched_switch,2,47")
+
+    def test_event_name_from_meta_info(self):
+        self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_trace_offcpu.data'))
+        event_names = set()
+        while self.report_lib.GetNextSample():
+            event_names.add(self.report_lib.GetEventOfCurrentSample().name)
+        self.assertTrue('sched:sched_switch' in event_names)
+        self.assertTrue('cpu-cycles' in event_names)
+
+    def test_offcpu(self):
+        self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_trace_offcpu.data'))
+        total_period = 0
+        sleep_function_period = 0
+        sleep_function_name = "SleepFunction(unsigned long long)"
+        while self.report_lib.GetNextSample():
+            sample = self.report_lib.GetCurrentSample()
+            total_period += sample.period
+            if self.report_lib.GetSymbolOfCurrentSample().symbol_name == sleep_function_name:
+                sleep_function_period += sample.period
+                continue
+            callchain = self.report_lib.GetCallChainOfCurrentSample()
+            for i in range(callchain.nr):
+                if callchain.entries[i].symbol.symbol_name == sleep_function_name:
+                    sleep_function_period += sample.period
+                    break
+        sleep_percentage = float(sleep_function_period) / total_period
+        self.assertAlmostEqual(sleep_percentage, 0.4629, delta=0.0001)
 
 
 if __name__ == '__main__':
