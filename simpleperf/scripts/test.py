@@ -50,16 +50,44 @@ except:
     has_google_protobuf = False
 
 
-class TestExamplesBase(unittest.TestCase):
+adb = AdbHelper()
+# TODO: Change to check ro.build.version.sdk >= 26 when OMR1 is prevalent.
+device_version = adb.check_run_and_return_output(['shell', 'getprop', 'ro.build.version.release'])
+support_trace_offcpu = device_version.find('OMR1') != -1
+
+def build_testdata():
+    """ Collect testdata from ../testdata and ../demo. """
+    from_testdata_path = os.path.join('..', 'testdata')
+    from_demo_path = os.path.join('..', 'demo')
+    if not os.path.isdir(from_testdata_path) or not os.path.isdir(from_demo_path):
+        return
+    copy_testdata_list = ['perf_with_symbols.data', 'perf_with_trace_offcpu.data']
+    copy_demo_list = ['SimpleperfExamplePureJava', 'SimpleperfExampleWithNative',
+                      'SimpleperfExampleOfKotlin']
+
+    testdata_path = "testdata"
+    if os.path.isdir(testdata_path):
+        shutil.rmtree(testdata_path)
+        os.mkdir(testdata_path)
+    for testdata in copy_testdata_list:
+        shutil.copy(os.path.join(from_testdata_path, testdata), testdata_path)
+    for demo in copy_demo_list:
+        shutil.copytree(os.path.join(from_demo_path, demo), os.path.join(testdata_path, demo))
+
+
+class TestExampleBase(unittest.TestCase):
     @classmethod
     def prepare(cls, example_name, package_name, activity_name, abi=None, adb_root=False):
         cls.adb = AdbHelper(enable_switch_to_root=adb_root)
         cls.example_path = os.path.join("testdata", example_name)
         if not os.path.isdir(cls.example_path):
             log_fatal("can't find " + cls.example_path)
-        cls.apk_path = os.path.join(cls.example_path, "app-profiling.apk")
-        if not os.path.isfile(cls.apk_path):
-            log_fatal("can't find " + cls.apk_path)
+        for root, _, files in os.walk(cls.example_path):
+            if 'app-profiling.apk' in files:
+                cls.apk_path = os.path.join(root, 'app-profiling.apk')
+                break
+        if not hasattr(cls, 'apk_path'):
+            log_fatal("can't find app-profiling.apk under " + cls.example_path)
         cls.package_name = package_name
         cls.activity_name = activity_name
         cls.python_path = sys.executable
@@ -70,6 +98,10 @@ class TestExamplesBase(unittest.TestCase):
         cls.adb.check_run(args)
         cls.adb_root = adb_root
         cls.compiled = False
+
+    def setUp(self):
+        if self.id().find('TraceOffCpu') != -1 and not support_trace_offcpu:
+            self.skipTest('trace-offcpu is not supported on device')
 
     @classmethod
     def tearDownClass(cls):
@@ -237,7 +269,7 @@ class TestExamplesBase(unittest.TestCase):
                                               ["has_line_numbers: False"])
 
 
-class TestExamplePureJava(TestExamplesBase):
+class TestExamplePureJava(TestExampleBase):
     @classmethod
     def setUpClass(cls):
         cls.prepare("SimpleperfExamplePureJava",
@@ -278,7 +310,7 @@ class TestExamplePureJava(TestExamplesBase):
                 ["com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()"])
 
 
-class TestExamplePureJavaRoot(TestExamplesBase):
+class TestExamplePureJavaRoot(TestExampleBase):
     @classmethod
     def setUpClass(cls):
         cls.prepare("SimpleperfExamplePureJava",
@@ -290,7 +322,36 @@ class TestExamplePureJavaRoot(TestExamplesBase):
         self.common_test_app_profiler()
 
 
-class TestExampleWithNative(TestExamplesBase):
+class TestExamplePureJavaTraceOffCpu(TestExampleBase):
+    @classmethod
+    def setUpClass(cls):
+        cls.prepare("SimpleperfExamplePureJava",
+                    "com.example.simpleperf.simpleperfexamplepurejava",
+                    ".SleepActivity")
+
+    def test_smoke(self):
+        self.run_app_profiler(record_arg = "-g --duration 3 -e cpu-cycles:u --trace-offcpu")
+        self.run_cmd(["report.py", "-g", "-o", "report.txt"])
+        self.check_strings_in_file("report.txt",
+            ["com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.run()",
+             "long com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.RunFunction()",
+             "long com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.SleepFunction(long)"
+             ])
+        self.remove("annotated_files")
+        self.run_cmd(["annotate.py", "-s", self.example_path])
+        self.check_exist(dir="annotated_files")
+        self.check_file_under_dir("annotated_files", "SleepActivity.java")
+        summary_file = os.path.join("annotated_files", "summary")
+        self.check_annotation_summary(summary_file,
+            [("SleepActivity.java", 80, 20),
+             ("run", 80, 0),
+             ("RunFunction", 20, 20),
+             ("SleepFunction", 20, 0),
+             ("line 24", 20, 0),
+             ("line 32", 20, 0)])
+
+
+class TestExampleWithNative(TestExampleBase):
     @classmethod
     def setUpClass(cls):
         cls.prepare("SimpleperfExampleWithNative",
@@ -332,7 +393,7 @@ class TestExampleWithNative(TestExamplesBase):
                 ["BusyLoopThread"])
 
 
-class TestExampleWithNativeRoot(TestExamplesBase):
+class TestExampleWithNativeRoot(TestExampleBase):
     @classmethod
     def setUpClass(cls):
         cls.prepare("SimpleperfExampleWithNative",
@@ -344,6 +405,62 @@ class TestExampleWithNativeRoot(TestExamplesBase):
         self.common_test_app_profiler()
         self.remove("binary_cache")
         self.run_app_profiler(native_lib_dir=self.example_path)
+
+
+class TestExampleWithNativeTraceOffCpu(TestExampleBase):
+    @classmethod
+    def setUpClass(cls):
+        cls.prepare("SimpleperfExampleWithNative",
+                    "com.example.simpleperf.simpleperfexamplewithnative",
+                    ".SleepActivity")
+
+    def test_smoke(self):
+        self.run_app_profiler(record_arg = "-g --duration 3 -e cpu-cycles:u --trace-offcpu")
+        self.run_cmd(["report.py", "-g", "--comms", "SleepThread", "-o", "report.txt"])
+        self.check_strings_in_file("report.txt",
+            ["SleepThread(void*)",
+             "RunFunction()",
+             "SleepFunction(unsigned long long)"])
+        self.remove("annotated_files")
+        self.run_cmd(["annotate.py", "-s", self.example_path, "--comm", "SleepThread"])
+        self.check_exist(dir="annotated_files")
+        self.check_file_under_dir("annotated_files", "native-lib.cpp")
+        summary_file = os.path.join("annotated_files", "summary")
+        self.check_annotation_summary(summary_file,
+            [("native-lib.cpp", 80, 20),
+             ("SleepThread", 80, 0),
+             ("RunFunction", 20, 20),
+             ("SleepFunction", 20, 0),
+             ("line 73", 20, 0),
+             ("line 83", 20, 0)])
+
+
+class TestExampleWithNativeJniCall(TestExampleBase):
+    @classmethod
+    def setUpClass(cls):
+        cls.prepare("SimpleperfExampleWithNative",
+                    "com.example.simpleperf.simpleperfexamplewithnative",
+                    ".MixActivity")
+
+    def test_smoke(self):
+        self.run_app_profiler()
+        self.run_cmd(["report.py", "-g", "--comms", "BusyThread", "-o", "report.txt"])
+        self.check_strings_in_file("report.txt",
+            ["void com.example.simpleperf.simpleperfexamplewithnative.MixActivity$1.run()",
+             "int com.example.simpleperf.simpleperfexamplewithnative.MixActivity.callFunction(int)",
+             "Java_com_example_simpleperf_simpleperfexamplewithnative_MixActivity_callFunction"])
+        self.remove("annotated_files")
+        self.run_cmd(["annotate.py", "-s", self.example_path, "--comm", "BusyThread"])
+        self.check_exist(dir="annotated_files")
+        self.check_file_under_dir("annotated_files", "native-lib.cpp")
+        self.check_file_under_dir("annotated_files", "MixActivity.java")
+        summary_file = os.path.join("annotated_files", "summary")
+        self.check_annotation_summary(summary_file,
+            [("MixActivity.java", 80, 0),
+             ("run", 80, 0),
+             ("line 26", 20, 0),
+             ("native-lib.cpp", 10, 0),
+             ("line 40", 10, 0)])
 
 
 class TestExampleWithNativeForceArm(TestExampleWithNative):
@@ -365,7 +482,16 @@ class TestExampleWithNativeForceArmRoot(TestExampleWithNativeRoot):
                     adb_root=False)
 
 
-class TestExampleOfKotlin(TestExamplesBase):
+class TestExampleWithNativeTraceOffCpuForceArm(TestExampleWithNativeTraceOffCpu):
+    @classmethod
+    def setUpClass(cls):
+        cls.prepare("SimpleperfExampleWithNative",
+                    "com.example.simpleperf.simpleperfexamplewithnative",
+                    ".SleepActivity",
+                    abi="armeabi-v7a")
+
+
+class TestExampleOfKotlin(TestExampleBase):
     @classmethod
     def setUpClass(cls):
         cls.prepare("SimpleperfExampleOfKotlin",
@@ -407,7 +533,7 @@ class TestExampleOfKotlin(TestExamplesBase):
                 ["com.example.simpleperf.simpleperfexampleofkotlin.MainActivity$createBusyThread$1.run()"])
 
 
-class TestExampleOfKotlinRoot(TestExamplesBase):
+class TestExampleOfKotlinRoot(TestExampleBase):
     @classmethod
     def setUpClass(cls):
         cls.prepare("SimpleperfExampleOfKotlin",
@@ -417,6 +543,35 @@ class TestExampleOfKotlinRoot(TestExamplesBase):
 
     def test_app_profiler(self):
         self.common_test_app_profiler()
+
+
+class TestExampleOfKotlinTraceOffCpu(TestExampleBase):
+    @classmethod
+    def setUpClass(cls):
+        cls.prepare("SimpleperfExampleOfKotlin",
+                    "com.example.simpleperf.simpleperfexampleofkotlin",
+                    ".SleepActivity")
+
+    def test_smoke(self):
+        self.run_app_profiler(record_arg = "-g --duration 3 -e cpu-cycles:u --trace-offcpu")
+        self.run_cmd(["report.py", "-g", "-o", "report.txt"])
+        self.check_strings_in_file("report.txt",
+            ["void com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.run()",
+             "long com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.RunFunction()",
+             "long com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.SleepFunction(long)"
+             ])
+        self.remove("annotated_files")
+        self.run_cmd(["annotate.py", "-s", self.example_path])
+        self.check_exist(dir="annotated_files")
+        self.check_file_under_dir("annotated_files", "SleepActivity.kt")
+        summary_file = os.path.join("annotated_files", "summary")
+        self.check_annotation_summary(summary_file,
+            [("SleepActivity.kt", 80, 20),
+             ("run", 80, 0),
+             ("RunFunction", 20, 20),
+             ("SleepFunction", 20, 0),
+             ("line 24", 20, 0),
+             ("line 32", 20, 0)])
 
 
 class TestReportLib(unittest.TestCase):
@@ -494,7 +649,11 @@ class TestReportLib(unittest.TestCase):
         self.assertAlmostEqual(sleep_percentage, 0.4629, delta=0.0001)
 
 
-if __name__ == '__main__':
+def main():
+    build_testdata()
     test_program = unittest.main(failfast=True, exit=False)
     if test_program.result.wasSuccessful():
-        TestExamplesBase.cleanupTestFiles()
+        TestExampleBase.cleanupTestFiles()
+
+if __name__ == '__main__':
+    main()

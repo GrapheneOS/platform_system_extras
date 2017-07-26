@@ -59,7 +59,7 @@ std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr,
       static bool warned = false;
       if (!warned) {
         warned = true;
-        PLOG(INFO) << "Adjust sample freq to max allowed sample freq " << max_sample_freq;
+        LOG(INFO) << "Adjust sample freq to max allowed sample freq " << max_sample_freq;
       }
       real_attr.sample_freq = max_sample_freq;
     }

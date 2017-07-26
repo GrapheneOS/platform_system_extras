@@ -76,7 +76,7 @@ $ cd SimpleperfExampleWithNative
 
 # On windows, use "gradlew" instead.
 $ ./gradlew clean assemble
-$ adb install -r app/build/outputs/apk/app-profiling.apk
+$ adb install -r app/build/outputs/apk/profiling/app-profiling.apk
 ```
 
 2. Record profiling data:
