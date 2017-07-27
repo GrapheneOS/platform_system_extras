@@ -817,7 +817,7 @@ mode, stack frame based call graph doesn't work well.
 
 ## Inferno
 
-![logo](./inferno/inferno_small.png)
+![logo](./scripts/inferno/inferno_small.png)
 
 ### Description
 
@@ -825,7 +825,7 @@ Inferno is a flamegraph generator for native (C/C++) Android apps. It was
 originally written to profile and improve surfaceflinger performance
 (Android compositor) but it can be used for any native Android application
 . You can see a sample report generated with Inferno
-[here](./inferno/report.html). Report are self-contained in HTML so they can be
+[here](./scripts/inferno/report.html). Report are self-contained in HTML so they can be
 exchanged easily.
 
 Notice there is no concept of time in a flame graph since all callstack are
@@ -834,7 +834,7 @@ the number of samples and the height is related to the number of functions on
 the stack when sampling occurred.
 
 
-![flamegraph sample](./inferno/main_thread_flamegraph.png)
+![flamegraph sample](./scripts/inferno/main_thread_flamegraph.png)
 
 In the flamegraph featured above you can see the main thread of SurfaceFlinger.
 It is immediatly apparent that most of the CPU time is spent processing messages
@@ -849,7 +849,7 @@ A flamegraph give you instant vision on the CPU cycles cost centers but
 it can also be used to find specific offenders. To find them, look for
 plateaus. It is easier to see an example:
 
-![flamegraph sample](./inferno/bottleneck.png)
+![flamegraph sample](./scripts/inferno/bottleneck.png)
 
 In the previous flamegraph, two
 plateaus (due to `android::BufferQueueCore::validateConsistencyLocked`)
@@ -866,7 +866,7 @@ visualize in which part of an app the CPU cycles are spent.
 
 ### How to use it
 
-Open a terminal and from `simpleperf` or `simpleperf/scripts` directory type:
+Open a terminal and from `simpleperf/scripts` directory type:
 ```
 ./inferno.sh  (on Linux/Mac)
 ./inferno.bat (on Windows)
@@ -888,7 +888,7 @@ things. Use `-h` to get a list of all supported parameters.
 
 #### Messy flame graph
 A healthy flame graph features a single call site at its base
-(see `inferno/report.html`).
+(see `scripts/inferno/report.html`).
 If you don't see a unique call site like `_start` or `_start_thread` at the base
 from which all flames originate, something went wrong. : Stack unwinding may
 fail to reach the root callsite. These incomplete
