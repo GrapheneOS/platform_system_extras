@@ -298,12 +298,12 @@ class AppProfiler(object):
             to make sure perf.data is completely generated."""
         has_killed = False
         while True:
-            (result, _) = self.adb.run(['pidof', 'simpleperf'], check_result=False)
+            (result, _) = self.adb.run_and_return_output(['shell', 'pidof', 'simpleperf'])
             if not result:
                 break
             if not has_killed:
                 has_killed = True
-                self.adb.run(['pkill', '-l', '2', 'simpleperf'], check_result=False)
+                self.adb.run_and_return_output(['shell', 'pkill', '-l', '2', 'simpleperf'])
             time.sleep(1)
 
 
