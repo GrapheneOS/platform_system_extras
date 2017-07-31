@@ -18,7 +18,6 @@ cts_src_files := \
     logger_test.cpp \
     multicast_test.cpp \
     nfs_test.cpp \
-    pstore_test.cpp \
     sysvipc_test.cpp \
 
 # Required plus Recommended Tests
@@ -28,6 +27,7 @@ test_src_files := \
     aslr_test.cpp \
     aslr_rec_test.cpp \
     mmc_max_speed_test.cpp \
+    pstore_test.cpp \
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := kernel-config-unit-tests
