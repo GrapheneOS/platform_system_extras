@@ -16,7 +16,7 @@
 LOCAL_PATH := $(call my-dir)
 
 SIMPLEPERF_SCRIPT_LIST := $(wildcard $(LOCAL_PATH)/*.py $(LOCAL_PATH)/*.config) \
-                          $(LOCAL_PATH)/../README.md \
+                          $(LOCAL_PATH)/../doc \
                           $(LOCAL_PATH)/../demo \
                           $(LOCAL_PATH)/../testdata/perf_with_symbols.data \
                           $(LOCAL_PATH)/../testdata/perf_with_trace_offcpu.data
