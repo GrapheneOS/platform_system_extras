@@ -186,6 +186,11 @@ class RecordCommand : public Command {
         exclude_kernel_callchain_(false) {
     // Stop profiling if parent exits.
     prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
+    // If we run `adb shell simpleperf record xxx` and stop profiling by ctrl-c, adb closes
+    // sockets connecting simpleperf. After that, simpleperf will receive SIGPIPE when writing
+    // to stdout/stderr, which is a problem when we use '--app' option. So ignore SIGPIPE to
+    // finish properly.
+    signal(SIGPIPE, SIG_IGN);
     app_package_name_ = GetDefaultAppPackageName();
   }
 
