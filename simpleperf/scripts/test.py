@@ -37,8 +37,10 @@ Test using both `adb root` and `adb unroot`.
 import os
 import re
 import shutil
+import signal
 import sys
 import tempfile
+import time
 import unittest
 from utils import *
 from simpleperf_report_lib import ReportLib
@@ -278,6 +280,19 @@ class TestExamplePureJava(TestExampleBase):
 
     def test_app_profiler(self):
         self.common_test_app_profiler()
+
+    def test_app_profiler_with_ctrl_c(self):
+        if is_windows():
+            return
+        args = [sys.executable, "app_profiler.py", "--app", self.package_name,
+                "-r", "--duration 10000", "-nc"]
+        subproc = subprocess.Popen(args)
+        time.sleep(3)
+
+        subproc.send_signal(signal.SIGINT)
+        subproc.wait()
+        self.assertEqual(subproc.returncode, 0)
+        self.run_cmd(["report.py"])
 
     def test_report(self):
         self.common_test_report()
