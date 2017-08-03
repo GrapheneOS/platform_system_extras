@@ -113,7 +113,7 @@ struct SlabFormat {
 class SlabSampleTreeBuilder
     : public SampleTreeBuilder<SlabSample, SlabAccumulateInfo> {
  public:
-  SlabSampleTreeBuilder(SampleComparator<SlabSample> sample_comparator,
+  SlabSampleTreeBuilder(const SampleComparator<SlabSample>& sample_comparator,
                         ThreadTree* thread_tree)
       : SampleTreeBuilder(sample_comparator),
         thread_tree_(thread_tree),
