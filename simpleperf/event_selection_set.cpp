@@ -128,6 +128,14 @@ bool EventSelectionSet::BuildAndCheckEventSelection(
   selection->event_attr.exclude_host = event_type->exclude_host;
   selection->event_attr.exclude_guest = event_type->exclude_guest;
   selection->event_attr.precise_ip = event_type->precise_ip;
+  if (event_type->event_type.type == PERF_TYPE_TRACEPOINT) {
+    selection->event_attr.freq = 0;
+    selection->event_attr.sample_period = DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT;
+  } else {
+    selection->event_attr.freq = 1;
+    selection->event_attr.sample_freq =
+        AdjustSampleFrequency(DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT);
+  }
   if (!IsEventAttrSupported(selection->event_attr)) {
     LOG(ERROR) << "Event type '" << event_type->name
                << "' is not supported on the device";
@@ -147,12 +155,12 @@ bool EventSelectionSet::BuildAndCheckEventSelection(
   return true;
 }
 
-bool EventSelectionSet::AddEventType(const std::string& event_name) {
-  return AddEventGroup(std::vector<std::string>(1, event_name));
+bool EventSelectionSet::AddEventType(const std::string& event_name, size_t* group_id) {
+  return AddEventGroup(std::vector<std::string>(1, event_name), group_id);
 }
 
 bool EventSelectionSet::AddEventGroup(
-    const std::vector<std::string>& event_names) {
+    const std::vector<std::string>& event_names, size_t* group_id) {
   EventSelectionGroup group;
   for (const auto& event_name : event_names) {
     EventSelection selection;
@@ -163,6 +171,9 @@ bool EventSelectionSet::AddEventGroup(
   }
   groups_.push_back(std::move(group));
   UnionSampleType();
+  if (group_id != nullptr) {
+    *group_id = groups_.size() - 1;
+  }
   return true;
 }
 
@@ -284,37 +295,15 @@ void EventSelectionSet::SampleIdAll() {
   }
 }
 
-void EventSelectionSet::SetSampleFreq(uint64_t sample_freq) {
-  for (auto& group : groups_) {
-    for (auto& selection : group) {
+void EventSelectionSet::SetSampleSpeed(size_t group_id, const SampleSpeed& speed) {
+  CHECK_LT(group_id, groups_.size());
+  for (auto& selection : groups_[group_id]) {
+    if (speed.UseFreq()) {
       selection.event_attr.freq = 1;
-      selection.event_attr.sample_freq = sample_freq;
-    }
-  }
-}
-
-void EventSelectionSet::SetSamplePeriod(uint64_t sample_period) {
-  for (auto& group : groups_) {
-    for (auto& selection : group) {
+      selection.event_attr.sample_freq = speed.sample_freq;
+    } else {
       selection.event_attr.freq = 0;
-      selection.event_attr.sample_period = sample_period;
-    }
-  }
-}
-
-void EventSelectionSet::UseDefaultSampleFreq() {
-  for (auto& group : groups_) {
-    for (auto& selection : group) {
-      if (selection.event_type_modifier.event_type.type ==
-          PERF_TYPE_TRACEPOINT) {
-        selection.event_attr.freq = 0;
-        selection.event_attr.sample_period =
-            DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT;
-      } else {
-        selection.event_attr.freq = 1;
-        selection.event_attr.sample_freq =
-            DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT;
-      }
+      selection.event_attr.sample_period = speed.sample_period;
     }
   }
 }
