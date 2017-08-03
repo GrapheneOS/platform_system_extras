@@ -459,7 +459,7 @@ TEST_F(ReportCommandTest, raw_period_option) {
   Report(PERF_DATA, {"--raw-period"});
   ASSERT_TRUE(success);
   ASSERT_NE(content.find("GlobalFunc"), std::string::npos);
-  ASSERT_EQ(content.find("%"), std::string::npos);
+  ASSERT_EQ(content.find('%'), std::string::npos);
 }
 
 TEST_F(ReportCommandTest, full_callgraph_option) {
