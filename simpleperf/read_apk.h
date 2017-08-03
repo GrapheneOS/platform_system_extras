@@ -35,8 +35,8 @@ class EmbeddedElf {
   {
   }
 
-  EmbeddedElf(std::string filepath,
-              std::string entry_name,
+  EmbeddedElf(const std::string& filepath,
+              const std::string& entry_name,
               size_t entry_offset,
               size_t entry_size)
       : filepath_(filepath)
