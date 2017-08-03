@@ -549,7 +549,7 @@ int WaitForAppProcess(const std::string& package_name) {
 
 class ScopedFile {
  public:
-  ScopedFile(const std::string& filepath, std::string app_package_name = "")
+  ScopedFile(const std::string& filepath, const std::string& app_package_name = "")
       : filepath_(filepath), app_package_name_(app_package_name) {}
 
   ~ScopedFile() {
