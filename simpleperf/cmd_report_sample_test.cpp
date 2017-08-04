@@ -91,3 +91,15 @@ TEST(cmd_report_sample, has_thread_record) {
   ASSERT_TRUE(android::base::ReadFileToString(tmpfile2.path, &data));
   ASSERT_NE(data.find("thread:"), std::string::npos);
 }
+
+TEST(cmd_report_sample, trace_offcpu) {
+  TemporaryFile tmpfile;
+  TemporaryFile tmpfile2;
+  ASSERT_TRUE(ReportSampleCmd()->Run({"-i", GetTestData(PERF_DATA_WITH_TRACE_OFFCPU),
+                                      "-o", tmpfile.path, "--protobuf"}));
+  ASSERT_TRUE(ReportSampleCmd()->Run(
+      {"--dump-protobuf-report", tmpfile.path, "-o", tmpfile2.path}));
+  std::string data;
+  ASSERT_TRUE(android::base::ReadFileToString(tmpfile2.path, &data));
+  ASSERT_NE(data.find("event_type: sched:sched_switch"), std::string::npos);
+}
