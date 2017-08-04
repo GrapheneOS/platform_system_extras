@@ -49,20 +49,30 @@ class AppProfiler(object):
         self.is_root_device = False
         self.android_version = 0
         self.device_arch = None
-        self.app_arch = None
+        self.app_arch = self.config['app_arch']
+        self.app_program = self.config['app_package_name'] or self.config['native_program']
         self.app_pid = None
         self.has_symfs_on_device = False
 
 
     def check_config(self, config):
-        config_names = ['app_package_name', 'native_lib_dir', 'apk_file_path',
-                        'recompile_app', 'launch_activity', 'launch_inst_test',
+        config_names = ['app_package_name', 'native_program', 'cmd', 'native_lib_dir',
+                        'apk_file_path', 'recompile_app', 'launch_activity', 'launch_inst_test',
                         'record_options', 'perf_data_path']
         for name in config_names:
             if name not in config:
                 log_exit('config [%s] is missing' % name)
-        if not config['app_package_name']:
-            log_exit("The package name of the application hasn't been set")
+        if config['app_package_name'] and config['native_program']:
+            log_exit("We can't profile an Android app and a native program at the same time.")
+        elif config['app_package_name'] and config['cmd']:
+            log_exit("We can't profile an Android app and a cmd at the same time.")
+        elif config['native_program'] and config['cmd']:
+            log_exit("We can't profile a native program and a cmd at the same time.")
+        elif not config['app_package_name'] and not config['native_program'] and not config["cmd"]:
+            log_exit("Please set a profiling target: an Android app, a native program or a cmd.")
+        if config['app_package_name']:
+            if config['launch_activity'] and config['launch_inst_test']:
+                log_exit("We can't launch an activity and a test at the same time.")
         native_lib_dir = config.get('native_lib_dir')
         if native_lib_dir and not os.path.isdir(native_lib_dir):
             log_exit('[native_lib_dir] "%s" is not a dir' % native_lib_dir)
@@ -71,7 +81,8 @@ class AppProfiler(object):
             log_exit('[apk_file_path] "%s" is not a file' % apk_file_path)
         if config['recompile_app']:
             if not config['launch_activity'] and not config['launch_inst_test']:
-                log_exit('one of launch_activity and launch_inst_test is needed for recompile app')
+                # If recompile app, the app needs to be restarted to take effect.
+                config['launch_activity'] = '.MainActivity'
 
 
     def profile(self):
@@ -111,18 +122,7 @@ class AppProfiler(object):
                 if strs:
                     self.android_version = int(strs[0])
 
-        # Get device architecture.
-        output = self.adb.check_run_and_return_output(['shell', 'uname', '-m'])
-        if output.find('aarch64') != -1:
-            self.device_arch = 'aarch64'
-        elif output.find('arm') != -1:
-            self.device_arch = 'arm'
-        elif output.find('x86_64') != -1:
-            self.device_arch = 'x86_64'
-        elif output.find('86') != -1:
-            self.device_arch = 'x86'
-        else:
-            log_fatal('unsupported architecture: %s' % output.strip())
+        self.device_arch = self.adb.get_device_arch()
 
 
     def _enable_profiling(self):
@@ -155,8 +155,14 @@ class AppProfiler(object):
 
 
     def _restart_app(self):
-        if not self.config['launch_activity'] and not self.config['launch_inst_test']:
+        if not self.config['app_package_name']:
             return
+        if not self.config['launch_activity'] and not self.config['launch_inst_test']:
+            self.app_pid = self._find_app_process()
+            if self.app_pid is not None:
+                return
+            else:
+                self.config['launch_activity'] = '.MainActivity'
 
         pid = self._find_app_process()
         if pid is not None:
@@ -187,31 +193,33 @@ class AppProfiler(object):
     def _find_app_process(self):
         # On Android >= N, pidof is available. Otherwise, we can use ps.
         if self.android_version >= 7:
-            result, output = self.adb.run_and_return_output(['shell', 'pidof',
-                                                             self.config['app_package_name']])
+            result, output = self.adb.run_and_return_output(['shell', 'pidof', self.app_program])
             return int(output) if result else None
         result, output = self.adb.run_and_return_output(['shell', 'ps'], log_output=False)
         if not result:
             return None
         for line in output.split('\n'):
             strs = line.split()
-            if len(strs) > 2 and strs[-1].find(self.config['app_package_name']) != -1:
+            if len(strs) > 2 and self.app_program in strs[-1]:
                 return int(strs[1])
         return None
 
 
     def _get_app_environment(self):
-        self.app_pid = self._find_app_process()
-        if self.app_pid is None:
-            log_exit("can't find process for app [%s]" % self.config['app_package_name'])
-        if self.device_arch in ['aarch64', 'x86_64']:
-            output = self.run_in_app_dir(['cat', '/proc/%d/maps' % self.app_pid], log_output=False)
-            if output.find('linker64') != -1:
-                self.app_arch = self.device_arch
+        if not self.config['cmd']:
+            if self.app_pid is None:
+                self.app_pid = self._find_app_process()
+                if self.app_pid is None:
+                    log_exit("can't find process for app [%s]" % self.app_program)
+        if not self.app_arch:
+            if not self.config['cmd'] and self.device_arch in ['arm64', 'x86_64']:
+                output = self.run_in_app_dir(['cat', '/proc/%d/maps' % self.app_pid], log_output=False)
+                if 'linker64' in output:
+                    self.app_arch = self.device_arch
+                else:
+                    self.app_arch = 'arm' if self.device_arch == 'arm64' else 'x86'
             else:
-                self.app_arch = 'arm' if self.device_arch == 'aarch64' else 'x86'
-        else:
-            self.app_arch = self.device_arch
+                self.app_arch = self.device_arch
         log_info('app_arch: %s' % self.app_arch)
 
 
@@ -258,17 +266,17 @@ class AppProfiler(object):
         if old_path is None:
             return True
         if self.app_arch == 'arm':
-            result1 = new_path.find('armeabi-v7a/') != -1
-            result2 = old_path.find('armeabi-v7a') != -1
+            result1 = 'armeabi-v7a/' in new_path
+            result2 = 'armeabi-v7a' in old_path
             if result1 != result2:
                 return result1
-        arch_dir = 'arm64' if self.app_arch == 'aarch64' else self.app_arch + '/'
-        result1 = new_path.find(arch_dir) != -1
-        result2 = old_path.find(arch_dir) != -1
+        arch_dir = self.app_arch + '/'
+        result1 = arch_dir in new_path
+        result2 = arch_dir in old_path
         if result1 != result2:
             return result1
-        result1 = new_path.find('obj/') != -1
-        result2 = old_path.find('obj/') != -1
+        result1 = 'obj/' in new_path
+        result2 = 'obj/' in old_path
         if result1 != result2:
             return result1
         return False
@@ -279,7 +287,13 @@ class AppProfiler(object):
         returncode = None
         try:
             args = ['/data/local/tmp/simpleperf', 'record', self.config['record_options'],
-                    '--app', self.config['app_package_name'], '-o', '/data/local/tmp/perf.data']
+                    '-o', '/data/local/tmp/perf.data']
+            if self.config['app_package_name']:
+                args += ['--app', self.config['app_package_name']]
+            elif self.config['native_program']:
+                args += ['-p', str(self.app_pid)]
+            elif self.config['cmd']:
+                args.append(self.config['cmd'])
             if self.has_symfs_on_device:
                 args += ['--symfs', '/data/local/tmp/native_libs']
             adb_args = [self.adb.adb_path, 'shell'] + args
@@ -324,38 +338,46 @@ class AppProfiler(object):
         args = self.get_run_in_app_dir_args(args)
         if check_result:
             return self.adb.check_run_and_return_output(args, stdout_file, log_output=log_output)
-        else:
-            return self.adb.run_and_return_output(args, stdout_file, log_output=log_output)
+        return self.adb.run_and_return_output(args, stdout_file, log_output=log_output)
 
 
     def get_run_in_app_dir_args(self, args):
+        if not self.config['app_package_name']:
+            return ['shell'] + args
         if self.is_root_device:
             return ['shell', 'cd /data/data/' + self.config['app_package_name'] + ' && ' +
                       (' '.join(args))]
-        else:
-            return ['shell', 'run-as', self.config['app_package_name']] + args
+        return ['shell', 'run-as', self.config['app_package_name']] + args
 
 def main():
     parser = argparse.ArgumentParser(
         description=
-"""Profile an android app.""")
+"""Profile an Android app or native program.""")
     parser.add_argument('-p', '--app', help=
-"""The package name of the profiled Android app.""")
+"""Profile an Android app, given the package name. Like -p com.example.android.myapp.""")
+    parser.add_argument('-np', '--native_program', help=
+"""Profile a native program. The program should be running on the device.
+Like -np surfaceflinger.""")
+    parser.add_argument('-cmd', help=
+"""Run a cmd and profile it. Like -cmd "pm -l".""")
     parser.add_argument('-lib', '--native_lib_dir', help=
 """Path to find debug version of native shared libraries used in the app.""")
     parser.add_argument('-nc', '--skip_recompile', action='store_true', help=
-"""By default we recompile java bytecode to native instructions to profile java
-code. It takes some time. You can skip it if the code has been compiled or you
+"""When profiling an Android app, by default we recompile java bytecode to native instructions
+to profile java code. It takes some time. You can skip it if the code has been compiled or you
 don't need to profile java code.""")
     parser.add_argument('--apk', help=
-"""Apk file of the profiled app, used on Android version <= M, which needs to
-reinstall the app to recompile it.""")
+"""When profiling an Android app, we need the apk file to recompile the app on
+Android version <= M.""")
     parser.add_argument('-a', '--activity', help=
-"""Start an activity before profiling. It can be used to profile the startup
-time of an activity. Default is .MainActivity.""")
+"""When profiling an Android app, start an activity before profiling. It can be used to profile
+the startup time of an activity.""")
     parser.add_argument('-t', '--test', help=
-"""Start an instrumentation test before profiling. It can be used to profile
-an instrumentation test.""")
+"""When profiling an Android app, start an instrumentation test before profiling.
+It can be used to profile an instrumentation test.""")
+    parser.add_argument('--arch', help=
+"""Select which arch the app is running on, possible values are:
+arm, arm64, x86, x86_64. If not set, the script will try to detect it.""")
     parser.add_argument('-r', '--record_options', default="-e cpu-cycles:u -g --duration 10", help=
 """Set options for `simpleperf record` command.""")
     parser.add_argument('-o', '--perf_data_path', default="perf.data", help=
@@ -368,17 +390,16 @@ binary_cache directory. It can be used to annotate source code. This option skip
     args = parser.parse_args()
     config = {}
     config['app_package_name'] = args.app
+    config['native_program'] = args.native_program
+    config['cmd'] = args.cmd
     config['native_lib_dir'] = args.native_lib_dir
-    config['recompile_app'] = not args.skip_recompile
+    config['recompile_app'] = args.app and not args.skip_recompile
     config['apk_file_path'] = args.apk
 
-    if args.activity and args.test:
-        log_exit("-a and -t can't be used at the same time.")
-    if not args.activity and not args.test:
-        args.activity = '.MainActivity'
     config['launch_activity'] = args.activity
     config['launch_inst_test'] = args.test
 
+    config['app_arch'] = args.arch
     config['record_options'] = args.record_options
     config['perf_data_path'] = args.perf_data_path
     config['collect_binaries'] = not args.skip_collect_binaries
