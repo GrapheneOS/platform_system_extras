@@ -151,7 +151,7 @@ const std::vector<EventType>& GetAllEventTypes() {
   return event_type_array;
 }
 
-const EventType* FindEventTypeByName(const std::string& name) {
+const EventType* FindEventTypeByName(const std::string& name, bool report_error) {
   const EventType* result = nullptr;
   for (auto& event_type : GetAllEventTypes()) {
     if (android::base::EqualsIgnoreCase(event_type.name, name)) {
@@ -159,7 +159,7 @@ const EventType* FindEventTypeByName(const std::string& name) {
       break;
     }
   }
-  if (result == nullptr) {
+  if (result == nullptr && report_error) {
     LOG(ERROR) << "Unknown event_type '" << name
                << "', try `simpleperf list` to list all possible event type names";
     return nullptr;
