@@ -124,11 +124,11 @@ class Addr2Line(object):
                 (file, line) = items
                 line = line.split()[0]  # Remove comments after line number
                 out_pos += 1
-                if file.find('?') != -1:
+                if '?' in file:
                     file = 0
                 else:
                     file = self._get_file_id(file)
-                if line.find('?') != -1:
+                if '?' in line:
                     line = 0
                 else:
                     line = int(line)
@@ -573,7 +573,7 @@ class SourceFileAnnotator(object):
                 path = key
                 from_path = path
                 to_path = os.path.join(dest_dir, path[1:])
-            elif is_windows() and key.find(':\\') != -1 and os.path.isfile(key):
+            elif is_windows() and ':\\' in key and os.path.isfile(key):
                 from_path = key
                 to_path = os.path.join(dest_dir, key.replace(':\\', '\\'))
             else:

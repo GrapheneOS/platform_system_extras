@@ -51,11 +51,21 @@ try:
 except:
     has_google_protobuf = False
 
+support_trace_offcpu = None
 
-adb = AdbHelper()
-# TODO: Change to check ro.build.version.sdk >= 26 when OMR1 is prevalent.
-device_version = adb.check_run_and_return_output(['shell', 'getprop', 'ro.build.version.release'])
-support_trace_offcpu = device_version.find('OMR1') != -1
+def is_trace_offcpu_supported():
+    global support_trace_offcpu
+    if support_trace_offcpu is None:
+        adb = AdbHelper()
+        adb.check_run_and_return_output(['push',
+                                         'bin/android/%s/simpleperf' % adb.get_device_arch(),
+                                         "/data/local/tmp"])
+        adb.check_run_and_return_output(['shell', 'chmod', 'a+x', '/data/local/tmp/simpleperf'])
+        output = adb.check_run_and_return_output(['shell', '/data/local/tmp/simpleperf', 'list',
+                                                  '--show-features'])
+        support_trace_offcpu = 'trace-offcpu' in output
+    return support_trace_offcpu
+
 
 def build_testdata():
     """ Collect testdata from ../testdata and ../demo. """
@@ -68,14 +78,12 @@ def build_testdata():
                       'SimpleperfExampleOfKotlin']
 
     testdata_path = "testdata"
-    if os.path.isdir(testdata_path):
-        shutil.rmtree(testdata_path)
-        os.mkdir(testdata_path)
+    remove(testdata_path)
+    os.mkdir(testdata_path)
     for testdata in copy_testdata_list:
         shutil.copy(os.path.join(from_testdata_path, testdata), testdata_path)
     for demo in copy_demo_list:
         shutil.copytree(os.path.join(from_demo_path, demo), os.path.join(testdata_path, demo))
-
 
 class TestExampleBase(unittest.TestCase):
     @classmethod
@@ -92,7 +100,6 @@ class TestExampleBase(unittest.TestCase):
             log_fatal("can't find app-profiling.apk under " + cls.example_path)
         cls.package_name = package_name
         cls.activity_name = activity_name
-        cls.python_path = sys.executable
         args = ["install", "-r"]
         if abi:
             args += ["--abi", abi]
@@ -102,23 +109,24 @@ class TestExampleBase(unittest.TestCase):
         cls.compiled = False
 
     def setUp(self):
-        if self.id().find('TraceOffCpu') != -1 and not support_trace_offcpu:
+        if self.id().find('TraceOffCpu') != -1 and not is_trace_offcpu_supported():
             self.skipTest('trace-offcpu is not supported on device')
 
     @classmethod
     def tearDownClass(cls):
-        cls.adb.check_run(["uninstall", cls.package_name])
+        if hasattr(cls, 'package_name'):
+            cls.adb.check_run(["uninstall", cls.package_name])
 
     @classmethod
     def cleanupTestFiles(cls):
-        cls.remove("binary_cache")
-        cls.remove("annotated_files")
-        cls.remove("perf.data")
-        cls.remove("report.txt")
-        cls.remove("pprof.profile")
+        remove("binary_cache")
+        remove("annotated_files")
+        remove("perf.data")
+        remove("report.txt")
+        remove("pprof.profile")
 
     def run_cmd(self, args, return_output=False):
-        args = [self.python_path] + args
+        args = [sys.executable] + args
         try:
             if not return_output:
                 returncode = subprocess.call(args)
@@ -153,10 +161,6 @@ class TestExampleBase(unittest.TestCase):
             self.check_exist(dir="binary_cache")
         if not skip_compile:
             self.__class__.compiled = True
-
-    @classmethod
-    def remove(cls, dir):
-        shutil.rmtree(dir, ignore_errors=True)
 
     def check_exist(self, file=None, dir=None):
         if file:
@@ -196,7 +200,7 @@ class TestExampleBase(unittest.TestCase):
         for line in summary.split('\n'):
             for i in range(len(check_entries)):
                 (name, need_acc_period, need_period) = check_entries[i]
-                if not fulfilled[i] and line.find(name) != -1:
+                if not fulfilled[i] and name in line:
                     m = self.summary_check_re.search(line)
                     if m:
                         acc_period = float(m.group(1))
@@ -207,7 +211,7 @@ class TestExampleBase(unittest.TestCase):
 
     def common_test_app_profiler(self):
         self.run_cmd(["app_profiler.py", "-h"])
-        self.remove("binary_cache")
+        remove("binary_cache")
         self.run_app_profiler(build_binary_cache=False)
         self.assertFalse(os.path.isdir("binary_cache"))
         args = ["binary_cache_builder.py"]
@@ -215,7 +219,7 @@ class TestExampleBase(unittest.TestCase):
             args.append("--disable_adb_root")
         self.run_cmd(args)
         self.check_exist(dir="binary_cache")
-        self.remove("binary_cache")
+        remove("binary_cache")
         self.run_app_profiler(build_binary_cache=True)
         self.run_app_profiler(skip_compile=True)
         self.run_app_profiler(start_activity=False)
@@ -232,13 +236,13 @@ class TestExampleBase(unittest.TestCase):
     def common_test_annotate(self):
         self.run_cmd(["annotate.py", "-h"])
         self.run_app_profiler()
-        self.remove("annotated_files")
+        remove("annotated_files")
         self.run_cmd(["annotate.py", "-s", self.example_path])
         self.check_exist(dir="annotated_files")
 
     def common_test_report_sample(self, check_strings):
         self.run_cmd(["report_sample.py", "-h"])
-        self.remove("binary_cache")
+        remove("binary_cache")
         self.run_app_profiler(build_binary_cache=False)
         self.run_cmd(["report_sample.py"])
         output = self.run_cmd(["report_sample.py", "perf.data"], return_output=True)
@@ -255,7 +259,7 @@ class TestExampleBase(unittest.TestCase):
         self.run_cmd(["pprof_proto_generator.py", "-h"])
         self.run_app_profiler()
         self.run_cmd(["pprof_proto_generator.py"])
-        self.remove("pprof.profile")
+        remove("pprof.profile")
         self.run_cmd(["pprof_proto_generator.py", "-i", "perf.data", "-o", "pprof.profile"])
         self.check_exist(file="pprof.profile")
         self.run_cmd(["pprof_proto_generator.py", "--show"])
@@ -263,7 +267,7 @@ class TestExampleBase(unittest.TestCase):
                               return_output=True)
         self.check_strings_in_content(output, check_strings_with_lines +
                                               ["has_line_numbers: True"])
-        self.remove("binary_cache")
+        remove("binary_cache")
         self.run_cmd(["pprof_proto_generator.py"])
         output = self.run_cmd(["pprof_proto_generator.py", "--show", "pprof.profile"],
                               return_output=True)
@@ -352,7 +356,7 @@ class TestExamplePureJavaTraceOffCpu(TestExampleBase):
              "long com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.RunFunction()",
              "long com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.SleepFunction(long)"
              ])
-        self.remove("annotated_files")
+        remove("annotated_files")
         self.run_cmd(["annotate.py", "-s", self.example_path])
         self.check_exist(dir="annotated_files")
         self.check_file_under_dir("annotated_files", "SleepActivity.java")
@@ -375,7 +379,7 @@ class TestExampleWithNative(TestExampleBase):
 
     def test_app_profiler(self):
         self.common_test_app_profiler()
-        self.remove("binary_cache")
+        remove("binary_cache")
         self.run_app_profiler(native_lib_dir=self.example_path)
 
     def test_report(self):
@@ -418,7 +422,7 @@ class TestExampleWithNativeRoot(TestExampleBase):
 
     def test_app_profiler(self):
         self.common_test_app_profiler()
-        self.remove("binary_cache")
+        remove("binary_cache")
         self.run_app_profiler(native_lib_dir=self.example_path)
 
 
@@ -436,7 +440,7 @@ class TestExampleWithNativeTraceOffCpu(TestExampleBase):
             ["SleepThread(void*)",
              "RunFunction()",
              "SleepFunction(unsigned long long)"])
-        self.remove("annotated_files")
+        remove("annotated_files")
         self.run_cmd(["annotate.py", "-s", self.example_path, "--comm", "SleepThread"])
         self.check_exist(dir="annotated_files")
         self.check_file_under_dir("annotated_files", "native-lib.cpp")
@@ -464,7 +468,7 @@ class TestExampleWithNativeJniCall(TestExampleBase):
             ["void com.example.simpleperf.simpleperfexamplewithnative.MixActivity$1.run()",
              "int com.example.simpleperf.simpleperfexamplewithnative.MixActivity.callFunction(int)",
              "Java_com_example_simpleperf_simpleperfexamplewithnative_MixActivity_callFunction"])
-        self.remove("annotated_files")
+        remove("annotated_files")
         self.run_cmd(["annotate.py", "-s", self.example_path, "--comm", "BusyThread"])
         self.check_exist(dir="annotated_files")
         self.check_file_under_dir("annotated_files", "native-lib.cpp")
@@ -575,7 +579,7 @@ class TestExampleOfKotlinTraceOffCpu(TestExampleBase):
              "long com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.RunFunction()",
              "long com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.SleepFunction(long)"
              ])
-        self.remove("annotated_files")
+        remove("annotated_files")
         self.run_cmd(["annotate.py", "-s", self.example_path])
         self.check_exist(dir="annotated_files")
         self.check_file_under_dir("annotated_files", "SleepActivity.kt")
@@ -587,6 +591,30 @@ class TestExampleOfKotlinTraceOffCpu(TestExampleBase):
              ("SleepFunction", 20, 0),
              ("line 24", 20, 0),
              ("line 32", 20, 0)])
+
+
+class TestProfilingNativeProgram(TestExampleBase):
+    def test_smoke(self):
+        if not AdbHelper().switch_to_root():
+            log_info('skip TestProfilingNativeProgram on non-rooted devices.')
+            return
+        remove("perf.data")
+        self.run_cmd(["app_profiler.py", "-np", "surfaceflinger",
+                      "-r", "-g --duration 3 -e cpu-cycles:u"])
+        self.run_cmd(["report.py", "-g", "-o", "report.txt"])
+
+
+class TestProfilingCmd(TestExampleBase):
+    def test_smoke(self):
+        remove("perf.data")
+        self.run_cmd(["app_profiler.py", "-cmd", "pm -l", "--disable_adb_root"])
+        self.run_cmd(["report.py", "-g", "-o", "report.txt"])
+
+    def test_set_arch(self):
+        arch = AdbHelper().get_device_arch()
+        remove("perf.data")
+        self.run_cmd(["app_profiler.py", "-cmd", "pm -l", "--arch", arch])
+        self.run_cmd(["report.py", "-g", "-o", "report.txt"])
 
 
 class TestReportLib(unittest.TestCase):
