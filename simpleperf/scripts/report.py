@@ -149,7 +149,7 @@ def parse_event_reports(lines):
 
       if not line.strip('| \t'):
         continue
-      if line.find('skipped in brief callgraph mode') != -1:
+      if 'skipped in brief callgraph mode' in line:
         has_skipped_callgraph = True
         continue
 

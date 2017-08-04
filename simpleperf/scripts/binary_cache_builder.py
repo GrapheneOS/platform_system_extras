@@ -200,9 +200,7 @@ class BinaryCacheBuilder(object):
             return False
         output = subprocess.check_output([self.readelf_path, '-S', file])
         output = bytes_to_str(output)
-        if output.find('.symtab') != -1:
-            return True
-        return False
+        return '.symtab' in output
 
 
     def _pull_file_from_device(self, device_path, host_path):

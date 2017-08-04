@@ -22,6 +22,7 @@ from __future__ import print_function
 import logging
 import os
 import os.path
+import shutil
 import subprocess
 import sys
 import time
@@ -87,7 +88,7 @@ def get_host_binary_path(binary_name):
     if is_windows():
         if binary_name.endswith('.so'):
             binary_name = binary_name[0:-3] + '.dll'
-        elif binary_name.find('.') == -1:
+        elif '.' not in binary_name:
             binary_name += '.exe'
         dir = os.path.join(dir, 'windows')
     elif sys.platform == 'darwin': # OSX
@@ -214,7 +215,7 @@ class AdbHelper(object):
         result, stdoutdata = self.run_and_return_output(['shell', 'whoami'])
         if not result:
             return
-        if stdoutdata.find('root') == -1:
+        if 'root' not in stdoutdata:
             return
         log_info('unroot adb')
         self.run(['unroot'])
@@ -229,7 +230,7 @@ class AdbHelper(object):
         result, stdoutdata = self.run_and_return_output(['shell', 'whoami'])
         if not result:
             return False
-        if stdoutdata.find('root') != -1:
+        if 'root' in stdoutdata:
             return True
         build_type = self.get_property('ro.build.type')
         if build_type == 'user':
@@ -238,19 +239,27 @@ class AdbHelper(object):
         time.sleep(1)
         self.run(['wait-for-device'])
         result, stdoutdata = self.run_and_return_output(['shell', 'whoami'])
-        if result and stdoutdata.find('root') != -1:
-            return True
-        return False
+        return result and 'root' in stdoutdata
 
     def get_property(self, name):
         result, stdoutdata = self.run_and_return_output(['shell', 'getprop', name])
-        if not result:
-            return None
-        return stdoutdata
-
+        return stdoutdata if result else None
 
     def set_property(self, name, value):
         return self.run(['shell', 'setprop', name, value])
+
+
+    def get_device_arch(self):
+        output = self.check_run_and_return_output(['shell', 'uname', '-m'])
+        if 'aarch64' in output:
+            return 'arm64'
+        if 'arm' in output:
+            return 'arm'
+        if 'x86_64' in output:
+            return 'x86_64'
+        if '86' in output:
+            return 'x86'
+        log_fatal('unsupported architecture: %s' % output.strip())
 
 
 def flatten_arg_list(arg_list):
@@ -260,5 +269,11 @@ def flatten_arg_list(arg_list):
             res += items
     return res
 
+
+def remove(dir_or_file):
+    if os.path.isfile(dir_or_file):
+        os.remove(dir_or_file)
+    elif os.path.isdir(dir_or_file):
+        shutil.rmtree(dir_or_file, ignore_errors=True)
 
 logging.getLogger().setLevel(logging.DEBUG)
