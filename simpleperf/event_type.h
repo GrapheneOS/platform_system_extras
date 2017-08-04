@@ -68,7 +68,7 @@ class ScopedEventTypes {
 };
 
 const std::vector<EventType>& GetAllEventTypes();
-const EventType* FindEventTypeByName(const std::string& name);
+const EventType* FindEventTypeByName(const std::string& name, bool report_error = true);
 
 struct EventTypeAndModifier {
   std::string name;
