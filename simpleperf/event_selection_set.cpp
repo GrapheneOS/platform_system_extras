@@ -57,7 +57,7 @@ bool IsDwarfCallChainSamplingSupported() {
 }
 
 bool IsDumpingRegsForTracepointEventsSupported() {
-  const EventType* event_type = FindEventTypeByName("sched:sched_switch");
+  const EventType* event_type = FindEventTypeByName("sched:sched_switch", false);
   if (event_type == nullptr) {
     return false;
   }
