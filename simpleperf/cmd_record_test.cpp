@@ -61,8 +61,32 @@ TEST(record_cmd, system_wide_option) {
   TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-a"})));
 }
 
+void CheckEventType(const std::string& record_file, const std::string event_type,
+                    uint64_t sample_period, uint64_t sample_freq) {
+  const EventType* type = FindEventTypeByName(event_type);
+  ASSERT_TRUE(type != nullptr);
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(record_file);
+  ASSERT_TRUE(reader);
+  std::vector<EventAttrWithId> attrs = reader->AttrSection();
+  for (auto& attr : attrs) {
+    if (attr.attr->type == type->type && attr.attr->config == type->config) {
+      if (attr.attr->freq == 0) {
+        ASSERT_EQ(sample_period, attr.attr->sample_period);
+        ASSERT_EQ(sample_freq, 0u);
+      } else {
+        ASSERT_EQ(sample_period, 0u);
+        ASSERT_EQ(sample_freq, attr.attr->sample_freq);
+      }
+      return;
+    }
+  }
+  FAIL();
+}
+
 TEST(record_cmd, sample_period_option) {
-  ASSERT_TRUE(RunRecordCmd({"-c", "100000"}));
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({"-c", "100000"}, tmpfile.path));
+  CheckEventType(tmpfile.path, "cpu-cycles", 100000u, 0);
 }
 
 TEST(record_cmd, event_option) {
@@ -70,9 +94,20 @@ TEST(record_cmd, event_option) {
 }
 
 TEST(record_cmd, freq_option) {
-  ASSERT_TRUE(RunRecordCmd({"-f", "99"}));
-  ASSERT_TRUE(RunRecordCmd({"-F", "99"}));
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({"-f", "99"}, tmpfile.path));
+  CheckEventType(tmpfile.path, "cpu-cycles", 0, 99u);
+  ASSERT_TRUE(RunRecordCmd({"-e", "cpu-clock", "-f", "99"}, tmpfile.path));
+  CheckEventType(tmpfile.path, "cpu-clock", 0, 99u);
   ASSERT_TRUE(RunRecordCmd({"-f", std::to_string(UINT_MAX)}));
+}
+
+TEST(record_cmd, multiple_freq_or_sample_period_option) {
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({"-f", "99", "-e", "cpu-cycles", "-c", "1000000", "-e",
+                            "cpu-clock"}, tmpfile.path));
+  CheckEventType(tmpfile.path, "cpu-cycles", 0, 99u);
+  CheckEventType(tmpfile.path, "cpu-clock", 1000000u, 0u);
 }
 
 TEST(record_cmd, output_file_option) {
@@ -415,7 +450,7 @@ TEST(record_cmd, record_meta_info_feature) {
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
-  ASSERT_TRUE(reader != nullptr);
+  ASSERT_TRUE(reader);
   std::unordered_map<std::string, std::string> info_map;
   ASSERT_TRUE(reader->ReadMetaInfoFeature(&info_map));
   ASSERT_NE(info_map.find("simpleperf_version"), info_map.end());
@@ -443,10 +478,11 @@ TEST(record_cmd, trace_offcpu_option) {
   // On linux host, we need root privilege to read tracepoint events.
   TEST_REQUIRE_HOST_ROOT();
   TemporaryFile tmpfile;
-  ASSERT_TRUE(RunRecordCmd({"--trace-offcpu"}, tmpfile.path));
+  ASSERT_TRUE(RunRecordCmd({"--trace-offcpu", "-f", "1000"}, tmpfile.path));
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
-  ASSERT_TRUE(reader != nullptr);
+  ASSERT_TRUE(reader);
   std::unordered_map<std::string, std::string> info_map;
   ASSERT_TRUE(reader->ReadMetaInfoFeature(&info_map));
   ASSERT_EQ(info_map["trace_offcpu"], "true");
+  CheckEventType(tmpfile.path, "sched:sched_switch", 1u, 0u);
 }
