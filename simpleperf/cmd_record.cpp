@@ -78,26 +78,18 @@ class RecordCommand : public Command {
 "       Gather sampling information of running [command]. And -a/-p/-t option\n"
 "       can be used to change target of sampling information.\n"
 "       The default options are: -e cpu-cycles -f 4000 -o perf.data.\n"
+"Select monitored threads:\n"
 "-a     System-wide collection.\n"
 #if defined(__ANDROID__)
 "--app package_name    Profile the process of an Android application.\n"
 "                      On non-rooted devices, the app must be debuggable,\n"
 "                      because we use run-as to switch to the app's context.\n"
 #endif
-"-b     Enable take branch stack sampling. Same as '-j any'\n"
-"-c count     Set event sample period. It means recording one sample when\n"
-"             [count] events happen. Can't be used with -f/-F option.\n"
-"             For tracepoint events, the default option is -c 1.\n"
-"--call-graph fp | dwarf[,<dump_stack_size>]\n"
-"             Enable call graph recording. Use frame pointer or dwarf debug\n"
-"             frame as the method to parse call graph in stack.\n"
-"             Default is dwarf,65528.\n"
-"--cpu cpu_item1,cpu_item2,...\n"
-"             Collect samples only on the selected cpus. cpu_item can be cpu\n"
-"             number like 1, or cpu range like 0-3.\n"
-"--duration time_in_sec  Monitor for time_in_sec seconds instead of running\n"
-"                        [command]. Here time_in_sec may be any positive\n"
-"                        floating point number.\n"
+"-p pid1,pid2,...       Record events on existing processes. Mutually exclusive\n"
+"                       with -a.\n"
+"-t tid1,tid2,... Record events on existing threads. Mutually exclusive with -a.\n"
+"\n"
+"Select monitored event types:\n"
 "-e event1[:modifier1],event2[:modifier2],...\n"
 "             Select the event list to sample. Use `simpleperf list` to find\n"
 "             all possible event names. Modifiers can be added to define how\n"
@@ -105,15 +97,34 @@ class RecordCommand : public Command {
 "             Possible modifiers are:\n"
 "                u - monitor user space events only\n"
 "                k - monitor kernel space events only\n"
-"-f freq      Set event sample frequency. It means recording at most [freq]\n"
-"             samples every second. For non-tracepoint events, the default\n"
-"             option is -f 4000.\n"
-"-F freq      Same as '-f freq'.\n"
-"-g           Same as '--call-graph dwarf'.\n"
 "--group event1[:modifier],event2[:modifier2],...\n"
 "             Similar to -e option. But events specified in the same --group\n"
 "             option are monitored as a group, and scheduled in and out at the\n"
 "             same time.\n"
+"--trace-offcpu   Generate samples when threads are scheduled off cpu.\n"
+"                 Similar to \"-c 1 -e sched:sched_switch\".\n"
+"\n"
+"Select monitoring options:\n"
+"-f freq      Set event sample frequency. It means recording at most [freq]\n"
+"             samples every second. For non-tracepoint events, the default\n"
+"             option is -f 4000. A -f/-c option affects all event types\n"
+"             following it until meeting another -f/-c option. For example,"
+"             for \"-f 1000 cpu-cycles -c 1 -e sched:sched_switch\", cpu-cycles\n"
+"             has sample freq 1000, sched:sched_switch event has sample period 1.\n"
+"-c count     Set event sample period. It means recording one sample when\n"
+"             [count] events happen. For tracepoint events, the default option\n"
+"             is -c 1.\n"
+"--call-graph fp | dwarf[,<dump_stack_size>]\n"
+"             Enable call graph recording. Use frame pointer or dwarf debug\n"
+"             frame as the method to parse call graph in stack.\n"
+"             Default is dwarf,65528.\n"
+"-g           Same as '--call-graph dwarf'.\n"
+"--cpu cpu_item1,cpu_item2,...\n"
+"             Collect samples only on the selected cpus. cpu_item can be cpu\n"
+"             number like 1, or cpu range like 0-3.\n"
+"--duration time_in_sec  Monitor for time_in_sec seconds instead of running\n"
+"                        [command]. Here time_in_sec may be any positive\n"
+"                        floating point number.\n"
 "-j branch_filter1,branch_filter2,...\n"
 "             Enable taken branch stack sampling. Each sample captures a series\n"
 "             of consecutive taken branches.\n"
@@ -126,6 +137,7 @@ class RecordCommand : public Command {
 "                k: only when the branch target is in the kernel\n"
 "             This option requires at least one branch type among any, any_call,\n"
 "             any_ret, ind_call.\n"
+"-b           Enable taken branch stack sampling. Same as '-j any'.\n"
 "-m mmap_pages   Set the size of the buffer used to receiving sample data from\n"
 "                the kernel. It should be a power of 2. If not set, the max\n"
 "                possible value <= 1024 will be used.\n"
@@ -139,8 +151,6 @@ class RecordCommand : public Command {
 "              will be unwound by default. Use this option to disable the\n"
 "              unwinding of the user's stack.\n"
 "-o record_file_name    Set record file name, default is perf.data.\n"
-"-p pid1,pid2,...       Record events on existing processes. Mutually exclusive\n"
-"                       with -a.\n"
 "--post-unwind  If `--call-graph dwarf` option is used, then the user's stack\n"
 "               will be unwound while recording by default. But it may lose\n"
 "               records as stacking unwinding can be time consuming. Use this\n"
@@ -150,8 +160,6 @@ class RecordCommand : public Command {
 "--symfs <dir>    Look for files with symbols relative to this directory.\n"
 "                 This option is used to provide files with symbol table and\n"
 "                 debug information, which are used for unwinding and dumping symbols.\n"
-"-t tid1,tid2,... Record events on existing threads. Mutually exclusive with -a.\n"
-"--trace-offcpu   Generate samples when threads are scheduled off cpu.\n"
 #if 0
 // Below options are only used internally and shouldn't be visible to the public.
 "--in-app         We are already running in the app's context.\n"
@@ -159,10 +167,6 @@ class RecordCommand : public Command {
 #endif
             // clang-format on
             ),
-        use_sample_freq_(false),
-        sample_freq_(0),
-        use_sample_period_(false),
-        sample_period_(0),
         system_wide_collection_(false),
         branch_sampling_(0),
         fp_callchain_sampling_(false),
@@ -218,11 +222,7 @@ class RecordCommand : public Command {
   bool DumpMetaInfoFeature();
   void CollectHitFileInfo(const SampleRecord& r);
 
-  bool use_sample_freq_;
-  uint64_t sample_freq_;  // Sample 'sample_freq_' times per second.
-  bool use_sample_period_;
-  uint64_t sample_period_;  // Sample once when 'sample_period_' events occur.
-
+  std::unique_ptr<SampleSpeed> sample_speed_;
   bool system_wide_collection_;
   uint64_t branch_sampling_;
   bool fp_callchain_sampling_;
@@ -274,8 +274,12 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     }
   }
   if (event_selection_set_.empty()) {
-    if (!event_selection_set_.AddEventType(default_measured_event_type)) {
+    size_t group_id;
+    if (!event_selection_set_.AddEventType(default_measured_event_type, &group_id)) {
       return false;
+    }
+    if (sample_speed_) {
+      event_selection_set_.SetSampleSpeed(group_id, *sample_speed_);
     }
   }
   exclude_kernel_callchain_ = event_selection_set_.ExcludeKernel();
@@ -422,6 +426,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
 
 bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
                                  std::vector<std::string>* non_option_args) {
+  std::vector<size_t> wait_setting_speed_event_groups_;
   size_t i;
   for (i = 0; i < args.size() && !args[i].empty() && args[i][0] == '-'; ++i) {
     if (args[i] == "-a") {
@@ -433,17 +438,26 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       app_package_name_ = args[i];
     } else if (args[i] == "-b") {
       branch_sampling_ = branch_sampling_type_map["any"];
-    } else if (args[i] == "-c") {
+    } else if (args[i] == "-c" || args[i] == "-f") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
       char* endptr;
-      sample_period_ = strtoull(args[i].c_str(), &endptr, 0);
-      if (*endptr != '\0' || sample_period_ == 0) {
-        LOG(ERROR) << "Invalid sample period: '" << args[i] << "'";
+      uint64_t value = strtoull(args[i].c_str(), &endptr, 0);
+      if (*endptr != '\0' || value == 0) {
+        LOG(ERROR) << "Invalid option for " << args[i-1] << ": '" << args[i] << "'";
         return false;
       }
-      use_sample_period_ = true;
+      if (args[i-1] == "-c") {
+        sample_speed_.reset(new SampleSpeed(0, value));
+      } else {
+        sample_speed_.reset(new SampleSpeed(AdjustSampleFrequency(value), 0));
+      }
+      for (auto group_id : wait_setting_speed_event_groups_) {
+        event_selection_set_.SetSampleSpeed(group_id, *sample_speed_);
+      }
+      wait_setting_speed_event_groups_.clear();
+
     } else if (args[i] == "--call-graph") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -501,20 +515,16 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       }
       std::vector<std::string> event_types = android::base::Split(args[i], ",");
       for (auto& event_type : event_types) {
-        if (!event_selection_set_.AddEventType(event_type)) {
+        size_t group_id;
+        if (!event_selection_set_.AddEventType(event_type, &group_id)) {
           return false;
         }
+        if (sample_speed_) {
+          event_selection_set_.SetSampleSpeed(group_id, *sample_speed_);
+        } else {
+          wait_setting_speed_event_groups_.push_back(group_id);
+        }
       }
-    } else if (args[i] == "-f" || args[i] == "-F") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      if (!android::base::ParseUint(args[i].c_str(), &sample_freq_)) {
-        LOG(ERROR) << "Invalid sample frequency: " << args[i];
-        return false;
-      }
-      sample_freq_ = AdjustSampleFrequency(sample_freq_);
-      use_sample_freq_ = true;
     } else if (args[i] == "-g") {
       fp_callchain_sampling_ = false;
       dwarf_callchain_sampling_ = true;
@@ -523,8 +533,14 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       std::vector<std::string> event_types = android::base::Split(args[i], ",");
-      if (!event_selection_set_.AddEventGroup(event_types)) {
+      size_t group_id;
+      if (!event_selection_set_.AddEventGroup(event_types, &group_id)) {
         return false;
+      }
+      if (sample_speed_) {
+        event_selection_set_.SetSampleSpeed(group_id, *sample_speed_);
+      } else {
+        wait_setting_speed_event_groups_.push_back(group_id);
       }
     } else if (args[i] == "--in-app") {
       in_app_context_ = true;
@@ -616,11 +632,6 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     }
   }
 
-  if (use_sample_freq_ && use_sample_period_) {
-    LOG(ERROR) << "-f option can't be used with -c option.";
-    return false;
-  }
-
   if (!dwarf_callchain_sampling_) {
     if (!unwind_dwarf_callchain_) {
       LOG(ERROR)
@@ -690,13 +701,6 @@ bool RecordCommand::TraceOffCpu() {
 }
 
 bool RecordCommand::SetEventSelectionFlags() {
-  if (use_sample_freq_) {
-    event_selection_set_.SetSampleFreq(sample_freq_);
-  } else if (use_sample_period_) {
-    event_selection_set_.SetSamplePeriod(sample_period_);
-  } else {
-    event_selection_set_.UseDefaultSampleFreq();
-  }
   event_selection_set_.SampleIdAll();
   if (!event_selection_set_.SetBranchSampling(branch_sampling_)) {
     return false;
