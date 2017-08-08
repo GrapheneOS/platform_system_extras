@@ -51,6 +51,8 @@ try:
 except:
     has_google_protobuf = False
 
+inferno_script = "inferno.bat" if is_windows() else "./inferno.sh"
+
 support_trace_offcpu = None
 
 def is_trace_offcpu_supported():
@@ -121,12 +123,13 @@ class TestExampleBase(unittest.TestCase):
     def cleanupTestFiles(cls):
         remove("binary_cache")
         remove("annotated_files")
-        remove("perf.data")
+        #remove("perf.data")
         remove("report.txt")
         remove("pprof.profile")
 
     def run_cmd(self, args, return_output=False):
-        args = [sys.executable] + args
+        if args[0].endswith('.py'):
+            args = [sys.executable] + args
         try:
             if not return_output:
                 returncode = subprocess.call(args)
@@ -274,6 +277,18 @@ class TestExampleBase(unittest.TestCase):
         self.check_strings_in_content(output, check_strings_without_lines +
                                               ["has_line_numbers: False"])
 
+    def common_test_inferno(self):
+        self.run_cmd([inferno_script, "-h"])
+        remove("perf.data")
+        append_args = [] if self.adb_root else ["--disable_adb_root"]
+        self.run_cmd([inferno_script, "-p", self.package_name, "-t", "3"] + append_args)
+        self.check_exist(file="perf.data")
+        self.run_cmd([inferno_script, "-p", self.package_name, "-f", "1000", "-du", "-t", "1",
+                      "-nc"] + append_args)
+        self.run_cmd([inferno_script, "-p", self.package_name, "-e", "100000 cpu-cycles",
+                      "-t", "1", "-nc"] + append_args)
+        self.run_cmd([inferno_script, "-sc"])
+
 
 class TestExamplePureJava(TestExampleBase):
     @classmethod
@@ -328,6 +343,9 @@ class TestExamplePureJava(TestExampleBase):
             check_strings_without_lines=
                 ["com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()"])
 
+    def test_inferno(self):
+        self.common_test_inferno()
+
 
 class TestExamplePureJavaRoot(TestExampleBase):
     @classmethod
@@ -368,6 +386,7 @@ class TestExamplePureJavaTraceOffCpu(TestExampleBase):
              ("SleepFunction", 20, 0),
              ("line 24", 20, 0),
              ("line 32", 20, 0)])
+        self.run_cmd([inferno_script, "-sc"])
 
 
 class TestExampleWithNative(TestExampleBase):
@@ -411,6 +430,9 @@ class TestExampleWithNative(TestExampleBase):
             check_strings_without_lines=
                 ["BusyLoopThread"])
 
+    def test_inferno(self):
+        self.common_test_inferno()
+
 
 class TestExampleWithNativeRoot(TestExampleBase):
     @classmethod
@@ -452,6 +474,7 @@ class TestExampleWithNativeTraceOffCpu(TestExampleBase):
              ("SleepFunction", 20, 0),
              ("line 73", 20, 0),
              ("line 83", 20, 0)])
+        self.run_cmd([inferno_script, "-sc"])
 
 
 class TestExampleWithNativeJniCall(TestExampleBase):
@@ -480,6 +503,7 @@ class TestExampleWithNativeJniCall(TestExampleBase):
              ("line 26", 20, 0),
              ("native-lib.cpp", 10, 0),
              ("line 40", 10, 0)])
+        self.run_cmd([inferno_script, "-sc"])
 
 
 class TestExampleWithNativeForceArm(TestExampleWithNative):
@@ -551,6 +575,9 @@ class TestExampleOfKotlin(TestExampleBase):
             check_strings_without_lines=
                 ["com.example.simpleperf.simpleperfexampleofkotlin.MainActivity$createBusyThread$1.run()"])
 
+    def test_inferno(self):
+        self.common_test_inferno()
+
 
 class TestExampleOfKotlinRoot(TestExampleBase):
     @classmethod
@@ -591,6 +618,7 @@ class TestExampleOfKotlinTraceOffCpu(TestExampleBase):
              ("SleepFunction", 20, 0),
              ("line 24", 20, 0),
              ("line 32", 20, 0)])
+        self.run_cmd([inferno_script, "-sc"])
 
 
 class TestProfilingNativeProgram(TestExampleBase):
@@ -615,6 +643,16 @@ class TestProfilingCmd(TestExampleBase):
         remove("perf.data")
         self.run_cmd(["app_profiler.py", "-cmd", "pm -l", "--arch", arch])
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
+
+
+class TestProfilingNativeProgram(TestExampleBase):
+    def test_smoke(self):
+        adb = AdbHelper()
+        if adb.switch_to_root():
+            self.run_cmd(["app_profiler.py", "-np", "surfaceflinger"])
+            self.run_cmd(["report.py", "-g", "-o", "report.txt"])
+            self.run_cmd([inferno_script, "-sc"])
+            self.run_cmd([inferno_script, "-np", "surfaceflinger"])
 
 
 class TestReportLib(unittest.TestCase):
