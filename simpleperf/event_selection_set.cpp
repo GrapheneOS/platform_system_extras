@@ -128,13 +128,15 @@ bool EventSelectionSet::BuildAndCheckEventSelection(
   selection->event_attr.exclude_host = event_type->exclude_host;
   selection->event_attr.exclude_guest = event_type->exclude_guest;
   selection->event_attr.precise_ip = event_type->precise_ip;
-  if (event_type->event_type.type == PERF_TYPE_TRACEPOINT) {
-    selection->event_attr.freq = 0;
-    selection->event_attr.sample_period = DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT;
-  } else {
-    selection->event_attr.freq = 1;
-    selection->event_attr.sample_freq =
-        AdjustSampleFrequency(DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT);
+  if (!for_stat_cmd_) {
+    if (event_type->event_type.type == PERF_TYPE_TRACEPOINT) {
+      selection->event_attr.freq = 0;
+      selection->event_attr.sample_period = DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT;
+    } else {
+      selection->event_attr.freq = 1;
+      selection->event_attr.sample_freq =
+          AdjustSampleFrequency(DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT);
+    }
   }
   if (!IsEventAttrSupported(selection->event_attr)) {
     LOG(ERROR) << "Event type '" << event_type->name
