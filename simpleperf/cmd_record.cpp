@@ -155,6 +155,8 @@ class RecordCommand : public Command {
 "               will be unwound while recording by default. But it may lose\n"
 "               records as stacking unwinding can be time consuming. Use this\n"
 "               option to unwind the user's stack after recording.\n"
+"--exit-with-parent            Stop recording when the process starting\n"
+"                              simpleperf dies.\n"
 "--start_profiling_fd fd_no    After starting profiling, write \"STARTED\" to\n"
 "                              <fd_no>, then close <fd_no>.\n"
 "--symfs <dir>    Look for files with symbols relative to this directory.\n"
@@ -188,8 +190,6 @@ class RecordCommand : public Command {
         in_app_context_(false),
         trace_offcpu_(false),
         exclude_kernel_callchain_(false) {
-    // Stop profiling if parent exits.
-    prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
     // If we run `adb shell simpleperf record xxx` and stop profiling by ctrl-c, adb closes
     // sockets connecting simpleperf. After that, simpleperf will receive SIGPIPE when writing
     // to stdout/stderr, which is a problem when we use '--app' option. So ignore SIGPIPE to
@@ -525,6 +525,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
           wait_setting_speed_event_groups_.push_back(group_id);
         }
       }
+    } else if (args[i] == "--exit-with-parent") {
+      prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
     } else if (args[i] == "-g") {
       fp_callchain_sampling_ = false;
       dwarf_callchain_sampling_ = true;
