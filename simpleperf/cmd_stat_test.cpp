@@ -24,6 +24,7 @@
 
 #include "command.h"
 #include "environment.h"
+#include "event_selection_set.h"
 #include "get_test_data.h"
 #include "test_util.h"
 
@@ -174,4 +175,18 @@ TEST(stat_cmd, stop_when_no_more_targets) {
   thread.detach();
   while (tid == 0);
   ASSERT_TRUE(StatCmd()->Run({"-t", std::to_string(tid), "--in-app"}));
+}
+
+TEST(stat_cmd, sample_speed_should_be_zero) {
+  EventSelectionSet set(true);
+  ASSERT_TRUE(set.AddEventType("cpu-cycles"));
+  set.AddMonitoredProcesses({getpid()});
+  ASSERT_TRUE(set.OpenEventFiles({-1}));
+  std::vector<EventAttrWithId> attrs = set.GetEventAttrWithId();
+  ASSERT_GT(attrs.size(), 0u);
+  for (auto& attr : attrs) {
+    ASSERT_EQ(attr.attr->sample_period, 0u);
+    ASSERT_EQ(attr.attr->sample_freq, 0u);
+    ASSERT_EQ(attr.attr->freq, 0u);
+  }
 }
