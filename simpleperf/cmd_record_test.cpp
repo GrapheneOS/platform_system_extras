@@ -486,3 +486,7 @@ TEST(record_cmd, trace_offcpu_option) {
   ASSERT_EQ(info_map["trace_offcpu"], "true");
   CheckEventType(tmpfile.path, "sched:sched_switch", 1u, 0u);
 }
+
+TEST(record_cmd, exit_with_parent_option) {
+  ASSERT_TRUE(RunRecordCmd({"--exit-with-parent"}));
+}
