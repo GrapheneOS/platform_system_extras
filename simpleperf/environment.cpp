@@ -35,7 +35,7 @@
 #include <procinfo/process.h>
 
 #if defined(__ANDROID__)
-#include <sys/system_properties.h>
+#include <android-base/properties.h>
 #endif
 
 #include "event_type.h"
@@ -383,22 +383,22 @@ bool CheckPerfEventLimit() {
     return true;
   }
 #if defined(__ANDROID__)
-  const char* prop_name = "security.perf_harden";
-  char prop_value[PROP_VALUE_MAX];
-  if (__system_property_get(prop_name, prop_value) <= 0) {
+  const std::string prop_name = "security.perf_harden";
+  std::string prop_value = android::base::GetProperty(prop_name, "");
+  if (prop_value.empty()) {
     // can't do anything if there is no such property.
     return true;
   }
-  if (strcmp(prop_value, "0") == 0) {
+  if (prop_value == "0") {
     return true;
   }
   // Try to enable perf_event_paranoid by setprop security.perf_harden=0.
-  if (__system_property_set(prop_name, "0") == 0) {
+  if (android::base::SetProperty(prop_name, "0")) {
     sleep(1);
     if (can_read_paranoid && ReadPerfEventParanoid(&limit_level) && limit_level <= 1) {
       return true;
     }
-    if (__system_property_get(prop_name, prop_value) > 0 && strcmp(prop_value, "0") == 0) {
+    if (android::base::GetProperty(prop_name, "") == "0") {
       return true;
     }
   }
