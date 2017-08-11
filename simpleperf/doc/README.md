@@ -93,7 +93,7 @@ Python scripts are written to help different profiling tasks.
 
 `annotate.py` is used to annotate source files based on profiling data.
 
-`app_profiler.py` is used to profile Android applications.
+`app_profiler.py` is used to profile Android applications and native programs.
 
 `binary_cache_builder.py` is used to pull libraries from Android devices.
 
@@ -102,6 +102,8 @@ Python scripts are written to help different profiling tasks.
 `report.py` is used to provide a GUI interface to report profiling result.
 
 `report_sample.py` is used to generate flamegraph.
+
+`run_simpleperf_on_device.py` is a simple wrapper to run simpleperf on device.
 
 `simpleperf_report_lib.py` provides a python interface for parsing profiling data.
 

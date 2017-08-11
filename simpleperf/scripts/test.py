@@ -87,7 +87,26 @@ def build_testdata():
     for demo in copy_demo_list:
         shutil.copytree(os.path.join(from_demo_path, demo), os.path.join(testdata_path, demo))
 
-class TestExampleBase(unittest.TestCase):
+
+class TestBase(unittest.TestCase):
+    def run_cmd(self, args, return_output=False):
+        if args[0].endswith('.py'):
+            args = [sys.executable] + args
+        try:
+            if not return_output:
+                returncode = subprocess.call(args)
+            else:
+                subproc = subprocess.Popen(args, stdout=subprocess.PIPE)
+                (output_data, _) = subproc.communicate()
+                returncode = subproc.returncode
+        except:
+            returncode = None
+        self.assertEqual(returncode, 0, msg="failed to run cmd: %s" % args)
+        if return_output:
+            return output_data
+
+
+class TestExampleBase(TestBase):
     @classmethod
     def prepare(cls, example_name, package_name, activity_name, abi=None, adb_root=False):
         cls.adb = AdbHelper(enable_switch_to_root=adb_root)
@@ -126,22 +145,6 @@ class TestExampleBase(unittest.TestCase):
         #remove("perf.data")
         remove("report.txt")
         remove("pprof.profile")
-
-    def run_cmd(self, args, return_output=False):
-        if args[0].endswith('.py'):
-            args = [sys.executable] + args
-        try:
-            if not return_output:
-                returncode = subprocess.call(args)
-            else:
-                subproc = subprocess.Popen(args, stdout=subprocess.PIPE)
-                (output_data, _) = subproc.communicate()
-                returncode = subproc.returncode
-        except:
-            returncode = None
-        self.assertEqual(returncode, 0, msg="failed to run cmd: %s" % args)
-        if return_output:
-            return output_data
 
     def run_app_profiler(self, record_arg = "-g --duration 3 -e cpu-cycles:u",
                          build_binary_cache=True, skip_compile=False, start_activity=True,
@@ -728,6 +731,11 @@ class TestReportLib(unittest.TestCase):
                     break
         sleep_percentage = float(sleep_function_period) / total_period
         self.assertAlmostEqual(sleep_percentage, 0.4629, delta=0.0001)
+
+
+class TestRunSimpleperfOnDevice(TestBase):
+    def test_smoke(self):
+        self.run_cmd(['run_simpleperf_on_device.py', 'list', '--show-features'])
 
 
 def main():
