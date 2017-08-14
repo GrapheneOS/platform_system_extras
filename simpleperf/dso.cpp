@@ -153,7 +153,8 @@ Dso::Dso(DsoType type, const std::string& path, bool force_64bit)
       min_vaddr_(std::numeric_limits<uint64_t>::max()),
       is_loaded_(false),
       dump_id_(UINT_MAX),
-      symbol_dump_id_(0) {
+      symbol_dump_id_(0),
+      symbol_warning_loglevel_(android::base::WARNING) {
   if (type_ == DSO_KERNEL) {
     min_vaddr_ = 0;
   }
@@ -287,6 +288,8 @@ void Dso::Load() {
     // dumped_symbols,  so later we can merge them with symbols read from file system.
     dumped_symbols = std::move(symbols_);
     symbols_.clear();
+    // Don't warn missing symbol table if we have dumped symbols in perf.data.
+    symbol_warning_loglevel_ = android::base::DEBUG;
   }
   bool result = false;
   switch (type_) {
@@ -354,11 +357,10 @@ bool Dso::CheckReadSymbolResult(ElfStatus result, const std::string& filename) {
       return true;
     }
     // Lacking symbol table isn't considered as an error but worth reporting.
-    LOG(WARNING) << filename << " doesn't contain symbol table";
+    LOG(symbol_warning_loglevel_) << filename << " doesn't contain symbol table";
     return true;
   } else {
-    LOG(WARNING) << "failed to read symbols from " << filename
-                 << ": " << result;
+    LOG(symbol_warning_loglevel_) << "failed to read symbols from " << filename << ": " << result;
     return false;
   }
 }
@@ -380,7 +382,7 @@ bool Dso::LoadKernel() {
       }
     }
     if (all_zero) {
-      LOG(WARNING)
+      LOG(symbol_warning_loglevel_)
           << "Symbol addresses in /proc/kallsyms on device are all zero. "
              "`echo 0 >/proc/sys/kernel/kptr_restrict` if possible.";
       symbols_.clear();
@@ -396,8 +398,8 @@ bool Dso::LoadKernel() {
       }
       bool match = (build_id == real_build_id);
       if (!match) {
-        LOG(WARNING) << "failed to read symbols from /proc/kallsyms: Build id "
-                     << "mismatch";
+        LOG(symbol_warning_loglevel_) << "failed to read symbols from /proc/kallsyms: Build id "
+                                      << "mismatch";
         return false;
       }
     }
@@ -417,8 +419,8 @@ bool Dso::LoadKernel() {
       }
     }
     if (all_zero) {
-      LOG(WARNING) << "Symbol addresses in /proc/kallsyms are all zero. "
-                      "`echo 0 >/proc/sys/kernel/kptr_restrict` if possible.";
+      LOG(symbol_warning_loglevel_) << "Symbol addresses in /proc/kallsyms are all zero. "
+                                       "`echo 0 >/proc/sys/kernel/kptr_restrict` if possible.";
       symbols_.clear();
       return false;
     }
