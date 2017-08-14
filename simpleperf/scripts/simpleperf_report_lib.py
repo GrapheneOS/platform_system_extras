@@ -83,9 +83,9 @@ class CallChainStructure(ct.Structure):
                 ('entries', ct.POINTER(CallChainEntryStructure))]
 
 
-class MetaInfoEntryStructure(ct.Structure):
-    _fields_ = [('key', ct.c_char_p),
-                ('value', ct.c_char_p)]
+class FeatureSectionStructure(ct.Structure):
+    _fields_ = [('data', ct.POINTER(ct.c_char)),
+                ('data_size', ct.c_uint32)]
 
 
 # convert char_p to str for python3.
@@ -160,8 +160,8 @@ class ReportLib(object):
             CallChainStructure)
         self._GetBuildIdForPathFunc = self._lib.GetBuildIdForPath
         self._GetBuildIdForPathFunc.restype = ct.c_char_p
-        self._GetNextMetaInfoFunc = self._lib.GetNextMetaInfo
-        self._GetNextMetaInfoFunc.restype = ct.POINTER(MetaInfoEntryStructure)
+        self._GetFeatureSection = self._lib.GetFeatureSection
+        self._GetFeatureSection.restype = ct.POINTER(FeatureSectionStructure)
         self._instance = self._CreateReportLibFunc()
         assert(not _is_null(self._instance))
 
@@ -241,15 +241,52 @@ class ReportLib(object):
         assert(not _is_null(build_id))
         return _char_pt_to_str(build_id)
 
+    def GetRecordCmd(self):
+        if hasattr(self, "record_cmd"):
+            return self.record_cmd
+        self.record_cmd = None
+        feature_data = self._GetFeatureSection(self.getInstance(), _char_pt("cmdline"))
+        if not _is_null(feature_data):
+            void_p = ct.cast(feature_data[0].data, ct.c_void_p)
+            data_size = feature_data[0].data_size
+            arg_count = ct.cast(void_p, ct.POINTER(ct.c_uint32)).contents.value
+            void_p.value += 4
+            args = []
+            for i in range(arg_count):
+                str_len = ct.cast(void_p, ct.POINTER(ct.c_uint32)).contents.value
+                void_p.value += 4
+                char_p = ct.cast(void_p, ct.POINTER(ct.c_char))
+                current_str = ""
+                for j in range(str_len):
+                    c = bytes_to_str(char_p[j])
+                    if c != '\0':
+                        current_str += c
+                if ' ' in current_str:
+                    current_str = '"' + current_str + '"'
+                args.append(current_str)
+                void_p.value += str_len
+            self.record_cmd = " ".join(args)
+        return self.record_cmd
+
+
     def MetaInfo(self):
         if self.meta_info is None:
             self.meta_info = {}
-            while True:
-                entry = self._GetNextMetaInfoFunc(self.getInstance())
-                if _is_null(entry): break
-                key = _char_pt_to_str(entry[0].key)
-                value = _char_pt_to_str(entry[0].value)
-                self.meta_info[key] = value
+            feature_data = self._GetFeatureSection(self.getInstance(), _char_pt("meta_info"))
+            if not _is_null(feature_data):
+                str_list = []
+                data = feature_data[0].data
+                data_size = feature_data[0].data_size
+                current_str = ""
+                for i in range(data_size):
+                    c = bytes_to_str(data[i])
+                    if c != '\0':
+                        current_str += c
+                    else:
+                        str_list.append(current_str)
+                        current_str = ""
+                for i in range(0, len(str_list), 2):
+                    self.meta_info[str_list[i]] = str_list[i + 1]
         return self.meta_info
 
     def getInstance(self):
