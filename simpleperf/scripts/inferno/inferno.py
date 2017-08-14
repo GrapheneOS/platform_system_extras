@@ -46,6 +46,7 @@ except:
 from data_types import *
 from svg_renderer import *
 
+
 def collect_data(args, process):
     app_profiler_args = [sys.executable, "app_profiler.py", "-nb"]
     if args.app:
@@ -158,20 +159,23 @@ def output_report(process):
                   Threads : %d <br/>
                   Samples : %d</br>
                   Duration: %s seconds<br/>""" % (
-                process.name,process.pid,
-                datetime.datetime.now().strftime("%Y-%m-%d (%A) %H:%M:%S"),
-                len(process.threads),
-                process.num_samples,
-                process.args.capture_duration))
+        process.name, process.pid,
+        datetime.datetime.now().strftime("%Y-%m-%d (%A) %H:%M:%S"),
+        len(process.threads),
+        process.num_samples,
+        process.args.capture_duration))
     if 'ro.product.model' in process.props:
-        f.write("Machine : %s (%s) by %s<br/>" % (process.props["ro.product.model"],
-                process.props["ro.product.name"], process.props["ro.product.manufacturer"]))
+        f.write(
+            "Machine : %s (%s) by %s<br/>" %
+            (process.props["ro.product.model"],
+             process.props["ro.product.name"],
+             process.props["ro.product.manufacturer"]))
     if process.cmd:
         f.write("Capture : %s<br/><br/>" % process.cmd)
     f.write("</div>")
     f.write("""<br/><br/>
             <div>Navigate with WASD, zoom in with SPACE, zoom out with BACKSPACE.</div>""")
-    f.write(get_local_asset_content("script.js"))
+    f.write("<script>%s</script>" % get_local_asset_content("script.js"))
 
     # Output tid == pid Thread first.
     main_thread = [x for _, x in process.threads.items() if x.tid == process.pid]
@@ -190,6 +194,7 @@ def output_report(process):
     f.write("</html>")
     f.close()
     return "file://" + filepath
+
 
 def generate_flamegraph_offsets(flamegraph):
     rover = flamegraph.offset
@@ -217,10 +222,9 @@ def open_report_in_browser(report_path):
     browser_key = ""
     for key, value in webbrowser._browsers.items():
         if key.find("chrome") != -1:
-           browser_key = key
+            browser_key = key
     browser = webbrowser.get(browser_key)
     browser.open(report_path, new=0, autoraise=True)
-
 
 
 def main():
@@ -240,7 +244,7 @@ def main():
     parser.add_argument('-c', '--color', default='hot', choices=['hot', 'dso', 'legacy'],
                         help="""Color theme: hot=percentage of samples, dso=callsite DSO name,
                         legacy=brendan style""")
-    parser.add_argument('-sc','--skip_collection', default=False, help='Skip data collection',
+    parser.add_argument('-sc', '--skip_collection', default=False, help='Skip data collection',
                         action="store_true")
     parser.add_argument('-nc', '--skip_recompile', action='store_true', help="""When profiling
                         an Android app, by default we recompile java bytecode to native
@@ -248,8 +252,12 @@ def main():
                         if the code has been compiled or you don't need to profile java code.""")
     parser.add_argument('-f', '--sample_frequency', type=int, default=6000, help='Sample frequency')
     parser.add_argument('-w', '--svg_width', type=int, default=1124)
-    parser.add_argument('-du', '--dwarf_unwinding', help='Perform unwinding using dwarf instead of fp.',
-                        default=False, action='store_true')
+    parser.add_argument(
+        '-du',
+        '--dwarf_unwinding',
+        help='Perform unwinding using dwarf instead of fp.',
+        default=False,
+        action='store_true')
     parser.add_argument('-e', '--events', help="""Sample based on event occurences instead of
                         frequency. Format expected is "event_counts event_name".
                         e.g: "10000 cpu-cyles". A few examples of event_name: cpu-cycles,
