@@ -10,8 +10,8 @@
 ## Introduction
 
 Simpleperf is a native profiler used on Android platform. It can be used to profile Android
-applications. It's document is at [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/README.md).
-Instructions of preparing your Android application for profiling are [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/README.md#Android-application-profiling).
+applications. It's document is at [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/README.md).
+Instructions of preparing your Android application for profiling are [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/README.md#Android-application-profiling).
 This directory is to show examples of using simpleperf to profile Android applications. The
 meaning of each directory is as below:
 
