@@ -6,7 +6,7 @@ profile both Java and C++ code on Android. It can be used on Android L
 and above.
 
 Simpleperf is part of the Android Open Source Project. The source code is [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/).
-The latest document is [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/README.md).
+The latest document is [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/README.md).
 Bugs and feature requests can be submitted at http://github.com/android-ndk/ndk/issues.
 
 
