@@ -14,21 +14,22 @@
 # limitations under the License.
 #
 
+
 class CallSite:
+
     def __init__(self, ip, method, dso):
         self.ip = ip
         self.method = method
         self.dso = dso
 
 
-
 class Thread:
+
     def __init__(self, tid):
         self.tid = tid
         self.samples = []
         self.flamegraph = {}
         self.num_samples = 0
-
 
     def add_callchain(self, callchain, symbol, sample):
         chain = []
@@ -42,15 +43,14 @@ class Thread:
         chain.append(CallSite(sample.ip, symbol.symbol_name, symbol.dso_name))
         self.samples.append(chain)
 
-
     def collapse_flamegraph(self):
         flamegraph = FlameGraphCallSite("root", "")
-        flamegraph.id = 0 # This is used for wasd navigation, 0 = not a valid target.
+        flamegraph.id = 0  # This is used for wasd navigation, 0 = not a valid target.
         self.flamegraph = flamegraph
         for sample in self.samples:
             flamegraph = self.flamegraph
             for callsite in sample:
-               flamegraph = flamegraph.get_callsite(callsite.method, callsite.dso)
+                flamegraph = flamegraph.get_callsite(callsite.method, callsite.dso)
 
         # Populate root note.
         for node in self.flamegraph.callsites:
@@ -58,6 +58,7 @@ class Thread:
 
 
 class Process:
+
     def __init__(self, name, pid):
         self.name = name
         self.pid = pid
@@ -73,6 +74,8 @@ class Process:
         return self.threads[tid]
 
 CALLSITE_COUNTER = 0
+
+
 def get_callsite_id():
     global CALLSITE_COUNTER
     CALLSITE_COUNTER += 1
@@ -87,9 +90,8 @@ class FlameGraphCallSite:
         self.method = method
         self.dso = dso
         self.num_samples = 0
-        self.offset = 0 # Offset allows position nodes in different branches.
+        self.offset = 0  # Offset allows position nodes in different branches.
         self.id = get_callsite_id()
-
 
     def get_callsite(self, name, dso):
         for c in self.callsites:
@@ -104,11 +106,10 @@ class FlameGraphCallSite:
     def equivalent(self, method, dso):
         return self.method == method and self.dso == dso
 
-
     def get_max_depth(self):
         max = 0
         for c in self.callsites:
             depth = c.get_max_depth()
             if depth > max:
                 max = depth
-        return max +1
+        return max + 1
