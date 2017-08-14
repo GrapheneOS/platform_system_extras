@@ -478,7 +478,7 @@ TEST_F(ReportCommandTest, report_offcpu_time) {
   bool found = false;
   for (auto& line : lines) {
     if (line.find("SleepFunction") != std::string::npos) {
-      ASSERT_NE(line.find("46.29%"), std::string::npos);
+      ASSERT_NE(line.find("38.77%"), std::string::npos);
       found = true;
       break;
     }
