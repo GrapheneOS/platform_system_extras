@@ -92,7 +92,10 @@ bool DumpRecordCommand::ParseOptions(const std::vector<std::string>& args) {
   return true;
 }
 
-static const std::string GetFeatureName(int feature);
+static const std::string GetFeatureNameOrUnknown(int feature) {
+  std::string name = GetFeatureName(feature);
+  return name.empty() ? android::base::StringPrintf("unknown_feature(%d)", feature) : name;
+}
 
 void DumpRecordCommand::DumpFileHeader() {
   const FileHeader& header = record_file_reader_->FileHeader();
@@ -127,38 +130,10 @@ void DumpRecordCommand::DumpFileHeader() {
     }
   }
   for (auto& feature : features) {
-    printf("feature: %s\n", GetFeatureName(feature).c_str());
+    printf("feature: %s\n", GetFeatureNameOrUnknown(feature).c_str());
   }
 }
 
-static const std::string GetFeatureName(int feature) {
-  static std::map<int, std::string> feature_name_map = {
-      {FEAT_TRACING_DATA, "tracing_data"},
-      {FEAT_BUILD_ID, "build_id"},
-      {FEAT_HOSTNAME, "hostname"},
-      {FEAT_OSRELEASE, "osrelease"},
-      {FEAT_VERSION, "version"},
-      {FEAT_ARCH, "arch"},
-      {FEAT_NRCPUS, "nrcpus"},
-      {FEAT_CPUDESC, "cpudesc"},
-      {FEAT_CPUID, "cpuid"},
-      {FEAT_TOTAL_MEM, "total_mem"},
-      {FEAT_CMDLINE, "cmdline"},
-      {FEAT_EVENT_DESC, "event_desc"},
-      {FEAT_CPU_TOPOLOGY, "cpu_topology"},
-      {FEAT_NUMA_TOPOLOGY, "numa_topology"},
-      {FEAT_BRANCH_STACK, "branch_stack"},
-      {FEAT_PMU_MAPPINGS, "pmu_mappings"},
-      {FEAT_GROUP_DESC, "group_desc"},
-      {FEAT_FILE, "file"},
-      {FEAT_META_INFO, "meta_info"},
-  };
-  auto it = feature_name_map.find(feature);
-  if (it != feature_name_map.end()) {
-    return it->second;
-  }
-  return android::base::StringPrintf("unknown_feature(%d)", feature);
-}
 
 void DumpRecordCommand::DumpAttrSection() {
   std::vector<EventAttrWithId> attrs = record_file_reader_->AttrSection();
@@ -189,7 +164,7 @@ bool DumpRecordCommand::DumpFeatureSection() {
     int feature = pair.first;
     const auto& section = pair.second;
     printf("feature section for %s: offset %" PRId64 ", size %" PRId64 "\n",
-           GetFeatureName(feature).c_str(), section.offset, section.size);
+           GetFeatureNameOrUnknown(feature).c_str(), section.offset, section.size);
     if (feature == FEAT_BUILD_ID) {
       std::vector<BuildIdRecord> records = record_file_reader_->ReadBuildIdFeature();
       for (auto& r : records) {
