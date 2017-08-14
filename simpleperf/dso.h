@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include <android-base/logging.h>
 #include <android-base/test_utils.h>
 
 #include "build_id.h"
@@ -182,6 +183,7 @@ class Dso {
   uint32_t dump_id_;
   // Used to assign dump_id for symbols in current dso.
   uint32_t symbol_dump_id_;
+  android::base::LogSeverity symbol_warning_loglevel_;
 };
 
 const char* DsoTypeToString(DsoType dso_type);
