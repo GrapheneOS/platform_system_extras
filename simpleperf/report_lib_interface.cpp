@@ -72,9 +72,9 @@ struct CallChain {
   CallChainEntry* entries;
 };
 
-struct MetaInfoEntry {
-  const char* key;
-  const char* value;
+struct FeatureSection {
+  const char* data;
+  uint32_t data_size;
 };
 
 // Create a new instance,
@@ -96,7 +96,7 @@ SymbolEntry* GetSymbolOfCurrentSample(ReportLib* report_lib) EXPORT;
 CallChain* GetCallChainOfCurrentSample(ReportLib* report_lib) EXPORT;
 
 const char* GetBuildIdForPath(ReportLib* report_lib, const char* path) EXPORT;
-MetaInfoEntry* GetNextMetaInfo(ReportLib* report_lib) EXPORT;
+FeatureSection* GetFeatureSection(ReportLib* report_lib, const char* feature_name) EXPORT;
 }
 
 struct EventAttrWithName {
@@ -120,7 +120,6 @@ class ReportLib {
         current_thread_(nullptr),
         update_flag_(0),
         trace_offcpu_(false) {
-    current_meta_info_.key = current_meta_info_.value = nullptr;
   }
 
   bool SetLogSeverity(const char* log_level);
@@ -142,7 +141,7 @@ class ReportLib {
   CallChain* GetCallChainOfCurrentSample();
 
   const char* GetBuildIdForPath(const char* path);
-  MetaInfoEntry* GetNextMetaInfo();
+  FeatureSection* GetFeatureSection(const char* feature_name);
 
  private:
   Sample* GetCurrentSample();
@@ -164,12 +163,11 @@ class ReportLib {
   std::string build_id_string_;
   int update_flag_;
   std::vector<EventAttrWithName> event_attrs_;
-
-  std::unordered_map<std::string, std::string> meta_info_map_;
-  MetaInfoEntry current_meta_info_;
   std::unique_ptr<ScopedEventTypes> scoped_event_types_;
   bool trace_offcpu_;
   std::unordered_map<pid_t, std::unique_ptr<SampleRecord>> next_sample_cache_;
+  FeatureSection feature_section_;
+  std::vector<char> feature_section_data_;
 };
 
 bool ReportLib::SetLogSeverity(const char* log_level) {
@@ -200,16 +198,17 @@ bool ReportLib::OpenRecordFileIfNecessary() {
       return false;
     }
     record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
+    std::unordered_map<std::string, std::string> meta_info_map;
     if (record_file_reader_->HasFeature(PerfFileFormat::FEAT_META_INFO) &&
-        !record_file_reader_->ReadMetaInfoFeature(&meta_info_map_)) {
+        !record_file_reader_->ReadMetaInfoFeature(&meta_info_map)) {
       return false;
     }
-    auto it = meta_info_map_.find("event_type_info");
-    if (it != meta_info_map_.end()) {
+    auto it = meta_info_map.find("event_type_info");
+    if (it != meta_info_map.end()) {
       scoped_event_types_.reset(new ScopedEventTypes(it->second));
     }
-    it = meta_info_map_.find("trace_offcpu");
-    if (it != meta_info_map_.end()) {
+    it = meta_info_map.find("trace_offcpu");
+    if (it != meta_info_map.end()) {
       trace_offcpu_ = it->second == "true";
     }
   }
@@ -387,21 +386,17 @@ const char* ReportLib::GetBuildIdForPath(const char* path) {
   return build_id_string_.c_str();
 }
 
-MetaInfoEntry* ReportLib::GetNextMetaInfo() {
+FeatureSection* ReportLib::GetFeatureSection(const char* feature_name) {
   if (!OpenRecordFileIfNecessary()) {
     return nullptr;
   }
-  auto it = meta_info_map_.begin();
-  if (current_meta_info_.key != nullptr) {
-    it = meta_info_map_.find(current_meta_info_.key);
-    ++it;
-  }
-  if (it == meta_info_map_.end()) {
+  int feature = PerfFileFormat::GetFeatureId(feature_name);
+  if (feature == -1 || !record_file_reader_->ReadFeatureSection(feature, &feature_section_data_)) {
     return nullptr;
   }
-  current_meta_info_.key = it->first.c_str();
-  current_meta_info_.value = it->second.c_str();
-  return &current_meta_info_;
+  feature_section_.data = feature_section_data_.data();
+  feature_section_.data_size = feature_section_data_.size();
+  return &feature_section_;
 }
 
 // Exported methods working with a client created instance
@@ -453,6 +448,6 @@ const char* GetBuildIdForPath(ReportLib* report_lib, const char* path) {
   return report_lib->GetBuildIdForPath(path);
 }
 
-MetaInfoEntry* GetNextMetaInfo(ReportLib* report_lib) {
-  return report_lib->GetNextMetaInfo();
+FeatureSection* GetFeatureSection(ReportLib* report_lib, const char* feature_name) {
+  return report_lib->GetFeatureSection(feature_name);
 }
