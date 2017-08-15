@@ -697,10 +697,11 @@ class TestReportLib(unittest.TestCase):
     def test_meta_info(self):
         self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_trace_offcpu.data'))
         meta_info = self.report_lib.MetaInfo()
-        self.assertEqual(meta_info["simpleperf_version"], "1.65f91c7ed862")
+        self.assertTrue("simpleperf_version" in meta_info)
         self.assertEqual(meta_info["system_wide_collection"], "false")
         self.assertEqual(meta_info["trace_offcpu"], "true")
         self.assertEqual(meta_info["event_type_info"], "cpu-cycles,0,0\nsched:sched_switch,2,47")
+        self.assertTrue("product_props" in meta_info)
 
     def test_event_name_from_meta_info(self):
         self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_trace_offcpu.data'))
@@ -709,6 +710,11 @@ class TestReportLib(unittest.TestCase):
             event_names.add(self.report_lib.GetEventOfCurrentSample().name)
         self.assertTrue('sched:sched_switch' in event_names)
         self.assertTrue('cpu-cycles' in event_names)
+
+    def test_record_cmd(self):
+        self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_trace_offcpu.data'))
+        self.assertEqual(self.report_lib.GetRecordCmd(),
+                         "/data/local/tmp/simpleperf record --trace-offcpu --duration 2 -g ./simpleperf_runtest_run_and_sleep64")
 
     def test_offcpu(self):
         self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_trace_offcpu.data'))
@@ -727,7 +733,7 @@ class TestReportLib(unittest.TestCase):
                     sleep_function_period += sample.period
                     break
         sleep_percentage = float(sleep_function_period) / total_period
-        self.assertAlmostEqual(sleep_percentage, 0.4629, delta=0.0001)
+        self.assertGreater(sleep_percentage, 0.30)
 
 
 def main():

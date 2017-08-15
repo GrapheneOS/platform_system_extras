@@ -22,36 +22,37 @@ FONT_SIZE = 12
 
 
 def hash_to_float(string):
-    return hash(string) / float(sys.maxint)
+    return hash(string) / float(sys.maxsize)
 
-def getLegacyColor(method) :
+
+def getLegacyColor(method):
     r = 175 + int(50 * hash_to_float(reversed(method)))
     g = 60 + int(180 * hash_to_float(method))
-    b = 60 +int(55 * hash_to_float(reversed(method)))
-    return (r,g,b)
+    b = 60 + int(55 * hash_to_float(reversed(method)))
+    return (r, g, b)
 
 
-def getDSOColor(method) :
+def getDSOColor(method):
     r = 170 + int(80 * hash_to_float(reversed(method)))
-    g = 180 +int(70 * hash_to_float((method)))
+    g = 180 + int(70 * hash_to_float((method)))
     b = 170 + int(80 * hash_to_float(reversed(method)))
-    return (r,g,b)
+    return (r, g, b)
 
 
-def getHeatColor(callsite, num_samples) :
-    r = 245 + 10* (1- float(callsite.num_samples)/ num_samples)
-    g = 110 + 105* (1-float(callsite.num_samples)/ num_samples)
+def getHeatColor(callsite, num_samples):
+    r = 245 + 10 * (1 - float(callsite.num_samples) / num_samples)
+    g = 110 + 105 * (1 - float(callsite.num_samples) / num_samples)
     b = 100
-    return (r,g,b)
+    return (r, g, b)
 
 
 def createSVGNode(callsite, depth, f, num_samples, height, color_scheme, nav):
-    x = float(callsite.offset)/float(num_samples)*SVG_CANVAS_WIDTH
+    x = float(callsite.offset) / float(num_samples) * SVG_CANVAS_WIDTH
     y = height - (depth * SVG_NODE_HEIGHT) - SVG_NODE_HEIGHT
-    width = float(callsite.num_samples) /float(num_samples) * SVG_CANVAS_WIDTH
+    width = float(callsite.num_samples) / float(num_samples) * SVG_CANVAS_WIDTH
 
     method = callsite.method.replace(">", "&gt;").replace("<", "&lt;")
-    if (width <= 0) :
+    if (width <= 0):
         return
 
     if color_scheme == "dso":
@@ -60,8 +61,6 @@ def createSVGNode(callsite, depth, f, num_samples, height, color_scheme, nav):
         r, g, b = getLegacyColor(method)
     else:
         r, g, b = getHeatColor(callsite, num_samples)
-
-
 
     r_border = (r - 50)
     if r_border < 0:
@@ -76,15 +75,41 @@ def createSVGNode(callsite, depth, f, num_samples, height, color_scheme, nav):
         b_border = 0
 
     f.write(
-    '<g id=%d class="n" onclick="zoom(this);" onmouseenter="select(this);" nav="%s"> \n\
+        '<g id=%d class="n" onclick="zoom(this);" onmouseenter="select(this);" nav="%s"> \n\
         <title>%s | %s (%d samples: %3.2f%%)</title>\n \
         <rect x="%f" y="%f" ox="%f" oy="%f" width="%f" owidth="%f" height="15.0" ofill="rgb(%d,%d,%d)" \
         fill="rgb(%d,%d,%d)" style="stroke:rgb(%d,%d,%d)"/>\n \
         <text x="%f" y="%f" font-size="%d" font-family="Monospace"></text>\n \
-    </g>\n' % (callsite.id, ','.join(str(x) for x in nav),
-               method, callsite.dso, callsite.num_samples, callsite.num_samples/float(num_samples) * 100,
-               x, y, x, y, width , width, r, g, b, r, g, b, r_border, g_border, b_border,
-               x+2, y+12, FONT_SIZE))
+    </g>\n' %
+        (callsite.id,
+         ','.join(
+             str(x) for x in nav),
+            method,
+            callsite.dso,
+            callsite.num_samples,
+            callsite.num_samples /
+            float(num_samples) *
+            100,
+            x,
+            y,
+            x,
+            y,
+            width,
+            width,
+            r,
+            g,
+            b,
+            r,
+            g,
+            b,
+            r_border,
+            g_border,
+            b_border,
+            x +
+            2,
+            y +
+            12,
+            FONT_SIZE))
 
 
 def renderSVGNodes(flamegraph, depth, f, num_samples, height, color_scheme):
@@ -94,13 +119,12 @@ def renderSVGNodes(flamegraph, depth, f, num_samples, height, color_scheme):
         if i == 0:
             left_index = 0
         else:
-            left_index = flamegraph.callsites[i-1].id
+            left_index = flamegraph.callsites[i - 1].id
 
-        if i == len(flamegraph.callsites)-1:
+        if i == len(flamegraph.callsites) - 1:
             right_index = 0
         else:
-            right_index = flamegraph.callsites[i+1].id
-
+            right_index = flamegraph.callsites[i + 1].id
 
         up_index = 0
         max_up = 0
@@ -110,19 +134,19 @@ def renderSVGNodes(flamegraph, depth, f, num_samples, height, color_scheme):
                 up_index = upcallsite.id
 
         # up, left, down, right
-        nav = [up_index, left_index,flamegraph.id,right_index]
+        nav = [up_index, left_index, flamegraph.id, right_index]
 
         createSVGNode(callsite, depth, f, num_samples, height, color_scheme, nav)
         # Recurse down
-        renderSVGNodes(callsite, depth+1, f, num_samples, height, color_scheme)
+        renderSVGNodes(callsite, depth + 1, f, num_samples, height, color_scheme)
+
 
 def renderSearchNode(f):
     f.write(
-       '<rect id="search_rect"  style="stroke:rgb(0,0,0);" onclick="search(this);" class="t" rx="10" ry="10" \
+        '<rect id="search_rect"  style="stroke:rgb(0,0,0);" onclick="search(this);" class="t" rx="10" ry="10" \
        x="%d" y="10" width="80" height="30" fill="rgb(255,255,255)""/> \
-        <text id="search_text"  class="t" x="%d" y="30"    onclick="search(this);">Search</text>\n'
-       % (SVG_CANVAS_WIDTH - 95, SVG_CANVAS_WIDTH - 80)
-    )
+        <text id="search_text"  class="t" x="%d" y="30"    onclick="search(this);">Search</text>\n' %
+        (SVG_CANVAS_WIDTH - 95, SVG_CANVAS_WIDTH - 80))
 
 
 def renderUnzoomNode(f):
@@ -133,6 +157,7 @@ def renderUnzoomNode(f):
          onclick="unzoom(this);">Zoom out</text>\n'
     )
 
+
 def renderInfoNode(f):
     f.write(
         '<clipPath id="info_clip_path"> <rect id="info_rect" style="stroke:rgb(0,0,0);" \
@@ -142,24 +167,25 @@ def renderInfoNode(f):
          <text clip-path="url(#info_clip_path)" id="info_text" x="128" y="30"></text>\n' % (SVG_CANVAS_WIDTH - 335, SVG_CANVAS_WIDTH - 325)
     )
 
+
 def renderPercentNode(f):
     f.write(
         '<rect id="percent_rect" style="stroke:rgb(0,0,0);" \
         rx="10" ry="10" x="%d" y="10" width="82" height="30" fill="rgb(255,255,255)"/> \
-         <text  id="percent_text" text-anchor="end" x="%d" y="30">100.00%%</text>\n' % (SVG_CANVAS_WIDTH - (95 * 2),SVG_CANVAS_WIDTH - (125))
+         <text  id="percent_text" text-anchor="end" x="%d" y="30">100.00%%</text>\n' % (SVG_CANVAS_WIDTH - (95 * 2), SVG_CANVAS_WIDTH - (125))
     )
 
 
 def renderSVG(flamegraph, f, color_scheme, width):
     global SVG_CANVAS_WIDTH
     SVG_CANVAS_WIDTH = width
-    height = (flamegraph.get_max_depth() + 2 )* SVG_NODE_HEIGHT
+    height = (flamegraph.get_max_depth() + 2) * SVG_NODE_HEIGHT
     f.write('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" \
     width="%d" height="%d" style="border: 1px solid black;" \
     onload="adjust_text_size(this);" rootid="%d">\n' % (SVG_CANVAS_WIDTH, height, flamegraph.callsites[0].id))
     f.write('<defs > <linearGradient id="background_gradiant" y1="0" y2="1" x1="0" x2="0" > \
     <stop stop-color="#eeeeee" offset="5%" /> <stop stop-color="#efefb1" offset="90%" /> </linearGradient> </defs>')
-    f.write('<rect x="0.0" y="0" width="%d" height="%d" fill="url(#background_gradiant)"  />' % \
+    f.write('<rect x="0.0" y="0" width="%d" height="%d" fill="url(#background_gradiant)"  />' %
             (SVG_CANVAS_WIDTH, height))
     renderSVGNodes(flamegraph, 0, f, flamegraph.num_samples, height, color_scheme)
     renderSearchNode(f)

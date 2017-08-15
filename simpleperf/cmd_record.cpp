@@ -31,6 +31,9 @@
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
 #include <android-base/test_utils.h>
+#if defined(__ANDROID__)
+#include <android-base/properties.h>
+#endif
 
 #include "command.h"
 #include "dwarf_unwind.h"
@@ -1182,6 +1185,12 @@ bool RecordCommand::DumpMetaInfoFeature() {
   // By storing event types information in perf.data, the readers of perf.data have the same
   // understanding of event types, even if they are on another machine.
   info_map["event_type_info"] = ScopedEventTypes::BuildString(event_selection_set_.GetEvents());
+#if defined(__ANDROID__)
+  info_map["product_props"] = android::base::StringPrintf("%s:%s:%s",
+                                  android::base::GetProperty("ro.product.manufacturer", "").c_str(),
+                                  android::base::GetProperty("ro.product.model", "").c_str(),
+                                  android::base::GetProperty("ro.product.name", "").c_str());
+#endif
   return record_file_writer_->WriteMetaInfoFeature(info_map);
 }
 
