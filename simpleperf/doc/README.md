@@ -28,6 +28,7 @@ Bugs and feature requests can be submitted at http://github.com/android-ndk/ndk/
     - [Record and report call graph](#record-and-report-call-graph)
     - [Visualize profiling data](#visualize-profiling-data)
     - [Annotate source code](#annotate-source-code)
+    - [Trace offcpu time](#trace-offcpu-time)
 - [Answers to common issues](#answers-to-common-issues)
     - [Why we suggest profiling on android >= N devices](#why-we-suggest-profiling-on-android-n-devices)
 
@@ -819,6 +820,51 @@ It's content is similar to below:
     // acc_p field means how much time is spent in current line and functions called by current line.
     // p field means how much time is spent just in current line.
     /* acc_p: 99.966552%, p: 83.628188%        */                    i = callFunction(i);
+
+
+### Trace offcpu time
+
+Simpleperf is a cpu profiler, it generates samples for a thread only when it is
+running on a cpu. However, sometimes we want to find out where time of a thread
+is spent, whether it is running on cpu, preempted by other threads, doing I/O
+work, or waiting for some events. To support this, we add a --trace-offcpu
+option in simpleperf record cmd. When --trace-offcpu is used, simpleperf
+generates a sample when a running thread is scheduled out, so we know the
+callstack of a thread when it is scheduled out. And when reporting a perf.data
+generated with --trace-offcpu option, we use timestamp to the next sample
+(instead of event counts from the previous sample) as the weight of current
+sample. As a result, we can get a callgraph based on timestamp, including both
+on cpu time and off cpu time.
+
+trace-offcpu is implemented using sched:sched_switch tracepoint event, which
+may not work well on old kernels. But it is guaranteed to be supported on
+devices after Android O MR1. We can check whether trace-offcpu is supported as
+below.
+
+    $ python run_simpleperf_on_device.py list --show-features
+    dwarf-based-call-graph
+    trace-offcpu
+
+If trace-offcpu is supported, it will be shown in the feature list.
+Then we can try it. Below is an example without using --trace-offcpu option.
+
+    $ python app_profiler.py -p com.example.simpleperf.simpleperfexamplepurejava \
+      -a .SleepActivity -r "-g -e cpu-cycles:u --duration 10"
+    $ ./inferno.sh -sc
+
+![flamegraph sample](./without_trace_offcpu.png)
+
+In the graph, all time is taken by RunFunction(), and sleep time is ignored.
+But if we add --trace-offcpu option, the graph is changed as below.
+
+    $ python app_profiler.py -p com.example.simpleperf.simpleperfexamplepurejava \
+      -a .SleepActivity -r "-g -e cpu-cycles:u --trace-offcpu --duration 10"
+    $ ./inferno.sh -sc
+
+![flamegraph sample](./trace_offcpu.png)
+
+As shown in the graph, half time is spent in RunFunction(), and half time is
+spent in SleepFunction(). It includes both on cpu time and off cpu time.
 
 
 ## Answers to common issues
