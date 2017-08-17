@@ -59,6 +59,9 @@ def log_fatal(msg):
 def log_exit(msg):
     sys.exit(msg)
 
+def disable_debug_log():
+    logging.getLogger().setLevel(logging.WARN)
+
 def str_to_bytes(str):
     if not is_python3():
         return str
