@@ -30,7 +30,7 @@ function adjust_node_text_size(x) {
   let width = parseFloat(rect.attributes['width'].value);
 
   // Don't even bother trying to find a best fit. The area is too small.
-  if (width < 25) {
+  if (width < 28) {
       text.textContent = '';
       return;
   }
