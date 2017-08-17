@@ -25,15 +25,20 @@ class CallSite:
 
 class Thread:
 
-    def __init__(self, tid):
+    def __init__(self, tid, pid):
         self.tid = tid
+        self.pid = pid
+        self.name = ""
         self.samples = []
-        self.flamegraph = {}
+        self.flamegraph = FlameGraphCallSite("root", "", 0)
         self.num_samples = 0
+        self.event_count = 0
 
     def add_callchain(self, callchain, symbol, sample):
-        chain = []
+        self.name = sample.thread_comm
         self.num_samples += 1
+        self.event_count += sample.period
+        chain = []
         for j in range(callchain.nr):
             entry = callchain.entries[callchain.nr - j - 1]
             if entry.ip == 0:
@@ -41,20 +46,7 @@ class Thread:
             chain.append(CallSite(entry.ip, entry.symbol.symbol_name, entry.symbol.dso_name))
 
         chain.append(CallSite(sample.ip, symbol.symbol_name, symbol.dso_name))
-        self.samples.append(chain)
-
-    def collapse_flamegraph(self):
-        flamegraph = FlameGraphCallSite("root", "")
-        flamegraph.id = 0  # This is used for wasd navigation, 0 = not a valid target.
-        self.flamegraph = flamegraph
-        for sample in self.samples:
-            flamegraph = self.flamegraph
-            for callsite in sample:
-                flamegraph = flamegraph.get_callsite(callsite.method, callsite.dso)
-
-        # Populate root note.
-        for node in self.flamegraph.callsites:
-            self.flamegraph.num_samples += node.num_samples
+        self.flamegraph.add_callchain(chain, sample.period)
 
 
 class Process:
@@ -65,51 +57,57 @@ class Process:
         self.threads = {}
         self.cmd = ""
         self.props = {}
-        self.args = None
         self.num_samples = 0
 
-    def get_thread(self, tid):
-        if (tid not in self.threads.keys()):
-            self.threads[tid] = Thread(tid)
+    def get_thread(self, tid, pid):
+        if tid not in self.threads.keys():
+            self.threads[tid] = Thread(tid, pid)
         return self.threads[tid]
-
-CALLSITE_COUNTER = 0
-
-
-def get_callsite_id():
-    global CALLSITE_COUNTER
-    CALLSITE_COUNTER += 1
-    toReturn = CALLSITE_COUNTER
-    return toReturn
 
 
 class FlameGraphCallSite:
 
-    def __init__(self, method, dso):
-        self.callsites = []
+    callsite_counter = 0
+    @classmethod
+    def _get_next_callsite_id(cls):
+        cls.callsite_counter += 1
+        return cls.callsite_counter
+
+    def __init__(self, method, dso, id):
+        self.children = []
         self.method = method
         self.dso = dso
-        self.num_samples = 0
+        self.event_count = 0
         self.offset = 0  # Offset allows position nodes in different branches.
-        self.id = get_callsite_id()
+        self.id = id
 
-    def get_callsite(self, name, dso):
-        for c in self.callsites:
-            if c.equivalent(name, dso):
-                c.num_samples += 1
+    def weight(self):
+        return float(self.event_count)
+
+    def add_callchain(self, chain, event_count):
+        self.event_count += event_count
+        current = self
+        for callsite in chain:
+            current = current._get_child(callsite)
+            current.event_count += event_count
+
+    def _get_child(self, callsite):
+        for c in self.children:
+            if c._equivalent(callsite.method, callsite.dso):
                 return c
-        callsite = FlameGraphCallSite(name, dso)
-        callsite.num_samples = 1
-        self.callsites.append(callsite)
-        return callsite
+        new_child = FlameGraphCallSite(callsite.method, callsite.dso, self._get_next_callsite_id())
+        self.children.append(new_child)
+        return new_child
 
-    def equivalent(self, method, dso):
+    def _equivalent(self, method, dso):
         return self.method == method and self.dso == dso
 
     def get_max_depth(self):
-        max = 0
-        for c in self.callsites:
-            depth = c.get_max_depth()
-            if depth > max:
-                max = depth
-        return max + 1
+        return max([c.get_max_depth() for c in self.children]) + 1 if self.children else 1
+
+    def generate_offset(self, start_offset):
+        self.offset = start_offset
+        child_offset = start_offset
+        for child in self.children:
+            child_offset = child.generate_offset(child_offset)
+        return self.offset + self.event_count
