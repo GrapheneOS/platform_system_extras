@@ -492,4 +492,32 @@ LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := both
 include $(BUILD_HOST_NATIVE_TEST)
 
+
+# simpleperf_script.zip (for release in ndk)
+# ============================================================
+SIMPLEPERF_SCRIPT_LIST := \
+    $(filter-out scripts/update.py,$(call all-named-files-under,*.py,scripts)) \
+    scripts/inferno/inferno.b64 \
+    scripts/inferno/script.js \
+    $(call all-named-files-under,*,doc) \
+    $(call all-named-files-under,app-profiling.apk,demo) \
+    $(call all-named-files-under,*.so,demo) \
+    $(call all-cpp-files-under,demo) \
+    $(call all-java-files-under,demo) \
+    $(call all-named-files-under,*.kt,demo) \
+    testdata/perf_with_symbols.data \
+    testdata/perf_with_trace_offcpu.data
+
+SIMPLEPERF_SCRIPT_LIST := $(addprefix -f $(LOCAL_PATH)/,$(SIMPLEPERF_SCRIPT_LIST))
+
+SIMPLEPERF_SCRIPT_PATH := \
+    $(call intermediates-dir-for,PACKAGING,simplerperf_script,HOST)/simpleperf_script.zip
+
+$(SIMPLEPERF_SCRIPT_PATH) : $(SOONG_ZIP)
+	$(hide) $(SOONG_ZIP) -d -o $@ -C system/extras/simpleperf $(SIMPLEPERF_SCRIPT_LIST)
+
+sdk: $(SIMPLEPERF_SCRIPT_PATH)
+
+$(call dist-for-goals,sdk,$(SIMPLEPERF_SCRIPT_PATH))
+
 include $(call first-makefiles-under,$(LOCAL_PATH))
