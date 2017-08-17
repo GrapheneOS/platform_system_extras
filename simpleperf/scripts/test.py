@@ -142,7 +142,7 @@ class TestExampleBase(TestBase):
     def cleanupTestFiles(cls):
         remove("binary_cache")
         remove("annotated_files")
-        #remove("perf.data")
+        remove("perf.data")
         remove("report.txt")
         remove("pprof.profile")
 
@@ -214,6 +214,23 @@ class TestExampleBase(TestBase):
                         if acc_period >= need_acc_period and period >= need_period:
                             fulfilled[i] = True
         self.assertEqual(len(fulfilled), sum([int(x) for x in fulfilled]), fulfilled)
+
+    def check_inferno_report_html(self, check_entries):
+        file = "report.html"
+        self.check_exist(file=file)
+        with open(file, 'r') as fh:
+            data = fh.read()
+        fulfilled = [False for x in check_entries]
+        for line in data.split('\n'):
+            # each entry is a (function_name, min_percentage) pair.
+            for i, entry in enumerate(check_entries):
+                if fulfilled[i] or line.find(entry[0]) == -1:
+                    continue
+                m = re.search(r'(\d+\.\d+)%', line)
+                if m and float(m.group(1)) >= entry[1]:
+                    fulfilled[i] = True
+                    break
+        self.assertEqual(fulfilled, [True for x in check_entries])
 
     def common_test_app_profiler(self):
         self.run_cmd(["app_profiler.py", "-h"])
@@ -306,8 +323,16 @@ class TestExamplePureJava(TestExampleBase):
     def test_app_profiler_with_ctrl_c(self):
         if is_windows():
             return
+        # `adb root` and `adb unroot` may consumes more time than 3 sec. So
+        # do it in advance to make sure ctrl-c happens when recording.
+        if self.adb_root:
+            self.adb.switch_to_root()
+        else:
+            self.adb._unroot()
         args = [sys.executable, "app_profiler.py", "--app", self.package_name,
                 "-r", "--duration 10000", "-nc"]
+        if not self.adb_root:
+            args.append("--disable_adb_root")
         subproc = subprocess.Popen(args)
         time.sleep(3)
 
@@ -348,6 +373,10 @@ class TestExamplePureJava(TestExampleBase):
 
     def test_inferno(self):
         self.common_test_inferno()
+        self.run_app_profiler()
+        self.run_cmd([inferno_script, "-sc"])
+        self.check_inferno_report_html(
+            [('com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()', 80)])
 
 
 class TestExamplePureJavaRoot(TestExampleBase):
@@ -390,6 +419,12 @@ class TestExamplePureJavaTraceOffCpu(TestExampleBase):
              ("line 24", 20, 0),
              ("line 32", 20, 0)])
         self.run_cmd([inferno_script, "-sc"])
+        self.check_inferno_report_html(
+            [('com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.run() ', 80),
+             ('com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.RunFunction()',
+              20),
+             ('com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.SleepFunction(long)',
+              20)])
 
 
 class TestExampleWithNative(TestExampleBase):
@@ -435,6 +470,9 @@ class TestExampleWithNative(TestExampleBase):
 
     def test_inferno(self):
         self.common_test_inferno()
+        self.run_app_profiler()
+        self.run_cmd([inferno_script, "-sc"])
+        self.check_inferno_report_html([('BusyLoopThread', 80)])
 
 
 class TestExampleWithNativeRoot(TestExampleBase):
@@ -478,6 +516,9 @@ class TestExampleWithNativeTraceOffCpu(TestExampleBase):
              ("line 73", 20, 0),
              ("line 83", 20, 0)])
         self.run_cmd([inferno_script, "-sc"])
+        self.check_inferno_report_html([('SleepThread', 80),
+                                        ('RunFunction', 20),
+                                        ('SleepFunction', 20)])
 
 
 class TestExampleWithNativeJniCall(TestExampleBase):
@@ -580,6 +621,11 @@ class TestExampleOfKotlin(TestExampleBase):
 
     def test_inferno(self):
         self.common_test_inferno()
+        self.run_app_profiler()
+        self.run_cmd([inferno_script, "-sc"])
+        self.check_inferno_report_html(
+            [('com.example.simpleperf.simpleperfexampleofkotlin.MainActivity$createBusyThread$1.run()',
+              80)])
 
 
 class TestExampleOfKotlinRoot(TestExampleBase):
@@ -622,6 +668,13 @@ class TestExampleOfKotlinTraceOffCpu(TestExampleBase):
              ("line 24", 20, 0),
              ("line 32", 20, 0)])
         self.run_cmd([inferno_script, "-sc"])
+        self.check_inferno_report_html(
+            [('void com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.run()',
+              80),
+             ('long com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.RunFunction()',
+              20),
+             ('long com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.SleepFunction(long)',
+              20)])
 
 
 class TestProfilingNativeProgram(TestExampleBase):
