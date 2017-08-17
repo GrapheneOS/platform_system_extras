@@ -47,7 +47,7 @@ from data_types import *
 from svg_renderer import *
 
 
-def collect_data(args, process):
+def collect_data(args):
     app_profiler_args = [sys.executable, "app_profiler.py", "-nb"]
     if args.app:
         app_profiler_args += ["-p", args.app]
@@ -77,7 +77,6 @@ def collect_data(args, process):
         record_arg_str += "-f %d " % args.sample_frequency
         log_info("Using frequency sampling (-f %d)." % args.sample_frequency)
     record_arg_str += "--duration %d " % args.capture_duration
-    process.cmd = " ".join(app_profiler_args) + ' -r "%s"' % record_arg_str
     app_profiler_args += ["-r", record_arg_str]
     returncode = subprocess.call(app_profiler_args)
     return returncode == 0
@@ -93,12 +92,19 @@ def parse_samples(process, args):
     lib = ReportLib()
 
     lib.ShowIpForUnknownSymbol()
-    if symfs_dir is not None:
+    if symfs_dir:
         lib.SetSymfs(symfs_dir)
-    if record_file is not None:
+    if record_file:
         lib.SetRecordFile(record_file)
-    if kallsyms_file is not None:
+    if kallsyms_file:
         lib.SetKallsymsFile(kallsyms_file)
+    process.cmd = lib.GetRecordCmd()
+    product_props = lib.MetaInfo().get("product_props")
+    if product_props:
+        tuple = product_props.split(':')
+        process.props['ro.product.manufacturer'] = tuple[0]
+        process.props['ro.product.model'] = tuple[1]
+        process.props['ro.product.name'] = tuple[2]
 
     while True:
         sample = lib.GetNextSample()
@@ -107,20 +113,16 @@ def parse_samples(process, args):
             break
         symbol = lib.GetSymbolOfCurrentSample()
         callchain = lib.GetCallChainOfCurrentSample()
-        process.get_thread(sample.tid).add_callchain(callchain, symbol, sample)
+        process.get_thread(sample.tid, sample.pid).add_callchain(callchain, symbol, sample)
         process.num_samples += 1
 
+    if process.pid == 0:
+        main_threads = [thread for thread in process.threads.values() if thread.tid == thread.pid]
+        if main_threads:
+            process.name = main_threads[0].name
+            process.pid = main_threads[0].pid
+
     log_info("Parsed %s callchains." % process.num_samples)
-
-
-def collapse_callgraphs(process):
-    """
-    For each thread, collapse all callgraph into one flamegraph.
-    :param process:  Process object
-    :return: None
-    """
-    for _, thread in process.threads.items():
-        thread.collapse_flamegraph()
 
 
 def get_local_asset_content(local_path):
@@ -129,13 +131,11 @@ def get_local_asset_content(local_path):
     :param local_path: str, filename of local asset
     :return: str, the content of local_path
     """
-    f = open(os.path.join(os.path.dirname(__file__), local_path), 'r')
-    content = f.read()
-    f.close()
-    return content
+    with open(os.path.join(os.path.dirname(__file__), local_path), 'r') as f:
+        return f.read()
 
 
-def output_report(process):
+def output_report(process, args):
     """
     Generates a HTML report representing the result of simpleperf sampling as flamegraph
     :param process: Process object
@@ -151,19 +151,23 @@ def output_report(process):
     f.write('<img height="180" alt = "Embedded Image" src ="data')
     f.write(get_local_asset_content("inferno.b64"))
     f.write('"/>')
+    process_entry = ("Process : %s (%d)<br/>" % (process.name, process.pid)) if process.pid else ""
+    # TODO: collect capture duration info from perf.data.
+    duration_entry = ("Duration: %s seconds<br/>" % args.capture_duration
+                      ) if args.capture_duration else ""
     f.write("""<div style='display:inline-block;'>
                   <font size='8'>
                   Inferno Flamegraph Report</font><br/><br/>
-                  Process : %s (%d)<br/>
+                  %s
                   Date&nbsp;&nbsp;&nbsp;&nbsp;: %s<br/>
                   Threads : %d <br/>
                   Samples : %d</br>
-                  Duration: %s seconds<br/>""" % (
-        process.name, process.pid,
+                  %s""" % (
+        process_entry,
         datetime.datetime.now().strftime("%Y-%m-%d (%A) %H:%M:%S"),
         len(process.threads),
         process.num_samples,
-        process.args.capture_duration))
+        duration_entry))
     if 'ro.product.model' in process.props:
         f.write(
             "Machine : %s (%s) by %s<br/>" %
@@ -178,17 +182,17 @@ def output_report(process):
     f.write("<script>%s</script>" % get_local_asset_content("script.js"))
 
     # Output tid == pid Thread first.
-    main_thread = [x for _, x in process.threads.items() if x.tid == process.pid]
+    main_thread = [x for x in process.threads.values() if x.tid == process.pid]
     for thread in main_thread:
-        f.write("<br/><br/><b>Main Thread %d (%d samples):</b><br/>\n\n\n\n" % (
-                thread.tid, thread.num_samples))
-        renderSVG(thread.flamegraph, f, process.args.color, process.args.svg_width)
+        f.write("<br/><br/><b>Main Thread %d (%s) (%d samples):</b><br/>\n\n\n\n" % (
+                thread.tid, thread.name, thread.num_samples))
+        renderSVG(thread.flamegraph, f, args.color, args.svg_width)
 
-    other_threads = [x for _, x in process.threads.items() if x.tid != process.pid]
+    other_threads = [x for x in process.threads.values() if x.tid != process.pid]
     for thread in other_threads:
-        f.write("<br/><br/><b>Thread %d (%d samples):</b><br/>\n\n\n\n" % (
-                thread.tid, thread.num_samples))
-        renderSVG(thread.flamegraph, f, process.args.color, process.args.svg_width)
+        f.write("<br/><br/><b>Thread %d (%s) (%d samples):</b><br/>\n\n\n\n" % (
+                thread.tid, thread.name, thread.num_samples))
+        renderSVG(thread.flamegraph, f, args.color, args.svg_width)
 
     f.write("</body>")
     f.write("</html>")
@@ -196,17 +200,9 @@ def output_report(process):
     return "file://" + filepath
 
 
-def generate_flamegraph_offsets(flamegraph):
-    rover = flamegraph.offset
-    for callsite in flamegraph.callsites:
-        callsite.offset = rover
-        rover += callsite.num_samples
-        generate_flamegraph_offsets(callsite)
-
-
 def generate_threads_offsets(process):
-    for _, thread in process.threads.items():
-        generate_flamegraph_offsets(thread.flamegraph)
+    for thread in process.threads.values():
+       thread.flamegraph.generate_offset(0)
 
 
 def collect_machine_info(process):
@@ -266,26 +262,26 @@ def main():
     parser.add_argument('--disable_adb_root', action='store_true', help="""Force adb to run in non
                         root mode.""")
     args = parser.parse_args()
-    process_name = args.app or args.native_program
-    process = Process(process_name, 0)
-    process.args = args
+    process = Process("", 0)
 
     if not args.skip_collection:
-        log_info("Starting data collection stage for process '%s'." % process_name)
-        if not collect_data(args, process):
+        process.name = args.app or args.native_program
+        log_info("Starting data collection stage for process '%s'." % process.name)
+        if not collect_data(args):
             log_exit("Unable to collect data.")
-        try:
-            result, output = AdbHelper().run_and_return_output(['shell', 'pidof', process_name])
-            if result:
+        result, output = AdbHelper().run_and_return_output(['shell', 'pidof', process.name])
+        if result:
+            try:
                 process.pid = int(output)
-        except:
-            raise
+            except:
+                process.pid = 0
         collect_machine_info(process)
+    else:
+        args.capture_duration = 0
 
     parse_samples(process, args)
-    collapse_callgraphs(process)
     generate_threads_offsets(process)
-    report_path = output_report(process)
+    report_path = output_report(process, args)
     open_report_in_browser(report_path)
 
     log_info("Report generated at '%s'." % report_path)
