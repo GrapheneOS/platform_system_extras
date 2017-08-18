@@ -497,6 +497,8 @@ include $(BUILD_HOST_NATIVE_TEST)
 # ============================================================
 SIMPLEPERF_SCRIPT_LIST := \
     $(filter-out scripts/update.py,$(call all-named-files-under,*.py,scripts)) \
+    scripts/inferno.sh \
+    scripts/inferno.bat \
     scripts/inferno/inferno.b64 \
     scripts/inferno/script.js \
     $(call all-named-files-under,*,doc) \
