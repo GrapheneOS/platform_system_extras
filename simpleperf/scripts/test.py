@@ -121,6 +121,9 @@ class TestExampleBase(TestBase):
             log_fatal("can't find app-profiling.apk under " + cls.example_path)
         cls.package_name = package_name
         cls.activity_name = activity_name
+        cls.abi = "arm64"
+        if abi and abi != "arm64" and abi.find("arm") != -1:
+            cls.abi = "arm"
         args = ["install", "-r"]
         if abi:
             args += ["--abi", abi]
@@ -148,7 +151,7 @@ class TestExampleBase(TestBase):
 
     def run_app_profiler(self, record_arg = "-g --duration 3 -e cpu-cycles:u",
                          build_binary_cache=True, skip_compile=False, start_activity=True,
-                         native_lib_dir=None):
+                         native_lib_dir=None, profile_from_launch=False, add_arch=False):
         args = ["app_profiler.py", "--app", self.package_name, "--apk", self.apk_path,
                 "-a", self.activity_name, "-r", record_arg, "-o", "perf.data"]
         if not build_binary_cache:
@@ -159,6 +162,10 @@ class TestExampleBase(TestBase):
             args += ["-a", self.activity_name]
         if native_lib_dir:
             args += ["-lib", native_lib_dir]
+        if profile_from_launch:
+            args.append("--profile_from_launch")
+        if add_arch:
+            args += ["--arch", self.abi]
         if not self.adb_root:
             args.append("--disable_adb_root")
         self.run_cmd(args)
@@ -246,6 +253,7 @@ class TestExampleBase(TestBase):
         self.run_app_profiler(build_binary_cache=True)
         self.run_app_profiler(skip_compile=True)
         self.run_app_profiler(start_activity=False)
+        self.run_app_profiler(profile_from_launch=True, add_arch=True)
 
 
     def common_test_report(self):
