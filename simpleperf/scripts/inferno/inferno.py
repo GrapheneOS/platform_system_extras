@@ -144,6 +144,11 @@ def output_report(process, args):
     f = open('report.html', 'w')
     filepath = os.path.realpath(f.name)
     f.write("<html>")
+    f.write("<head>")
+    f.write("""<style type="text/css">""")
+    f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-ui.min.css")))
+    f.write("</style>")
+    f.write("</head>")
     f.write("<body style='font-family: Monospace;' onload='init()'>")
     f.write("""<style type="text/css"> .s { stroke:black; stroke-width:0.5; cursor:pointer;}
             </style>""")
@@ -179,6 +184,10 @@ def output_report(process, args):
     f.write("</div>")
     f.write("""<br/><br/>
             <div>Navigate with WASD, zoom in with SPACE, zoom out with BACKSPACE.</div>""")
+    f.write("<script>")
+    f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-3.2.1.min.js")))
+    f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-ui.min.js")))
+    f.write("</script>")
     f.write("<script>%s</script>" % get_local_asset_content("script.js"))
 
     # Output tid == pid Thread first.
