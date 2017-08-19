@@ -53,12 +53,13 @@ class AppProfiler(object):
         self.app_program = self.config['app_package_name'] or self.config['native_program']
         self.app_pid = None
         self.has_symfs_on_device = False
+        self.record_subproc = None
 
 
     def check_config(self, config):
         config_names = ['app_package_name', 'native_program', 'cmd', 'native_lib_dir',
                         'apk_file_path', 'recompile_app', 'launch_activity', 'launch_inst_test',
-                        'record_options', 'perf_data_path']
+                        'record_options', 'perf_data_path', 'profile_from_launch', 'app_arch']
         for name in config_names:
             if name not in config:
                 log_exit('config [%s] is missing' % name)
@@ -83,6 +84,13 @@ class AppProfiler(object):
             if not config['launch_activity'] and not config['launch_inst_test']:
                 # If recompile app, the app needs to be restarted to take effect.
                 config['launch_activity'] = '.MainActivity'
+        if config['profile_from_launch']:
+            if not config['app_package_name']:
+                log_exit('-p needs to be set to profile from launch.')
+            if not config['launch_activity']:
+                log_exit('-a needs to be set to profile from launch.')
+            if not config['app_arch']:
+                log_exit('--arch needs to be set to profile from launch.')
 
 
     def profile(self):
@@ -101,8 +109,9 @@ class AppProfiler(object):
         self._recompile_app()
         self._restart_app()
         self._get_app_environment()
-        self._download_simpleperf()
-        self._download_native_libs()
+        if not self.config['profile_from_launch']:
+            self._download_simpleperf()
+            self._download_native_libs()
 
 
     def _get_device_environment(self):
@@ -168,6 +177,10 @@ class AppProfiler(object):
         if pid is not None:
             self.run_in_app_dir(['kill', '-9', str(pid)])
             time.sleep(1)
+
+        if self.config['profile_from_launch']:
+            self._download_simpleperf()
+            self.start_profiling()
 
         if self.config['launch_activity']:
             activity = self.config['app_package_name'] + '/' + self.config['launch_activity']
@@ -283,28 +296,36 @@ class AppProfiler(object):
 
 
     def start_and_wait_profiling(self):
-        subproc = None
+        if self.record_subproc is None:
+            self.start_profiling()
+        self.wait_profiling()
+
+
+    def wait_profiling(self):
         returncode = None
         try:
-            args = ['/data/local/tmp/simpleperf', 'record', self.config['record_options'],
-                    '-o', '/data/local/tmp/perf.data']
-            if self.config['app_package_name']:
-                args += ['--app', self.config['app_package_name']]
-            elif self.config['native_program']:
-                args += ['-p', str(self.app_pid)]
-            elif self.config['cmd']:
-                args.append(self.config['cmd'])
-            if self.has_symfs_on_device:
-                args += ['--symfs', '/data/local/tmp/native_libs']
-            adb_args = [self.adb.adb_path, 'shell'] + args
-            log_debug('run adb cmd: %s' % adb_args)
-            subproc = subprocess.Popen(adb_args)
-            returncode = subproc.wait()
+            returncode = self.record_subproc.wait()
         except KeyboardInterrupt:
-            if subproc:
-                self.stop_profiling()
-                returncode = 0
-        log_debug('run adb cmd: %s [result %s]' % (adb_args, returncode == 0))
+            self.stop_profiling()
+            self.record_subproc = None
+            returncode = 0
+        log_debug('profiling result [%s]' % (returncode == 0))
+
+
+    def start_profiling(self):
+        args = ['/data/local/tmp/simpleperf', 'record', self.config['record_options'],
+                '-o', '/data/local/tmp/perf.data']
+        if self.config['app_package_name']:
+            args += ['--app', self.config['app_package_name']]
+        elif self.config['native_program']:
+            args += ['-p', str(self.app_pid)]
+        elif self.config['cmd']:
+            args.append(self.config['cmd'])
+        if self.has_symfs_on_device:
+            args += ['--symfs', '/data/local/tmp/native_libs']
+        adb_args = [self.adb.adb_path, 'shell'] + args
+        log_debug('run adb cmd: %s' % adb_args)
+        self.record_subproc = subprocess.Popen(adb_args)
 
 
     def stop_profiling(self):
@@ -370,11 +391,11 @@ don't need to profile java code.""")
 """When profiling an Android app, we need the apk file to recompile the app on
 Android version <= M.""")
     parser.add_argument('-a', '--activity', help=
-"""When profiling an Android app, start an activity before profiling. It can be used to profile
-the startup time of an activity.""")
+"""When profiling an Android app, start an activity before profiling.
+It restarts the app if the app is already running.""")
     parser.add_argument('-t', '--test', help=
 """When profiling an Android app, start an instrumentation test before profiling.
-It can be used to profile an instrumentation test.""")
+It restarts the app if the app is already running.""")
     parser.add_argument('--arch', help=
 """Select which arch the app is running on, possible values are:
 arm, arm64, x86, x86_64. If not set, the script will try to detect it.""")
@@ -385,6 +406,12 @@ arm, arm64, x86, x86_64. If not set, the script will try to detect it.""")
     parser.add_argument('-nb', '--skip_collect_binaries', action='store_true', help=
 """By default we collect binaries used in profiling data from device to
 binary_cache directory. It can be used to annotate source code. This option skips it.""")
+    parser.add_argument('--profile_from_launch', action='store_true', help=
+"""Profile an activity from initial launch. It should be used with -p, -a, and --arch options.
+Normally we run in the following order: restart the app, detect the architecture of the app,
+download simpleperf and native libs with debug info on device, and start simpleperf record.
+But with --profile_from_launch option, we change the order as below: kill the app if it is
+already running, download simpleperf on device, start simpleperf record, and start the app.""")
     parser.add_argument('--disable_adb_root', action='store_true', help=
 """Force adb to run in non root mode.""")
     args = parser.parse_args()
@@ -403,6 +430,7 @@ binary_cache directory. It can be used to annotate source code. This option skip
     config['record_options'] = args.record_options
     config['perf_data_path'] = args.perf_data_path
     config['collect_binaries'] = not args.skip_collect_binaries
+    config['profile_from_launch'] = args.profile_from_launch
     config['disable_adb_root'] = args.disable_adb_root
 
     profiler = AppProfiler(config)
