@@ -87,7 +87,26 @@ def build_testdata():
     for demo in copy_demo_list:
         shutil.copytree(os.path.join(from_demo_path, demo), os.path.join(testdata_path, demo))
 
-class TestExampleBase(unittest.TestCase):
+
+class TestBase(unittest.TestCase):
+    def run_cmd(self, args, return_output=False):
+        if args[0].endswith('.py'):
+            args = [sys.executable] + args
+        try:
+            if not return_output:
+                returncode = subprocess.call(args)
+            else:
+                subproc = subprocess.Popen(args, stdout=subprocess.PIPE)
+                (output_data, _) = subproc.communicate()
+                returncode = subproc.returncode
+        except:
+            returncode = None
+        self.assertEqual(returncode, 0, msg="failed to run cmd: %s" % args)
+        if return_output:
+            return output_data
+
+
+class TestExampleBase(TestBase):
     @classmethod
     def prepare(cls, example_name, package_name, activity_name, abi=None, adb_root=False):
         cls.adb = AdbHelper(enable_switch_to_root=adb_root)
@@ -102,6 +121,9 @@ class TestExampleBase(unittest.TestCase):
             log_fatal("can't find app-profiling.apk under " + cls.example_path)
         cls.package_name = package_name
         cls.activity_name = activity_name
+        cls.abi = "arm64"
+        if abi and abi != "arm64" and abi.find("arm") != -1:
+            cls.abi = "arm"
         args = ["install", "-r"]
         if abi:
             args += ["--abi", abi]
@@ -123,29 +145,13 @@ class TestExampleBase(unittest.TestCase):
     def cleanupTestFiles(cls):
         remove("binary_cache")
         remove("annotated_files")
-        #remove("perf.data")
+        remove("perf.data")
         remove("report.txt")
         remove("pprof.profile")
 
-    def run_cmd(self, args, return_output=False):
-        if args[0].endswith('.py'):
-            args = [sys.executable] + args
-        try:
-            if not return_output:
-                returncode = subprocess.call(args)
-            else:
-                subproc = subprocess.Popen(args, stdout=subprocess.PIPE)
-                (output_data, _) = subproc.communicate()
-                returncode = subproc.returncode
-        except:
-            returncode = None
-        self.assertEqual(returncode, 0, msg="failed to run cmd: %s" % args)
-        if return_output:
-            return output_data
-
     def run_app_profiler(self, record_arg = "-g --duration 3 -e cpu-cycles:u",
                          build_binary_cache=True, skip_compile=False, start_activity=True,
-                         native_lib_dir=None):
+                         native_lib_dir=None, profile_from_launch=False, add_arch=False):
         args = ["app_profiler.py", "--app", self.package_name, "--apk", self.apk_path,
                 "-a", self.activity_name, "-r", record_arg, "-o", "perf.data"]
         if not build_binary_cache:
@@ -156,6 +162,10 @@ class TestExampleBase(unittest.TestCase):
             args += ["-a", self.activity_name]
         if native_lib_dir:
             args += ["-lib", native_lib_dir]
+        if profile_from_launch:
+            args.append("--profile_from_launch")
+        if add_arch:
+            args += ["--arch", self.abi]
         if not self.adb_root:
             args.append("--disable_adb_root")
         self.run_cmd(args)
@@ -212,6 +222,23 @@ class TestExampleBase(unittest.TestCase):
                             fulfilled[i] = True
         self.assertEqual(len(fulfilled), sum([int(x) for x in fulfilled]), fulfilled)
 
+    def check_inferno_report_html(self, check_entries):
+        file = "report.html"
+        self.check_exist(file=file)
+        with open(file, 'r') as fh:
+            data = fh.read()
+        fulfilled = [False for x in check_entries]
+        for line in data.split('\n'):
+            # each entry is a (function_name, min_percentage) pair.
+            for i, entry in enumerate(check_entries):
+                if fulfilled[i] or line.find(entry[0]) == -1:
+                    continue
+                m = re.search(r'(\d+\.\d+)%', line)
+                if m and float(m.group(1)) >= entry[1]:
+                    fulfilled[i] = True
+                    break
+        self.assertEqual(fulfilled, [True for x in check_entries])
+
     def common_test_app_profiler(self):
         self.run_cmd(["app_profiler.py", "-h"])
         remove("binary_cache")
@@ -226,6 +253,7 @@ class TestExampleBase(unittest.TestCase):
         self.run_app_profiler(build_binary_cache=True)
         self.run_app_profiler(skip_compile=True)
         self.run_app_profiler(start_activity=False)
+        self.run_app_profiler(profile_from_launch=True, add_arch=True)
 
 
     def common_test_report(self):
@@ -303,8 +331,16 @@ class TestExamplePureJava(TestExampleBase):
     def test_app_profiler_with_ctrl_c(self):
         if is_windows():
             return
+        # `adb root` and `adb unroot` may consumes more time than 3 sec. So
+        # do it in advance to make sure ctrl-c happens when recording.
+        if self.adb_root:
+            self.adb.switch_to_root()
+        else:
+            self.adb._unroot()
         args = [sys.executable, "app_profiler.py", "--app", self.package_name,
                 "-r", "--duration 10000", "-nc"]
+        if not self.adb_root:
+            args.append("--disable_adb_root")
         subproc = subprocess.Popen(args)
         time.sleep(3)
 
@@ -345,6 +381,10 @@ class TestExamplePureJava(TestExampleBase):
 
     def test_inferno(self):
         self.common_test_inferno()
+        self.run_app_profiler()
+        self.run_cmd([inferno_script, "-sc"])
+        self.check_inferno_report_html(
+            [('com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()', 80)])
 
 
 class TestExamplePureJavaRoot(TestExampleBase):
@@ -387,6 +427,12 @@ class TestExamplePureJavaTraceOffCpu(TestExampleBase):
              ("line 24", 20, 0),
              ("line 32", 20, 0)])
         self.run_cmd([inferno_script, "-sc"])
+        self.check_inferno_report_html(
+            [('com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.run() ', 80),
+             ('com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.RunFunction()',
+              20),
+             ('com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.SleepFunction(long)',
+              20)])
 
 
 class TestExampleWithNative(TestExampleBase):
@@ -432,6 +478,9 @@ class TestExampleWithNative(TestExampleBase):
 
     def test_inferno(self):
         self.common_test_inferno()
+        self.run_app_profiler()
+        self.run_cmd([inferno_script, "-sc"])
+        self.check_inferno_report_html([('BusyLoopThread', 80)])
 
 
 class TestExampleWithNativeRoot(TestExampleBase):
@@ -475,6 +524,9 @@ class TestExampleWithNativeTraceOffCpu(TestExampleBase):
              ("line 73", 20, 0),
              ("line 83", 20, 0)])
         self.run_cmd([inferno_script, "-sc"])
+        self.check_inferno_report_html([('SleepThread', 80),
+                                        ('RunFunction', 20),
+                                        ('SleepFunction', 20)])
 
 
 class TestExampleWithNativeJniCall(TestExampleBase):
@@ -577,6 +629,11 @@ class TestExampleOfKotlin(TestExampleBase):
 
     def test_inferno(self):
         self.common_test_inferno()
+        self.run_app_profiler()
+        self.run_cmd([inferno_script, "-sc"])
+        self.check_inferno_report_html(
+            [('com.example.simpleperf.simpleperfexampleofkotlin.MainActivity$createBusyThread$1.run()',
+              80)])
 
 
 class TestExampleOfKotlinRoot(TestExampleBase):
@@ -619,6 +676,13 @@ class TestExampleOfKotlinTraceOffCpu(TestExampleBase):
              ("line 24", 20, 0),
              ("line 32", 20, 0)])
         self.run_cmd([inferno_script, "-sc"])
+        self.check_inferno_report_html(
+            [('void com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.run()',
+              80),
+             ('long com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.RunFunction()',
+              20),
+             ('long com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.SleepFunction(long)',
+              20)])
 
 
 class TestProfilingNativeProgram(TestExampleBase):
@@ -734,6 +798,11 @@ class TestReportLib(unittest.TestCase):
                     break
         sleep_percentage = float(sleep_function_period) / total_period
         self.assertGreater(sleep_percentage, 0.30)
+
+
+class TestRunSimpleperfOnDevice(TestBase):
+    def test_smoke(self):
+        self.run_cmd(['run_simpleperf_on_device.py', 'list', '--show-features'])
 
 
 def main():
