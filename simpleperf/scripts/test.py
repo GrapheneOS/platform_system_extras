@@ -92,11 +92,12 @@ class TestBase(unittest.TestCase):
     def run_cmd(self, args, return_output=False):
         if args[0].endswith('.py'):
             args = [sys.executable] + args
+        use_shell = args[0].endswith('.bat')
         try:
             if not return_output:
-                returncode = subprocess.call(args)
+                returncode = subprocess.call(args, shell=use_shell)
             else:
-                subproc = subprocess.Popen(args, stdout=subprocess.PIPE)
+                subproc = subprocess.Popen(args, stdout=subprocess.PIPE, shell=use_shell)
                 (output_data, _) = subproc.communicate()
                 returncode = subproc.returncode
         except:
