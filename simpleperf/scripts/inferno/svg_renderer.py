@@ -47,9 +47,9 @@ def getHeatColor(callsite, total_weight):
 
 
 def createSVGNode(callsite, depth, f, total_weight, height, color_scheme, nav):
-    x = float(callsite.offset) / total_weight * SVG_CANVAS_WIDTH
+    x = float(callsite.offset) / total_weight * 100
     y = height - (depth + 1) * SVG_NODE_HEIGHT
-    width = callsite.weight() / total_weight * SVG_CANVAS_WIDTH
+    width = callsite.weight() / total_weight * 100
 
     method = callsite.method.replace(">", "&gt;").replace("<", "&lt;")
     if width <= 0:
@@ -67,9 +67,9 @@ def createSVGNode(callsite, depth, f, total_weight, height, color_scheme, nav):
     f.write(
         """<g id=%d class="n" onclick="zoom(this);" onmouseenter="select(this);" nav="%s">
         <title>%s | %s (%.0f events: %3.2f%%)</title>
-        <rect x="%f" y="%f" ox="%f" oy="%f" width="%f" owidth="%f" height="15.0"
+        <rect x="%f%%" y="%f" ox="%f" oy="%f" width="%f%%" owidth="%f" height="15.0"
         ofill="rgb(%d,%d,%d)" fill="rgb(%d,%d,%d)" style="stroke:rgb(%d,%d,%d)"/>
-        <text x="%f" y="%f" font-size="%d" font-family="Monospace"></text>
+        <text x="%f%%" y="%f" font-size="%d" font-family="Monospace"></text>
         </g>""" %
         (callsite.id,
          ','.join(str(x) for x in nav),
@@ -92,7 +92,7 @@ def createSVGNode(callsite, depth, f, total_weight, height, color_scheme, nav):
          r_border,
          g_border,
          b_border,
-         x + 2,
+         x,
          y + 12,
          FONT_SIZE))
 
@@ -164,19 +164,21 @@ def renderSVG(flamegraph, f, color_scheme, width):
     global SVG_CANVAS_WIDTH
     SVG_CANVAS_WIDTH = width
     height = (flamegraph.get_max_depth() + 2) * SVG_NODE_HEIGHT
+    f.write("""<div class="flamegraph_block" style="width:%dpx; height:%dpx;">
+            """ % (SVG_CANVAS_WIDTH, height))
     f.write("""<svg xmlns="http://www.w3.org/2000/svg"
     xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1"
-    width="%d" height="%d" style="border: 1px solid black;"
+    width="100%%" height="100%%" style="border: 1px solid black;"
     onload="adjust_text_size(this);" rootid="%d">
-    """ % (SVG_CANVAS_WIDTH, height, flamegraph.children[0].id))
+    """ % (flamegraph.children[0].id))
     f.write("""<defs > <linearGradient id="background_gradiant" y1="0" y2="1" x1="0" x2="0" >
     <stop stop-color="#eeeeee" offset="5%" /> <stop stop-color="#efefb1" offset="90%" />
     </linearGradient> </defs>""")
-    f.write("""<rect x="0.0" y="0" width="%d" height="%d" fill="url(#background_gradiant)"  />
-            """ % (SVG_CANVAS_WIDTH, height))
+    f.write("""<rect x="0.0" y="0" width="100%" height="100%" fill="url(#background_gradiant)" />
+            """)
     renderSVGNodes(flamegraph, 0, f, flamegraph.weight(), height, color_scheme)
     renderSearchNode(f)
     renderUnzoomNode(f)
     renderInfoNode(f)
     renderPercentNode(f)
-    f.write("</svg><br/>\n\n")
+    f.write("</svg></div><br/>\n\n")
