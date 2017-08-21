@@ -1,1 +1,1 @@
-python -m inferno.inferno %
+python -m inferno.inferno %*

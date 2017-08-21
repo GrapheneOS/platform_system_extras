@@ -764,7 +764,7 @@ On non-Windows platforms:
 
 On Windows platform:
 
-    $ ./inferno.bat -sc --symfs binary_cache
+    $ inferno.bat -sc --symfs binary_cache
 
 Remove `--symfs binary_cache` if you selected not to collect binaries when
 using `app_profiler.py`.
