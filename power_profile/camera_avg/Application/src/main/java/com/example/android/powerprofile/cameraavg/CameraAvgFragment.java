@@ -181,6 +181,8 @@ public class CameraAvgFragment extends Fragment
      */
     private Size mPreviewSize;
 
+    private Runnable mCaptureRunnable;
+
     /**
      * {@link CameraDevice.StateCallback} is called when {@link CameraDevice} changes its state.
      */
@@ -450,10 +452,20 @@ public class CameraAvgFragment extends Fragment
         } else {
             mTextureView.setSurfaceTextureListener(mSurfaceTextureListener);
         }
+
+        mCaptureRunnable = new Runnable() {
+            public void run() {
+                mBackgroundHandler.postDelayed(this, 6000);
+                CameraAvgFragment.this.takePicture();
+            }
+        };
+        mBackgroundHandler.postDelayed(mCaptureRunnable, 6000);
     }
 
     @Override
     public void onPause() {
+        mBackgroundHandler.removeCallbacks(mCaptureRunnable);
+
         closeCamera();
         stopBackgroundThread();
         super.onPause();
@@ -835,7 +847,6 @@ public class CameraAvgFragment extends Fragment
                 public void onCaptureCompleted(@NonNull CameraCaptureSession session,
                                                @NonNull CaptureRequest request,
                                                @NonNull TotalCaptureResult result) {
-                    showToast("Saved: " + mFile);
                     Log.d(TAG, mFile.toString());
                     unlockFocus();
                 }
