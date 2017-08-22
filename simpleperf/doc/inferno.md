@@ -52,7 +52,7 @@ visualize in which part of an app the CPU cycles are spent.
 Open a terminal and from `simpleperf/scripts` directory type:
 ```
 ./inferno.sh  (on Linux/Mac)
-./inferno.bat (on Windows)
+inferno.bat (on Windows)
 ```
 
 Inferno will collect data, process them and automatically open your web browser

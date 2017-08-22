@@ -144,6 +144,11 @@ def output_report(process, args):
     f = open('report.html', 'w')
     filepath = os.path.realpath(f.name)
     f.write("<html>")
+    f.write("<head>")
+    f.write("""<style type="text/css">""")
+    f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-ui.min.css")))
+    f.write("</style>")
+    f.write("</head>")
     f.write("<body style='font-family: Monospace;' onload='init()'>")
     f.write("""<style type="text/css"> .s { stroke:black; stroke-width:0.5; cursor:pointer;}
             </style>""")
@@ -179,6 +184,10 @@ def output_report(process, args):
     f.write("</div>")
     f.write("""<br/><br/>
             <div>Navigate with WASD, zoom in with SPACE, zoom out with BACKSPACE.</div>""")
+    f.write("<script>")
+    f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-3.2.1.min.js")))
+    f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-ui.min.js")))
+    f.write("</script>")
     f.write("<script>%s</script>" % get_local_asset_content("script.js"))
 
     # Output tid == pid Thread first.
@@ -214,13 +223,17 @@ def collect_machine_info(process):
 
 
 def open_report_in_browser(report_path):
-    # Try to open the report with Chrome
-    browser_key = ""
-    for key, value in webbrowser._browsers.items():
-        if key.find("chrome") != -1:
-            browser_key = key
-    browser = webbrowser.get(browser_key)
-    browser.open(report_path, new=0, autoraise=True)
+    try:
+        # Try to open the report with Chrome
+        browser_key = ""
+        for key, value in webbrowser._browsers.items():
+            if key.find("chrome") != -1:
+                browser_key = key
+        browser = webbrowser.get(browser_key)
+        browser.open(report_path, new=0, autoraise=True)
+    except:
+        # webbrowser.get() doesn't work well on darwin/windows.
+        webbrowser.open_new_tab(report_path)
 
 
 def main():

@@ -22,12 +22,12 @@ function dumpStack(svgElement) {
   }
 }
 
-function adjust_node_text_size(x) {
+function adjust_node_text_size(x, svgWidth) {
   let title = x.getElementsByTagName('title')[0];
   let text = x.getElementsByTagName('text')[0];
   let rect = x.getElementsByTagName('rect')[0];
 
-  let width = parseFloat(rect.attributes['width'].value);
+  let width = parseFloat(rect.attributes['width'].value) * svgWidth * 0.01;
 
   // Don't even bother trying to find a best fit. The area is too small.
   if (width < 28) {
@@ -55,9 +55,10 @@ function adjust_node_text_size(x) {
  }
 
 function adjust_text_size(svgElement) {
+  let svgWidth = $(svgElement).parent().width();
   let x = svgElement.getElementsByTagName('g');
   for (let i = 0; i < x.length; i++) {
-    adjust_node_text_size(x[i]);
+    adjust_node_text_size(x[i], svgWidth);
   }
 }
 
@@ -83,7 +84,7 @@ function displayFromElement(e) {
 
   let svgBox = e.ownerSVGElement.getBoundingClientRect();
   let svgBoxHeight = svgBox.height;
-  let svgBoxWidth = svgBox.width;
+  let svgBoxWidth = 100;
   let scaleFactor = svgBoxWidth / clicked_origin_width;
 
   let callsites = e.ownerSVGElement.getElementsByTagName('g');
@@ -103,14 +104,14 @@ function displayFromElement(e) {
     rect.style.display = 'block';
     text.style.display = 'block';
 
-    let newrec_x = rect.attributes['x'].value = (rect_o_x - clicked_origin_x) * scaleFactor;
+    let newrec_x = rect.attributes['x'].value = (rect_o_x - clicked_origin_x) * scaleFactor + "%";
     let newrec_y = rect.attributes['y'].value = rect_o_y + (svgBoxHeight - clicked_origin_y
                                                             - 17 - 2);
 
     text.attributes['y'].value = newrec_y + 12;
-    text.attributes['x'].value = newrec_x + 4;
+    text.attributes['x'].value = newrec_x;
 
-    rect.attributes['width'].value = rect.attributes['owidth'].value * scaleFactor;
+    rect.attributes['width'].value = (rect.attributes['owidth'].value * scaleFactor) + "%";
   }
 
   adjust_text_size(e.ownerSVGElement);
@@ -236,3 +237,12 @@ function select(e) {
   let barTextElement = selected.ownerSVGElement.getElementById('info_text');
   barTextElement.textContent = methodName;
 }
+
+$(document).ready(function() {
+  $(".flamegraph_block").resizable({
+    handles: "e",
+    resize: function(event, ui) {
+      adjust_text_size(ui.element.find("svg")[0]);
+    }
+  });
+});
