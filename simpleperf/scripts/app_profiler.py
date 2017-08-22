@@ -116,21 +116,9 @@ class AppProfiler(object):
 
     def _get_device_environment(self):
         self.is_root_device = self.adb.switch_to_root()
-
-        # Get android version.
-        build_version = self.adb.get_property('ro.build.version.release')
-        if build_version:
-            if not build_version[0].isdigit():
-                c = build_version[0].upper()
-                if c < 'L':
-                    self.android_version = 0
-                else:
-                    self.android_version = ord(c) - ord('L') + 5
-            else:
-                strs = build_version.split('.')
-                if strs:
-                    self.android_version = int(strs[0])
-
+        self.android_version = self.adb.get_android_version()
+        if self.android_version < 7:
+            log_warning("app_profiler.py is not tested prior Android N, please switch to use cmdline interface.")
         self.device_arch = self.adb.get_device_arch()
 
 
@@ -173,9 +161,8 @@ class AppProfiler(object):
             else:
                 self.config['launch_activity'] = '.MainActivity'
 
-        pid = self._find_app_process()
-        if pid is not None:
-            self.run_in_app_dir(['kill', '-9', str(pid)])
+        self.adb.check_run(['shell', 'am', 'force-stop', self.config['app_package_name']])
+        while self._find_app_process():
             time.sleep(1)
 
         if self.config['profile_from_launch']:
@@ -195,8 +182,8 @@ class AppProfiler(object):
                 log_exit("Can't start instrumentation test  %s" % self.config['launch_inst_test'])
 
         for i in range(10):
-            pid = self._find_app_process()
-            if pid is not None:
+            self.app_pid = self._find_app_process()
+            if self.app_pid is not None:
                 return
             time.sleep(1)
             log_info('Wait for the app process for %d seconds' % (i + 1))
