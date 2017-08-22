@@ -265,6 +265,21 @@ class AdbHelper(object):
         log_fatal('unsupported architecture: %s' % output.strip())
 
 
+    def get_android_version(self):
+        build_version = self.get_property('ro.build.version.release')
+        android_version = 0
+        if build_version:
+            if not build_version[0].isdigit():
+                c = build_version[0].upper()
+                if c.isupper() and c >= 'L':
+                    android_version = ord(c) - ord('L') + 5
+            else:
+                strs = build_version.split('.')
+                if strs:
+                    android_version = int(strs[0])
+        return android_version
+
+
 def flatten_arg_list(arg_list):
     res = []
     if arg_list:
