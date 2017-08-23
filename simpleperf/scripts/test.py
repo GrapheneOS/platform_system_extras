@@ -68,7 +68,6 @@ def is_trace_offcpu_supported():
         support_trace_offcpu = 'trace-offcpu' in output
     return support_trace_offcpu
 
-
 def build_testdata():
     """ Collect testdata from ../testdata and ../demo. """
     from_testdata_path = os.path.join('..', 'testdata')
@@ -481,7 +480,7 @@ class TestExampleWithNative(TestExampleBase):
         self.common_test_inferno()
         self.run_app_profiler()
         self.run_cmd([inferno_script, "-sc"])
-        self.check_inferno_report_html([('BusyLoopThread', 80)])
+        self.check_inferno_report_html([('BusyLoopThread', 20)])
 
 
 class TestExampleWithNativeRoot(TestExampleBase):
@@ -807,7 +806,11 @@ class TestRunSimpleperfOnDevice(TestBase):
 
 
 def main():
+    os.chdir(get_script_dir())
     build_testdata()
+    if AdbHelper().get_android_version() < 7:
+        log_info("Skip tests on Android version < N.")
+        sys.exit(0)
     test_program = unittest.main(failfast=True, exit=False)
     if test_program.result.wasSuccessful():
         TestExampleBase.cleanupTestFiles()
