@@ -138,16 +138,19 @@ class TestExampleBase(TestBase):
 
     @classmethod
     def tearDownClass(cls):
+        if hasattr(cls, 'test_result') and cls.test_result and not cls.test_result.wasSuccessful():
+            return
         if hasattr(cls, 'package_name'):
             cls.adb.check_run(["uninstall", cls.package_name])
-
-    @classmethod
-    def cleanupTestFiles(cls):
         remove("binary_cache")
         remove("annotated_files")
         remove("perf.data")
         remove("report.txt")
         remove("pprof.profile")
+
+    def run(self, result=None):
+        self.__class__.test_result = result
+        super(TestBase, self).run(result)
 
     def run_app_profiler(self, record_arg = "-g --duration 3 -e cpu-cycles:u",
                          build_binary_cache=True, skip_compile=False, start_activity=True,
@@ -333,6 +336,16 @@ class TestExamplePureJava(TestExampleBase):
             ["com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()",
              "__start_thread"])
 
+    def test_app_profiler_multiprocesses(self):
+        self.adb.check_run(['shell', 'am', 'force-stop', self.package_name])
+        self.adb.check_run(['shell', 'am', 'start', '-n',
+                            self.package_name + '/.MultiProcessActivity'])
+        # Wait until both MultiProcessActivity and MultiProcessService set up.
+        time.sleep(3)
+        self.run_app_profiler(skip_compile=True, start_activity=False)
+        self.run_cmd(["report.py", "-o", "report.txt"])
+        self.check_strings_in_file("report.txt", ["BusyService", "BusyThread"])
+
     def test_app_profiler_with_ctrl_c(self):
         if is_windows():
             return
@@ -369,7 +382,7 @@ class TestExamplePureJava(TestExampleBase):
             [("MainActivity.java", 80, 80),
              ("run", 80, 0),
              ("callFunction", 0, 0),
-             ("line 24", 80, 0)])
+             ("line 23", 80, 0)])
 
     def test_report_sample(self):
         self.common_test_report_sample(
@@ -830,9 +843,7 @@ def main():
     if AdbHelper().get_android_version() < 7:
         log_info("Skip tests on Android version < N.")
         sys.exit(0)
-    test_program = unittest.main(failfast=True, exit=False)
-    if test_program.result.wasSuccessful():
-        TestExampleBase.cleanupTestFiles()
+    unittest.main(failfast=True)
 
 if __name__ == '__main__':
     main()
