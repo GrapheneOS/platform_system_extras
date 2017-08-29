@@ -263,6 +263,7 @@ class TestExampleBase(TestBase):
         self.run_cmd(["report.py", "-i", "perf.data"])
         self.run_cmd(["report.py", "-g"])
         self.run_cmd(["report.py", "--self-kill-for-testing",  "-g", "--gui"])
+        self.run_cmd(["report_html.py"])
 
     def common_test_annotate(self):
         self.run_cmd(["annotate.py", "-h"])

@@ -320,7 +320,6 @@ def main():
     while i < len(args):
         if args[i] == '-h' or args[i] == '--help':
             print('report.py   A python wrapper for simpleperf report command.')
-            print('report.py [')
             print('Options supported by simpleperf report command:')
             print(get_simpleperf_report_help_msg())
             print('\nOptions supported by report.py:')
