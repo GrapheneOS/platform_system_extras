@@ -522,6 +522,21 @@ void PrepareVdsoFile() {
   Dso::SetVdsoFile(std::move(tmpfile), sizeof(size_t) == sizeof(uint64_t));
 }
 
+static bool HasOpenedAppApkFile(int pid) {
+  std::string fd_path = "/proc/" + std::to_string(pid) + "/fd/";
+  std::vector<std::string> files = GetEntriesInDir(fd_path);
+  for (const auto& file : files) {
+    std::string real_path;
+    if (!android::base::Readlink(fd_path + file, &real_path)) {
+      continue;
+    }
+    if (real_path.find("app") != std::string::npos && real_path.find(".apk") != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
 int WaitForAppProcess(const std::string& package_name) {
   size_t loop_count = 0;
   while (true) {
@@ -533,12 +548,26 @@ int WaitForAppProcess(const std::string& package_name) {
         continue;
       }
       cmdline = android::base::Basename(cmdline);
-      if (cmdline == package_name) {
-        if (loop_count > 0u) {
-          LOG(INFO) << "Got process " << pid << " for package " << package_name;
-        }
-        return pid;
+      if (cmdline != package_name) {
+        continue;
       }
+      // If a debuggable app with wrap.sh runs on Android O, the app will be started with
+      // logwrapper as below:
+      // 1. Zygote forks a child process, rename it to package_name.
+      // 2. The child process execute sh, which starts a child process running
+      //    /system/bin/logwrapper.
+      // 3. logwrapper starts a child process running sh, which interprets wrap.sh.
+      // 4. wrap.sh starts a child process running the app.
+      // The problem here is we want to profile the process started in step 4, but sometimes we
+      // run into the process started in step 1. To solve it, we can check if the process has
+      // opened an apk file in some app dirs.
+      if (!HasOpenedAppApkFile(pid)) {
+        continue;
+      }
+      if (loop_count > 0u) {
+        LOG(INFO) << "Got process " << pid << " for package " << package_name;
+      }
+      return pid;
     }
     if (++loop_count == 1u) {
       LOG(INFO) << "Waiting for process of app " << package_name;
