@@ -25,6 +25,7 @@ import argparse
 import copy
 import os
 import os.path
+import re
 import shutil
 import subprocess
 import sys
@@ -194,7 +195,23 @@ class AppProfiler(object):
         # On Android >= N, pidof is available. Otherwise, we can use ps.
         if self.android_version >= 7:
             result, output = self.adb.run_and_return_output(['shell', 'pidof', self.app_program])
-            return int(output) if result else None
+            if not result:
+                return None
+            pid = int(output)
+            if self.android_version >= 8 and self.config['app_package_name']:
+                # If a debuggable app with wrap.sh runs on Android O, the app will be started with
+                # logwrapper as below:
+                # 1. Zygote forks a child process, rename it to package_name.
+                # 2. The child process execute sh, which starts a child process running
+                # /system/bin/logwrapper.
+                # 3. logwrapper starts a child process running sh, which interprets wrap.sh.
+                # 4. wrap.sh starts a child process running the app.
+                # The problem here is we want to profile the process started in step 4, but
+                # sometimes we run into the process started in step 1. To solve it, we can check
+                # if the process has opened an apk file in some app dirs.
+                if not self._has_opened_apk_file(pid):
+                    return None
+            return pid
         result, output = self.adb.run_and_return_output(['shell', 'ps'], log_output=False)
         if not result:
             return None
@@ -203,6 +220,12 @@ class AppProfiler(object):
             if len(strs) > 2 and self.app_program in strs[-1]:
                 return int(strs[1])
         return None
+
+
+    def _has_opened_apk_file(self, pid):
+        result, output = self.run_in_app_dir(['ls -l /proc/%d/fd' % pid],
+                                             check_result=False, log_output=False)
+        return result and re.search(r'app.*\.apk', output)
 
 
     def _get_app_environment(self):
@@ -252,7 +275,7 @@ class AppProfiler(object):
                 searched_lib[item] = True
                 # Use '/' as path separator as item comes from android environment.
                 filename = item[item.rfind('/') + 1:]
-                dirname = '/data/local/tmp' + item[:item.rfind('/')]
+                dirname = '/data/local/tmp/native_libs' + item[:item.rfind('/')]
                 path = filename_dict.get(filename)
                 if path is None:
                     continue
@@ -295,8 +318,12 @@ class AppProfiler(object):
         except KeyboardInterrupt:
             self.stop_profiling()
             self.record_subproc = None
+            # Don't check return value of record_subproc. Because record_subproc also
+            # receives Ctrl-C, and always returns non-zero.
             returncode = 0
         log_debug('profiling result [%s]' % (returncode == 0))
+        if returncode != 0:
+            log_exit('Failed to record profiling data.')
 
 
     def start_profiling(self):
