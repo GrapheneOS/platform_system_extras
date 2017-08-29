@@ -255,6 +255,7 @@ void reduce_allocation(struct block_allocation *alloc, u32 len)
 			len -= last_reg->len;
 			if (reg) {
 				reg->next = NULL;
+				alloc->list.last = reg;
 			} else {
 				alloc->list.first = NULL;
 				alloc->list.last = NULL;
