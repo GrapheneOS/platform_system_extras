@@ -153,7 +153,7 @@ class TestExampleBase(TestBase):
                          build_binary_cache=True, skip_compile=False, start_activity=True,
                          native_lib_dir=None, profile_from_launch=False, add_arch=False):
         args = ["app_profiler.py", "--app", self.package_name, "--apk", self.apk_path,
-                "-a", self.activity_name, "-r", record_arg, "-o", "perf.data"]
+                "-r", record_arg, "-o", "perf.data"]
         if not build_binary_cache:
             args.append("-nb")
         if skip_compile or self.__class__.compiled:
@@ -253,8 +253,6 @@ class TestExampleBase(TestBase):
         self.run_app_profiler(build_binary_cache=True)
         self.run_app_profiler(skip_compile=True)
         self.run_app_profiler(start_activity=False)
-        self.run_app_profiler(profile_from_launch=True, add_arch=True)
-
 
     def common_test_report(self):
         self.run_cmd(["report.py", "-h"])
@@ -278,7 +276,7 @@ class TestExampleBase(TestBase):
         self.run_cmd(["report_sample.py"])
         output = self.run_cmd(["report_sample.py", "perf.data"], return_output=True)
         self.check_strings_in_content(output, check_strings)
-        self.run_app_profiler(record_arg="-g --duration 3 -e cpu-cycles:u, --no-dump-symbols")
+        self.run_app_profiler(record_arg="-g --duration 3 -e cpu-cycles:u --no-dump-symbols")
         output = self.run_cmd(["report_sample.py", "--symfs", "binary_cache"], return_output=True)
         self.check_strings_in_content(output, check_strings)
 
@@ -327,6 +325,13 @@ class TestExamplePureJava(TestExampleBase):
 
     def test_app_profiler(self):
         self.common_test_app_profiler()
+
+    def test_app_profiler_profile_from_launch(self):
+        self.run_app_profiler(profile_from_launch=True, add_arch=True, build_binary_cache=False)
+        self.run_cmd(["report.py", "-g", "-o", "report.txt"])
+        self.check_strings_in_file("report.txt",
+            ["com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()",
+             "__start_thread"])
 
     def test_app_profiler_with_ctrl_c(self):
         if is_windows():
@@ -446,6 +451,13 @@ class TestExampleWithNative(TestExampleBase):
         self.common_test_app_profiler()
         remove("binary_cache")
         self.run_app_profiler(native_lib_dir=self.example_path)
+
+    def test_app_profiler_profile_from_launch(self):
+        self.run_app_profiler(profile_from_launch=True, add_arch=True, build_binary_cache=False)
+        self.run_cmd(["report.py", "-g", "-o", "report.txt"])
+        self.check_strings_in_file("report.txt",
+            ["BusyLoopThread",
+             "__start_thread"])
 
     def test_report(self):
         self.common_test_report()
@@ -595,6 +607,13 @@ class TestExampleOfKotlin(TestExampleBase):
 
     def test_app_profiler(self):
         self.common_test_app_profiler()
+
+    def test_app_profiler_profile_from_launch(self):
+        self.run_app_profiler(profile_from_launch=True, add_arch=True, build_binary_cache=False)
+        self.run_cmd(["report.py", "-g", "-o", "report.txt"])
+        self.check_strings_in_file("report.txt",
+            ["com.example.simpleperf.simpleperfexampleofkotlin.MainActivity$createBusyThread$1.run()",
+             "__start_thread"])
 
     def test_report(self):
         self.common_test_report()

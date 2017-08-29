@@ -111,7 +111,7 @@ class RecordCommand : public Command {
 "-f freq      Set event sample frequency. It means recording at most [freq]\n"
 "             samples every second. For non-tracepoint events, the default\n"
 "             option is -f 4000. A -f/-c option affects all event types\n"
-"             following it until meeting another -f/-c option. For example,"
+"             following it until meeting another -f/-c option. For example,\n"
 "             for \"-f 1000 cpu-cycles -c 1 -e sched:sched_switch\", cpu-cycles\n"
 "             has sample freq 1000, sched:sched_switch event has sample period 1.\n"
 "-c count     Set event sample period. It means recording one sample when\n"
