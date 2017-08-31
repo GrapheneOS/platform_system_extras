@@ -537,7 +537,8 @@ static bool HasOpenedAppApkFile(int pid) {
   return false;
 }
 
-int WaitForAppProcess(const std::string& package_name) {
+std::set<pid_t> WaitForAppProcesses(const std::string& package_name) {
+  std::set<pid_t> result;
   size_t loop_count = 0;
   while (true) {
     std::vector<pid_t> pids = GetAllProcesses();
@@ -547,8 +548,14 @@ int WaitForAppProcess(const std::string& package_name) {
         // Maybe we don't have permission to read it.
         continue;
       }
-      cmdline = android::base::Basename(cmdline);
-      if (cmdline != package_name) {
+      std::string process_name = android::base::Basename(cmdline);
+      // The app may have multiple processes, with process name like
+      // com.google.android.googlequicksearchbox:search.
+      size_t split_pos = process_name.find(':');
+      if (split_pos != std::string::npos) {
+        process_name = process_name.substr(0, split_pos);
+      }
+      if (process_name != package_name) {
         continue;
       }
       // If a debuggable app with wrap.sh runs on Android O, the app will be started with
@@ -567,7 +574,10 @@ int WaitForAppProcess(const std::string& package_name) {
       if (loop_count > 0u) {
         LOG(INFO) << "Got process " << pid << " for package " << package_name;
       }
-      return pid;
+      result.insert(pid);
+    }
+    if (!result.empty()) {
+      return result;
     }
     if (++loop_count == 1u) {
       LOG(INFO) << "Waiting for process of app " << package_name;

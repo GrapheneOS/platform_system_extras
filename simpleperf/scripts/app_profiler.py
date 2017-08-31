@@ -192,13 +192,23 @@ class AppProfiler(object):
 
 
     def _find_app_process(self):
-        # On Android >= N, pidof is available. Otherwise, we can use ps.
-        if self.android_version >= 7:
+        if not self.config['app_package_name'] and self.android_version >= 7:
             result, output = self.adb.run_and_return_output(['shell', 'pidof', self.app_program])
-            if not result:
-                return None
-            pid = int(output)
-            if self.android_version >= 8 and self.config['app_package_name']:
+            return int(output) if result else None
+        ps_args = ['ps', '-e', '-o', 'PID,NAME'] if self.android_version >= 8 else ['ps']
+        result, output = self.adb.run_and_return_output(['shell'] + ps_args, log_output=False)
+        if not result:
+            return None
+        for line in output.split('\n'):
+            strs = line.split()
+            if len(strs) < 2:
+                continue
+            process_name = strs[-1]
+            if self.config['app_package_name']:
+                # This is to match process names in multiprocess apps.
+                process_name = process_name.split(':')[0]
+            if process_name == self.app_program:
+                pid = int(strs[0] if self.android_version >= 8 else strs[1])
                 # If a debuggable app with wrap.sh runs on Android O, the app will be started with
                 # logwrapper as below:
                 # 1. Zygote forks a child process, rename it to package_name.
@@ -209,16 +219,10 @@ class AppProfiler(object):
                 # The problem here is we want to profile the process started in step 4, but
                 # sometimes we run into the process started in step 1. To solve it, we can check
                 # if the process has opened an apk file in some app dirs.
-                if not self._has_opened_apk_file(pid):
-                    return None
-            return pid
-        result, output = self.adb.run_and_return_output(['shell', 'ps'], log_output=False)
-        if not result:
-            return None
-        for line in output.split('\n'):
-            strs = line.split()
-            if len(strs) > 2 and self.app_program in strs[-1]:
-                return int(strs[1])
+                if self.android_version >= 8 and self.config['app_package_name'] and (
+                    not self._has_opened_apk_file(pid)):
+                    continue
+                return pid
         return None
 
 
