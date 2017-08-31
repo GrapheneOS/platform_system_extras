@@ -325,8 +325,8 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     } else if (!app_package_name_.empty()) {
       // If app process is not created, wait for it. This allows simpleperf starts before
       // app process. In this way, we can have a better support of app start-up time profiling.
-      int pid = WaitForAppProcess(app_package_name_);
-      event_selection_set_.AddMonitoredProcesses({pid});
+      std::set<pid_t> pids = WaitForAppProcesses(app_package_name_);
+      event_selection_set_.AddMonitoredProcesses(pids);
     } else {
       LOG(ERROR)
           << "No threads to monitor. Try `simpleperf help record` for help";
