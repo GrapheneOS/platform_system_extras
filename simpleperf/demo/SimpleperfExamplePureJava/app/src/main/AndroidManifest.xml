@@ -17,9 +17,12 @@
             </intent-filter>
         </activity>
         <activity android:name=".SleepActivity"
-            android:exported="true">
+            android:exported="true" />
+        <activity android:name=".MultiProcessActivity"
+            android:exported="true" />
 
-        </activity>
+        <service android:name=".MultiProcessService"
+            android:process=":multiprocess_service" />
     </application>
 
 </manifest>

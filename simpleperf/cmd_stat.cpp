@@ -386,8 +386,8 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
       event_selection_set_.AddMonitoredProcesses({workload->GetPid()});
       event_selection_set_.SetEnableOnExec(true);
     } else if (!app_package_name_.empty()) {
-      int pid = WaitForAppProcess(app_package_name_);
-      event_selection_set_.AddMonitoredProcesses({pid});
+      std::set<pid_t> pids = WaitForAppProcesses(app_package_name_);
+      event_selection_set_.AddMonitoredProcesses(pids);
     } else {
       LOG(ERROR)
           << "No threads to monitor. Try `simpleperf help stat` for help\n";
