@@ -493,3 +493,17 @@ TEST(record_cmd, trace_offcpu_option) {
 TEST(record_cmd, exit_with_parent_option) {
   ASSERT_TRUE(RunRecordCmd({"--exit-with-parent"}));
 }
+
+TEST(record_cmd, clockid_option) {
+  if (!IsSettingClockIdSupported()) {
+    ASSERT_FALSE(RunRecordCmd({"--clockid", "monotonic"}));
+  } else {
+    TemporaryFile tmpfile;
+    ASSERT_TRUE(RunRecordCmd({"--clockid", "monotonic"}, tmpfile.path));
+    std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+    ASSERT_TRUE(reader);
+    std::unordered_map<std::string, std::string> info_map;
+    ASSERT_TRUE(reader->ReadMetaInfoFeature(&info_map));
+    ASSERT_EQ(info_map["clockid"], "monotonic");
+  }
+}
