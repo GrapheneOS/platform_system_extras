@@ -101,6 +101,7 @@ class EventSelectionSet {
   void EnableFpCallChainSampling();
   bool EnableDwarfCallChainSampling(uint32_t dump_stack_size);
   void SetInherit(bool enable);
+  void SetClockId(int clock_id);
   bool NeedKernelSymbol() const;
 
   void AddMonitoredProcesses(const std::set<pid_t>& processes) {
@@ -201,5 +202,6 @@ class EventSelectionSet {
 bool IsBranchSamplingSupported();
 bool IsDwarfCallChainSamplingSupported();
 bool IsDumpingRegsForTracepointEventsSupported();
+bool IsSettingClockIdSupported();
 
 #endif  // SIMPLE_PERF_EVENT_SELECTION_SET_H_
