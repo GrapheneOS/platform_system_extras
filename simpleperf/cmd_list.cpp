@@ -165,6 +165,9 @@ void ListCommand::ShowFeatures() {
   if (IsDumpingRegsForTracepointEventsSupported()) {
     printf("trace-offcpu\n");
   }
+  if (IsSettingClockIdSupported()) {
+    printf("set-clockid\n");
+  }
 }
 
 void RegisterListCommand() {

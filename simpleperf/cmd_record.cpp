@@ -62,6 +62,13 @@ static std::unordered_map<std::string, uint64_t> branch_sampling_type_map = {
     {"ind_call", PERF_SAMPLE_BRANCH_IND_CALL},
 };
 
+static std::unordered_map<std::string, int> clockid_map = {
+    {"realtime", CLOCK_REALTIME},
+    {"monotonic", CLOCK_MONOTONIC},
+    {"monotonic_raw", CLOCK_MONOTONIC_RAW},
+    {"boottime", CLOCK_BOOTTIME},
+};
+
 // The max size of records dumped by kernel is 65535, and dump stack size
 // should be a multiply of 8, so MAX_DUMP_STACK_SIZE is 65528.
 constexpr uint32_t MAX_DUMP_STACK_SIZE = 65528;
@@ -122,6 +129,9 @@ class RecordCommand : public Command {
 "             frame as the method to parse call graph in stack.\n"
 "             Default is dwarf,65528.\n"
 "-g           Same as '--call-graph dwarf'.\n"
+"--clockid clock_id      Generate timestamps of samples using selected clock.\n"
+"                        Possible values are: realtime, monotonic,\n"
+"                        monotonic_raw, boottime, perf. Default is perf.\n"
 "--cpu cpu_item1,cpu_item2,...\n"
 "             Collect samples only on the selected cpus. cpu_item can be cpu\n"
 "             number like 1, or cpu range like 0-3.\n"
@@ -183,6 +193,7 @@ class RecordCommand : public Command {
         duration_in_sec_(0),
         can_dump_kernel_symbols_(true),
         dump_symbols_(true),
+        clockid_("perf"),
         event_selection_set_(false),
         mmap_page_range_(std::make_pair(1, DESIRED_PAGES_IN_MAPPED_BUFFER)),
         record_filename_("perf.data"),
@@ -237,6 +248,7 @@ class RecordCommand : public Command {
   double duration_in_sec_;
   bool can_dump_kernel_symbols_;
   bool dump_symbols_;
+  std::string clockid_;
   std::vector<int> cpus_;
   EventSelectionSet event_selection_set_;
 
@@ -498,6 +510,21 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
                    << args[i];
         return false;
       }
+    } else if (args[i] == "--clockid") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (args[i] != "perf") {
+        if (!IsSettingClockIdSupported()) {
+          LOG(ERROR) << "Setting clockid is not supported by the kernel.";
+          return false;
+        }
+        if (clockid_map.find(args[i]) == clockid_map.end()) {
+          LOG(ERROR) << "Invalid clockid: " << args[i];
+          return false;
+        }
+      }
+      clockid_ = args[i];
     } else if (args[i] == "--cpu") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -719,6 +746,9 @@ bool RecordCommand::SetEventSelectionFlags() {
     }
   }
   event_selection_set_.SetInherit(child_inherit_);
+  if (clockid_ != "perf") {
+    event_selection_set_.SetClockId(clockid_map[clockid_]);
+  }
   return true;
 }
 
@@ -1191,6 +1221,7 @@ bool RecordCommand::DumpMetaInfoFeature() {
                                   android::base::GetProperty("ro.product.model", "").c_str(),
                                   android::base::GetProperty("ro.product.name", "").c_str());
 #endif
+  info_map["clockid"] = clockid_;
   return record_file_writer_->WriteMetaInfoFeature(info_map);
 }
 
