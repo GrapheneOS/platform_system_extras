@@ -494,6 +494,7 @@ static std::unique_ptr<Command> RecordCmd() {
 }
 
 TEST_F(ReportCommandTest, dwarf_callgraph) {
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   ASSERT_TRUE(IsDwarfCallChainSamplingSupported());
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(1, &workloads);
@@ -523,6 +524,7 @@ TEST_F(ReportCommandTest, report_dwarf_callgraph_of_nativelib_in_apk) {
 
 TEST_F(ReportCommandTest, exclude_kernel_callchain) {
   TEST_REQUIRE_HOST_ROOT();
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(1, &workloads);
   std::string pid = std::to_string(workloads[0]->GetPid());
