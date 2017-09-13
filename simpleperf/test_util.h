@@ -40,3 +40,13 @@ bool IsRoot();
       GTEST_LOG_(INFO) << "Didn't test \"" << #TestStatement << "\" requires root privileges";     \
     }                                                                                              \
   } while (0)
+
+bool IsInNativeAbi();
+// Used to skip tests not supposed to run on non-native ABIs.
+#define OMIT_TEST_ON_NON_NATIVE_ABIS()  \
+  do { \
+    if (!IsInNativeAbi()) { \
+      GTEST_LOG_(INFO) << "Skip this test as it only runs on native ABIs."; \
+      return; \
+    } \
+  } while (0)

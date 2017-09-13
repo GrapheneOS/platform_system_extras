@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #include <android-base/file.h>
@@ -155,7 +157,31 @@ TEST(record_cmd, system_wide_fp_callchain_sampling) {
   TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-a", "--call-graph", "fp"})));
 }
 
+bool IsInNativeAbi() {
+  static int in_native_abi = -1;
+  if (in_native_abi == -1) {
+    FILE* fp = popen("uname -m", "re");
+    char buf[40];
+    memset(buf, '\0', sizeof(buf));
+    fgets(buf, sizeof(buf), fp);
+    pclose(fp);
+    std::string s = buf;
+    in_native_abi = 1;
+    if (GetBuildArch() == ARCH_X86_32 || GetBuildArch() == ARCH_X86_64) {
+      if (s.find("86") == std::string::npos) {
+        in_native_abi = 0;
+      }
+    } else if (GetBuildArch() == ARCH_ARM || GetBuildArch() == ARCH_ARM64) {
+      if (s.find("arm") == std::string::npos && s.find("aarch64") == std::string::npos) {
+        in_native_abi = 0;
+      }
+    }
+  }
+  return in_native_abi == 1;
+}
+
 TEST(record_cmd, dwarf_callchain_sampling) {
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   ASSERT_TRUE(IsDwarfCallChainSamplingSupported());
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(1, &workloads);
@@ -167,17 +193,20 @@ TEST(record_cmd, dwarf_callchain_sampling) {
 }
 
 TEST(record_cmd, system_wide_dwarf_callchain_sampling) {
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   ASSERT_TRUE(IsDwarfCallChainSamplingSupported());
   TEST_IN_ROOT(RunRecordCmd({"-a", "--call-graph", "dwarf"}));
 }
 
 TEST(record_cmd, no_unwind_option) {
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   ASSERT_TRUE(IsDwarfCallChainSamplingSupported());
   ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf", "--no-unwind"}));
   ASSERT_FALSE(RunRecordCmd({"--no-unwind"}));
 }
 
 TEST(record_cmd, post_unwind_option) {
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   ASSERT_TRUE(IsDwarfCallChainSamplingSupported());
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(1, &workloads);
@@ -296,6 +325,7 @@ TEST(record_cmd, no_dump_symbols) {
   ASSERT_TRUE(RunRecordCmd({"--no-dump-symbols"}, tmpfile.path));
   CheckDsoSymbolRecords(tmpfile.path, false, &success);
   ASSERT_TRUE(success);
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   ASSERT_TRUE(IsDwarfCallChainSamplingSupported());
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(1, &workloads);
@@ -431,6 +461,7 @@ TEST(record_cmd, cpu_clock_for_a_long_time) {
 }
 
 TEST(record_cmd, dump_regs_for_tracepoint_events) {
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   // Check if the kernel can dump registers for tracepoint events.
   // If not, probably a kernel patch below is missing:
   // "5b09a094f2 arm64: perf: Fix callchain parse error with kernel tracepoint events"

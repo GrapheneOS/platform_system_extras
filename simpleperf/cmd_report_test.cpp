@@ -479,6 +479,7 @@ static std::unique_ptr<Command> RecordCmd() {
 }
 
 TEST_F(ReportCommandTest, dwarf_callgraph) {
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   ASSERT_TRUE(IsDwarfCallChainSamplingSupported());
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(1, &workloads);
