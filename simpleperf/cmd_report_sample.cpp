@@ -186,7 +186,6 @@ bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
     protobuf_coded_os.reset(nullptr);
-    google::protobuf::ShutdownProtobufLibrary();
   } else {
     PrintLostSituation();
     fflush(report_fp_);
@@ -332,7 +331,6 @@ bool ReportSampleCommand::DumpProtobufReport(const std::string& filename) {
       return false;
     }
   }
-  google::protobuf::ShutdownProtobufLibrary();
   return true;
 }
 
