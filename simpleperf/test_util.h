@@ -46,3 +46,13 @@ bool IsRoot();
 #else
 #define TEST_REQUIRE_HOST_ROOT()  if (!IsRoot()) return
 #endif
+
+bool IsInNativeAbi();
+// Used to skip tests not supposed to run on non-native ABIs.
+#define OMIT_TEST_ON_NON_NATIVE_ABIS()  \
+  do { \
+    if (!IsInNativeAbi()) { \
+      GTEST_LOG_(INFO) << "Skip this test as it only runs on native ABIs."; \
+      return; \
+    } \
+  } while (0)
