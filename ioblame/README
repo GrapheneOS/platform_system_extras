@@ -13,6 +13,8 @@ What does the output from ioblame look like ?
 -------------------------------------------
 ioblame gives 2 different views.
 
+File view is the default.
+
 1) File view : For each file, it gives a list of pids that are doing
 IO on that file (it also gives the amount of IO each pid does and
 the aggregate amount of IO done to the file by all pids).
@@ -40,8 +42,7 @@ File: /app/Gmail2Light/Gmail2Light.apk
 
 And ditto for writes.
 
-2) PID view : For each pid actively doing IO, it dumps out the list of
-files that the pid does IO to.
+To enable PID view, use -v
 
 PID: CrRendererMain
             /app/Chrome/Chrome.apk Reads: 17012 KB i_size: 71354 KB
@@ -80,6 +81,11 @@ PID: CrRendererMain
 
 And ditto for writes.
 
+For the -p, writepages option, ioblame does not (and cannot) give you
+the app/pid that did the original write (since the write most likely
+happens from a flush thread or VM reclaim). In this mode, we only get
+the pathname of the file and the amount of data written out.
+
 Finally, it reports the total amount of file data IO done by pids and
 the total IO done to the block device. So we can look at IO overheads
 (eg block level prefetching, filesystem metadata overhead etc).
@@ -91,7 +97,9 @@ How do I run ioblame ?
 --------------------
 ioblame -r	[ I am only interested in reads ]
 ioblame -w	[ I am only interested in writes ]
-ioblame -r -w  [ I am only interested in reads and writes ]
+ioblame -p	[ I am only interested in writepage(s) - mmap'ed writes ]
+ioblame -r -w -p [ I am only interested in reads, writes and writepages ]
+and finally, -v adds the PID view
 
 1) The most common way of running ioblame is to start ioblame, then go
 off and launch the app(s) of interest, do interesting stuff with the
@@ -102,7 +110,7 @@ dump out IO stats for the app.
 
 example :
 
-srmohan0.mtv.corp.google.com> sh ioblame.sh  -r -w
+srmohan0.mtv.corp.google.com> sh ioblame.sh  -r -w -p
 Found aosp_gobo Device
 OK to kill sleep when test is done
 ^Csignal INT received, killing streaming trace capture
@@ -198,3 +206,20 @@ Date:   Mon Sep 19 17:33:50 2016 -0700
 
     Change-Id: I26bd36f933108927d6903da04d8cb42fd9c3ef3d
     Signed-off-by: Mohan Srinivasan <srmohan@google.com>
+
+The -w (writepages) option requires this additional patch and
+currently only with f2fs.
+
+commit c60bc59c6af4fbdeaf7bbeaebee6b55d9e488324 (HEAD ->
+android-mtk-gobo-3.18)
+Author: Mohan Srinivasan <srmohan@google.com>
+Date:   Fri Sep 8 13:53:01 2017 -0700
+
+    Tracepoints in f2fs data writepage(s).
+
+    Tracepoints f2fs writepage(s). This is experimental (for now).
+    Allowing ioblame to track <pathname, amount of data written>
+    for files.
+
+    Signed-off-by: Mohan Srinivasan <srmohan@google.com>
+    Change-Id: I4c76c6f442e0a2c5872225f8113935f9f368cc64
