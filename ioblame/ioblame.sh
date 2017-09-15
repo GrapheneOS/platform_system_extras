@@ -3,6 +3,8 @@
 parseoptions() {
     trace_reads=false
     trace_writes=false
+    trace_writepages=false
+    pid_view=false
 
     while [ $# -ge 1 ]
     do
@@ -13,6 +15,12 @@ parseoptions() {
 	    -w)
 		trace_writes=true
 		;;
+	    -p)
+		trace_writepages=true
+		;;
+	    -v)
+		pid_view=true
+		;;
 	    *)
 		usage
 		;;
@@ -22,7 +30,7 @@ parseoptions() {
 }
 
 usage() {
-    echo "Usage: $0 [-r|-w]"
+    echo "Usage: $0 [-r|-w|-p|-v]"
     exit 1
 }
 
@@ -33,7 +41,7 @@ getmodel() {
     echo Found $model Device
 
     case $model in
-	aosp_gobo)
+	aosp_gobo | gobo)
 	    get_go_devnames
             ;;
 	marlin | sailfish)
@@ -87,32 +95,32 @@ get_angler_devnames () {
 disk_stats_before() {
     if [ $bdev_set == true ]; then
 	DISKSTATS=`adb shell 'cat /proc/diskstats' | fgrep -w $block_device `
-	if [ $trace_reads == true ]; then
-	    # Get BEFORE read stats for bdev
-	    BEFORE_RD_IOS=`echo $DISKSTATS | awk '{ print $4 }' `
-	    BEFORE_RD_SECTORS=`echo $DISKSTATS | awk '{ print $6 }' `
-	fi
-	if [ $trace_writes == true ]; then
-	    # Get BEFORE write stats for bdev
-	    BEFORE_WR_IOS=`echo $DISKSTATS | awk '{ print $8 }' `
-	    BEFORE_WR_SECTORS=`echo $DISKSTATS | awk '{ print $10 }' `
-	fi
+	# Get BEFORE read stats for bdev
+	BEFORE_RD_IOS=`echo $DISKSTATS | awk '{ print $4 }' `
+	BEFORE_RD_SECTORS=`echo $DISKSTATS | awk '{ print $6 }' `
+	# Get BEFORE write stats for bdev
+	BEFORE_WR_IOS=`echo $DISKSTATS | awk '{ print $8 }' `
+	BEFORE_WR_SECTORS=`echo $DISKSTATS | awk '{ print $10 }' `
+    fi
+    if [ $f2fs_fs == 1 ] ; then
+	adb shell 'mount -o remount,background_gc=off /data'
+	F2FS_GC_SEGMENTS_BEFORE=`adb shell 'cat /sys/kernel/debug/f2fs/status' | grep segments | egrep 'data|node' | awk '{ segments += $5 } END { print segments }' `
     fi
 }
 
 disk_stats_after() {
     if [ $bdev_set == true ]; then
 	DISKSTATS=`adb shell 'cat /proc/diskstats' | fgrep -w $block_device `
-	if [ $trace_reads == true ]; then
-	    # Get AFTER read stats for bdev
-	    AFTER_RD_IOS=`echo $DISKSTATS | awk '{ print $4 }' `
-	    AFTER_RD_SECTORS=`echo $DISKSTATS | awk '{ print $6 }' `
-	fi
-	if [ $trace_writes == true ]; then
-	    # Get BEFORE write stats for bdev
-	    AFTER_WR_IOS=`echo $DISKSTATS | awk '{ print $8 }' `
-	    AFTER_WR_SECTORS=`echo $DISKSTATS | awk '{ print $10 }' `
-	fi
+	# Get AFTER read stats for bdev
+	AFTER_RD_IOS=`echo $DISKSTATS | awk '{ print $4 }' `
+	AFTER_RD_SECTORS=`echo $DISKSTATS | awk '{ print $6 }' `
+	# Get BEFORE write stats for bdev
+	AFTER_WR_IOS=`echo $DISKSTATS | awk '{ print $8 }' `
+	AFTER_WR_SECTORS=`echo $DISKSTATS | awk '{ print $10 }' `
+    fi
+    if [ $f2fs_fs == 1 ] ; then
+	F2FS_GC_SEGMENTS_AFTER=`adb shell 'cat /sys/kernel/debug/f2fs/status' | grep segments | egrep 'data|node' | awk '{ segments += $5 } END { print segments }' `
+	adb shell 'mount -o remount,background_gc=on /data'
     fi
 }
 
@@ -135,10 +143,13 @@ disk_stats_delta_wr() {
 	# Sectors to KB
 	WRITE_KB=`expr $AFTER_WR_SECTORS - $BEFORE_WR_SECTORS`
 	WRITE_KB=`expr $WRITE_KB / 2`
-	echo "Total (ALL) Write KB $block_device = "$WRITE_KB
 	BLOCK_MINUS_FILE=`expr $WRITE_KB - $file_data_KB`
 	echo "WRITE DELTA: Total Blockdev Writes KB - Total File Data Writes KB = "$BLOCK_MINUS_FILE KB
 	echo "Total (ALL) Write IOs $block_device = "`expr $AFTER_WR_IOS - $BEFORE_WR_IOS`
+    fi
+    if [ $f2fs_fs == 1 ] ; then
+	F2FS_GC_SEGMENTS_DELTA=`expr $F2FS_GC_SEGMENTS_AFTER - $F2FS_GC_SEGMENTS_BEFORE`
+	F2FS_GC_KB_DELTA=`expr $F2FS_GC_SEGMENTS_DELTA \\* 2048`
     fi
 }
 
@@ -155,11 +166,14 @@ clean_up_tracepoints() {
     adb shell 'echo 0 > /sys/kernel/debug/tracing/trace'
     if [ $trace_reads == true ]; then
 	adb shell 'echo 1 > /sys/kernel/debug/tracing/events/android_fs/android_fs_dataread_start/enable'
-	adb shell 'echo 1 > /sys/kernel/debug/tracing/events/android_fs/android_fs_dataread_end/enable'
     fi
     if [ $trace_writes == true ]; then
 	adb shell 'echo 1 > /sys/kernel/debug/tracing/events/android_fs/android_fs_datawrite_start/enable'
-	adb shell 'echo 1 > /sys/kernel/debug/tracing/events/android_fs/android_fs_datawrite_end/enable'
+    fi
+    if [ $f2fs_fs == 1 ] ; then
+	if [ $trace_writepages == true ]; then
+	    adb shell 'echo 1 > /sys/kernel/debug/tracing/events/android_fs/android_fs_writepages/enable'
+	fi
     fi
     adb shell 'echo 1 > /sys/kernel/debug/tracing/tracing_on'
 }
@@ -184,11 +198,14 @@ copyout_trace() {
     streamtrace_end
     if [ $trace_reads == true ]; then
 	adb shell 'echo 0 > /sys/kernel/debug/tracing/events/android_fs/android_fs_dataread_start/enable'
-	adb shell 'echo 0 > /sys/kernel/debug/tracing/events/android_fs/android_fs_dataread_end/enable'
     fi
     if [ $trace_writes == true ]; then
 	adb shell 'echo 0 > /sys/kernel/debug/tracing/events/android_fs/android_fs_datawrite_start/enable'
-	adb shell 'echo 0 > /sys/kernel/debug/tracing/events/android_fs/android_fs_datawrite_end/enable'
+    fi
+    if [ $f2fs_fs == 1 ] ; then
+	if [ $trace_writepages == true ]; then
+	    adb shell 'echo 0 > /sys/kernel/debug/tracing/events/android_fs/android_fs_writepages/enable'
+	fi
     fi
     adb shell 'echo 0 > /sys/kernel/debug/tracing/tracing_on'
 }
@@ -212,6 +229,15 @@ prep_tracefile_rd() {
     rm foo0
 }
 
+prep_tracefile_writepages() {
+    prep_tracefile_common android_fs_writepages
+    # Throw away everything up to and including android_fs_writepages_start:
+    cat $infile | sed -n -e 's/^.*android_fs_writepages //p' > foo1
+    mv foo1 $infile
+    # At this stage, $infile should the following format :
+    # entry_name <filename> bytes <bytes> ino <ino>
+}
+
 # Latencies not supported for Writes. 'Write End' is just when the data has been
 # written back to page cache.
 prep_tracefile_wr() {
@@ -225,11 +251,21 @@ prep_tracefile_wr() {
     rm foo0
 }
 
-get_unique_files() {
+get_unique_files_rw() {
     # Sort first by filename, then by pid
     cat $infile | sed s/,//g  | sort -d -k2,2 -k8,8 > foo1
     mv foo1 $infile
     # $infile now contains lines sorted by <filename, pid>
+    # How many unique files are there ?
+    cat $infile | awk '{ print $2 }' > foo1
+    cat foo1 | uniq > uniq_files
+    rm foo1
+}
+
+get_unique_files_writepages() {
+    cat $infile | sed s/,//g  | sort -d -k2,2 > foo1
+    # $infile now contains lines sorted by <filename>
+    mv foo1 $infile
     # How many unique files are there ?
     cat $infile | awk '{ print $2 }' > foo1
     cat foo1 | uniq > uniq_files
@@ -286,40 +322,66 @@ do_something() {
 }
 
 # Get the aggregate list of files read/written. For each file, break up the IOs by pid
-process_files() {
+process_files_rw() {
     read_write=$1
-    get_unique_files
-    list_of_files=`cat uniq_files`
-    # $list_of_files is a list of all the files involved in IO
-    #
+    get_unique_files_rw
     # Loop over each file that was involved in IO
     # Find all the pids doing IO on that file
     # Aggregate the IO done by each pid on that file and dump it out
-    #
     grand_total_KB=0
-    for i in $list_of_files
+    cp $infile tempfile
+    for i in `cat uniq_files`
     do
-	echo "File: $i"
-	total_file_KB=0
 	# Get just the tracepoints for this file
-	fgrep -w "$i" $infile > subtrace
-	# Get all the pids doing IO on this file
-	get_unique_pids_byfile subtrace
-	list_of_pids=`cat uniq_pids_byfile`
-	# $list_of_pids is a list of all the pids doing IO to file $i
-	for j in $list_of_pids
-	do
-	    echo -n "            $j $read_write: "
-	    pid_KB=`fgrep -w "$j" subtrace | awk '{ bytes += $6 } END { print bytes }' `
-	    pid_KB=`expr $pid_KB / 1024`
-	    echo "$pid_KB KB"
-	    total_file_KB=`expr $total_file_KB + $pid_KB`
-	done
-	i_size=`tail -n1 subtrace  | awk '{ if ($12 > 1024) printf "%d KB", ($12/1024); else printf "%d bytes", $12; }' `
-	echo "            Total $read_write: $total_file_KB KB i_size: $i_size"
-	grand_total_KB=`expr $grand_total_KB + $total_file_KB`
+	fgrep -w "$i" tempfile > subtrace
+	if [ -s subtrace ]; then
+	    echo "File: $i"
+	    total_file_KB=0
+	    # Remove the tracepoints we just picked up
+	    fgrep -v -w "$i" tempfile > foo
+	    mv foo tempfile
+	    # Get all the pids doing IO on this file
+	    get_unique_pids_byfile subtrace
+	    for j in `cat uniq_pids_byfile`
+	    do
+		echo -n "            $j $read_write: "
+		pid_KB=`fgrep -w "$j" subtrace | awk '{ bytes += $6 } END { print bytes }' `
+		pid_KB=`expr $pid_KB / 1024`
+		echo "$pid_KB KB"
+		total_file_KB=`expr $total_file_KB + $pid_KB`
+	    done
+	    i_size=`tail -n1 subtrace  | awk '{ if ($12 > 1024) printf "%d KB", ($12/1024); else printf "%d bytes", $12; }' `
+	    echo "            Total $read_write: $total_file_KB KB i_size: $i_size"
+	    grand_total_KB=`expr $grand_total_KB + $total_file_KB`
+	fi
     done
     echo "Grand Total File DATA KB $read_write $grand_total_KB"
+    rm tempfile
+}
+
+process_files_writepages() {
+    get_unique_files_writepages
+    # Loop over each file that was involved in IO
+    # Aggregate the IO done on that file and dump it out
+    grand_total_KB=0
+    cp $infile tempfile
+    for i in `cat uniq_files`
+    do
+	# Get just the tracepoints for this file
+	fgrep -w "$i" tempfile > subtrace
+	if [ -s subtrace ]; then
+	    fgrep -v -w "$i" tempfile > foo
+	    mv foo tempfile
+	    total_file_KB=`cat subtrace | awk '{ bytes += $4 } END { print bytes }' `
+	    total_file_KB=`expr $total_file_KB / 1024`
+	    if [ $total_file_KB -gt 0 ]; then
+		echo "File: $i Total $read_write: $total_file_KB KB"
+		grand_total_KB=`expr $grand_total_KB + $total_file_KB`
+	    fi
+	fi
+    done
+    echo "Grand Total File DATA KB Writepages $grand_total_KB"
+    rm tempfile
 }
 
 # Get the aggregate list of pids. For each pid, break up the IOs by file
@@ -371,6 +433,19 @@ parseoptions $@
 adb root && sleep 2
 getmodel
 
+found_f2fs=`adb shell 'mount | grep f2fs > /dev/null; echo $?' `
+
+if [ $found_f2fs == 0 ]; then
+    f2fs_fs=1
+else
+    f2fs_fs=0
+fi
+
+if [ $f2fs_fs == 0 ] && [ $trace_writepages == true ]; then
+    echo "Writepages is only supported with f2fs, please use -r, -w"
+    exit 1
+fi
+
 prep_to_do_something
 
 clean_up_tracepoints
@@ -393,10 +468,12 @@ if [ $trace_reads == true ]; then
     prep_tracefile_rd
     # Get file specific stats - for each file, how many pids read that file ?
     echo "FILE VIEW:"
-    process_files Reads
-    # Get pid specific stats - for each pid, what files do they do IO on ?
-    echo "PID VIEW:"
-    process_pids Reads
+    process_files_rw Reads
+    if [ $pid_view == true ]; then
+	# Get pid specific stats - for each pid, what files do they do IO on ?
+	echo "PID VIEW:"
+	process_pids Reads
+    fi
     disk_stats_delta_rd $grand_total_KB
 
     debug_FileKB_rd=`cat $infile | awk '{ bytes += $6 } END { printf "%d", bytes/1024 }' `
@@ -410,15 +487,35 @@ if [ $trace_writes == true ]; then
     echo
     prep_tracefile_wr
     # Get file specific stats - for each file, how many pids read that file ?
+
     echo "FILE VIEW:"
-    process_files Writes
-    # Get pid specific stats - for each pid, what files do they do IO on ?
-    echo "PID VIEW:"
-    process_pids Writes
+    process_files_rw Writes
+    if [ $pid_view == true ]; then
+	# Get pid specific stats - for each pid, what files do they do IO on ?
+	echo "PID VIEW:"
+	process_pids Writes
+    fi
     disk_stats_delta_wr $grand_total_KB
 
-    debug_FileKB_wr=`cat $infile | awk '{ bytes += $6 } END { printf "%d", bytes/1024 }' `
-    echo Debug Grand Total KB WRITTEN $debug_FileKB_wr
+    if [ $f2fs_fs == 1 ] ; then
+	echo f2fs GC_KB delta = $F2FS_GC_KB_DELTA
+    fi
+fi
+
+if [ $f2fs_fs == 1 ] && [ $trace_writepages == true ] ; then
+    echo
+    echo "Writepages :"
+    echo "__________"
+    echo
+    prep_tracefile_writepages
+    # Get file specific stats - for each file, how much did we writepage ?
+
+    echo "FILE VIEW:"
+    process_files_writepages
+
+    disk_stats_delta_wr $grand_total_KB
+
+    echo f2fs GC_KB delta = $F2FS_GC_KB_DELTA
 fi
 
 rm -rf tracefile* uniq_* subtrace trace_saved
