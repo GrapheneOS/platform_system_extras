@@ -157,7 +157,7 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 	struct dirent **namelist = NULL;
 	struct stat stat;
 	int ret;
-	int i;
+	int i, j;
 	u32 inode;
 	u32 entry_inode;
 	u32 dirs = 0;
@@ -194,21 +194,21 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 	if (dentries == NULL)
 		critical_error_errno("malloc");
 
-	for (i = 0; i < entries; i++) {
-		dentries[i].filename = strdup(namelist[i]->d_name);
+	for (i = j = 0; i < entries; i++, j++) {
+		dentries[i].filename = strdup(namelist[j]->d_name);
 		if (dentries[i].filename == NULL)
 			critical_error_errno("strdup");
 
-		asprintf(&dentries[i].path, "%s%s", dir_path, namelist[i]->d_name);
-		asprintf(&dentries[i].full_path, "%s%s", full_path, namelist[i]->d_name);
+		asprintf(&dentries[i].path, "%s%s", dir_path, namelist[j]->d_name);
+		asprintf(&dentries[i].full_path, "%s%s", full_path, namelist[j]->d_name);
 
-		free(namelist[i]);
+		free(namelist[j]);
 
 		ret = lstat(dentries[i].full_path, &stat);
 		if (ret < 0) {
 			error_errno("lstat");
+			free(dentries[i].filename);
 			i--;
-			entries--;
 			continue;
 		}
 
@@ -265,10 +265,11 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 			readlink(dentries[i].full_path, dentries[i].link, info.block_size - 1);
 		} else {
 			error("unknown file type on %s", dentries[i].path);
+			free(dentries[i].filename);
 			i--;
-			entries--;
 		}
 	}
+	entries -= j - i;
 	free(namelist);
 
 	if (needs_lost_and_found) {
@@ -761,6 +762,7 @@ int make_ext4fs_internal(int fd, const char *_directory, const char *_target_out
 
 	if (info.len <= 0) {
 		fprintf(stderr, "filesystem size too small\n");
+		free(mountpoint);
 		return EXIT_FAILURE;
 	}
 
