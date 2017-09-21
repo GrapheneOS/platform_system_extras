@@ -51,7 +51,7 @@ try:
 except:
     has_google_protobuf = False
 
-inferno_script = "inferno.bat" if is_windows() else "./inferno.sh"
+inferno_script = os.path.join(get_script_dir(), "inferno.bat" if is_windows() else "./inferno.sh")
 
 support_trace_offcpu = None
 
@@ -225,8 +225,7 @@ class TestExampleBase(TestBase):
                             fulfilled[i] = True
         self.assertEqual(len(fulfilled), sum([int(x) for x in fulfilled]), fulfilled)
 
-    def check_inferno_report_html(self, check_entries):
-        file = "report.html"
+    def check_inferno_report_html(self, check_entries, file="report.html"):
         self.check_exist(file=file)
         with open(file, 'r') as fh:
             data = fh.read()
@@ -403,6 +402,21 @@ class TestExamplePureJava(TestExampleBase):
         self.run_cmd([inferno_script, "-sc"])
         self.check_inferno_report_html(
             [('com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()', 80)])
+        self.run_cmd([inferno_script, "-sc", "-o", "report2.html"])
+        self.check_inferno_report_html(
+            [('com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()', 80)],
+            "report2.html")
+        remove("report2.html")
+
+    def test_inferno_in_another_dir(self):
+        test_dir = 'inferno_testdir'
+        saved_dir = os.getcwd()
+        remove(test_dir)
+        os.mkdir(test_dir)
+        os.chdir(test_dir)
+        self.run_cmd([inferno_script])
+        os.chdir(saved_dir)
+        remove(test_dir)
 
 
 class TestExamplePureJavaRoot(TestExampleBase):
