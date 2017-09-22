@@ -36,19 +36,17 @@ import subprocess
 import sys
 import webbrowser
 
-try:
-    from simpleperf_report_lib import ReportLib
-    from utils import log_exit, log_info, AdbHelper
-except:
-    print("Please go to the parent directory, and run inferno.sh or inferno.bat.")
-    sys.exit(1)
+scripts_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.append(scripts_path)
+from simpleperf_report_lib import ReportLib
+from utils import log_exit, log_info, AdbHelper
 
 from data_types import *
 from svg_renderer import *
 
 
 def collect_data(args):
-    app_profiler_args = [sys.executable, "app_profiler.py", "-nb"]
+    app_profiler_args = [sys.executable, os.path.join(scripts_path, "app_profiler.py"), "-nb"]
     if args.app:
         app_profiler_args += ["-p", args.app]
     elif args.native_program:
@@ -141,7 +139,7 @@ def output_report(process, args):
     :param process: Process object
     :return: str, absolute path to the file
     """
-    f = open('report.html', 'w')
+    f = open(args.report_path, 'w')
     filepath = os.path.realpath(f.name)
     f.write("<html>")
     f.write("<head>")
@@ -274,6 +272,7 @@ def main():
                         default="")
     parser.add_argument('--disable_adb_root', action='store_true', help="""Force adb to run in non
                         root mode.""")
+    parser.add_argument('-o', '--report_path', default='report.html', help="Set report path.")
     args = parser.parse_args()
     process = Process("", 0)
 
