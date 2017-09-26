@@ -19,6 +19,7 @@
 #include <signal.h>
 #include <sys/prctl.h>
 #include <sys/utsname.h>
+#include <time.h>
 #include <unistd.h>
 #include <set>
 #include <string>
@@ -1220,8 +1221,10 @@ bool RecordCommand::DumpMetaInfoFeature() {
                                   android::base::GetProperty("ro.product.manufacturer", "").c_str(),
                                   android::base::GetProperty("ro.product.model", "").c_str(),
                                   android::base::GetProperty("ro.product.name", "").c_str());
+  info_map["android_version"] = android::base::GetProperty("ro.build.version.release", "");
 #endif
   info_map["clockid"] = clockid_;
+  info_map["timestamp"] = std::to_string(time(nullptr));
   return record_file_writer_->WriteMetaInfoFeature(info_map);
 }
 
