@@ -1,10 +1,16 @@
 'use strict';
 
-function init() {
-  let x = document.getElementsByTagName('svg');
-  for (let i = 0; i < x.length; i++) {
-      createZoomHistoryStack(x[i]);
-  }
+function flamegraphInit() {
+  $("div#flamegraph_id svg").each(function (_, element) {
+    createZoomHistoryStack(element);
+    adjust_text_size(element);
+  });
+  $("div#flamegraph_id .flamegraph_block").resizable({
+    handles: "e",
+    resize: function(event, ui) {
+      adjust_text_size(ui.element.find("svg")[0]);
+    }
+  });
 }
 
 // Create a stack add the root svg element in it.
@@ -31,8 +37,8 @@ function adjust_node_text_size(x, svgWidth) {
 
   // Don't even bother trying to find a best fit. The area is too small.
   if (width < 28) {
-      text.textContent = '';
-      return;
+    text.textContent = '';
+    return;
   }
   // Remove dso and #samples which are here only for mouseover purposes.
   let methodName = title.textContent.split(' | ')[0];
@@ -222,7 +228,7 @@ function select(e) {
   let info = method_and_info[1];
 
   // Parse info
-  // '/system/lib64/libhwbinder.so (4 samples: 0.28%)'
+  // '/system/lib64/libhwbinder.so (4 events: 0.28%)'
   let regexp = /(.*) \(.* ([0-9**\.[0-9]*%)\)/g;
   let match = regexp.exec(info);
   if (match.length > 2) {
@@ -237,12 +243,3 @@ function select(e) {
   let barTextElement = selected.ownerSVGElement.getElementById('info_text');
   barTextElement.textContent = methodName;
 }
-
-$(document).ready(function() {
-  $(".flamegraph_block").resizable({
-    handles: "e",
-    resize: function(event, ui) {
-      adjust_text_size(ui.element.find("svg")[0]);
-    }
-  });
-});

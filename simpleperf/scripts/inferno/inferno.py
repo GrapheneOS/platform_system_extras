@@ -141,13 +141,14 @@ def output_report(process, args):
     """
     f = open(args.report_path, 'w')
     filepath = os.path.realpath(f.name)
-    f.write("<html>")
-    f.write("<head>")
-    f.write("""<style type="text/css">""")
-    f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-ui.min.css")))
-    f.write("</style>")
-    f.write("</head>")
-    f.write("<body style='font-family: Monospace;' onload='init()'>")
+    if not args.embedded_flamegraph:
+        f.write("<html><body>")
+    f.write("<div id='flamegraph_id' style='font-family: Monospace; %s'>" % (
+            "display: none;" if args.embedded_flamegraph else ""))
+    if not args.embedded_flamegraph:
+        f.write("""<style type="text/css">""")
+        f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-ui.min.css")))
+        f.write("</style>")
     f.write("""<style type="text/css"> .s { stroke:black; stroke-width:0.5; cursor:pointer;}
             </style>""")
     f.write('<style type="text/css"> .t:hover { cursor:pointer; } </style>')
@@ -182,11 +183,14 @@ def output_report(process, args):
     f.write("</div>")
     f.write("""<br/><br/>
             <div>Navigate with WASD, zoom in with SPACE, zoom out with BACKSPACE.</div>""")
-    f.write("<script>")
-    f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-3.2.1.min.js")))
-    f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-ui.min.js")))
-    f.write("</script>")
+    if not args.embedded_flamegraph:
+        f.write("<script>")
+        f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-3.2.1.min.js")))
+        f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-ui.min.js")))
+        f.write("</script>")
     f.write("<script>%s</script>" % get_local_asset_content("script.js"))
+    if not args.embedded_flamegraph:
+        f.write("<script> $(document).ready(flamegraphInit); </script>")
 
     # Output tid == pid Thread first.
     main_thread = [x for x in process.threads.values() if x.tid == process.pid]
@@ -201,8 +205,9 @@ def output_report(process, args):
                 thread.tid, thread.name, thread.num_samples))
         renderSVG(thread.flamegraph, f, args.color, args.svg_width)
 
-    f.write("</body>")
-    f.write("</html>")
+    f.write("</div>")
+    if not args.embedded_flamegraph:
+        f.write("</body></html")
     f.close()
     return "file://" + filepath
 
@@ -273,6 +278,9 @@ def main():
     parser.add_argument('--disable_adb_root', action='store_true', help="""Force adb to run in non
                         root mode.""")
     parser.add_argument('-o', '--report_path', default='report.html', help="Set report path.")
+    parser.add_argument('--embedded_flamegraph', action='store_true', help="""
+                        Generate embedded flamegraph.""")
+    parser.add_argument('--no_browser', action='store_true', help="Don't open report in browser.")
     args = parser.parse_args()
     process = Process("", 0)
 
@@ -294,9 +302,10 @@ def main():
     parse_samples(process, args)
     generate_threads_offsets(process)
     report_path = output_report(process, args)
-    open_report_in_browser(report_path)
+    if not args.no_browser:
+        open_report_in_browser(report_path)
 
-    log_info("Report generated at '%s'." % report_path)
+    log_info("Flamegraph generated at '%s'." % report_path)
 
 if __name__ == "__main__":
     main()
