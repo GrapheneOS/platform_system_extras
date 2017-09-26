@@ -484,8 +484,10 @@ TEST(record_cmd, record_meta_info_feature) {
   std::unordered_map<std::string, std::string> info_map;
   ASSERT_TRUE(reader->ReadMetaInfoFeature(&info_map));
   ASSERT_NE(info_map.find("simpleperf_version"), info_map.end());
+  ASSERT_NE(info_map.find("timestamp"), info_map.end());
 #if defined(__ANDROID__)
   ASSERT_NE(info_map.find("product_props"), info_map.end());
+  ASSERT_NE(info_map.find("android_version"), info_map.end());
 #endif
 }
 
