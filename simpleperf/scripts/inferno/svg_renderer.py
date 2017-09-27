@@ -169,7 +169,7 @@ def renderSVG(flamegraph, f, color_scheme, width):
     f.write("""<svg xmlns="http://www.w3.org/2000/svg"
     xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1"
     width="100%%" height="100%%" style="border: 1px solid black;"
-    onload="adjust_text_size(this);" rootid="%d">
+    rootid="%d">
     """ % (flamegraph.children[0].id))
     f.write("""<defs > <linearGradient id="background_gradiant" y1="0" y2="1" x1="0" x2="0" >
     <stop stop-color="#eeeeee" offset="5%" /> <stop stop-color="#efefb1" offset="90%" />
