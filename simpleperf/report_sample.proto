@@ -76,7 +76,7 @@ message Thread {
 }
 
 message MetaInfo {
-  repeated string event_type = 2;
+  repeated string event_type = 1;
 }
 
 message Record {
