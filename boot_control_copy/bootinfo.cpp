@@ -90,7 +90,7 @@ int boot_info_open_partition(const char *name, uint64_t *out_size, int flags)
     }
     trimmed_len = end_slash - record->blk_device + 1;
     name_len = strlen(name);
-    path = calloc(trimmed_len + name_len + 1, 1);
+    path = static_cast<char *>(calloc(trimmed_len + name_len + 1, 1));
     strncpy(path, record->blk_device, trimmed_len);
     strncpy(path + trimmed_len, name, name_len);
   }
