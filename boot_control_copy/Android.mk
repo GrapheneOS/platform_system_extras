@@ -3,7 +3,7 @@
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := boot_control_copy.c bootinfo.c
+LOCAL_SRC_FILES := boot_control_copy.cpp bootinfo.cpp
 LOCAL_CFLAGS := -Wall -Wno-missing-field-initializers -Wno-unused-parameter
 LOCAL_C_INCLUDES := system/core/mkbootimg bootable/recovery
 LOCAL_SHARED_LIBRARIES := libbase libcutils
