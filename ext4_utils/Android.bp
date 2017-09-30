@@ -21,17 +21,14 @@ cc_library {
     export_include_dirs: ["include"],
     shared_libs: [
         "libsparse",
+        "libz",
     ],
 
     target: {
         host: {
             static_libs: ["libsparse"],
-            shared_libs: ["libz-host"],
         },
-        linux: {
-            static_libs: ["libselinux"],
-        },
-        darwin: {
+        not_windows: {
             static_libs: ["libselinux"],
         },
         windows: {
@@ -62,7 +59,6 @@ cc_library {
                 shared_libs: [
                     "libcutils",
                     "libext2_uuid",
-                    "libz",
                 ]
             },
         },
