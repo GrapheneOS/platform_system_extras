@@ -59,8 +59,6 @@ cc_library_host_static {
         "external/f2fs-tools/include",
         "external/f2fs-tools/mkfs",
     ],
-    // Will attempt to dlopen("libf2fs_fmt_host_dyn")
-    host_ldlibs: ["-ldl"],
 
     target: {
         darwin: {
@@ -79,8 +77,6 @@ cc_library_shared {
         "external/f2fs-tools/mkfs",
     ],
 
-    shared_libs: ["libdl"],
-
     target: {
         darwin: {
             enabled: false,
@@ -97,8 +93,6 @@ cc_library_static {
         "external/f2fs-tools/include",
         "external/f2fs-tools/mkfs",
     ],
-
-    shared_libs: ["libdl"],
 
     target: {
         darwin: {
