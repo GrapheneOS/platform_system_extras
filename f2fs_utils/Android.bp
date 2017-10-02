@@ -2,6 +2,7 @@
 
 cc_library_host_static {
     name: "libf2fs_utils_host",
+    defaults: ["system-extras-cflags-defaults"],
 
     srcs: ["f2fs_utils.c"],
 
@@ -15,8 +16,6 @@ cc_library_host_static {
         "external/f2fs-tools/mkfs",
     ],
 
-    cflags: ["-Wno-unused-parameter"],
-
     target: {
         darwin: {
             enabled: false,
@@ -26,6 +25,7 @@ cc_library_host_static {
 
 cc_library_host_static {
     name: "libf2fs_ioutils_host",
+    defaults: ["system-extras-cflags-defaults"],
 
     srcs: ["f2fs_ioutils.c"],
 
@@ -33,8 +33,6 @@ cc_library_host_static {
         "external/f2fs-tools/include",
         "external/f2fs-tools/mkfs",
     ],
-
-    cflags: ["-Wno-unused-parameter"],
 
     static_libs: [
         "libselinux",
@@ -52,6 +50,7 @@ cc_library_host_static {
 
 cc_library_host_static {
     name: "libf2fs_dlutils_host",
+    defaults: ["system-extras-cflags-defaults"],
 
     srcs: ["f2fs_dlutils.c"],
 
@@ -71,6 +70,7 @@ cc_library_host_static {
 
 cc_library_shared {
     name: "libf2fs_dlutils",
+    defaults: ["system-extras-cflags-defaults"],
 
     srcs: ["f2fs_dlutils.c"],
 
@@ -90,6 +90,7 @@ cc_library_shared {
 
 cc_library_static {
     name: "libf2fs_dlutils_static",
+    defaults: ["system-extras-cflags-defaults"],
 
     srcs: ["f2fs_dlutils.c"],
 
@@ -109,6 +110,7 @@ cc_library_static {
 
 cc_library_static {
     name: "libf2fs_utils_static",
+    defaults: ["system-extras-cflags-defaults"],
 
     srcs: ["f2fs_utils.c"],
 
@@ -116,8 +118,6 @@ cc_library_static {
         "external/f2fs-tools/include",
         "external/f2fs-tools/mkfs",
     ],
-
-    cflags: ["-Wno-unused-parameter"],
 
     static_libs: ["libsparse"],
 
@@ -130,6 +130,7 @@ cc_library_static {
 
 cc_library_shared {
     name: "libf2fs_sparseblock",
+    defaults: ["system-extras-cflags-defaults"],
 
     srcs: ["f2fs_sparseblock.c"],
 
@@ -148,6 +149,7 @@ cc_library_shared {
 
 cc_binary {
     name: "f2fs_sparseblock",
+    defaults: ["system-extras-cflags-defaults"],
 
     srcs: ["f2fs_sparseblock.c"],
 
