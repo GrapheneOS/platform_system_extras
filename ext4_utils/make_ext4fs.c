@@ -84,6 +84,7 @@
 
 #endif
 
+#undef MAX_PATH
 #define MAX_PATH 4096
 #define MAX_BLK_MAPPING_STR 1000
 
