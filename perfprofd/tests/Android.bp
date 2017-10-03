@@ -1,10 +1,13 @@
 // Build the unit tests.
 
-perfprofd_test_cppflags = [
+perfprofd_test_cflags = [
     "-Wall",
+    "-Werror",
+]
+
+perfprofd_test_cppflags = [
     "-Wno-sign-compare",
     "-Wno-unused-parameter",
-    "-Werror",
 ]
 
 //
@@ -14,6 +17,7 @@ cc_library_static {
     name: "libperfprofdmockutils",
 
     include_dirs: ["system/extras/perfprofd"],
+    cflags: perfprofd_test_cflags,
     cppflags: perfprofd_test_cppflags,
     srcs: ["perfprofdmockutils.cc"],
 }
@@ -37,6 +41,7 @@ cc_test {
         "libcutils",
     ],
     srcs: ["perfprofd_test.cc"],
+    cflags: perfprofd_test_cflags,
     cppflags: perfprofd_test_cppflags,
     data: [
         "canned.perf.data",
