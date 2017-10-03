@@ -632,7 +632,7 @@ int read_ext(int fd, int verbose)
 		printf("    Inodes per group: %d\n", info.inodes_per_group);
 		printf("    Inode size: %d\n", info.inode_size);
 		printf("    Label: %s\n", info.label);
-		printf("    Blocks: %"PRIu64"\n", aux_info.len_blocks);
+		printf("    Blocks: %"PRIext4u64"\n", aux_info.len_blocks);
 		printf("    Block groups: %d\n", aux_info.groups);
 		printf("    Reserved block group size: %d\n", info.bg_desc_reserve_blocks);
 		printf("    Used %d/%d inodes and %d/%d blocks\n",
