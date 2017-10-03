@@ -75,9 +75,13 @@ extern int force;
 #ifdef __LP64__
 typedef unsigned long u64;
 typedef signed long s64;
+
+#define PRIext4u64 "lu"
 #else
 typedef unsigned long long u64;
 typedef signed long long s64;
+
+#define PRIext4u64 PRIu64
 #endif
 typedef unsigned int u32;
 typedef unsigned short int u16;
