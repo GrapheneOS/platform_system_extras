@@ -84,6 +84,7 @@
 
 #endif
 
+#undef MAX_PATH
 #define MAX_PATH 4096
 #define MAX_BLK_MAPPING_STR 1000
 
@@ -822,7 +823,7 @@ int make_ext4fs_internal(int fd, const char *_directory, const char *_target_out
 
 	ext4_create_fs_aux_info();
 
-	printf("    Blocks: %"PRIu64"\n", aux_info.len_blocks);
+	printf("    Blocks: %"PRIext4u64"\n", aux_info.len_blocks);
 	printf("    Block groups: %d\n", aux_info.groups);
 	printf("    Reserved block group size: %d\n", info.bg_desc_reserve_blocks);
 

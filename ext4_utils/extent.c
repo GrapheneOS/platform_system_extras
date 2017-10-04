@@ -150,7 +150,7 @@ static struct block_allocation *do_inode_allocate_extents(
 
 		if (((int)(info.block_size - sizeof(struct ext4_extent_header) /
 				sizeof(struct ext4_extent))) < allocation_len) {
-			error("File size %"PRIu64" is too big to fit in a single extent block\n",
+			error("File size %"PRIext4u64" is too big to fit in a single extent block\n",
 					len);
 			return NULL;
 		}
@@ -206,14 +206,14 @@ u8 *inode_allocate_data_extents(struct ext4_inode *inode, u64 len,
 
 	alloc = do_inode_allocate_extents(inode, len, NULL);
 	if (alloc == NULL) {
-		error("failed to allocate extents for %"PRIu64" bytes", len);
+		error("failed to allocate extents for %"PRIext4u64" bytes", len);
 		return NULL;
 	}
 
 	if (backing_len) {
 		data = extent_create_backing(alloc, backing_len);
 		if (!data)
-			error("failed to create backing for %"PRIu64" bytes", backing_len);
+			error("failed to create backing for %"PRIext4u64" bytes", backing_len);
 	}
 
 	free_alloc(alloc);
@@ -247,7 +247,7 @@ struct block_allocation* inode_allocate_file_extents(struct ext4_inode *inode, u
 
 	alloc = do_inode_allocate_extents(inode, len, prealloc);
 	if (alloc == NULL) {
-		error("failed to allocate extents for %"PRIu64" bytes", len);
+		error("failed to allocate extents for %"PRIext4u64" bytes", len);
 		return NULL;
 	}
 
@@ -262,7 +262,7 @@ void inode_allocate_extents(struct ext4_inode *inode, u64 len)
 
 	alloc = do_inode_allocate_extents(inode, len, NULL);
 	if (alloc == NULL) {
-		error("failed to allocate extents for %"PRIu64" bytes", len);
+		error("failed to allocate extents for %"PRIext4u64" bytes", len);
 		return;
 	}
 

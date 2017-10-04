@@ -1,8 +1,11 @@
-perfprofd_cppflags = [
+perfprofd_cflags = [
     "-Wall",
+    "-Werror",
+]
+
+perfprofd_cppflags = [
     "-Wno-sign-compare",
     "-Wno-unused-parameter",
-    "-Werror",
 ]
 
 //
@@ -28,6 +31,7 @@ cc_library_static {
         "perfprofdcore.cc",
     ],
 
+    cflags: perfprofd_cflags,
     cppflags: perfprofd_cppflags,
 
     proto: {
@@ -41,7 +45,8 @@ cc_library_static {
 cc_library_static {
     name: "libperfprofdutils",
 
-        cppflags: perfprofd_cppflags,
+    cflags: perfprofd_cflags,
+    cppflags: perfprofd_cppflags,
     srcs: ["perfprofdutils.cc"],
 }
 
@@ -65,6 +70,7 @@ cc_binary {
     system_shared_libs: [
         "libc", "libdl",
     ],
+    cflags: perfprofd_cflags,
     cppflags: perfprofd_cppflags,
 
     init_rc: ["perfprofd.rc"],
