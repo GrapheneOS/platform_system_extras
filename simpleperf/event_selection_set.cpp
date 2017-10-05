@@ -427,17 +427,14 @@ bool EventSelectionSet::OpenEventFilesOnGroup(EventSelectionGroup& group,
   for (auto& selection : group) {
     std::unique_ptr<EventFd> event_fd =
         EventFd::OpenEventFile(selection.event_attr, tid, cpu, group_fd, false);
-    if (event_fd != nullptr) {
-      LOG(VERBOSE) << "OpenEventFile for " << event_fd->Name();
-      event_fds.push_back(std::move(event_fd));
-    } else {
-      if (failed_event_type != nullptr) {
+    if (!event_fd) {
         *failed_event_type = selection.event_type_modifier.name;
         return false;
-      }
     }
+    LOG(VERBOSE) << "OpenEventFile for " << event_fd->Name();
+    event_fds.push_back(std::move(event_fd));
     if (group_fd == nullptr) {
-      group_fd = event_fd.get();
+      group_fd = event_fds.back().get();
     }
   }
   for (size_t i = 0; i < group.size(); ++i) {
