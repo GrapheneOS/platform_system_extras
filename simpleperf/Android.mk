@@ -500,7 +500,6 @@ SIMPLEPERF_SCRIPT_LIST := \
     scripts/inferno.sh \
     scripts/inferno.bat \
     scripts/inferno/inferno.b64 \
-    scripts/inferno/jqueryui/LICENSE.txt \
     $(call all-named-files-under,*.js,scripts) \
     $(call all-named-files-under,*.css,scripts) \
     $(call all-named-files-under,*,doc) \
