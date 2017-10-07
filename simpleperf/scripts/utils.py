@@ -294,4 +294,20 @@ def remove(dir_or_file):
     elif os.path.isdir(dir_or_file):
         shutil.rmtree(dir_or_file, ignore_errors=True)
 
+
+def open_report_in_browser(report_path):
+    import webbrowser
+    try:
+        # Try to open the report with Chrome
+        browser_key = ''
+        for key, value in webbrowser._browsers.items():
+            if 'chrome' in key:
+                browser_key = key
+        browser = webbrowser.get(browser_key)
+        browser.open(report_path, new=0, autoraise=True)
+    except:
+        # webbrowser.get() doesn't work well on darwin/windows.
+        webbrowser.open_new_tab(report_path)
+
+
 logging.getLogger().setLevel(logging.DEBUG)
