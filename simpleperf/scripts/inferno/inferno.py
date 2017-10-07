@@ -34,12 +34,11 @@ import datetime
 import os
 import subprocess
 import sys
-import webbrowser
 
 scripts_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.append(scripts_path)
 from simpleperf_report_lib import ReportLib
-from utils import log_exit, log_info, AdbHelper
+from utils import log_exit, log_info, AdbHelper, open_report_in_browser
 
 from data_types import *
 from svg_renderer import *
@@ -145,10 +144,6 @@ def output_report(process, args):
         f.write("<html><body>")
     f.write("<div id='flamegraph_id' style='font-family: Monospace; %s'>" % (
             "display: none;" if args.embedded_flamegraph else ""))
-    if not args.embedded_flamegraph:
-        f.write("""<style type="text/css">""")
-        f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-ui.min.css")))
-        f.write("</style>")
     f.write("""<style type="text/css"> .s { stroke:black; stroke-width:0.5; cursor:pointer;}
             </style>""")
     f.write('<style type="text/css"> .t:hover { cursor:pointer; } </style>')
@@ -183,27 +178,22 @@ def output_report(process, args):
     f.write("</div>")
     f.write("""<br/><br/>
             <div>Navigate with WASD, zoom in with SPACE, zoom out with BACKSPACE.</div>""")
-    if not args.embedded_flamegraph:
-        f.write("<script>")
-        f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-3.2.1.min.js")))
-        f.write(get_local_asset_content(os.path.join("jqueryui", "jquery-ui.min.js")))
-        f.write("</script>")
     f.write("<script>%s</script>" % get_local_asset_content("script.js"))
     if not args.embedded_flamegraph:
-        f.write("<script> $(document).ready(flamegraphInit); </script>")
+        f.write("<script>document.addEventListener('DOMContentLoaded', flamegraphInit);</script>")
 
     # Output tid == pid Thread first.
     main_thread = [x for x in process.threads.values() if x.tid == process.pid]
     for thread in main_thread:
         f.write("<br/><br/><b>Main Thread %d (%s) (%d samples):</b><br/>\n\n\n\n" % (
                 thread.tid, thread.name, thread.num_samples))
-        renderSVG(thread.flamegraph, f, args.color, args.svg_width)
+        renderSVG(thread.flamegraph, f, args.color)
 
     other_threads = [x for x in process.threads.values() if x.tid != process.pid]
     for thread in other_threads:
         f.write("<br/><br/><b>Thread %d (%s) (%d samples):</b><br/>\n\n\n\n" % (
                 thread.tid, thread.name, thread.num_samples))
-        renderSVG(thread.flamegraph, f, args.color, args.svg_width)
+        renderSVG(thread.flamegraph, f, args.color)
 
     f.write("</div>")
     if not args.embedded_flamegraph:
@@ -223,20 +213,6 @@ def collect_machine_info(process):
     process.props['ro.product.model'] = adb.get_property('ro.product.model')
     process.props['ro.product.name'] = adb.get_property('ro.product.name')
     process.props['ro.product.manufacturer'] = adb.get_property('ro.product.manufacturer')
-
-
-def open_report_in_browser(report_path):
-    try:
-        # Try to open the report with Chrome
-        browser_key = ""
-        for key, value in webbrowser._browsers.items():
-            if key.find("chrome") != -1:
-                browser_key = key
-        browser = webbrowser.get(browser_key)
-        browser.open(report_path, new=0, autoraise=True)
-    except:
-        # webbrowser.get() doesn't work well on darwin/windows.
-        webbrowser.open_new_tab(report_path)
 
 
 def main():
@@ -263,7 +239,6 @@ def main():
                         instructions to profile java code. It takes some time. You can skip it
                         if the code has been compiled or you don't need to profile java code.""")
     parser.add_argument('-f', '--sample_frequency', type=int, default=6000, help='Sample frequency')
-    parser.add_argument('-w', '--svg_width', type=int, default=1124)
     parser.add_argument(
         '-du',
         '--dwarf_unwinding',

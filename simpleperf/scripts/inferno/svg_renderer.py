@@ -16,7 +16,6 @@
 
 import sys
 
-SVG_CANVAS_WIDTH = 1124
 SVG_NODE_HEIGHT = 17
 FONT_SIZE = 12
 
@@ -124,9 +123,9 @@ def renderSVGNodes(flamegraph, depth, f, total_weight, height, color_scheme):
 def renderSearchNode(f):
     f.write(
         """<rect id="search_rect"  style="stroke:rgb(0,0,0);" onclick="search(this);" class="t"
-        rx="10" ry="10" x="%d" y="10" width="80" height="30" fill="rgb(255,255,255)""/>
-        <text id="search_text"  class="t" x="%d" y="30"    onclick="search(this);">Search</text>
-        """ % (SVG_CANVAS_WIDTH - 95, SVG_CANVAS_WIDTH - 80))
+        rx="10" ry="10" x="1029" y="10" width="80" height="30" fill="rgb(255,255,255)""/>
+        <text id="search_text"  class="t" x="1044" y="30"    onclick="search(this);">Search</text>
+        """)
 
 
 def renderUnzoomNode(f):
@@ -135,37 +134,30 @@ def renderUnzoomNode(f):
         onclick="unzoom(this);" rx="10" ry="10" x="10" y="10" width="80" height="30"
         fill="rgb(255,255,255)"/>
          <text id="zoom_text" style="display:none;" class="t" x="19" y="30"
-         onclick="unzoom(this);">Zoom out</text>"""
-    )
+         onclick="unzoom(this);">Zoom out</text>""")
 
 
 def renderInfoNode(f):
     f.write(
         """<clipPath id="info_clip_path"> <rect id="info_rect" style="stroke:rgb(0,0,0);"
-        rx="10" ry="10" x="120" y="10" width="%d" height="30" fill="rgb(255,255,255)"/>
+        rx="10" ry="10" x="120" y="10" width="789" height="30" fill="rgb(255,255,255)"/>
         </clipPath>
         <rect id="info_rect" style="stroke:rgb(0,0,0);"
-        rx="10" ry="10" x="120" y="10" width="%d" height="30" fill="rgb(255,255,255)"/>
-         <text clip-path="url(#info_clip_path)" id="info_text" x="128" y="30"></text>
-         """ % (SVG_CANVAS_WIDTH - 335, SVG_CANVAS_WIDTH - 325)
-    )
+        rx="10" ry="10" x="120" y="10" width="799" height="30" fill="rgb(255,255,255)"/>
+         <text clip-path="url(#info_clip_path)" id="info_text" x="128" y="30"></text>""")
 
 
 def renderPercentNode(f):
     f.write(
         """<rect id="percent_rect" style="stroke:rgb(0,0,0);"
-        rx="10" ry="10" x="%d" y="10" width="82" height="30" fill="rgb(255,255,255)"/>
-         <text  id="percent_text" text-anchor="end" x="%d" y="30">100.00%%</text>
-         """ % (SVG_CANVAS_WIDTH - (95 * 2), SVG_CANVAS_WIDTH - (125))
-    )
+        rx="10" ry="10" x="934" y="10" width="82" height="30" fill="rgb(255,255,255)"/>
+         <text  id="percent_text" text-anchor="end" x="999" y="30">100.00%%</text>""")
 
 
-def renderSVG(flamegraph, f, color_scheme, width):
-    global SVG_CANVAS_WIDTH
-    SVG_CANVAS_WIDTH = width
+def renderSVG(flamegraph, f, color_scheme):
     height = (flamegraph.get_max_depth() + 2) * SVG_NODE_HEIGHT
-    f.write("""<div class="flamegraph_block" style="width:%dpx; height:%dpx;">
-            """ % (SVG_CANVAS_WIDTH, height))
+    f.write("""<div class="flamegraph_block" style="width:100%%; height:%dpx;">
+            """ % height)
     f.write("""<svg xmlns="http://www.w3.org/2000/svg"
     xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1"
     width="100%%" height="100%%" style="border: 1px solid black;"
