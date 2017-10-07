@@ -36,8 +36,8 @@ def _is_null(p):
     return ct.cast(p, ct.c_void_p).value is None
 
 
-def _char_pt(str):
-    return str_to_bytes(str)
+def _char_pt(s):
+    return str_to_bytes(s)
 
 
 def _char_pt_to_str(char_pt):
@@ -163,14 +163,15 @@ class ReportLib(object):
         self._GetFeatureSection = self._lib.GetFeatureSection
         self._GetFeatureSection.restype = ct.POINTER(FeatureSectionStructure)
         self._instance = self._CreateReportLibFunc()
-        assert(not _is_null(self._instance))
+        assert not _is_null(self._instance)
 
         self.convert_to_str = (sys.version_info >= (3, 0))
         self.meta_info = None
         self.current_sample = None
+        self.record_cmd = None
 
     def _load_dependent_lib(self):
-        # As the windows dll is built with mingw we need to load "libwinpthread-1.dll".
+        # As the windows dll is built with mingw we need to load 'libwinpthread-1.dll'.
         if is_windows():
             self._libwinpthread = ct.CDLL(get_host_binary_path('libwinpthread-1.dll'))
 
@@ -183,17 +184,17 @@ class ReportLib(object):
     def SetLogSeverity(self, log_level='info'):
         """ Set log severity of native lib, can be verbose,debug,info,error,fatal."""
         cond = self._SetLogSeverityFunc(self.getInstance(), _char_pt(log_level))
-        self._check(cond, "Failed to set log level")
+        self._check(cond, 'Failed to set log level')
 
     def SetSymfs(self, symfs_dir):
         """ Set directory used to find symbols."""
         cond = self._SetSymfsFunc(self.getInstance(), _char_pt(symfs_dir))
-        self._check(cond, "Failed to set symbols directory")
+        self._check(cond, 'Failed to set symbols directory')
 
     def SetRecordFile(self, record_file):
         """ Set the path of record file, like perf.data."""
         cond = self._SetRecordFileFunc(self.getInstance(), _char_pt(record_file))
-        self._check(cond, "Failed to set record file")
+        self._check(cond, 'Failed to set record file')
 
     def ShowIpForUnknownSymbol(self):
         self._ShowIpForUnknownSymbolFunc(self.getInstance())
@@ -201,7 +202,7 @@ class ReportLib(object):
     def SetKallsymsFile(self, kallsym_file):
         """ Set the file path to a copy of the /proc/kallsyms file (for off device decoding) """
         cond = self._SetKallsymsFileFunc(self.getInstance(), _char_pt(kallsym_file))
-        self._check(cond, "Failed to set kallsyms file")
+        self._check(cond, 'Failed to set kallsyms file')
 
     def GetNextSample(self):
         psample = self._GetNextSampleFunc(self.getInstance())
@@ -217,46 +218,45 @@ class ReportLib(object):
 
     def GetEventOfCurrentSample(self):
         event = self._GetEventOfCurrentSampleFunc(self.getInstance())
-        assert(not _is_null(event))
+        assert not _is_null(event)
         if self.convert_to_str:
             return EventStructUsingStr(event[0])
         return event[0]
 
     def GetSymbolOfCurrentSample(self):
         symbol = self._GetSymbolOfCurrentSampleFunc(self.getInstance())
-        assert(not _is_null(symbol))
+        assert not _is_null(symbol)
         if self.convert_to_str:
             return SymbolStructUsingStr(symbol[0])
         return symbol[0]
 
     def GetCallChainOfCurrentSample(self):
         callchain = self._GetCallChainOfCurrentSampleFunc(self.getInstance())
-        assert(not _is_null(callchain))
+        assert not _is_null(callchain)
         if self.convert_to_str:
             return CallChainStructureUsingStr(callchain[0])
         return callchain[0]
 
     def GetBuildIdForPath(self, path):
         build_id = self._GetBuildIdForPathFunc(self.getInstance(), _char_pt(path))
-        assert(not _is_null(build_id))
+        assert not _is_null(build_id)
         return _char_pt_to_str(build_id)
 
     def GetRecordCmd(self):
-        if hasattr(self, "record_cmd"):
+        if self.record_cmd is not None:
             return self.record_cmd
-        self.record_cmd = None
-        feature_data = self._GetFeatureSection(self.getInstance(), _char_pt("cmdline"))
+        self.record_cmd = ''
+        feature_data = self._GetFeatureSection(self.getInstance(), _char_pt('cmdline'))
         if not _is_null(feature_data):
             void_p = ct.cast(feature_data[0].data, ct.c_void_p)
-            data_size = feature_data[0].data_size
             arg_count = ct.cast(void_p, ct.POINTER(ct.c_uint32)).contents.value
             void_p.value += 4
             args = []
-            for i in range(arg_count):
+            for _ in range(arg_count):
                 str_len = ct.cast(void_p, ct.POINTER(ct.c_uint32)).contents.value
                 void_p.value += 4
                 char_p = ct.cast(void_p, ct.POINTER(ct.c_char))
-                current_str = ""
+                current_str = ''
                 for j in range(str_len):
                     c = bytes_to_str(char_p[j])
                     if c != '\0':
@@ -265,33 +265,50 @@ class ReportLib(object):
                     current_str = '"' + current_str + '"'
                 args.append(current_str)
                 void_p.value += str_len
-            self.record_cmd = " ".join(args)
+            self.record_cmd = ' '.join(args)
         return self.record_cmd
 
+    def _GetFeatureString(self, feature_name):
+        feature_data = self._GetFeatureSection(self.getInstance(), _char_pt(feature_name))
+        result = ''
+        if not _is_null(feature_data):
+            void_p = ct.cast(feature_data[0].data, ct.c_void_p)
+            str_len = ct.cast(void_p, ct.POINTER(ct.c_uint32)).contents.value
+            void_p.value += 4
+            char_p = ct.cast(void_p, ct.POINTER(ct.c_char))
+            for i in range(str_len):
+                c = bytes_to_str(char_p[i])
+                if c == '\0':
+                    break
+                result += c
+        return result
+
+    def GetArch(self):
+        return self._GetFeatureString('arch')
 
     def MetaInfo(self):
         if self.meta_info is None:
             self.meta_info = {}
-            feature_data = self._GetFeatureSection(self.getInstance(), _char_pt("meta_info"))
+            feature_data = self._GetFeatureSection(self.getInstance(), _char_pt('meta_info'))
             if not _is_null(feature_data):
                 str_list = []
                 data = feature_data[0].data
                 data_size = feature_data[0].data_size
-                current_str = ""
+                current_str = ''
                 for i in range(data_size):
                     c = bytes_to_str(data[i])
                     if c != '\0':
                         current_str += c
                     else:
                         str_list.append(current_str)
-                        current_str = ""
+                        current_str = ''
                 for i in range(0, len(str_list), 2):
                     self.meta_info[str_list[i]] = str_list[i + 1]
         return self.meta_info
 
     def getInstance(self):
         if self._instance is None:
-            raise Exception("Instance is Closed")
+            raise Exception('Instance is Closed')
         return self._instance
 
     def _check(self, cond, failmsg):
