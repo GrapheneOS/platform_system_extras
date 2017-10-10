@@ -131,6 +131,9 @@ static bool e4crypt_policy_set(const char *directory, const char *policy,
         LOG(ERROR) << "Policy wrong length: " << policy_length;
         return false;
     }
+    char policy_hex[EXT4_KEY_DESCRIPTOR_SIZE_HEX];
+    policy_to_hex(policy, policy_hex);
+
     int fd = open(directory, O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (fd == -1) {
         PLOG(ERROR) << "Failed to open directory " << directory;
@@ -144,15 +147,15 @@ static bool e4crypt_policy_set(const char *directory, const char *policy,
     eep.flags = e4crypt_get_policy_flags(filenames_encryption_mode);
     memcpy(eep.master_key_descriptor, policy, EXT4_KEY_DESCRIPTOR_SIZE);
     if (ioctl(fd, EXT4_IOC_SET_ENCRYPTION_POLICY, &eep)) {
-        PLOG(ERROR) << "Failed to set encryption policy for " << directory;
+        PLOG(ERROR) << "Failed to set encryption policy for " << directory  << " to " << policy_hex
+            << " modes " << contents_encryption_mode << "/" << filenames_encryption_mode;
         close(fd);
         return false;
     }
     close(fd);
 
-    char policy_hex[EXT4_KEY_DESCRIPTOR_SIZE_HEX];
-    policy_to_hex(policy, policy_hex);
-    LOG(INFO) << "Policy for " << directory << " set to " << policy_hex;
+    LOG(INFO) << "Policy for " << directory << " set to " << policy_hex
+        << " modes " << contents_encryption_mode << "/" << filenames_encryption_mode;
     return true;
 }
 
