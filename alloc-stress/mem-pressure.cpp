@@ -1,9 +1,12 @@
+#include <errno.h>
+#include <fcntl.h>
+#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <fcntl.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
-#include <getopt.h>
+#include <unistd.h>
 
 void *alloc_set(size_t size) {
     void *addr = NULL;
