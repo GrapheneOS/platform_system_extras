@@ -28,12 +28,14 @@ with the specified group membership.
 )";
 
 #include <assert.h>
+#include <errno.h>
 #include <grp.h>
 #include <pwd.h>
 #include <selinux/selinux.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <signal.h>
+#include <string.h>
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
