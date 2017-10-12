@@ -609,7 +609,7 @@ bool RunInAppContext(const std::string& app_package_name, const std::string& cmd
                      const std::string& output_filepath, bool need_tracepoint_events) {
   // 1. Test if the package exists.
   if (!Workload::RunCmd({"run-as", app_package_name, "echo", ">/dev/null"}, false)) {
-    LOG(ERROR) << "Package " << app_package_name << "doesn't exist or isn't debuggable.";
+    LOG(ERROR) << "Package " << app_package_name << " doesn't exist or isn't debuggable.";
     return false;
   }
 
