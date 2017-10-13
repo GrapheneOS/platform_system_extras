@@ -102,16 +102,15 @@ class FlameGraphCallSite:
         return child
 
     def trim_callchain(self, min_event_count):
-        del_keys = []
+        """ Remove call sites with event_count < min_event_count in the subtree.
+            Remaining children are collected in a list.
+        """
         for key in self.child_dict:
             child = self.child_dict[key]
             if child.event_count >= min_event_count:
                 child.trim_callchain(min_event_count)
-            else:
-                del_keys.append(key)
-        for key in del_keys:
-            del self.child_dict[key]
-        self.children = self.child_dict.values()
+                self.children.append(child)
+        # Relese child_dict since it will not be used.
         self.child_dict = None
 
     def get_max_depth(self):
