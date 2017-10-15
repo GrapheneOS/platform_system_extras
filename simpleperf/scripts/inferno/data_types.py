@@ -17,8 +17,7 @@
 
 class CallSite:
 
-    def __init__(self, ip, method, dso):
-        self.ip = ip
+    def __init__(self, method, dso):
         self.method = method
         self.dso = dso
 
@@ -43,9 +42,9 @@ class Thread:
             entry = callchain.entries[callchain.nr - j - 1]
             if entry.ip == 0:
                 continue
-            chain.append(CallSite(entry.ip, entry.symbol.symbol_name, entry.symbol.dso_name))
+            chain.append(CallSite(entry.symbol.symbol_name, entry.symbol.dso_name))
 
-        chain.append(CallSite(sample.ip, symbol.symbol_name, symbol.dso_name))
+        chain.append(CallSite(symbol.symbol_name, symbol.dso_name))
         self.flamegraph.add_callchain(chain, sample.period)
 
 
@@ -60,9 +59,10 @@ class Process:
         self.num_samples = 0
 
     def get_thread(self, tid, pid):
-        if tid not in self.threads.keys():
-            self.threads[tid] = Thread(tid, pid)
-        return self.threads[tid]
+        thread = self.threads.get(tid)
+        if thread is None:
+            thread = self.threads[tid] = Thread(tid, pid)
+        return thread
 
 
 class FlameGraphCallSite:
@@ -74,6 +74,8 @@ class FlameGraphCallSite:
         return cls.callsite_counter
 
     def __init__(self, method, dso, id):
+        # map from (dso, method) to FlameGraphCallSite. Used to speed up add_callchain().
+        self.child_dict = {}
         self.children = []
         self.method = method
         self.dso = dso
@@ -92,15 +94,25 @@ class FlameGraphCallSite:
             current.event_count += event_count
 
     def _get_child(self, callsite):
-        for c in self.children:
-            if c._equivalent(callsite.method, callsite.dso):
-                return c
-        new_child = FlameGraphCallSite(callsite.method, callsite.dso, self._get_next_callsite_id())
-        self.children.append(new_child)
-        return new_child
+        key = (callsite.dso, callsite.method)
+        child = self.child_dict.get(key)
+        if child is None:
+            child = self.child_dict[key] = FlameGraphCallSite(callsite.method, callsite.dso,
+                                               self._get_next_callsite_id())
+        return child
 
-    def _equivalent(self, method, dso):
-        return self.method == method and self.dso == dso
+    def trim_callchain(self, min_event_count):
+        del_keys = []
+        for key in self.child_dict:
+            child = self.child_dict[key]
+            if child.event_count >= min_event_count:
+                child.trim_callchain(min_event_count)
+            else:
+                del_keys.append(key)
+        for key in del_keys:
+            del self.child_dict[key]
+        self.children = self.child_dict.values()
+        self.child_dict = None
 
     def get_max_depth(self):
         return max([c.get_max_depth() for c in self.children]) + 1 if self.children else 1
