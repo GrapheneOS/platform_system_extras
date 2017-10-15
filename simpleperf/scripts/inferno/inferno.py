@@ -262,8 +262,8 @@ def main():
     parser.add_argument('--min_callchain_percentage', default=0.01, type=float, help="""
                         Set min percentage of callchains shown in the report.
                         It is used to limit nodes shown in the flamegraph. For example,
-                        when set to 0.01, only callchains taking >= 0.01% of the event count of
-                        the owner thread are collected inthe report.""")
+                        when set to 0.01, only callchains taking >= 0.01%% of the event count of
+                        the owner thread are collected in the report.""")
     parser.add_argument('--no_browser', action='store_true', help="Don't open report in browser.")
     args = parser.parse_args()
     process = Process("", 0)
