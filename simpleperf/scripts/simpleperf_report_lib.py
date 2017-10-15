@@ -33,6 +33,8 @@ def _get_native_lib():
 
 
 def _is_null(p):
+    if p:
+        return False
     return ct.cast(p, ct.c_void_p).value is None
 
 
