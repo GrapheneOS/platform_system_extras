@@ -393,7 +393,6 @@ testXDumpGetOffset(void)
 void testExecCmd(const char *cmd)
 {
     FILE *fp;
-    int rv;
     int status;
     char str[MAXSTR];
 
