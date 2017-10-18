@@ -59,6 +59,7 @@ struct SymbolEntry {
   uint64_t vaddr_in_file;
   const char* symbol_name;
   uint64_t symbol_addr;
+  uint64_t symbol_len;
   Mapping* mapping;
 };
 
@@ -304,6 +305,7 @@ SymbolEntry* ReportLib::GetSymbolOfCurrentSample() {
     current_symbol_.vaddr_in_file = vaddr_in_file;
     current_symbol_.symbol_name = symbol->DemangledName();
     current_symbol_.symbol_addr = symbol->addr;
+    current_symbol_.symbol_len = symbol->len;
     current_symbol_.mapping = AddMapping(*map);
     update_flag_ |= UPDATE_FLAG_OF_SYMBOL;
   }
@@ -351,6 +353,7 @@ CallChain* ReportLib::GetCallChainOfCurrentSample() {
           entry.symbol.vaddr_in_file = vaddr_in_file;
           entry.symbol.symbol_name = symbol->DemangledName();
           entry.symbol.symbol_addr = symbol->addr;
+          entry.symbol.symbol_len = symbol->len;
           entry.symbol.mapping = AddMapping(*map);
           callchain_entries_.push_back(entry);
         }
