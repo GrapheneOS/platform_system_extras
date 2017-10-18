@@ -778,7 +778,7 @@ class TestReportLib(unittest.TestCase):
         build_id = self.report_lib.GetBuildIdForPath('/data/t2')
         self.assertEqual(build_id, '0x70f1fe24500fc8b0d9eb477199ca1ca21acca4de')
 
-    def test_symbol_addr(self):
+    def test_symbol(self):
         found_func2 = False
         while self.report_lib.GetNextSample():
             sample = self.report_lib.GetCurrentSample()
@@ -786,6 +786,7 @@ class TestReportLib(unittest.TestCase):
             if symbol.symbol_name == 'func2(int, int)':
                 found_func2 = True
                 self.assertEqual(symbol.symbol_addr, 0x4004ed)
+                self.assertEqual(symbol.symbol_len, 0x14)
         self.assertTrue(found_func2)
 
     def test_sample(self):
