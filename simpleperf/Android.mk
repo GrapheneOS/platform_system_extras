@@ -500,6 +500,7 @@ SIMPLEPERF_SCRIPT_LIST := \
     scripts/inferno.sh \
     scripts/inferno.bat \
     scripts/inferno/inferno.b64 \
+    $(call all-named-files-under,*,scripts/script_testdata) \
     $(call all-named-files-under,*.js,scripts) \
     $(call all-named-files-under,*.css,scripts) \
     $(call all-named-files-under,*,doc) \

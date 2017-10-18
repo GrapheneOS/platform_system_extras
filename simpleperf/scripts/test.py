@@ -72,7 +72,9 @@ def build_testdata():
     """ Collect testdata from ../testdata and ../demo. """
     from_testdata_path = os.path.join('..', 'testdata')
     from_demo_path = os.path.join('..', 'demo')
-    if not os.path.isdir(from_testdata_path) or not os.path.isdir(from_demo_path):
+    from_script_testdata_path = 'script_testdata'
+    if (not os.path.isdir(from_testdata_path) or not os.path.isdir(from_demo_path) or
+        not from_script_testdata_path):
         return
     copy_testdata_list = ['perf_with_symbols.data', 'perf_with_trace_offcpu.data']
     copy_demo_list = ['SimpleperfExamplePureJava', 'SimpleperfExampleWithNative',
@@ -85,7 +87,8 @@ def build_testdata():
         shutil.copy(os.path.join(from_testdata_path, testdata), testdata_path)
     for demo in copy_demo_list:
         shutil.copytree(os.path.join(from_demo_path, demo), os.path.join(testdata_path, demo))
-
+    for f in os.listdir(from_script_testdata_path):
+        shutil.copy(os.path.join(from_script_testdata_path, f), testdata_path)
 
 class TestBase(unittest.TestCase):
     def run_cmd(self, args, return_output=False):
@@ -229,7 +232,7 @@ class TestExampleBase(TestBase):
         self.check_exist(file=file)
         with open(file, 'r') as fh:
             data = fh.read()
-        fulfilled = [False for x in check_entries]
+        fulfilled = [False for _ in check_entries]
         for line in data.split('\n'):
             # each entry is a (function_name, min_percentage) pair.
             for i, entry in enumerate(check_entries):
@@ -851,6 +854,90 @@ class TestReportLib(unittest.TestCase):
 class TestRunSimpleperfOnDevice(TestBase):
     def test_smoke(self):
         self.run_cmd(['run_simpleperf_on_device.py', 'list', '--show-features'])
+
+
+class TestTools(unittest.TestCase):
+    def test_lookprev_addr2line(self):
+        binary_cache_path = 'testdata'
+        test_map = {
+            '/simpleperf_runtest_two_functions_arm64': [
+                {
+                    'func_addr': 0x668,
+                    'addr': 0x668,
+                    'source': 'system/extras/simpleperf/runtest/two_functions.cpp:20',
+                },
+                {
+                    'func_addr': 0x668,
+                    'addr': 0x6a4,
+                    'source': """system/extras/simpleperf/runtest/two_functions.cpp:7
+                                 system/extras/simpleperf/runtest/two_functions.cpp:22""",
+                },
+            ],
+            '/simpleperf_runtest_two_functions_arm': [
+                {
+                    'func_addr': 0x784,
+                    'addr': 0x7b0,
+                    'source': """system/extras/simpleperf/runtest/two_functions.cpp:14
+                                 system/extras/simpleperf/runtest/two_functions.cpp:23""",
+                },
+                {
+                    'func_addr': 0x784,
+                    'addr': 0x7d0,
+                    'source': """system/extras/simpleperf/runtest/two_functions.cpp:15
+                                 system/extras/simpleperf/runtest/two_functions.cpp:23""",
+                }
+            ],
+            '/simpleperf_runtest_two_functions_x86_64': [
+                {
+                    'func_addr': 0x840,
+                    'addr': 0x840,
+                    'source': 'system/extras/simpleperf/runtest/two_functions.cpp:7',
+                },
+                {
+                    'func_addr': 0x920,
+                    'addr': 0x94a,
+                    'source': """system/extras/simpleperf/runtest/two_functions.cpp:7
+                                 system/extras/simpleperf/runtest/two_functions.cpp:22""",
+                }
+            ],
+            '/simpleperf_runtest_two_functions_x86': [
+                {
+                    'func_addr': 0x6d0,
+                    'addr': 0x6da,
+                    'source': 'system/extras/simpleperf/runtest/two_functions.cpp:14',
+                },
+                {
+                    'func_addr': 0x710,
+                    'addr': 0x749,
+                    'source': """system/extras/simpleperf/runtest/two_functions.cpp:8
+                                 system/extras/simpleperf/runtest/two_functions.cpp:22""",
+                }
+            ],
+        }
+        addr2line = Addr2Nearestline(None, binary_cache_path)
+        for dso_path in test_map:
+            test_addrs = test_map[dso_path]
+            for test_addr in test_addrs:
+                addr2line.add_addr(dso_path, test_addr['func_addr'], test_addr['addr'])
+        addr2line.convert_addrs_to_lines()
+        for dso_path in test_map:
+            dso = addr2line.get_dso(dso_path)
+            self.assertTrue(dso is not None)
+            test_addrs = test_map[dso_path]
+            for test_addr in test_addrs:
+                source_str = test_addr['source']
+                expected_source = []
+                for line in source_str.split('\n'):
+                    items = line.split(':')
+                    expected_source.append((items[0].strip(), int(items[1])))
+                actual_source = dso.get_addr_source(test_addr['addr'])
+                self.assertTrue(actual_source is not None)
+                self.assertEqual(len(actual_source), len(expected_source))
+                for i in range(len(expected_source)):
+                    actual_file_id, actual_line = actual_source[i]
+                    actual_file_path = addr2line.get_file_path(actual_file_id)
+                    self.assertEqual(actual_file_path, expected_source[i][0])
+                    self.assertEqual(actual_line, expected_source[i][1])
 
 
 def main():
