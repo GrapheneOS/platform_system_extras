@@ -17,17 +17,17 @@ LOCAL_PATH := $(call my-dir)
 
 simpleperf_version :=  $(shell git -C $(LOCAL_PATH) rev-parse --short=12 HEAD 2>/dev/null)
 
-simpleperf_common_cppflags := -Wextra -Wunused -Wno-unknown-pragmas \
+simpleperf_common_cflags := -Wall -Werror -Wextra -Wunused -Wno-unknown-pragmas \
                               -DSIMPLEPERF_REVISION='"$(simpleperf_version)"'
 
-simpleperf_cppflags_target := $(simpleperf_common_cppflags)
+simpleperf_cflags_target := $(simpleperf_common_cflags)
 
-simpleperf_cppflags_host := $(simpleperf_common_cppflags) \
+simpleperf_cflags_host := $(simpleperf_common_cflags) \
                             -DUSE_BIONIC_UAPI_HEADERS -I bionic/libc/kernel \
                             -fvisibility=hidden \
 
-simpleperf_cppflags_host_darwin := -I $(LOCAL_PATH)/nonlinux_support/include
-simpleperf_cppflags_host_windows := -I $(LOCAL_PATH)/nonlinux_support/include
+simpleperf_cflags_host_darwin := -I $(LOCAL_PATH)/nonlinux_support/include
+simpleperf_cflags_host_windows := -I $(LOCAL_PATH)/nonlinux_support/include
 
 
 LLVM_ROOT_PATH := external/llvm
@@ -133,7 +133,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := libsimpleperf
 LOCAL_MODULE_TAGS := debug
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
+LOCAL_CFLAGS := $(simpleperf_cflags_target)
 LOCAL_SRC_FILES := \
   $(libsimpleperf_src_files) \
   $(libsimpleperf_src_files_linux) \
@@ -148,10 +148,10 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libsimpleperf
 LOCAL_MODULE_HOST_OS := darwin linux windows
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
-LOCAL_CPPFLAGS_darwin := $(simpleperf_cppflags_host_darwin)
-LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
-LOCAL_CPPFLAGS_windows := $(simpleperf_cppflags_host_windows)
+LOCAL_CFLAGS := $(simpleperf_cflags_host)
+LOCAL_CFLAGS_darwin := $(simpleperf_cflags_host_darwin)
+LOCAL_CFLAGS_linux := $(simpleperf_cflags_host_linux)
+LOCAL_CFLAGS_windows := $(simpleperf_cflags_host_windows)
 LOCAL_SRC_FILES := $(libsimpleperf_src_files)
 LOCAL_SRC_FILES_darwin := $(libsimpleperf_src_files_darwin)
 LOCAL_SRC_FILES_linux := $(libsimpleperf_src_files_linux)
@@ -174,7 +174,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := simpleperf
 LOCAL_MODULE_TAGS := debug
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
+LOCAL_CFLAGS := $(simpleperf_cflags_target)
 LOCAL_SRC_FILES := main.cpp
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_with_libc_target)
 ifdef TARGET_2ND_ARCH
@@ -195,10 +195,10 @@ endif
 include $(CLEAR_VARS)
 LOCAL_MODULE := simpleperf_host
 LOCAL_MODULE_HOST_OS := darwin linux windows
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
-LOCAL_CPPFLAGS_darwin := $(simpleperf_cppflags_host_darwin)
-LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
-LOCAL_CPPFLAGS_windows := $(simpleperf_cppflags_host_windows)
+LOCAL_CFLAGS := $(simpleperf_cflags_host)
+LOCAL_CFLAGS_darwin := $(simpleperf_cflags_host_darwin)
+LOCAL_CFLAGS_linux := $(simpleperf_cflags_host_linux)
+LOCAL_CFLAGS_windows := $(simpleperf_cflags_host_windows)
 LOCAL_SRC_FILES := main.cpp
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
 LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
@@ -227,7 +227,7 @@ endif
 # libsimpleperf_record.a on target
 include $(CLEAR_VARS)
 LOCAL_MODULE := libsimpleperf_record
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
+LOCAL_CFLAGS := $(simpleperf_cflags_target)
 LOCAL_SRC_FILES := record_lib_interface.cpp
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_target)
 LOCAL_MULTILIB := both
@@ -240,7 +240,7 @@ include $(BUILD_STATIC_LIBRARY)
 # libsimpleperf_record.so on target
 include $(CLEAR_VARS)
 LOCAL_MODULE := libsimpleperf_record
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
+LOCAL_CFLAGS := $(simpleperf_cflags_target)
 LOCAL_SRC_FILES := record_lib_interface.cpp
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_target)
 LOCAL_MULTILIB := both
@@ -254,8 +254,8 @@ include $(BUILD_SHARED_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libsimpleperf_record
 LOCAL_MODULE_HOST_OS := linux
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
-LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
+LOCAL_CFLAGS := $(simpleperf_cflags_host)
+LOCAL_CFLAGS_linux := $(simpleperf_cflags_host_linux)
 LOCAL_SRC_FILES := record_lib_interface.cpp
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
 LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
@@ -270,8 +270,8 @@ include $(BUILD_HOST_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libsimpleperf_record
 LOCAL_MODULE_HOST_OS := linux
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
-LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
+LOCAL_CFLAGS := $(simpleperf_cflags_host)
+LOCAL_CFLAGS_linux := $(simpleperf_cflags_host_linux)
 LOCAL_SRC_FILES := record_lib_interface.cpp
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
 LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
@@ -290,10 +290,10 @@ include $(BUILD_HOST_SHARED_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libsimpleperf_report
 LOCAL_MODULE_HOST_OS := darwin linux windows
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
-LOCAL_CPPFLAGS_darwin := $(simpleperf_cppflags_host_darwin)
-LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
-LOCAL_CPPFLAGS_windows := $(simpleperf_cppflags_host_windows)
+LOCAL_CFLAGS := $(simpleperf_cflags_host)
+LOCAL_CFLAGS_darwin := $(simpleperf_cflags_host_darwin)
+LOCAL_CFLAGS_linux := $(simpleperf_cflags_host_linux)
+LOCAL_CFLAGS_windows := $(simpleperf_cflags_host_windows)
 LOCAL_SRC_FILES := report_lib_interface.cpp
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
 LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
@@ -321,7 +321,7 @@ endif
 # libsimpleperf_inplace_sampler.so on target
 include $(CLEAR_VARS)
 LOCAL_MODULE := libsimpleperf_inplace_sampler
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
+LOCAL_CFLAGS := $(simpleperf_cflags_target)
 LOCAL_SRC_FILES := inplace_sampler_lib.cpp
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_target)
 LOCAL_MULTILIB := both
@@ -334,8 +334,8 @@ include $(BUILD_SHARED_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libsimpleperf_inplace_sampler
 LOCAL_MODULE_HOST_OS := linux
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
-LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
+LOCAL_CFLAGS := $(simpleperf_cflags_host)
+LOCAL_CFLAGS_linux := $(simpleperf_cflags_host_linux)
 LOCAL_SRC_FILES := inplace_sampler_lib.cpp
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
 LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
@@ -375,7 +375,7 @@ simpleperf_unit_test_src_files_linux := \
 include $(CLEAR_VARS)
 LOCAL_MODULE := simpleperf_unit_test
 LOCAL_COMPATIBILITY_SUITE := device-tests
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
+LOCAL_CFLAGS := $(simpleperf_cflags_target)
 LOCAL_SRC_FILES := \
   $(simpleperf_unit_test_src_files) \
   $(simpleperf_unit_test_src_files_linux) \
@@ -391,10 +391,10 @@ include $(BUILD_NATIVE_TEST)
 include $(CLEAR_VARS)
 LOCAL_MODULE := simpleperf_unit_test
 LOCAL_MODULE_HOST_OS := darwin linux windows
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
-LOCAL_CPPFLAGS_darwin := $(simpleperf_cppflags_host_darwin)
-LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
-LOCAL_CPPFLAGS_windows := $(simpleperf_cppflags_host_windows)
+LOCAL_CFLAGS := $(simpleperf_cflags_host)
+LOCAL_CFLAGS_darwin := $(simpleperf_cflags_host_darwin)
+LOCAL_CFLAGS_linux := $(simpleperf_cflags_host_linux)
+LOCAL_CFLAGS_windows := $(simpleperf_cflags_host_windows)
 LOCAL_SRC_FILES := $(simpleperf_unit_test_src_files)
 LOCAL_SRC_FILES_linux := $(simpleperf_unit_test_src_files_linux)
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
@@ -414,7 +414,7 @@ simpleperf_cpu_hotplug_test_src_files := \
 include $(CLEAR_VARS)
 LOCAL_MODULE := simpleperf_cpu_hotplug_test
 LOCAL_COMPATIBILITY_SUITE := device-tests
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
+LOCAL_CFLAGS := $(simpleperf_cflags_target)
 LOCAL_SRC_FILES := $(simpleperf_cpu_hotplug_test_src_files)
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_with_libc_target)
 LOCAL_MULTILIB := both
@@ -426,8 +426,8 @@ include $(BUILD_NATIVE_TEST)
 include $(CLEAR_VARS)
 LOCAL_MODULE := simpleperf_cpu_hotplug_test
 LOCAL_MODULE_HOST_OS := linux
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
-LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
+LOCAL_CFLAGS := $(simpleperf_cflags_host)
+LOCAL_CFLAGS_linux := $(simpleperf_cflags_host_linux)
 LOCAL_SRC_FILES := $(simpleperf_cpu_hotplug_test_src_files)
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
 LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
@@ -448,7 +448,7 @@ libsimpleperf_cts_test_src_files := \
 # libsimpleperf_cts_test target
 include $(CLEAR_VARS)
 LOCAL_MODULE := libsimpleperf_cts_test
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_target) -DRUN_IN_APP_CONTEXT="\"com.android.simpleperf\""
+LOCAL_CFLAGS := $(simpleperf_cflags_target) -DRUN_IN_APP_CONTEXT="\"com.android.simpleperf\""
 LOCAL_SRC_FILES := $(libsimpleperf_cts_test_src_files)
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_target)
 LOCAL_MULTILIB := both
@@ -460,8 +460,8 @@ include $(BUILD_STATIC_TEST_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libsimpleperf_cts_test
 LOCAL_MODULE_HOST_OS := linux
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
-LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
+LOCAL_CFLAGS := $(simpleperf_cflags_host)
+LOCAL_CFLAGS_linux := $(simpleperf_cflags_host_linux)
 LOCAL_SRC_FILES := $(libsimpleperf_cts_test_src_files)
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
 LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
@@ -476,7 +476,7 @@ include $(BUILD_HOST_STATIC_TEST_LIBRARY)
 # simpleperf_record_test target
 include $(CLEAR_VARS)
 LOCAL_MODULE := simpleperf_record_test
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
+LOCAL_CFLAGS := $(simpleperf_cflags_target)
 LOCAL_SRC_FILES := record_lib_test.cpp
 LOCAL_SHARED_LIBRARIES := libsimpleperf_record
 LOCAL_MULTILIB := both
@@ -486,8 +486,8 @@ include $(BUILD_NATIVE_TEST)
 include $(CLEAR_VARS)
 LOCAL_MODULE := simpleperf_record_test
 LOCAL_MODULE_HOST_OS := linux
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
-LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
+LOCAL_CFLAGS := $(simpleperf_cflags_host)
+LOCAL_CFLAGS_linux := $(simpleperf_cflags_host_linux)
 LOCAL_SRC_FILES := record_lib_test.cpp
 LOCAL_SHARED_LIBRARIES := libsimpleperf_record
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
