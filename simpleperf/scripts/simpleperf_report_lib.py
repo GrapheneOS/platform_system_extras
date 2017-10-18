@@ -47,6 +47,18 @@ def _char_pt_to_str(char_pt):
 
 
 class SampleStruct(ct.Structure):
+    """ Instance of a sample in perf.data.
+        ip: the address of the instruction the cpu is running when the sample happens.
+        pid: process id (or thread group id) of the thread generating the sample.
+        tid: thread id.
+        thread_comm: thread name.
+        time: timestamp of a sample, the meaning is decided by simpleperf record --clockid option.
+        in_kernel: whether the instruction is in kernel space or user space.
+        cpu: the cpu generating the sample.
+        period: count of events have happened since last sample. For example, if we use
+             -e cpu-cycles, it means how many cpu-cycles have happened.
+             If we use -e cpu-clock, it means how many nanoseconds have passed.
+    """
     _fields_ = [('ip', ct.c_uint64),
                 ('pid', ct.c_uint32),
                 ('tid', ct.c_uint32),
@@ -58,34 +70,65 @@ class SampleStruct(ct.Structure):
 
 
 class EventStruct(ct.Structure):
+    """ Name of the event. """
     _fields_ = [('name', ct.c_char_p)]
 
 
 class MappingStruct(ct.Structure):
+    """ A mapping area in the monitored threads, like the content in /proc/<pid>/maps.
+        start: start addr in memory.
+        end: end addr in memory.
+        pgoff: offset in the mapped shared library.
+    """
     _fields_ = [('start', ct.c_uint64),
                 ('end', ct.c_uint64),
                 ('pgoff', ct.c_uint64)]
 
 
 class SymbolStruct(ct.Structure):
+    """ Symbol info of the instruction hit by a sample or a callchain entry of a sample.
+        dso_name: path of the shared library containing the instruction.
+        vaddr_in_file: virtual address of the instruction in the shared library.
+        symbol_name: name of the function containing the instruction.
+        symbol_addr: start addr of the function containing the instruction.
+        symbol_len: length of the function in the shared library.
+        mapping: the mapping area hit by the instruction.
+    """
     _fields_ = [('dso_name', ct.c_char_p),
                 ('vaddr_in_file', ct.c_uint64),
                 ('symbol_name', ct.c_char_p),
                 ('symbol_addr', ct.c_uint64),
+                ('symbol_len', ct.c_uint64),
                 ('mapping', ct.POINTER(MappingStruct))]
 
 
 class CallChainEntryStructure(ct.Structure):
+    """ A callchain entry of a sample.
+        ip: the address of the instruction of the callchain entry.
+        symbol: symbol info of the callchain entry.
+    """
     _fields_ = [('ip', ct.c_uint64),
                 ('symbol', SymbolStruct)]
 
 
 class CallChainStructure(ct.Structure):
+    """ Callchain info of a sample.
+        nr: number of entries in the callchain.
+        entries: a pointer to an array of CallChainEntryStructure.
+
+        For example, if a sample is generated when a thread is running function C
+        with callchain function A -> function B -> function C.
+        Then nr = 2, and entries = [function B, function A].
+    """
     _fields_ = [('nr', ct.c_uint32),
                 ('entries', ct.POINTER(CallChainEntryStructure))]
 
 
 class FeatureSectionStructure(ct.Structure):
+    """ A feature section in perf.data to store information like record cmd, device arch, etc.
+        data: a pointer to a buffer storing the section data.
+        data_size: data size in bytes.
+    """
     _fields_ = [('data', ct.POINTER(ct.c_char)),
                 ('data_size', ct.c_uint32)]
 
@@ -289,6 +332,9 @@ class ReportLib(object):
         return self._GetFeatureString('arch')
 
     def MetaInfo(self):
+        """ Return a string to string map stored in meta_info section in perf.data.
+            It is used to pass some short meta information.
+        """
         if self.meta_info is None:
             self.meta_info = {}
             feature_data = self._GetFeatureSection(self.getInstance(), _char_pt('meta_info'))
