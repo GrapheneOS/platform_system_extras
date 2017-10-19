@@ -37,6 +37,7 @@ simpleperf_static_libraries_target := \
   libbacktrace_offline \
   libbacktrace \
   libunwind \
+  libunwindstack \
   libziparchive \
   libz \
   libbase \
@@ -78,6 +79,7 @@ simpleperf_static_libraries_host_linux := \
   libbacktrace_offline \
   libbacktrace \
   libunwind \
+  libunwindstack \
   libcutils \
   libevent \
 
