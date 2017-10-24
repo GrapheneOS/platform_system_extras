@@ -427,6 +427,11 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
     return false;
   }
   IOEventLoop* loop = event_selection_set_.GetIOEventLoop();
+  if (interval_in_ms_ != 0) {
+    if (!loop->UsePreciseTimer()) {
+      return false;
+    }
+  }
   if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM, SIGHUP},
                              [&]() { return loop->ExitLoop(); })) {
     return false;
