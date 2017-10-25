@@ -401,7 +401,7 @@ class RecordData(object):
             self.events[event_name] = EventScope(event_name)
         return self.events[event_name]
 
-    def gen_record_info(self, out):
+    def gen_record_info(self):
         record_info = {}
         timestamp = self.meta_info.get('timestamp')
         if timestamp:
@@ -424,7 +424,7 @@ class RecordData(object):
         record_info['libList'] = self._gen_lib_list()
         record_info['functionMap'] = self._gen_function_map()
         record_info['sampleInfo'] = self._gen_sample_info()
-        out.add("let gRecordInfo = '%s';" % json.dumps(record_info).replace("'", "\\'"))
+        return record_info
 
     def _gen_process_names(self):
         process_names = {}
@@ -500,8 +500,8 @@ class ReportGenerator(object):
         self.hw.open_tag('div', id='report_content').close_tag()
 
     def write_record_data(self, record_data):
-        self.hw.open_tag('script')
-        record_data.gen_record_info(self.hw)
+        self.hw.open_tag('script', id='record_data', type='application/json')
+        self.hw.add(json.dumps(record_data))
         self.hw.close_tag()
 
     def write_flamegraph(self, flamegraph):
@@ -546,10 +546,11 @@ def main():
     parser.add_argument('--no_browser', action='store_true', help="Don't open report in browser.")
     args = parser.parse_args()
 
+    record_data = RecordData(args.record_file, args.min_func_percent, args.min_callchain_percent)
+
     report_generator = ReportGenerator(args.report_path)
     report_generator.write_content_div()
-    record_data = RecordData(args.record_file, args.min_func_percent, args.min_callchain_percent)
-    report_generator.write_record_data(record_data)
+    report_generator.write_record_data(record_data.gen_record_info())
     report_generator.write_script()
     flamegraph = gen_flamegraph(args.record_file)
     report_generator.write_flamegraph(flamegraph)
