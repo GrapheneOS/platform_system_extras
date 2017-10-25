@@ -30,12 +30,18 @@ import time
 def get_script_dir():
     return os.path.dirname(os.path.realpath(__file__))
 
-
 def is_windows():
     return sys.platform == 'win32' or sys.platform == 'cygwin'
 
 def is_darwin():
     return sys.platform == 'darwin'
+
+def get_platform():
+    if is_windows():
+        return 'windows'
+    if is_darwin():
+        return 'darwin'
+    return 'linux'
 
 def is_python3():
     return sys.version_info >= (3, 0)
@@ -65,8 +71,8 @@ def disable_debug_log():
 def str_to_bytes(str):
     if not is_python3():
         return str
-    # In python 3, str are wide strings whereas the C api expects 8 bit strings, hence we have to convert
-    # For now using utf-8 as the encoding.
+    # In python 3, str are wide strings whereas the C api expects 8 bit strings,
+    # hence we have to convert. For now using utf-8 as the encoding.
     return str.encode('utf-8')
 
 def bytes_to_str(bytes):
@@ -117,69 +123,91 @@ def is_executable_available(executable, option='--help'):
     except:
         return False
 
-expected_tool_paths = {
+DEFAULT_NDK_PATH = {
+    'darwin': 'Library/Android/sdk/ndk-bundle',
+    'linux': 'Android/Sdk/ndk-bundle',
+    'windows': 'AppData/Local/Android/sdk/ndk-bundle',
+}
+
+EXPECTED_TOOLS = {
     'adb': {
+        'is_binutils': False,
         'test_option': 'version',
-        'darwin': [(True, 'Library/Android/sdk/platform-tools/adb'),
-                   (False, '../../platform-tools/adb')],
-        'linux': [(True, 'Android/Sdk/platform-tools/adb'),
-                  (False, '../../platform-tools/adb')],
-        'windows': [(True, 'AppData/Local/Android/sdk/platform-tools/adb'),
-                    (False, '../../platform-tools/adb')],
+        'path_in_ndk': '../platform-tools/adb',
     },
     'readelf': {
-        'test_option': '--help',
-        'darwin': [(True, 'Library/Android/sdk/ndk-bundle/toolchains/aarch64-linux-android-4.9/prebuilt/darwin-x86_64/bin/aarch64-linux-android-readelf'),
-                   (False, '../toolchains/aarch64-linux-android-4.9/prebuilt/darwin-x86_64/bin/aarch64-linux-android-readelf')],
-        'linux': [(True, 'Android/Sdk/ndk-bundle/toolchains/aarch64-linux-android-4.9/prebuilt/linux-x86_64/bin/aarch64-linux-android-readelf'),
-                  (False, '../toolchains/aarch64-linux-android-4.9/prebuilt/linux-x86_64/bin/aarch64-linux-android-readelf')],
-        'windows': [(True, 'AppData/Local/Android/sdk/ndk-bundle/toolchains/aarch64-linux-android-4.9/prebuilt/windows-x86_64/bin/aarch64-linux-android-readelf'),
-                    (False, '../toolchains/aarch64-linux-android-4.9/prebuilt/windows-x86_64/bin/aarch64-linux-android-readelf')],
-        'in_ndk_path': 'toolchains/aarch64-linux-android-4.9/prebuilt/windows-x86_64/bin/aarch64-linux-android-readelf',
+        'is_binutils': True,
+        'accept_tool_without_arch': True,
     },
     'addr2line': {
-        'test_option': '--help',
-        'darwin': [(True, 'Library/Android/sdk/ndk-bundle/toolchains/aarch64-linux-android-4.9/prebuilt/darwin-x86_64/bin/aarch64-linux-android-addr2line'),
-                   (False, '../toolchains/aarch64-linux-android-4.9/prebuilt/darwin-x86_64/bin/aarch64-linux-android-addr2line')],
-        'linux': [(True, 'Android/Sdk/ndk-bundle/toolchains/aarch64-linux-android-4.9/prebuilt/linux-x86_64/bin/aarch64-linux-android-addr2line'),
-                  (False, '../toolchains/aarch64-linux-android-4.9/prebuilt/linux-x86_64/bin/aarch64-linux-android-addr2line')],
-        'windows': [(True, 'AppData/Local/Android/sdk/ndk-bundle/toolchains/aarch64-linux-android-4.9/prebuilt/windows-x86_64/bin/aarch64-linux-android-addr2line'),
-                    (False, '../toolchains/aarch64-linux-android-4.9/prebuilt/windows-x86_64/bin/aarch64-linux-android-addr2line')],
-        'in_ndk_path': 'toolchains/aarch64-linux-android-4.9/prebuilt/windows-x86_64/bin/aarch64-linux-android-addr2line',
+        'is_binutils': True,
+        'accept_tool_without_arch': True
+    },
+    'objdump': {
+        'is_binutils': True,
     },
 }
 
-def find_tool_path(toolname, ndk_path=None):
-    if toolname not in expected_tool_paths:
+def _get_binutils_path_in_ndk(toolname, arch, platform):
+    if not arch:
+        arch = 'arm64'
+    if arch == 'arm64':
+        name = 'aarch64-linux-android-' + toolname
+        path = 'toolchains/aarch64-linux-android-4.9/prebuilt/%s-x86_64/bin/%s' % (platform, name)
+    elif arch == 'arm':
+        name = 'arm-linux-androideabi-' + toolname
+        path = 'toolchains/arm-linux-androideabi-4.9/prebuilt/%s-x86_64/bin/%s' % (platform, name)
+    elif arch == 'x86_64':
+        name = 'x86_64-linux-android-' + toolname
+        path = 'toolchains/x86_64-4.9/prebuilt/%s-x86_64/bin/%s' % (platform, name)
+    elif arch == 'x86':
+        name = 'i686-linux-android-' + toolname
+        path = 'toolchains/x86-4.9/prebuilt/%s-x86_64/bin/%s' % (platform, name)
+    else:
+        log_fatal('unexpected arch %s' % arch)
+    return (name, path)
+
+def find_tool_path(toolname, ndk_path=None, arch=None):
+    if toolname not in EXPECTED_TOOLS:
         return None
-    test_option = expected_tool_paths[toolname]['test_option']
-    # 1. Use tools in the given ndk path.
-    if ndk_path and 'in_ndk_path' in expected_tool_paths[toolname]:
-        path = expected_tool_paths[toolname]['in_ndk_path']
-        path = path.replace('/', os.sep)
-        path = os.path.join(ndk_path, path)
+    tool_info = EXPECTED_TOOLS[toolname]
+    is_binutils = tool_info['is_binutils']
+    test_option = tool_info.get('test_option', '--help')
+    platform = get_platform()
+    if is_binutils:
+        toolname_with_arch, path_in_ndk = _get_binutils_path_in_ndk(toolname, arch, platform)
+    else:
+        toolname_with_arch = toolname
+        path_in_ndk = tool_info['path_in_ndk']
+    path_in_ndk = path_in_ndk.replace('/', os.sep)
+
+    # 1. Find tool in the given ndk path.
+    if ndk_path:
+        path = os.path.join(ndk_path, path_in_ndk)
         if is_executable_available(path, test_option):
             return path
-    # 2. Search tools in the default ndk installation place, or in the ndk directory containing
-    #    simpleperf scripts.
-    platform = 'linux'
-    if is_windows():
-        platform = 'windows'
-    elif is_darwin():
-        platform = 'darwin'
-    paths = expected_tool_paths[toolname][platform]
+
+    # 2. Find tool in the ndk directory containing simpleperf scripts.
+    path = os.path.join('..', path_in_ndk)
+    if is_executable_available(path, test_option):
+        return path
+
+    # 3. Find tool in the default ndk installation path.
     home = os.environ.get('HOMEPATH') if is_windows() else os.environ.get('HOME')
-    for (relative_to_home, path) in paths:
-        path = path.replace('/', os.sep)
-        if relative_to_home:
-            path = os.path.join(home, path)
-        else:
-            path = os.path.join(get_script_dir(), path)
+    if home:
+        default_ndk_path = os.path.join(home, DEFAULT_NDK_PATH[platform].replace('/', os.sep))
+        path = os.path.join(default_ndk_path, path_in_ndk)
         if is_executable_available(path, test_option):
             return path
-    # 3. Use tools in $PATH. Put this last because the tools in $PATH may be too old to be useful.
-    if is_executable_available(toolname, test_option):
-        return toolname
+
+    # 4. Find tool in $PATH.
+    if is_executable_available(toolname_with_arch, test_option):
+        return toolname_with_arch
+
+    # 5. Find tool without arch in $PATH.
+    if is_binutils and tool_info.get('accept_tool_without_arch'):
+        if is_executable_available(toolname, test_option):
+            return toolname
     return None
 
 
@@ -537,6 +565,59 @@ class Addr2Nearestline(object):
 
     def get_dso(self, dso_path):
         return self.dso_map.get(dso_path)
+
+
+class Objdump(object):
+    """ A wrapper of objdump to disassemble code. """
+    def __init__(self, ndk_path, binary_cache_path):
+        self.ndk_path = ndk_path
+        self.binary_cache_path = binary_cache_path
+        self.readelf_path = find_tool_path('readelf', ndk_path)
+        if not self.readelf_path:
+            log_exit("Can't find readelf. Please set ndk path by --ndk-path option.")
+        self.objdump_paths = {}
+
+    def disassemble_code(self, dso_path, start_addr, addr_len):
+        """ Disassemble [start_addr, start_addr + addr_len] of dso_path.
+            Return a list of pair (disassemble_code_line, addr).
+        """
+        # 1. Find real path.
+        real_path = find_real_dso_path(dso_path, self.binary_cache_path)
+        if real_path is None:
+            return None
+
+        # 2. Get path of objdump.
+        arch = get_arch_of_dso_path(self.readelf_path, real_path)
+        objdump_path = self.objdump_paths.get(arch)
+        if not objdump_path:
+            objdump_path = find_tool_path('objdump', self.ndk_path, arch)
+            if not objdump_path:
+                log_exit("Can't find objdump. Please set ndk path by --ndk-path option.")
+            self.objdump_paths[arch] = objdump_path
+
+        # 3. Run objdump.
+        args = [objdump_path, '-dlC', '--no-show-raw-insn',
+                '--start-address=0x%x' % start_addr,
+                '--stop-address=0x%x' % (start_addr + addr_len),
+                real_path]
+        try:
+            subproc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            (stdoutdata, _) = subproc.communicate()
+            stdoutdata = bytes_to_str(stdoutdata)
+        except:
+            return None
+
+        if not stdoutdata:
+            return None
+        result = []
+        for line in stdoutdata.split('\n'):
+            items = line.split(':', 1)
+            try:
+                addr = int(items[0], 16)
+            except ValueError:
+                addr = 0
+            result.append((line, addr))
+        return result
 
 
 logging.getLogger().setLevel(logging.DEBUG)
