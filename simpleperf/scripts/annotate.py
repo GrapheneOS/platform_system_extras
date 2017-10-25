@@ -550,7 +550,7 @@ class SourceFileAnnotator(object):
             elif suffix_len == best_suffix_len:
                 best_path_count += 1
         if best_path_count > 1:
-            log_warning('multiple source for %s, select %s' % (file, result))
+            log_warning('multiple source for %s, select %s' % (file, best_path))
         return best_path
 
 
