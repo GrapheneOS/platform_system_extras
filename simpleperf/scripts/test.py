@@ -155,7 +155,7 @@ class TestExampleBase(TestBase):
         self.__class__.test_result = result
         super(TestBase, self).run(result)
 
-    def run_app_profiler(self, record_arg = "-g --duration 3 -e cpu-cycles:u",
+    def run_app_profiler(self, record_arg = "-g -f 1000 --duration 3 -e cpu-cycles:u",
                          build_binary_cache=True, skip_compile=False, start_activity=True,
                          native_lib_dir=None, profile_from_launch=False, add_arch=False):
         args = ["app_profiler.py", "--app", self.package_name, "--apk", self.apk_path,
@@ -282,7 +282,7 @@ class TestExampleBase(TestBase):
         self.run_cmd(["report_sample.py"])
         output = self.run_cmd(["report_sample.py", "perf.data"], return_output=True)
         self.check_strings_in_content(output, check_strings)
-        self.run_app_profiler(record_arg="-g --duration 3 -e cpu-cycles:u --no-dump-symbols")
+        self.run_app_profiler(record_arg="-g -f 1000 --duration 3 -e cpu-cycles:u --no-dump-symbols")
         output = self.run_cmd(["report_sample.py", "--symfs", "binary_cache"], return_output=True)
         self.check_strings_in_content(output, check_strings)
 
@@ -443,7 +443,7 @@ class TestExamplePureJavaTraceOffCpu(TestExampleBase):
                     ".SleepActivity")
 
     def test_smoke(self):
-        self.run_app_profiler(record_arg = "-g --duration 3 -e cpu-cycles:u --trace-offcpu")
+        self.run_app_profiler(record_arg="-g -f 1000 --duration 3 -e cpu-cycles:u --trace-offcpu")
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
         self.check_strings_in_file("report.txt",
             ["com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.run()",
@@ -548,7 +548,7 @@ class TestExampleWithNativeTraceOffCpu(TestExampleBase):
                     ".SleepActivity")
 
     def test_smoke(self):
-        self.run_app_profiler(record_arg = "-g --duration 3 -e cpu-cycles:u --trace-offcpu")
+        self.run_app_profiler(record_arg="-g -f 1000 --duration 3 -e cpu-cycles:u --trace-offcpu")
         self.run_cmd(["report.py", "-g", "--comms", "SleepThread", "-o", "report.txt"])
         self.check_strings_in_file("report.txt",
             ["SleepThread(void*)",
@@ -596,8 +596,8 @@ class TestExampleWithNativeJniCall(TestExampleBase):
             [("MixActivity.java", 80, 0),
              ("run", 80, 0),
              ("line 26", 20, 0),
-             ("native-lib.cpp", 10, 0),
-             ("line 40", 10, 0)])
+             ("native-lib.cpp", 5, 0),
+             ("line 40", 5, 0)])
         self.run_cmd([inferno_script, "-sc"])
 
 
@@ -706,7 +706,7 @@ class TestExampleOfKotlinTraceOffCpu(TestExampleBase):
                     ".SleepActivity")
 
     def test_smoke(self):
-        self.run_app_profiler(record_arg = "-g --duration 3 -e cpu-cycles:u --trace-offcpu")
+        self.run_app_profiler(record_arg="-g -f 1000 --duration 3 -e cpu-cycles:u --trace-offcpu")
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
         self.check_strings_in_file("report.txt",
             ["void com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.run()",
@@ -742,7 +742,7 @@ class TestProfilingNativeProgram(TestExampleBase):
             return
         remove("perf.data")
         self.run_cmd(["app_profiler.py", "-np", "surfaceflinger",
-                      "-r", "-g --duration 3 -e cpu-cycles:u"])
+                      "-r", "-g -f 1000 --duration 3 -e cpu-cycles:u"])
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
 
 

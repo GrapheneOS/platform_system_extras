@@ -163,8 +163,17 @@ class AppProfiler(object):
                 self.config['launch_activity'] = '.MainActivity'
 
         self.adb.check_run(['shell', 'am', 'force-stop', self.config['app_package_name']])
-        while self._find_app_process():
+        count = 0
+        while True:
             time.sleep(1)
+            pid = self._find_app_process()
+            if pid is None:
+                break
+            # When testing on Android N, `am force-stop` sometimes can't kill
+            # com.example.simpleperf.simpleperfexampleofkotlin. So use kill when this happens.
+            count += 1
+            if count >= 3:
+                self.run_in_app_dir(['kill', '-9', str(pid)], check_result=False, log_output=False)
 
         if self.config['profile_from_launch']:
             self._download_simpleperf()
@@ -257,7 +266,7 @@ class AppProfiler(object):
 
 
     def _download_native_libs(self):
-        if not self.config['native_lib_dir']:
+        if not self.config['native_lib_dir'] or not self.config['app_package_name']:
             return
         filename_dict = dict()
         for root, _, files in os.walk(self.config['native_lib_dir']):
@@ -417,8 +426,8 @@ It restarts the app if the app is already running.""")
     parser.add_argument('--arch', help=
 """Select which arch the app is running on, possible values are:
 arm, arm64, x86, x86_64. If not set, the script will try to detect it.""")
-    parser.add_argument('-r', '--record_options', default="-e cpu-cycles:u -g --duration 10", help=
-"""Set options for `simpleperf record` command.""")
+    parser.add_argument('-r', '--record_options', default="-e cpu-cycles:u -g -f 1000 --duration 10", help=
+"""Set options for `simpleperf record` command. Default is '-e cpu-cycles:u -g -f 1000 --duration 10'.""")
     parser.add_argument('-o', '--perf_data_path', default="perf.data", help=
 """The path to store profiling data.""")
     parser.add_argument('-nb', '--skip_collect_binaries', action='store_true', help=
