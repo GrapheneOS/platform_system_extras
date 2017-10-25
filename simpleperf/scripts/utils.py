@@ -611,6 +611,7 @@ class Objdump(object):
             return None
         result = []
         for line in stdoutdata.split('\n'):
+            line = line.rstrip()  # Remove '\r' on Windows.
             items = line.split(':', 1)
             try:
                 addr = int(items[0], 16)
