@@ -857,7 +857,7 @@ class TestRunSimpleperfOnDevice(TestBase):
 
 
 class TestTools(unittest.TestCase):
-    def test_lookprev_addr2line(self):
+    def test_addr2nearestline(self):
         binary_cache_path = 'testdata'
         test_map = {
             '/simpleperf_runtest_two_functions_arm64': [
@@ -938,6 +938,55 @@ class TestTools(unittest.TestCase):
                     actual_file_path = addr2line.get_file_path(actual_file_id)
                     self.assertEqual(actual_file_path, expected_source[i][0])
                     self.assertEqual(actual_line, expected_source[i][1])
+
+    def test_objdump(self):
+        binary_cache_path = 'testdata'
+        test_map = {
+            '/simpleperf_runtest_two_functions_arm64': {
+                'start_addr': 0x668,
+                'len': 116,
+                'expected_items': [
+                    ('main():', 0),
+                    ('system/extras/simpleperf/runtest/two_functions.cpp:20', 0),
+                    (' 694:	add	x20, x20, #0x6de', 0x694),
+                ],
+            },
+            '/simpleperf_runtest_two_functions_arm': {
+                'start_addr': 0x784,
+                'len': 80,
+                'expected_items': [
+                    ('main():', 0),
+                    ('system/extras/simpleperf/runtest/two_functions.cpp:20', 0),
+                    ('     7ae:	bne.n	7a6 <main+0x22>', 0x7ae),
+                ],
+            },
+            '/simpleperf_runtest_two_functions_x86_64': {
+                'start_addr': 0x920,
+                'len': 201,
+                'expected_items': [
+                    ('main():', 0),
+                    ('system/extras/simpleperf/runtest/two_functions.cpp:20', 0),
+                    (' 96e:	mov    %edx,(%rbx,%rax,4)', 0x96e),
+                ],
+            },
+            '/simpleperf_runtest_two_functions_x86': {
+                'start_addr': 0x710,
+                'len': 98,
+                'expected_items': [
+                    ('main():', 0),
+                    ('system/extras/simpleperf/runtest/two_functions.cpp:20', 0),
+                    (' 748:	cmp    $0x5f5e100,%ebp', 0x748),
+                ],
+            },
+        }
+        objdump = Objdump(None, binary_cache_path)
+        for dso_path in test_map:
+            dso_info = test_map[dso_path]
+            disassemble_code = objdump.disassemble_code(dso_path, dso_info['start_addr'],
+                                                        dso_info['len'])
+            self.assertTrue(disassemble_code)
+            for item in dso_info['expected_items']:
+                self.assertTrue(item in disassemble_code)
 
 
 def main():
