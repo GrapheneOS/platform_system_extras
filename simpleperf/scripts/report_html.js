@@ -16,7 +16,7 @@
 'use strict';
 
 // Use IIFE to avoid leaking names to other scripts.
-(function() {
+$(document).ready(function() {
 
 function openHtml(name, attrs={}) {
     let s = `<${name} `;
@@ -244,6 +244,10 @@ class ChartView {
     }
 
     draw() {
+        google.charts.setOnLoadCallback(() => this.realDraw());
+    }
+
+    realDraw() {
         this.div.empty();
         this._drawTitle();
         let data = new google.visualization.DataTable();
@@ -316,12 +320,9 @@ class ChartStatTab {
 
     draw() {
         this.recordFileView.draw();
-        let thisObj = this;
-        google.charts.setOnLoadCallback(function() {
-            for (let charView of thisObj.chartViews) {
-                charView.draw();
-            }
-        });
+        for (let charView of this.chartViews) {
+            charView.draw();
+        }
     }
 }
 
@@ -338,10 +339,10 @@ class SampleTableTab {
         for (let tId = 0; tId < gSampleInfo.length; tId++) {
             let eventInfo = gSampleInfo[tId];
             let eventName = eventInfo.eventName;
+            this.div.append(getHtml('p', {text: 'Sample table for event ' + eventName}));
             let percentMul = 100.0 / eventInfo.eventCount;
             let tableId = 'reportTable_' + tId;
-            let titles = [eventName + '_WithChildren', eventName, 'sampleCount', 'process',
-                'thread', 'lib', 'function'];
+            let titles = ['Total', 'Self', 'SampleCount', 'Process', 'Thread', 'Lib', 'Function'];
             let tableStr = openHtml('table', {id: tableId, cellspacing: '0', width: '100%'}) +
                            getHtml('thead', {text: getTableRow(titles, 'th')}) +
                            getHtml('tfoot', {text: getTableRow(titles, 'th')}) +
@@ -387,7 +388,7 @@ class SampleTableTab {
                 let threadInfo = processInfo.threads[indexes[1]];
                 let lib = threadInfo.libs[indexes[2]];
                 let func = lib.functions[indexes[3]];
-                FunctionFlameGraphTab.showFunction(eventInfo, processInfo, threadInfo, lib, func);
+                FunctionTab.showFunction(eventInfo, processInfo, threadInfo, lib, func);
             });
         }
     }
@@ -410,13 +411,14 @@ class FlameGraphTab {
 }
 
 
-// Show the callgraph and reverse callgraph of a function as flamegraphs.
-class FunctionFlameGraphTab {
+// FunctionTab: show information of a function.
+// 1. Show the callgrpah and reverse callgraph of a function as flamegraphs.
+class FunctionTab {
     static showFunction(eventInfo, processInfo, threadInfo, lib, func) {
-        let title = 'Function Flamegraph';
+        let title = 'Function';
         let tab = gTabs.findTab(title);
         if (!tab) {
-            tab = gTabs.addTab(title, new FunctionFlameGraphTab());
+            tab = gTabs.addTab(title, new FunctionTab());
         }
         tab.setFunction(eventInfo, processInfo, threadInfo, lib, func);
     }
@@ -436,6 +438,9 @@ class FunctionFlameGraphTab {
         this.threadInfo = threadInfo;
         this.lib = lib;
         this.func = func;
+        this.selectorView = null;
+        this.callgraphView = null;
+        this.reverseCallgraphView = null;
         this.draw();
         gTabs.setActive(this);
     }
@@ -454,66 +459,137 @@ class FunctionFlameGraphTab {
                     getHtml('p', {text: `Process ${processName}`}) +
                     getHtml('p', {text: `Thread ${threadName}`}) +
                     getHtml('p', {text: `Library ${libName}`}) +
-                    getHtml('p', {text: `Functions called by ${funcName}`});
+                    getHtml('p', {text: `Function ${funcName}`});
         this.div.append(title);
 
-        let selectDiv = $('<div>');
-        selectDiv.appendTo(this.div);
-        selectDiv.css('position', 'absolute').css('right', '0%').css('top', '100px');
-        let selectPercentStr =
-            getHtml('label', {for: 'select_percent', text: 'Show percentage relative to:'}) +
-            getHtml('select', {name: 'select_percent', id: 'select_percent', text:
-                getHtml('option', {value: 'all', text: 'All processes'}) +
-                getHtml('option', {value: 'process', text: `Process ${processName}`}) +
-                getHtml('option', {value: 'thread', text: `Thread ${threadName}`}) +
-                getHtml('option', {value: 'func', text: `Function ${funcName}`})});
-        selectDiv.append(selectPercentStr);
-        let thisObj = this;
-        selectDiv.find('#select_percent');
-        let totalEventCount = 0;
-        let selectIndex = 0;
-        if (this.selectPercent == 'all') {
-            totalEventCount = this.eventInfo.eventCount;
-            selectIndex = 0;
-        } else if (this.selectPercent == 'process') {
-            totalEventCount = this.processInfo.eventCount;
-            selectIndex = 1;
-        } else if (this.selectPercent == 'thread') {
-            totalEventCount = this.threadInfo.eventCount;
-            selectIndex = 2;
-        } else {
-            totalEventCount = this.func.g.s;
-            selectIndex = 3;
+        this.selectorView = new FunctionSampleWeightSelectorView(this.div, this.eventInfo,
+            this.processInfo, this.threadInfo, () => this.onSampleWeightChange());
+        this.selectorView.draw();
+
+        this.div.append(getHtml('hr'));
+        this.div.append(getHtml('b', {text: `Functions called by ${funcName}`}) + '<br/>');
+        this.callgraphView = new FlameGraphView(this.div, this.func.g, false);
+
+        this.div.append(getHtml('hr'));
+        this.div.append(getHtml('b', {text: `Functions calling ${funcName}`}) + '<br/>');
+        this.reverseCallgraphView = new FlameGraphView(this.div, this.func.rg, true);
+        this.onSampleWeightChange();  // Manually set sample weight function for the first time.
+    }
+
+    onSampleWeightChange() {
+        let sampleWeightFunction = this.selectorView.getSampleWeightFunction();
+        if (this.callgraphView) {
+            this.callgraphView.draw(sampleWeightFunction);
         }
-        selectDiv.find('#select_percent').children().eq(selectIndex).attr('selected', 'selected');
-        selectDiv.find('#select_percent').selectmenu({
-            change: function() {
-                thisObj.selectPercent = this.value;
-                thisObj.draw();
-            },
-        });
-
-        let gView = new FlameGraphView(this.div, this.func.g, totalEventCount, false);
-        gView.draw();
-
-        this.div.append(getHtml('p'));
-        this.div.append(getHtml('p', {text: `Functions calling ${getFuncName(this.func.g.f)}`}));
-        let rgView = new FlameGraphView(this.div, this.func.rg, totalEventCount, true);
-        rgView.draw();
+        if (this.reverseCallgraphView) {
+            this.reverseCallgraphView.draw(sampleWeightFunction);
+        }
     }
 }
+
+
+// Select the way to show sample weight in FunctionTab.
+// 1. Show percentage of event count relative to all processes.
+// 2. Show percentage of event count relative to the current process.
+// 3. Show percentage of event count relative to the current thread.
+// 4. Show absolute event count.
+// 5. Show event count in milliseconds, only possible for cpu-clock or task-clock events.
+class FunctionSampleWeightSelectorView {
+    constructor(divContainer, eventInfo, processInfo, threadInfo, onSelectChange) {
+        this.div = $('<div>');
+        this.div.appendTo(divContainer);
+        this.onSelectChange = onSelectChange;
+        this.eventCountForAllProcesses = eventInfo.eventCount;
+        this.eventCountForProcess = processInfo.eventCount;
+        this.eventCountForThread = threadInfo.eventCount;
+        this.options = {
+            PERCENT_TO_ALL_PROCESSES: 0,
+            PERCENT_TO_CUR_PROCESS: 1,
+            PERCENT_TO_CUR_THREAD: 2,
+            RAW_EVENT_COUNT: 3,
+            EVENT_COUNT_IN_TIME: 4,
+        }
+        let name = eventInfo.eventName;
+        this.supportEventCountInTime = name.includes('task-clock') || name.includes('cpu-clock');
+        if (this.supportEventCountInTime) {
+            this.curOption = this.options.EVENT_COUNT_IN_TIME;
+        } else {
+            this.curOption = this.options.PERCENT_TO_CUR_THREAD;
+        }
+    }
+
+    draw() {
+        let options = [];
+        options.push('Show percentage of event count relative to all processes.');
+        options.push('Show percentage of event count relative to the current process.');
+        options.push('Show percentage of event count relative to the current thread.');
+        options.push('Show event count.');
+        if (this.supportEventCountInTime) {
+            options.push('Show event count in milliseconds.');
+        }
+        let optionStr = '';
+        for (let i = 0; i < options.length; ++i) {
+            optionStr += getHtml('option', {value: i, text: options[i]});
+        }
+        this.div.append(getHtml('select', {text: optionStr}));
+        let selectMenu = this.div.children().last();
+        selectMenu.children().eq(this.curOption).attr('selected', 'selected');
+        let thisObj = this;
+        selectMenu.selectmenu({
+            change: function() {
+                thisObj.curOption = this.value;
+                thisObj.onSelectChange();
+            },
+            width: '100%',
+        });
+    }
+
+    getSampleWeightFunction() {
+        let thisObj = this;
+        if (this.curOption == this.options.PERCENT_TO_ALL_PROCESSES) {
+            return function(eventCount) {
+                let percent = eventCount * 100.0 / thisObj.eventCountForAllProcesses;
+                return percent.toFixed(2) + '%';
+            };
+        }
+        if (this.curOption == this.options.PERCENT_TO_CUR_PROCESS) {
+            return function(eventCount) {
+                let percent = eventCount * 100.0 / thisObj.eventCountForProcess;
+                return percent.toFixed(2) + '%';
+            };
+        }
+        if (this.curOption == this.options.PERCENT_TO_CUR_THREAD) {
+            return function(eventCount) {
+                let percent = eventCount * 100.0 / thisObj.eventCountForThread;
+                return percent.toFixed(2) + '%';
+            };
+        }
+        if (this.curOption == this.options.RAW_EVENT_COUNT) {
+            return function(eventCount) {
+                return '' + eventCount;
+            };
+        }
+        if (this.curOption == this.options.EVENT_COUNT_IN_TIME) {
+            return function(eventCount) {
+                let timeInMs = eventCount / 1000000.0;
+                return timeInMs.toFixed(3) + ' ms';
+            };
+        }
+    }
+}
+
 
 // Given a callgraph, show the flamegraph.
 class FlameGraphView {
     // If reverseOrder is false, the root of the flamegraph is at the bottom,
     // otherwise it is at the top.
-    constructor(divContainer, callgraph, totalEventCount, reverseOrder) {
+    constructor(divContainer, callgraph, reverseOrder) {
         this.id = divContainer.children().length;
         this.div = $('<div>', {id: 'fg_' + this.id});
         this.div.appendTo(divContainer);
         this.callgraph = callgraph;
-        this.totalEventCount = totalEventCount;
         this.reverseOrder = reverseOrder;
+        this.sampleWeightFunction = null;
         this.svgWidth = $(window).width();
         this.svgNodeHeight = 17;
         this.fontSize = 12;
@@ -529,7 +605,8 @@ class FlameGraphView {
         this.svgHeight = this.svgNodeHeight * (this.maxDepth + 3);
     }
 
-    draw() {
+    draw(sampleWeightFunction) {
+        this.sampleWeightFunction = sampleWeightFunction;
         this.div.empty();
         this.div.css('width', '100%').css('height', this.svgHeight + 'px');
         let svgStr = '<svg xmlns="http://www.w3.org/2000/svg" \
@@ -574,10 +651,6 @@ class FlameGraphView {
         return eventCount * 100.0 / this.callgraph.s;
     }
 
-    _getEventPercentage(eventCount) {
-        return eventCount * 100.0 / this.totalEventCount;
-    }
-
     _getHeatColor(widthPercentage) {
         return {
             r: Math.floor(245 + 10 * (1 - widthPercentage * 0.01)),
@@ -600,9 +673,9 @@ class FlameGraphView {
         }
         let funcName = getFuncName(callNode.f);
         let libName = getLibNameOfFunction(callNode.f);
-        let eventPercent = this._getEventPercentage(callNode.s);
+        let sampleWeight = this.sampleWeightFunction(callNode.s);
         let title = funcName + ' | ' + libName + ' (' + callNode.s + ' events: ' +
-                    eventPercent.toFixed(2) + '%)';
+                    sampleWeight + ')';
         this.svg.append(`<g> <title>${title}</title> <rect x="${x}%" y="${y}" ox="${x}" \
                         depth="${depth}" width="${width}%" owidth="${width}" height="15.0" \
                         ofill="rgb(${color.r},${color.g},${color.b})" \
@@ -638,10 +711,10 @@ class FlameGraphView {
 
     _renderPercentNode() {
         this.svg.append(`<rect style="stroke:rgb(0,0,0);" rx="10" ry="10" \
-                         x="934" y="10" width="82" height="30" \
+                         x="934" y="10" width="100" height="30" \
                          fill="rgb(255,255,255)"/> \
                          <text id="percent_text_${this.id}" text-anchor="end" \
-                         x="999" y="30">100.00%</text>`);
+                         x="1024" y="30">100.00%</text>`);
     }
 
     _adjustTextSizeForNode(g) {
@@ -751,12 +824,13 @@ class FlameGraphView {
 
             // Parse percentage.
             // '/system/lib64/libhwbinder.so (4 events: 0.28%)'
-            let regexp = /(.*) \(.* (\d*\.\d*%)\)/g;
+            let regexp = /.* \(.*:\s+(.*)\)/g;
             let match = regexp.exec(methodAndInfo[1]);
-            if (match.length > 2) {
-                let percentage = match[2];
-                thisObj.svg.find(`#percent_text_${thisObj.id}`).text(percentage);
+            let percentage = '';
+            if (match && match.length > 1) {
+                percentage = match[1];
             }
+            thisObj.svg.find(`#percent_text_${thisObj.id}`).text(percentage);
         });
     }
 
@@ -779,7 +853,8 @@ class FlameGraphView {
 
 function initGlobalObjects() {
     gTabs = new TabManager($('div#report_content'));
-    gRecordInfo = JSON.parse(gRecordInfo);
+    let recordData = $('#record_data').text();
+    gRecordInfo = JSON.parse(recordData);
     gProcesses = gRecordInfo.processNames;
     gThreads = gRecordInfo.threadNames;
     gLibList = gRecordInfo.libList;
@@ -794,18 +869,15 @@ function createTabs() {
     gTabs.draw();
 }
 
-function main() {
-    initGlobalObjects();
-    createTabs();
-}
-
 let gTabs;
+let gRecordInfo;
 let gProcesses;
 let gThreads;
 let gLibList;
 let gFunctionMap;
 let gSampleInfo;
 
-$(document).ready(main);
+initGlobalObjects();
+createTabs();
 
-}())
+});

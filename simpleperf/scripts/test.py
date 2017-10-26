@@ -155,7 +155,7 @@ class TestExampleBase(TestBase):
         self.__class__.test_result = result
         super(TestBase, self).run(result)
 
-    def run_app_profiler(self, record_arg = "-g --duration 3 -e cpu-cycles:u",
+    def run_app_profiler(self, record_arg = "-g -f 1000 --duration 3 -e cpu-cycles:u",
                          build_binary_cache=True, skip_compile=False, start_activity=True,
                          native_lib_dir=None, profile_from_launch=False, add_arch=False):
         args = ["app_profiler.py", "--app", self.package_name, "--apk", self.apk_path,
@@ -282,7 +282,7 @@ class TestExampleBase(TestBase):
         self.run_cmd(["report_sample.py"])
         output = self.run_cmd(["report_sample.py", "perf.data"], return_output=True)
         self.check_strings_in_content(output, check_strings)
-        self.run_app_profiler(record_arg="-g --duration 3 -e cpu-cycles:u --no-dump-symbols")
+        self.run_app_profiler(record_arg="-g -f 1000 --duration 3 -e cpu-cycles:u --no-dump-symbols")
         output = self.run_cmd(["report_sample.py", "--symfs", "binary_cache"], return_output=True)
         self.check_strings_in_content(output, check_strings)
 
@@ -443,7 +443,7 @@ class TestExamplePureJavaTraceOffCpu(TestExampleBase):
                     ".SleepActivity")
 
     def test_smoke(self):
-        self.run_app_profiler(record_arg = "-g --duration 3 -e cpu-cycles:u --trace-offcpu")
+        self.run_app_profiler(record_arg="-g -f 1000 --duration 3 -e cpu-cycles:u --trace-offcpu")
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
         self.check_strings_in_file("report.txt",
             ["com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.run()",
@@ -548,7 +548,7 @@ class TestExampleWithNativeTraceOffCpu(TestExampleBase):
                     ".SleepActivity")
 
     def test_smoke(self):
-        self.run_app_profiler(record_arg = "-g --duration 3 -e cpu-cycles:u --trace-offcpu")
+        self.run_app_profiler(record_arg="-g -f 1000 --duration 3 -e cpu-cycles:u --trace-offcpu")
         self.run_cmd(["report.py", "-g", "--comms", "SleepThread", "-o", "report.txt"])
         self.check_strings_in_file("report.txt",
             ["SleepThread(void*)",
@@ -596,8 +596,8 @@ class TestExampleWithNativeJniCall(TestExampleBase):
             [("MixActivity.java", 80, 0),
              ("run", 80, 0),
              ("line 26", 20, 0),
-             ("native-lib.cpp", 10, 0),
-             ("line 40", 10, 0)])
+             ("native-lib.cpp", 5, 0),
+             ("line 40", 5, 0)])
         self.run_cmd([inferno_script, "-sc"])
 
 
@@ -706,7 +706,7 @@ class TestExampleOfKotlinTraceOffCpu(TestExampleBase):
                     ".SleepActivity")
 
     def test_smoke(self):
-        self.run_app_profiler(record_arg = "-g --duration 3 -e cpu-cycles:u --trace-offcpu")
+        self.run_app_profiler(record_arg="-g -f 1000 --duration 3 -e cpu-cycles:u --trace-offcpu")
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
         self.check_strings_in_file("report.txt",
             ["void com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.run()",
@@ -742,7 +742,7 @@ class TestProfilingNativeProgram(TestExampleBase):
             return
         remove("perf.data")
         self.run_cmd(["app_profiler.py", "-np", "surfaceflinger",
-                      "-r", "-g --duration 3 -e cpu-cycles:u"])
+                      "-r", "-g -f 1000 --duration 3 -e cpu-cycles:u"])
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
 
 
@@ -857,7 +857,7 @@ class TestRunSimpleperfOnDevice(TestBase):
 
 
 class TestTools(unittest.TestCase):
-    def test_lookprev_addr2line(self):
+    def test_addr2nearestline(self):
         binary_cache_path = 'testdata'
         test_map = {
             '/simpleperf_runtest_two_functions_arm64': [
@@ -938,6 +938,55 @@ class TestTools(unittest.TestCase):
                     actual_file_path = addr2line.get_file_path(actual_file_id)
                     self.assertEqual(actual_file_path, expected_source[i][0])
                     self.assertEqual(actual_line, expected_source[i][1])
+
+    def test_objdump(self):
+        binary_cache_path = 'testdata'
+        test_map = {
+            '/simpleperf_runtest_two_functions_arm64': {
+                'start_addr': 0x668,
+                'len': 116,
+                'expected_items': [
+                    ('main():', 0),
+                    ('system/extras/simpleperf/runtest/two_functions.cpp:20', 0),
+                    (' 694:	add	x20, x20, #0x6de', 0x694),
+                ],
+            },
+            '/simpleperf_runtest_two_functions_arm': {
+                'start_addr': 0x784,
+                'len': 80,
+                'expected_items': [
+                    ('main():', 0),
+                    ('system/extras/simpleperf/runtest/two_functions.cpp:20', 0),
+                    ('     7ae:	bne.n	7a6 <main+0x22>', 0x7ae),
+                ],
+            },
+            '/simpleperf_runtest_two_functions_x86_64': {
+                'start_addr': 0x920,
+                'len': 201,
+                'expected_items': [
+                    ('main():', 0),
+                    ('system/extras/simpleperf/runtest/two_functions.cpp:20', 0),
+                    (' 96e:	mov    %edx,(%rbx,%rax,4)', 0x96e),
+                ],
+            },
+            '/simpleperf_runtest_two_functions_x86': {
+                'start_addr': 0x710,
+                'len': 98,
+                'expected_items': [
+                    ('main():', 0),
+                    ('system/extras/simpleperf/runtest/two_functions.cpp:20', 0),
+                    (' 748:	cmp    $0x5f5e100,%ebp', 0x748),
+                ],
+            },
+        }
+        objdump = Objdump(None, binary_cache_path)
+        for dso_path in test_map:
+            dso_info = test_map[dso_path]
+            disassemble_code = objdump.disassemble_code(dso_path, dso_info['start_addr'],
+                                                        dso_info['len'])
+            self.assertTrue(disassemble_code)
+            for item in dso_info['expected_items']:
+                self.assertTrue(item in disassemble_code)
 
 
 def main():
