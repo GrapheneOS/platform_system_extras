@@ -541,3 +541,21 @@ TEST(record_cmd, clockid_option) {
     ASSERT_EQ(info_map["clockid"], "monotonic");
   }
 }
+
+TEST(record_cmd, generate_samples_by_hw_counters) {
+  std::vector<std::string> events = {"cpu-cycles", "instructions"};
+  for (auto& event : events) {
+    TemporaryFile tmpfile;
+    ASSERT_TRUE(RecordCmd()->Run({"-e", event, "-o", tmpfile.path, "sleep", "1"}));
+    std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+    ASSERT_TRUE(reader);
+    bool has_sample = false;
+    ASSERT_TRUE(reader->ReadDataSection([&](std::unique_ptr<Record> r) {
+      if (r->type() == PERF_RECORD_SAMPLE) {
+        has_sample = true;
+      }
+      return true;
+    }));
+    ASSERT_TRUE(has_sample);
+  }
+}
