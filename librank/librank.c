@@ -196,7 +196,6 @@ static int parse_perm(const char *perm)
 }
 
 int main(int argc, char *argv[]) {
-    char cmdline[256];
     char *prefix;
     size_t prefix_len;
     int (*compfn)(const void *a, const void *b);
@@ -211,8 +210,8 @@ int main(int argc, char *argv[]) {
     size_t num_maps;
     pm_memusage_t map_usage;
 
-    struct library_info *li, **lis;
-    struct mapping_info *mi, **mis;
+    struct library_info *li;
+    struct mapping_info *mi;
     struct process_info *pi;
 
     size_t i, j;

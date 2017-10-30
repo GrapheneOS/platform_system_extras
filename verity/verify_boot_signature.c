@@ -92,7 +92,6 @@ static uint64_t page_align(uint64_t n, uint64_t page_size)
  */
 static int get_signature_offset(int fd, off64_t *offset)
 {
-    int i;
     struct boot_img_hdr hdr;
 
     if (!offset) {
