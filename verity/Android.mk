@@ -5,6 +5,7 @@ ifeq ($(HOST_OS),linux)
 include $(CLEAR_VARS)
 LOCAL_MODULE := verify_boot_signature
 LOCAL_SRC_FILES := verify_boot_signature.c
+LOCAL_CFLAGS := -Wall -Werror
 LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES := libcrypto
@@ -16,6 +17,7 @@ endif # HOST_OS == linux
 include $(CLEAR_VARS)
 LOCAL_MODULE := generate_verity_key
 LOCAL_SRC_FILES := generate_verity_key.c
+LOCAL_CFLAGS := -Wall -Werror
 LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES := libcrypto_utils libcrypto
