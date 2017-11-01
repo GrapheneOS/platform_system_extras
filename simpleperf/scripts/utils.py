@@ -336,6 +336,13 @@ def remove(dir_or_file):
 
 
 def open_report_in_browser(report_path):
+    if is_darwin():
+        # On darwin 10.12.6, webbrowser can't open browser, so try `open` cmd first.
+        try:
+            subprocess.check_call(['open', report_path])
+            return
+        except:
+            pass
     import webbrowser
     try:
         # Try to open the report with Chrome
@@ -411,9 +418,6 @@ class Addr2Nearestline(object):
         """
         def __init__(self):
             self.addrs = {}
-
-        def get_addr_source(self, addr):
-            return self.addrs[addr].source_lines
 
     class Addr(object):
         """ Info of an addr request.
@@ -560,11 +564,14 @@ class Addr2Nearestline(object):
             self.file_id_to_name.append(file_path)
         return file_id
 
-    def get_file_path(self, file_id):
-        return self.file_id_to_name[file_id]
-
     def get_dso(self, dso_path):
         return self.dso_map.get(dso_path)
+
+    def get_addr_source(self, dso, addr):
+        source = dso.addrs[addr].source_lines
+        if source is None:
+            return None
+        return [(self.file_id_to_name[file_id], line) for (file_id, line) in source]
 
 
 class Objdump(object):
@@ -574,7 +581,7 @@ class Objdump(object):
         self.binary_cache_path = binary_cache_path
         self.readelf_path = find_tool_path('readelf', ndk_path)
         if not self.readelf_path:
-            log_exit("Can't find readelf. Please set ndk path by --ndk-path option.")
+            log_exit("Can't find readelf. Please set ndk path by --ndk_path option.")
         self.objdump_paths = {}
 
     def disassemble_code(self, dso_path, start_addr, addr_len):
@@ -592,7 +599,7 @@ class Objdump(object):
         if not objdump_path:
             objdump_path = find_tool_path('objdump', self.ndk_path, arch)
             if not objdump_path:
-                log_exit("Can't find objdump. Please set ndk path by --ndk-path option.")
+                log_exit("Can't find objdump. Please set ndk path by --ndk_path option.")
             self.objdump_paths[arch] = objdump_path
 
         # 3. Run objdump.
