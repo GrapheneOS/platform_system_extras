@@ -16,6 +16,7 @@
 
 #include "event_selection_set.h"
 
+#include <algorithm>
 #include <atomic>
 #include <thread>
 
@@ -147,8 +148,12 @@ bool EventSelectionSet::BuildAndCheckEventSelection(
       selection->event_attr.sample_period = DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT;
     } else {
       selection->event_attr.freq = 1;
-      selection->event_attr.sample_freq =
-          AdjustSampleFrequency(DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT);
+      uint64_t freq = DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT;
+      uint64_t max_freq;
+      if (GetMaxSampleFrequency(&max_freq)) {
+        freq = std::min(freq, max_freq);
+      }
+      selection->event_attr.sample_freq = freq;
     }
   }
   if (!IsEventAttrSupported(selection->event_attr)) {
