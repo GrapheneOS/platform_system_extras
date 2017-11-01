@@ -29,6 +29,7 @@ Tested python scripts include:
   annotate.py
   report_sample.py
   pprof_proto_generator.py
+  report_html.py
 
 Test using both `adb root` and `adb unroot`.
 
@@ -266,7 +267,6 @@ class TestExampleBase(TestBase):
         self.run_cmd(["report.py", "-i", "perf.data"])
         self.run_cmd(["report.py", "-g"])
         self.run_cmd(["report.py", "--self-kill-for-testing",  "-g", "--gui"])
-        self.run_cmd(["report_html.py"])
 
     def common_test_annotate(self):
         self.run_cmd(["annotate.py", "-h"])
@@ -320,6 +320,17 @@ class TestExampleBase(TestBase):
         self.run_cmd([inferno_script, "-p", self.package_name, "-e", "100000 cpu-cycles",
                       "-t", "1", "-nc"] + append_args)
         self.run_cmd([inferno_script, "-sc"])
+
+    def common_test_report_html(self):
+        self.run_cmd(['report_html.py', '-h'])
+        self.run_app_profiler()
+        self.run_cmd(['report_html.py'])
+        self.run_cmd(['report_html.py', '--add_source_code', '--source_dirs', 'testdata'])
+        # Test with multiple perf.data.
+        shutil.move('perf.data', 'perf2.data')
+        self.run_app_profiler()
+        self.run_cmd(['report_html.py', '-i', 'perf.data', 'perf2.data'])
+        remove('perf2.data')
 
 
 class TestExamplePureJava(TestExampleBase):
@@ -421,6 +432,9 @@ class TestExamplePureJava(TestExampleBase):
         self.run_cmd([inferno_script])
         os.chdir(saved_dir)
         remove(test_dir)
+
+    def test_report_html(self):
+        self.common_test_report_html()
 
 
 class TestExamplePureJavaRoot(TestExampleBase):
@@ -524,6 +538,9 @@ class TestExampleWithNative(TestExampleBase):
         self.run_app_profiler()
         self.run_cmd([inferno_script, "-sc"])
         self.check_inferno_report_html([('BusyLoopThread', 20)])
+
+    def test_report_html(self):
+        self.common_test_report_html()
 
 
 class TestExampleWithNativeRoot(TestExampleBase):
@@ -684,6 +701,9 @@ class TestExampleOfKotlin(TestExampleBase):
         self.check_inferno_report_html(
             [('com.example.simpleperf.simpleperfexampleofkotlin.MainActivity$createBusyThread$1.run()',
               80)])
+
+    def test_report_html(self):
+        self.common_test_report_html()
 
 
 class TestExampleOfKotlinRoot(TestExampleBase):
