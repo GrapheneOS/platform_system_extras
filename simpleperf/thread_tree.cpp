@@ -222,17 +222,27 @@ const MapEntry* ThreadTree::FindMap(const ThreadEntry* thread, uint64_t ip) {
 const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip,
                                      uint64_t* pvaddr_in_file, Dso** pdso) {
   uint64_t vaddr_in_file;
+  const Symbol* symbol = nullptr;
   Dso* dso = map->dso;
-  vaddr_in_file = ip - map->start_addr + map->dso->MinVirtualAddress();
-  const Symbol* symbol = dso->FindSymbol(vaddr_in_file);
-  if (symbol == nullptr && map->in_kernel && dso != kernel_dso_.get()) {
-    // It is in a kernel module, but we can't find the kernel module file, or
-    // the kernel module file contains no symbol. Try finding the symbol in
-    // /proc/kallsyms.
-    vaddr_in_file = ip;
-    dso = kernel_dso_.get();
+  if (!map->in_kernel) {
+    // Find symbol in user space shared libraries.
+    vaddr_in_file = ip - map->start_addr + map->dso->MinVirtualAddress();
     symbol = dso->FindSymbol(vaddr_in_file);
+  } else {
+    if (dso != kernel_dso_.get()) {
+      // Find symbol in kernel modules.
+      vaddr_in_file = ip - map->start_addr + map->dso->MinVirtualAddress();
+      symbol = dso->FindSymbol(vaddr_in_file);
+    }
+    if (symbol == nullptr) {
+      // If the ip address hits the vmlinux, or hits a kernel module, but we can't find its symbol
+      // in the kernel module file, then find its symbol in /proc/kallsyms or vmlinux.
+      vaddr_in_file = ip;
+      dso = kernel_dso_.get();
+      symbol = dso->FindSymbol(vaddr_in_file);
+    }
   }
+
   if (symbol == nullptr) {
     if (show_ip_for_unknown_symbol_) {
       std::string name = android::base::StringPrintf(

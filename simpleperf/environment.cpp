@@ -131,10 +131,12 @@ static std::vector<KernelMmap> GetLoadedModules() {
     // Parse line like: nf_defrag_ipv6 34768 1 nf_conntrack_ipv6, Live 0xffffffffa0fe5000
     char name[reader.MaxLineSize()];
     uint64_t addr;
-    if (sscanf(line, "%s%*lu%*u%*s%*s 0x%" PRIx64, name, &addr) == 2) {
+    uint64_t len;
+    if (sscanf(line, "%s%" PRIu64 "%*u%*s%*s 0x%" PRIx64, name, &len, &addr) == 3) {
       KernelMmap map;
       map.name = name;
       map.start_addr = addr;
+      map.len = len;
       result.push_back(map);
     }
   }
@@ -166,6 +168,18 @@ static void GetAllModuleFiles(const std::string& path,
 }
 
 static std::vector<KernelMmap> GetModulesInUse() {
+  std::vector<KernelMmap> module_mmaps = GetLoadedModules();
+  if (module_mmaps.empty()) {
+    return std::vector<KernelMmap>();
+  }
+  std::unordered_map<std::string, std::string> module_file_map;
+#if defined(__ANDROID__)
+  // Search directories listed in "File locations" section in
+  // https://source.android.com/devices/architecture/kernel/modular-kernels.
+  for (const auto& path : {"/vendor/lib/modules", "/odm/lib/modules", "/lib/modules"}) {
+    GetAllModuleFiles(path, &module_file_map);
+  }
+#else
   utsname uname_buf;
   if (TEMP_FAILURE_RETRY(uname(&uname_buf)) != 0) {
     PLOG(ERROR) << "uname() failed";
@@ -173,10 +187,8 @@ static std::vector<KernelMmap> GetModulesInUse() {
   }
   std::string linux_version = uname_buf.release;
   std::string module_dirpath = "/lib/modules/" + linux_version + "/kernel";
-  std::unordered_map<std::string, std::string> module_file_map;
   GetAllModuleFiles(module_dirpath, &module_file_map);
-  // TODO: There is no /proc/modules or /lib/modules on Android, find methods work on it.
-  std::vector<KernelMmap> module_mmaps = GetLoadedModules();
+#endif
   for (auto& module : module_mmaps) {
     auto it = module_file_map.find(module.name);
     if (it != module_file_map.end()) {
@@ -189,36 +201,13 @@ static std::vector<KernelMmap> GetModulesInUse() {
 void GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<KernelMmap>* module_mmaps) {
   kernel_mmap->name = DEFAULT_KERNEL_MMAP_NAME;
   kernel_mmap->start_addr = 0;
+  kernel_mmap->len = std::numeric_limits<uint64_t>::max();
   kernel_mmap->filepath = kernel_mmap->name;
   *module_mmaps = GetModulesInUse();
   for (auto& map : *module_mmaps) {
     if (map.filepath.empty()) {
       map.filepath = "[" + map.name + "]";
     }
-  }
-
-  if (module_mmaps->size() == 0) {
-    kernel_mmap->len = std::numeric_limits<uint64_t>::max() - kernel_mmap->start_addr;
-  } else {
-    std::sort(
-        module_mmaps->begin(), module_mmaps->end(),
-        [](const KernelMmap& m1, const KernelMmap& m2) { return m1.start_addr < m2.start_addr; });
-    // When not having enough privilege, all addresses are read as 0.
-    if (kernel_mmap->start_addr == (*module_mmaps)[0].start_addr) {
-      kernel_mmap->len = 0;
-    } else {
-      kernel_mmap->len = (*module_mmaps)[0].start_addr - kernel_mmap->start_addr - 1;
-    }
-    for (size_t i = 0; i + 1 < module_mmaps->size(); ++i) {
-      if ((*module_mmaps)[i].start_addr == (*module_mmaps)[i + 1].start_addr) {
-        (*module_mmaps)[i].len = 0;
-      } else {
-        (*module_mmaps)[i].len =
-            (*module_mmaps)[i + 1].start_addr - (*module_mmaps)[i].start_addr - 1;
-      }
-    }
-    module_mmaps->back().len =
-        std::numeric_limits<uint64_t>::max() - module_mmaps->back().start_addr;
   }
 }
 
