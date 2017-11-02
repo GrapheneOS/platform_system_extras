@@ -5,8 +5,6 @@ cc_library {
     defaults: ["system-extras-cflags-defaults"],
     host_supported: true,
     srcs: [
-        "make_ext4fs.c",
-        "ext4fixup.c",
         "ext4_utils.c",
         "allocate.c",
         "contents.c",
