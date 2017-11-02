@@ -70,7 +70,6 @@ bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>
 
 bool CheckPerfEventLimit();
 bool GetMaxSampleFrequency(uint64_t* max_sample_freq);
-uint64_t AdjustSampleFrequency(uint64_t sample_freq);
 bool CheckKernelSymbolAddresses();
 bool CanRecordRawData();
 
