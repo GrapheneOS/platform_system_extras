@@ -73,11 +73,32 @@ function getLibName(libId) {
 }
 
 function getFuncName(funcId) {
-    return gFunctionMap[funcId][1];
+    return gFunctionMap[funcId].f;
 }
 
 function getLibNameOfFunction(funcId) {
-    return getLibName(gFunctionMap[funcId][0]);
+    return getLibName(gFunctionMap[funcId].l);
+}
+
+function getFuncSourceRange(funcId) {
+    let func = gFunctionMap[funcId];
+    if (func.hasOwnProperty('s')) {
+        return {fileId: func.s[0], startLine: func.s[1], endLine: func.s[2]};
+    }
+    return null;
+}
+
+function getFuncDisassembly(funcId) {
+    let func = gFunctionMap[funcId];
+    return func.hasOwnProperty('d') ? func.d : null;
+}
+
+function getSourceFilePath(sourceFileId) {
+    return gSourceFiles[sourceFileId].path;
+}
+
+function getSourceCode(sourceFileId) {
+    return gSourceFiles[sourceFileId].code;
 }
 
 class TabManager {
@@ -413,6 +434,7 @@ class FlameGraphTab {
 
 // FunctionTab: show information of a function.
 // 1. Show the callgrpah and reverse callgraph of a function as flamegraphs.
+// 2. Show the annotated source code of the function.
 class FunctionTab {
     static showFunction(eventInfo, processInfo, threadInfo, lib, func) {
         let title = 'Function';
@@ -441,6 +463,8 @@ class FunctionTab {
         this.selectorView = null;
         this.callgraphView = null;
         this.reverseCallgraphView = null;
+        this.sourceCodeView = null;
+        this.disassemblyView = null;
         this.draw();
         gTabs.setActive(this);
     }
@@ -473,6 +497,21 @@ class FunctionTab {
         this.div.append(getHtml('hr'));
         this.div.append(getHtml('b', {text: `Functions calling ${funcName}`}) + '<br/>');
         this.reverseCallgraphView = new FlameGraphView(this.div, this.func.rg, true);
+
+        let sourceFiles = collectSourceFilesForFunction(this.func);
+        if (sourceFiles) {
+            this.div.append(getHtml('hr'));
+            this.div.append(getHtml('b', {text: 'SourceCode:'}) + '<br/>');
+            this.sourceCodeView = new SourceCodeView(this.div, sourceFiles);
+        }
+
+        let disassembly = collectDisassemblyForFunction(this.func);
+        if (disassembly) {
+            this.div.append(getHtml('hr'));
+            this.div.append(getHtml('b', {text: 'Disassembly:'}) + '<br/>');
+            this.disassemblyView = new DisassemblyView(this.div, disassembly);
+        }
+
         this.onSampleWeightChange();  // Manually set sample weight function for the first time.
     }
 
@@ -483,6 +522,12 @@ class FunctionTab {
         }
         if (this.reverseCallgraphView) {
             this.reverseCallgraphView.draw(sampleWeightFunction);
+        }
+        if (this.sourceCodeView) {
+            this.sourceCodeView.draw(sampleWeightFunction);
+        }
+        if (this.disassemblyView) {
+            this.disassemblyView.draw(sampleWeightFunction);
         }
     }
 }
@@ -508,7 +553,7 @@ class FunctionSampleWeightSelectorView {
             PERCENT_TO_CUR_THREAD: 2,
             RAW_EVENT_COUNT: 3,
             EVENT_COUNT_IN_TIME: 4,
-        }
+        };
         let name = eventInfo.eventName;
         this.supportEventCountInTime = name.includes('task-clock') || name.includes('cpu-clock');
         if (this.supportEventCountInTime) {
@@ -808,7 +853,7 @@ class FlameGraphView {
     _enableInfo() {
         this.selected = null;
         let thisObj = this;
-        this.svg.find('g').on('mouseenter', function(e) {
+        this.svg.find('g').on('mouseenter', function() {
             if (thisObj.selected) {
                 thisObj.selected.css('stroke-width', '0');
             }
@@ -851,6 +896,235 @@ class FlameGraphView {
     }
 }
 
+
+class SourceFile {
+
+    constructor(fileId) {
+        this.path = getSourceFilePath(fileId);
+        this.code = getSourceCode(fileId);
+        this.showLines = {};  // map from line number to {eventCount, subtreeEventCount}.
+        this.hasCount = false;
+    }
+
+    addLineRange(startLine, endLine) {
+        for (let i = startLine; i <= endLine; ++i) {
+            if (i in this.showLines || !(i in this.code)) {
+                continue;
+            }
+            this.showLines[i] = {eventCount: 0, subtreeEventCount: 0};
+        }
+    }
+
+    addLineCount(lineNumber, eventCount, subtreeEventCount) {
+        let line = this.showLines[lineNumber];
+        if (line) {
+            line.eventCount += eventCount;
+            line.subtreeEventCount += subtreeEventCount;
+            this.hasCount = true;
+        }
+    }
+}
+
+// Return a list of SourceFile related to a function.
+function collectSourceFilesForFunction(func) {
+    if (!func.hasOwnProperty('s')) {
+        return null;
+    }
+    let hitLines = func.s;
+    let sourceFiles = {};  // map from sourceFileId to SourceFile.
+
+    function getFile(fileId) {
+        let file = sourceFiles[fileId];
+        if (!file) {
+            file = sourceFiles[fileId] = new SourceFile(fileId);
+        }
+        return file;
+    }
+
+    // Show lines for the function.
+    let funcRange = getFuncSourceRange(func.g.f);
+    if (funcRange) {
+        let file = getFile(funcRange.fileId);
+        file.addLineRange(funcRange.startLine);
+    }
+
+    // Show lines for hitLines.
+    for (let hitLine of hitLines) {
+        let file = getFile(hitLine.f);
+        file.addLineRange(hitLine.l - 5, hitLine.l + 5);
+        file.addLineCount(hitLine.l, hitLine.e, hitLine.s);
+    }
+
+    let result = [];
+    // Show the source file containing the function before other source files.
+    if (funcRange) {
+        let file = getFile(funcRange.fileId);
+        if (file.hasCount) {
+            result.push(file);
+        }
+        delete sourceFiles[funcRange.fileId];
+    }
+    for (let fileId in sourceFiles) {
+        let file = sourceFiles[fileId];
+        if (file.hasCount) {
+            result.push(file);
+        }
+    }
+    return result.length > 0 ? result : null;
+}
+
+// Show annotated source code of a function.
+class SourceCodeView {
+
+    constructor(divContainer, sourceFiles) {
+        this.div = $('<div>');
+        this.div.appendTo(divContainer);
+        this.sourceFiles = sourceFiles;
+    }
+
+    draw(sampleWeightFunction) {
+        google.charts.setOnLoadCallback(() => this.realDraw(sampleWeightFunction));
+    }
+
+    realDraw(sampleWeightFunction) {
+        this.div.empty();
+        // For each file, draw a table of 'Line', 'Total', 'Self', 'Code'.
+        for (let sourceFile of this.sourceFiles) {
+            let rows = [];
+            let lineNumbers = Object.keys(sourceFile.showLines);
+            lineNumbers.sort((a, b) => a - b);
+            for (let lineNumber of lineNumbers) {
+                let code = getHtml('pre', {text: sourceFile.code[lineNumber]});
+                let countInfo = sourceFile.showLines[lineNumber];
+                let totalValue = '';
+                let selfValue = '';
+                if (countInfo.subtreeEventCount != 0) {
+                    totalValue = sampleWeightFunction(countInfo.subtreeEventCount);
+                    selfValue = sampleWeightFunction(countInfo.eventCount);
+                }
+                rows.push([lineNumber, totalValue, selfValue, code]);
+            }
+
+            let data = new google.visualization.DataTable();
+            data.addColumn('string', 'Line');
+            data.addColumn('string', 'Total');
+            data.addColumn('string', 'Self');
+            data.addColumn('string', 'Code');
+            data.addRows(rows);
+            for (let i = 0; i < lineNumbers.length; ++i) {
+                data.setProperty(i, 0, 'className', 'colForLine');
+                for (let j = 1; j <= 2; ++j) {
+                    data.setProperty(i, j, 'className', 'colForCount');
+                }
+            }
+            this.div.append(getHtml('pre', {text: sourceFile.path}));
+            let wrapperDiv = $('<div>');
+            wrapperDiv.appendTo(this.div);
+            let table = new google.visualization.Table(wrapperDiv.get(0));
+            table.draw(data, {
+                width: '100%',
+                sort: 'disable',
+                frozenColumns: 3,
+                allowHtml: true,
+            });
+        }
+    }
+}
+
+// Return a list of disassembly related to a function.
+function collectDisassemblyForFunction(func) {
+    if (!func.hasOwnProperty('a')) {
+        return null;
+    }
+    let hitAddrs = func.a;
+    let rawCode = getFuncDisassembly(func.g.f);
+    if (!rawCode) {
+        return null;
+    }
+
+    // Annotate disassembly with event count information.
+    let annotatedCode = [];
+    let codeForLastAddr = null;
+    let hitAddrPos = 0;
+    let hasCount = false;
+
+    function addEventCount(addr) {
+        while (hitAddrPos < hitAddrs.length && hitAddrs[hitAddrPos].a < addr) {
+            if (codeForLastAddr) {
+                codeForLastAddr.eventCount += hitAddrs[hitAddrPos].e;
+                codeForLastAddr.subtreeEventCount += hitAddrs[hitAddrPos].s;
+                hasCount = true;
+            }
+            hitAddrPos++;
+        }
+    }
+
+    for (let line of rawCode) {
+        let code = line[0];
+        let addr = line[1];
+
+        addEventCount(addr);
+        let item = {code: code, eventCount: 0, subtreeEventCount: 0};
+        annotatedCode.push(item);
+        // Objdump sets addr to 0 when a disassembly line is not associated with an addr.
+        if (addr != 0) {
+            codeForLastAddr = item;
+        }
+    }
+    addEventCount(Number.MAX_VALUE);
+    return hasCount ? annotatedCode : null;
+}
+
+// Show annotated disassembly of a function.
+class DisassemblyView {
+
+    constructor(divContainer, disassembly) {
+        this.div = $('<div>');
+        this.div.appendTo(divContainer);
+        this.disassembly = disassembly;
+    }
+
+    draw(sampleWeightFunction) {
+        google.charts.setOnLoadCallback(() => this.realDraw(sampleWeightFunction));
+    }
+
+    realDraw(sampleWeightFunction) {
+        this.div.empty();
+        // Draw a table of 'Total', 'Self', 'Code'.
+        let rows = [];
+        for (let line of this.disassembly) {
+            let code = getHtml('pre', {text: line.code});
+            let totalValue = '';
+            let selfValue = '';
+            if (line.subtreeEventCount != 0) {
+                totalValue = sampleWeightFunction(line.subtreeEventCount);
+                selfValue = sampleWeightFunction(line.eventCount);
+            }
+            rows.push([totalValue, selfValue, line.code]);
+        }
+        let data = new google.visualization.DataTable();
+        data.addColumn('string', 'Total');
+        data.addColumn('string', 'Self');
+        data.addColumn('string', 'Code');
+        data.addRows(rows);
+        for (let i = 0; i < this.disassembly.length; ++i) {
+            for (let j = 0; j < 2; ++j) {
+                data.setProperty(i, j, 'className', 'colForCount');
+            }
+        }
+        let wrapperDiv = $('<div>');
+        wrapperDiv.appendTo(this.div);
+        let table = new google.visualization.Table(wrapperDiv.get(0));
+        table.draw(data, {
+            width: '100%',
+            sort: 'disable',
+            frozenColumns: 2,
+            allowHtml: true,
+        });
+    }
+}
+
+
 function initGlobalObjects() {
     gTabs = new TabManager($('div#report_content'));
     let recordData = $('#record_data').text();
@@ -860,6 +1134,7 @@ function initGlobalObjects() {
     gLibList = gRecordInfo.libList;
     gFunctionMap = gRecordInfo.functionMap;
     gSampleInfo = gRecordInfo.sampleInfo;
+    gSourceFiles = gRecordInfo.sourceFiles;
 }
 
 function createTabs() {
@@ -876,6 +1151,7 @@ let gThreads;
 let gLibList;
 let gFunctionMap;
 let gSampleInfo;
+let gSourceFiles;
 
 initGlobalObjects();
 createTabs();
