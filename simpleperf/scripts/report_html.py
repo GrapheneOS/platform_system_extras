@@ -74,11 +74,12 @@ class EventScope(object):
             process = self.processes[pid] = ProcessScope(pid)
         return process
 
-    def get_sample_info(self):
+    def get_sample_info(self, gen_addr_hit_map):
         result = {}
         result['eventName'] = self.name
         result['eventCount'] = self.event_count
-        result['processes'] = [process.get_sample_info() for process in self.processes.values()]
+        result['processes'] = [process.get_sample_info(gen_addr_hit_map)
+                                  for process in self.processes.values()]
         return result
 
 
@@ -99,11 +100,12 @@ class ProcessScope(object):
             self.name = thread_name
         return thread
 
-    def get_sample_info(self):
+    def get_sample_info(self, gen_addr_hit_map):
         result = {}
         result['pid'] = self.pid
         result['eventCount'] = self.event_count
-        result['threads'] = [thread.get_sample_info() for thread in self.threads.values()]
+        result['threads'] = [thread.get_sample_info(gen_addr_hit_map)
+                                for thread in self.threads.values()]
         return result
 
 
@@ -148,11 +150,12 @@ class ThreadScope(object):
             lib = self.libs.get(lib_id)
             lib.get_function(func_id).add_callchain(callstack, i - 1, -1, event_count)
 
-    def get_sample_info(self):
+    def get_sample_info(self, gen_addr_hit_map):
         result = {}
         result['tid'] = self.tid
         result['eventCount'] = self.event_count
-        result['libs'] = [lib.gen_sample_info() for lib in self.libs.values()]
+        result['libs'] = [lib.gen_sample_info(gen_addr_hit_map)
+                            for lib in self.libs.values()]
         return result
 
 
@@ -169,11 +172,12 @@ class LibScope(object):
             function = self.functions[func_id] = FunctionScope(func_id)
         return function
 
-    def gen_sample_info(self):
+    def gen_sample_info(self, gen_addr_hit_map):
         result = {}
         result['libId'] = self.lib_id
         result['eventCount'] = self.event_count
-        result['functions'] = [func.gen_sample_info() for func in self.functions.values()]
+        result['functions'] = [func.gen_sample_info(gen_addr_hit_map)
+                                  for func in self.functions.values()]
         return result
 
 
@@ -230,7 +234,7 @@ class FunctionScope(object):
         self.call_graph.cut_edge(min_limit, hit_func_ids)
         self.reverse_call_graph.cut_edge(min_limit, hit_func_ids)
 
-    def gen_sample_info(self):
+    def gen_sample_info(self, gen_addr_hit_map):
         result = {}
         result['c'] = self.sample_count
         result['g'] = self.call_graph.gen_sample_info()
@@ -241,7 +245,13 @@ class FunctionScope(object):
                 count_info = self.line_hit_map[key]
                 item = {'f': key[0], 'l': key[1], 'e': count_info[0], 's': count_info[1]}
                 items.append(item)
-            result['sc'] = items
+            result['s'] = items
+        if gen_addr_hit_map and self.addr_hit_map:
+            items = []
+            for addr in sorted(self.addr_hit_map):
+                count_info = self.addr_hit_map[addr]
+                items.append({'a': addr, 'e': count_info[0], 's': count_info[1]})
+            result['a'] = items
         return result
 
 
@@ -313,6 +323,7 @@ class Function(object):
         self.start_addr = start_addr
         self.addr_len = addr_len
         self.source_info = None
+        self.disassembly = None
 
 
 class FunctionSet(object):
@@ -465,6 +476,7 @@ class RecordData(object):
                     l: libId
                     f: functionName
                     s: [sourceFileId, startLine, endLine] [optional]
+                    d: [(disassembly, addr)] [optional]
                 }
 
             10.  sampleInfo = [eventInfo]
@@ -492,7 +504,8 @@ class RecordData(object):
                     c: sampleCount
                     g: callGraph
                     rg: reverseCallgraph
-                    sc: [sourceCodeInfo] [optional]
+                    s: [sourceCodeInfo] [optional]
+                    a: [addrInfo] (sorted by addrInfo.addr) [optional]
                 }
                 callGraph and reverseCallGraph are both of type CallNode.
                 callGraph shows how a function calls other functions.
@@ -507,6 +520,12 @@ class RecordData(object):
                 sourceCodeInfo {
                     f: sourceFileId
                     l: line
+                    e: eventCount
+                    s: subtreeEventCount
+                }
+
+                addrInfo {
+                    a: addr
                     e: eventCount
                     s: subtreeEventCount
                 }
@@ -530,6 +549,7 @@ class RecordData(object):
         self.functions = FunctionSet()
         self.total_samples = 0
         self.source_files = SourceFileSet()
+        self.gen_addr_hit_map_in_record_info = False
 
     def load_record_file(self, record_file):
         lib = ReportLib()
@@ -662,6 +682,19 @@ class RecordData(object):
         # Collect needed source code in SourceFileSet.
         self.source_files.load_source_code(source_dirs)
 
+    def add_disassembly(self):
+        """ Collect disassembly information:
+            1. Use objdump to collect disassembly for each function in FunctionSet.
+            2. Set flag to dump addr_hit_map when generating record info.
+        """
+        objdump = Objdump(self.ndk_path, self.binary_cache_path)
+        for function in self.functions.id_to_func.values():
+            lib_name = self.libs.get_lib_name(function.lib_id)
+            code = objdump.disassemble_code(lib_name, function.start_addr, function.addr_len)
+            function.disassembly = code
+
+        self.gen_addr_hit_map_in_record_info = True
+
     def gen_record_info(self):
         record_info = {}
         timestamp = self.meta_info.get('timestamp')
@@ -718,11 +751,14 @@ class RecordData(object):
             func_data['f'] = self._modify_name_for_html(function.func_name)
             if function.source_info:
                 func_data['s'] = function.source_info
+            if function.disassembly:
+                func_data['d'] = function.disassembly
             func_map[func_id] = func_data
         return func_map
 
     def _gen_sample_info(self):
-        return [event.get_sample_info() for event in self.events.values()]
+        return [event.get_sample_info(self.gen_addr_hit_map_in_record_info)
+                    for event in self.events.values()]
 
     def _gen_source_files(self):
         source_files = sorted(self.source_files.path_to_source_files.values(),
@@ -820,6 +856,7 @@ def main():
                         the starting function are collected in the report. Default is 0.01.""")
     parser.add_argument('--add_source_code', action='store_true', help='Add source code.')
     parser.add_argument('--source_dirs', nargs='+', help='Source code directories.')
+    parser.add_argument('--add_disassembly', action='store_true', help='Add disassembled code.')
     parser.add_argument('--ndk_path', nargs=1, help='Find tools in the ndk path.')
     parser.add_argument('--no_browser', action='store_true', help="Don't open report in browser.")
     args = parser.parse_args()
@@ -827,8 +864,8 @@ def main():
     # 1. Process args.
     binary_cache_path = 'binary_cache'
     if not os.path.isdir(binary_cache_path):
-        if args.add_source_code:
-            log_exit("""binary_cache/ doesn't exist. Can't add source code or disassemble code
+        if args.add_source_code or args.add_disassembly:
+            log_exit("""binary_cache/ doesn't exist. Can't add source code or disassembled code
                         without collected binaries. Please run binary_cache_builder.py to
                         collect binaries for current profiling data, or run app_profiler.py
                         without -nb option.""")
@@ -836,7 +873,7 @@ def main():
 
     if args.add_source_code and not args.source_dirs:
         log_exit('--source_dirs is needed to add source code.')
-    build_addr_hit_map = args.add_source_code
+    build_addr_hit_map = args.add_source_code or args.add_disassembly
     ndk_path = None if not args.ndk_path else args.ndk_path[0]
 
     # 2. Produce record data.
@@ -846,6 +883,8 @@ def main():
     record_data.limit_percents(args.min_func_percent, args.min_callchain_percent)
     if args.add_source_code:
         record_data.add_source_code(args.source_dirs)
+    if args.add_disassembly:
+        record_data.add_disassembly()
 
     # 3. Generate report html.
     report_generator = ReportGenerator(args.report_path)
