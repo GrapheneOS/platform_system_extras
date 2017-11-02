@@ -627,6 +627,8 @@ class RecordData(object):
         addr2line = Addr2Nearestline(self.ndk_path, self.binary_cache_path)
         # Request line range for each function.
         for function in self.functions.id_to_func.values():
+            if function.func_name == 'unknown':
+                continue
             lib_name = self.libs.get_lib_name(function.lib_id)
             addr2line.add_addr(lib_name, function.start_addr, function.start_addr)
             addr2line.add_addr(lib_name, function.start_addr,
@@ -646,6 +648,8 @@ class RecordData(object):
 
         # Set line range for each function.
         for function in self.functions.id_to_func.values():
+            if function.func_name == 'unknown':
+                continue
             dso = addr2line.get_dso(self.libs.get_lib_name(function.lib_id))
             start_source = addr2line.get_addr_source(dso, function.start_addr)
             end_source = addr2line.get_addr_source(dso,
@@ -689,6 +693,8 @@ class RecordData(object):
         """
         objdump = Objdump(self.ndk_path, self.binary_cache_path)
         for function in self.functions.id_to_func.values():
+            if function.func_name == 'unknown':
+                continue
             lib_name = self.libs.get_lib_name(function.lib_id)
             code = objdump.disassemble_code(lib_name, function.start_addr, function.addr_len)
             function.disassembly = code
