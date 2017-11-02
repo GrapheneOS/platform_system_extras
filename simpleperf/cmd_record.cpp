@@ -467,7 +467,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       if (args[i-1] == "-c") {
         sample_speed_.reset(new SampleSpeed(0, value));
       } else {
-        sample_speed_.reset(new SampleSpeed(AdjustSampleFrequency(value), 0));
+        sample_speed_.reset(new SampleSpeed(value, 0));
       }
       for (auto group_id : wait_setting_speed_event_groups_) {
         event_selection_set_.SetSampleSpeed(group_id, *sample_speed_);
