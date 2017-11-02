@@ -432,24 +432,6 @@ bool GetMaxSampleFrequency(uint64_t* max_sample_freq) {
   return true;
 }
 
-uint64_t AdjustSampleFrequency(uint64_t sample_freq) {
-  if (sample_freq == 0) {
-    LOG(WARNING) << "Sample frequency can't be zero, adjust it to 1";
-    return 1u;
-  }
-  uint64_t max_sample_freq;
-  if (!GetMaxSampleFrequency(&max_sample_freq)) {
-    // Omit the check if can't read perf_event_max_sample_rate.
-    return sample_freq;
-  }
-  if (sample_freq > max_sample_freq) {
-    LOG(WARNING) << "Sample frequency " << sample_freq << " is out of range [1, "
-        << max_sample_freq << "], adjust it to " << max_sample_freq;
-    return max_sample_freq;
-  }
-  return sample_freq;
-}
-
 bool CheckKernelSymbolAddresses() {
   const std::string kptr_restrict_file = "/proc/sys/kernel/kptr_restrict";
   std::string s;
