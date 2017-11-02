@@ -326,6 +326,7 @@ class TestExampleBase(TestBase):
         self.run_app_profiler()
         self.run_cmd(['report_html.py'])
         self.run_cmd(['report_html.py', '--add_source_code', '--source_dirs', 'testdata'])
+        self.run_cmd(['report_html.py', '--add_disassembly'])
         # Test with multiple perf.data.
         shutil.move('perf.data', 'perf2.data')
         self.run_app_profiler()
