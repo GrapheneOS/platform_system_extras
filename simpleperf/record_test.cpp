@@ -30,10 +30,9 @@ class RecordTest : public ::testing::Test {
     event_attr.sample_id_all = 1;
   }
 
-  void CheckRecordMatchBinary(const Record& record) {
-    const char* p = record.Binary();
+  void CheckRecordMatchBinary(Record& record) {
     std::vector<std::unique_ptr<Record>> records =
-        ReadRecordsFromBuffer(event_attr, p, record.size());
+        ReadRecordsFromBuffer(event_attr, record.BinaryForTestingOnly(), record.size());
     ASSERT_EQ(1u, records.size());
     CheckRecordEqual(record, *records[0]);
   }
@@ -151,7 +150,7 @@ TEST_F(RecordTest, SampleRecord_exclude_kernel_callchain) {
   SampleRecord r1(event_attr, 0, 1, 0, 0, 0, 0, 0, {PERF_CONTEXT_USER, 2});
   ASSERT_EQ(1u, r1.ExcludeKernelCallChain());
   ASSERT_EQ(2u, r1.ip_data.ip);
-  SampleRecord r2(event_attr, r1.Binary());
+  SampleRecord r2(event_attr, r1.BinaryForTestingOnly());
   ASSERT_EQ(1u, r.ip_data.ip);
   ASSERT_EQ(2u, r2.callchain_data.ip_nr);
   ASSERT_EQ(PERF_CONTEXT_USER, r2.callchain_data.ips[0]);
@@ -160,7 +159,7 @@ TEST_F(RecordTest, SampleRecord_exclude_kernel_callchain) {
   SampleRecord r3(event_attr, 0, 1, 0, 0, 0, 0, 0, {1, PERF_CONTEXT_USER, 2});
   ASSERT_EQ(1u, r3.ExcludeKernelCallChain());
   ASSERT_EQ(2u, r3.ip_data.ip);
-  SampleRecord r4(event_attr, r3.Binary());
+  SampleRecord r4(event_attr, r3.BinaryForTestingOnly());
   ASSERT_EQ(2u, r4.ip_data.ip);
   ASSERT_EQ(3u, r4.callchain_data.ip_nr);
   ASSERT_EQ(PERF_CONTEXT_USER, r4.callchain_data.ips[0]);
