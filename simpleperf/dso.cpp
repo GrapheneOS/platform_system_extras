@@ -493,7 +493,7 @@ void Dso::FixupSymbolLength() {
     if (prev_symbol != nullptr && prev_symbol->len == 0) {
       prev_symbol->len = symbol.addr - prev_symbol->addr;
     }
-    prev_symbol = const_cast<Symbol*>(&symbol);
+    prev_symbol = &symbol;
   }
   if (prev_symbol != nullptr && prev_symbol->len == 0) {
     prev_symbol->len = std::numeric_limits<uint64_t>::max() - prev_symbol->addr;

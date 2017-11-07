@@ -189,7 +189,7 @@ uint64_t Record::Timestamp() const { return sample_id.time_data.time; }
 uint32_t Record::Cpu() const { return sample_id.cpu_data.cpu; }
 uint64_t Record::Id() const { return sample_id.id_data.id; }
 
-void Record::UpdateBinary(const char* new_binary) {
+void Record::UpdateBinary(char* new_binary) {
   if (own_binary_) {
     delete[] binary_;
   }
@@ -197,7 +197,7 @@ void Record::UpdateBinary(const char* new_binary) {
   binary_ = new_binary;
 }
 
-MmapRecord::MmapRecord(const perf_event_attr& attr, const char* p) : Record(p) {
+MmapRecord::MmapRecord(const perf_event_attr& attr, char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
   data = reinterpret_cast<const MmapRecordDataType*>(p);
@@ -249,8 +249,7 @@ void MmapRecord::DumpData(size_t indent) const {
                 filename);
 }
 
-Mmap2Record::Mmap2Record(const perf_event_attr& attr, const char* p)
-    : Record(p) {
+Mmap2Record::Mmap2Record(const perf_event_attr& attr, char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
   data = reinterpret_cast<const Mmap2RecordDataType*>(p);
@@ -289,7 +288,7 @@ void Mmap2Record::DumpData(size_t indent) const {
                 data->flags, filename);
 }
 
-CommRecord::CommRecord(const perf_event_attr& attr, const char* p) : Record(p) {
+CommRecord::CommRecord(const perf_event_attr& attr, char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
   data = reinterpret_cast<const CommRecordDataType*>(p);
@@ -327,7 +326,7 @@ void CommRecord::DumpData(size_t indent) const {
                 comm);
 }
 
-ExitOrForkRecord::ExitOrForkRecord(const perf_event_attr& attr, const char* p)
+ExitOrForkRecord::ExitOrForkRecord(const perf_event_attr& attr, char* p)
     : Record(p) {
   const char* end = p + size();
   p += header_size();
@@ -362,7 +361,7 @@ ForkRecord::ForkRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
   UpdateBinary(new_binary);
 }
 
-LostRecord::LostRecord(const perf_event_attr& attr, const char* p) : Record(p) {
+LostRecord::LostRecord(const perf_event_attr& attr, char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
   MoveFromBinaryFormat(id, p);
@@ -375,8 +374,7 @@ void LostRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "id %" PRIu64 ", lost %" PRIu64 "\n", id, lost);
 }
 
-SampleRecord::SampleRecord(const perf_event_attr& attr, const char* p)
-    : Record(p) {
+SampleRecord::SampleRecord(const perf_event_attr& attr, char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
   sample_type = attr.sample_type;
@@ -412,7 +410,7 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, const char* p)
   }
   if (sample_type & PERF_SAMPLE_CALLCHAIN) {
     MoveFromBinaryFormat(callchain_data.ip_nr, p);
-    callchain_data.ips = reinterpret_cast<const uint64_t*>(p);
+    callchain_data.ips = reinterpret_cast<uint64_t*>(p);
     p += callchain_data.ip_nr * sizeof(uint64_t);
   }
   if (sample_type & PERF_SAMPLE_RAW) {
@@ -422,7 +420,7 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, const char* p)
   }
   if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
     MoveFromBinaryFormat(branch_stack_data.stack_nr, p);
-    branch_stack_data.stack = reinterpret_cast<const BranchStackItemType*>(p);
+    branch_stack_data.stack = reinterpret_cast<BranchStackItemType*>(p);
     p += branch_stack_data.stack_nr * sizeof(BranchStackItemType);
   }
   if (sample_type & PERF_SAMPLE_REGS_USER) {
@@ -438,7 +436,7 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, const char* p)
         }
       }
       regs_user_data.reg_nr = bit_nr;
-      regs_user_data.regs = reinterpret_cast<const uint64_t*>(p);
+      regs_user_data.regs = reinterpret_cast<uint64_t*>(p);
       p += bit_nr * sizeof(uint64_t);
     }
   }
@@ -559,10 +557,9 @@ void SampleRecord::ReplaceRegAndStackWithCallChain(
   CHECK_LE(size_added_in_callchain, size_reduced_in_reg_stack);
   uint32_t size_reduced = size_reduced_in_reg_stack - size_added_in_callchain;
   SetSize(size() - size_reduced);
-  char* p = const_cast<char*>(binary_);
+  char* p = binary_;
   MoveToBinaryFormat(header, p);
-  p = const_cast<char*>(stack_user_data.data + stack_user_data.size +
-                        sizeof(uint64_t)) -
+  p = (stack_user_data.data + stack_user_data.size + sizeof(uint64_t)) -
       (size_reduced_in_reg_stack - size_added_in_callchain);
   stack_user_data.size = 0;
   regs_user_data.abi = 0;
@@ -604,14 +601,14 @@ size_t SampleRecord::ExcludeKernelCallChain() {
         if (i < callchain_data.ip_nr) {
           ip_data.ip = callchain_data.ips[i];
           if (sample_type & PERF_SAMPLE_IP) {
-            *reinterpret_cast<uint64_t*>(const_cast<char*>(binary_ + header_size())) = ip_data.ip;
+            *reinterpret_cast<uint64_t*>(binary_ + header_size()) = ip_data.ip;
           }
           header.misc = (header.misc & ~PERF_RECORD_MISC_KERNEL) | PERF_RECORD_MISC_USER;
-          reinterpret_cast<perf_event_header*>(const_cast<char*>(binary_))->misc = header.misc;
+          reinterpret_cast<perf_event_header*>(binary_)->misc = header.misc;
         }
         break;
       } else {
-        const_cast<uint64_t*>(callchain_data.ips)[i] = PERF_CONTEXT_USER;
+        callchain_data.ips[i] = PERF_CONTEXT_USER;
       }
     }
     user_callchain_length = callchain_data.ip_nr - i;
@@ -700,7 +697,33 @@ uint64_t SampleRecord::Timestamp() const { return time_data.time; }
 uint32_t SampleRecord::Cpu() const { return cpu_data.cpu; }
 uint64_t SampleRecord::Id() const { return id_data.id; }
 
-BuildIdRecord::BuildIdRecord(const char* p) : Record(p) {
+void SampleRecord::AdjustCallChainGeneratedByKernel() {
+  // The kernel stores return addrs in the callchain, but we want the addrs of call instructions
+  // along the callchain.
+  uint64_t* ips = callchain_data.ips;
+  bool first_frame = true;
+  for (uint64_t i = 0; i < callchain_data.ip_nr; ++i) {
+    if (ips[i] > 0 && ips[i] < PERF_CONTEXT_MAX) {
+      if (first_frame) {
+        first_frame = false;
+      } else {
+        // Here we want to change the return addr to the addr of the previous instruction. We don't
+        // need to find the exact start addr of the previous instruction. A location in
+        // [start_addr_of_call_inst, start_addr_of_next_inst) is enough.
+#if defined(__arm__) || defined(__aarch64__)
+        // If we are built for arm/aarch64, this may be a callchain of thumb code. For thumb code,
+        // the real instruction addr is (ip & ~1), and ip - 2 can used to hit the address range
+        // of the previous instruction. For non thumb code, any addr in [ip - 4, ip - 1] is fine.
+        ips[i] -= 2;
+#else
+        ips[i]--;
+#endif
+      }
+    }
+  }
+}
+
+BuildIdRecord::BuildIdRecord(char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
   MoveFromBinaryFormat(pid, p);
@@ -736,7 +759,7 @@ BuildIdRecord::BuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id,
   UpdateBinary(new_binary);
 }
 
-KernelSymbolRecord::KernelSymbolRecord(const char* p) : Record(p) {
+KernelSymbolRecord::KernelSymbolRecord(char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
   MoveFromBinaryFormat(kallsyms_size, p);
@@ -763,7 +786,7 @@ KernelSymbolRecord::KernelSymbolRecord(const std::string& kallsyms) {
   UpdateBinary(new_binary);
 }
 
-DsoRecord::DsoRecord(const char* p) : Record(p) {
+DsoRecord::DsoRecord(char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
   MoveFromBinaryFormat(dso_type, p);
@@ -800,7 +823,7 @@ void DsoRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "dso_name: %s\n", dso_name);
 }
 
-SymbolRecord::SymbolRecord(const char* p) : Record(p) {
+SymbolRecord::SymbolRecord(char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
   MoveFromBinaryFormat(addr, p);
@@ -836,7 +859,7 @@ void SymbolRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "dso_id: %" PRIu64 "\n", dso_id);
 }
 
-TracingDataRecord::TracingDataRecord(const char* p) : Record(p) {
+TracingDataRecord::TracingDataRecord(char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
   MoveFromBinaryFormat(data_size, p);
@@ -863,7 +886,7 @@ void TracingDataRecord::DumpData(size_t indent) const {
   tracing.Dump(indent);
 }
 
-EventIdRecord::EventIdRecord(const char* p) : Record(p) {
+EventIdRecord::EventIdRecord(char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
   MoveFromBinaryFormat(count, p);
@@ -895,15 +918,14 @@ void EventIdRecord::DumpData(size_t indent) const {
   }
 }
 
-UnknownRecord::UnknownRecord(const char* p) : Record(p) {
+UnknownRecord::UnknownRecord(char* p) : Record(p) {
   p += header_size();
   data = p;
 }
 
 void UnknownRecord::DumpData(size_t) const {}
 
-std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
-                                             uint32_t type, const char* p) {
+std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr, uint32_t type, char* p) {
   switch (type) {
     case PERF_RECORD_MMAP:
       return std::unique_ptr<Record>(new MmapRecord(attr, p));
@@ -935,8 +957,7 @@ std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
 }
 
 std::unique_ptr<Record> ReadRecordFromOwnedBuffer(const perf_event_attr& attr,
-                                                  uint32_t type,
-                                                  const char* p) {
+                                                  uint32_t type, char* p) {
   std::unique_ptr<Record> record = ReadRecordFromBuffer(attr, type, p);
   if (record != nullptr) {
     record->OwnBinary();
@@ -947,10 +968,10 @@ std::unique_ptr<Record> ReadRecordFromOwnedBuffer(const perf_event_attr& attr,
 }
 
 std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(
-    const perf_event_attr& attr, const char* buf, size_t buf_size) {
+    const perf_event_attr& attr, char* buf, size_t buf_size) {
   std::vector<std::unique_ptr<Record>> result;
-  const char* p = buf;
-  const char* end = buf + buf_size;
+  char* p = buf;
+  char* end = buf + buf_size;
   while (p < end) {
     RecordHeader header(p);
     CHECK_LE(p + header.size, end);
@@ -961,8 +982,7 @@ std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(
   return result;
 }
 
-std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
-                                             const char* p) {
+std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr, char* p) {
   auto header = reinterpret_cast<const perf_event_header*>(p);
   return ReadRecordFromBuffer(attr, header->type, p);
 }

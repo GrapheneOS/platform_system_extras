@@ -229,7 +229,7 @@ class RecordCommand : public Command {
   bool DumpThreadCommAndMmaps(const perf_event_attr& attr, uint64_t event_id);
   bool ProcessRecord(Record* record);
   void UpdateRecordForEmbeddedElfPath(Record* record);
-  bool UnwindRecord(Record* record);
+  bool UnwindRecord(SampleRecord& r);
   bool PostUnwind(const std::vector<std::string>& args);
   bool DumpAdditionalFeatures(const std::vector<std::string>& args);
   bool DumpBuildIdFeature();
@@ -931,22 +931,26 @@ bool RecordCommand::ProcessRecord(Record* record) {
     }
   }
   UpdateRecordForEmbeddedElfPath(record);
-  if (unwind_dwarf_callchain_ && !post_unwind_) {
-    thread_tree_.Update(*record);
-    if (!UnwindRecord(record)) {
-      return false;
-    }
-  }
+
+  bool unwind_callchain = unwind_dwarf_callchain_ && !post_unwind_;
+
   if (record->type() == PERF_RECORD_SAMPLE) {
-    if (record->InKernel() && exclude_kernel_callchain_) {
-      if (static_cast<SampleRecord*>(record)->ExcludeKernelCallChain() == 0u) {
-        // If current record contains no user callchain, skip it.
-        return true;
-      }
+    auto& r = *static_cast<SampleRecord*>(record);
+    if (r.InKernel() && exclude_kernel_callchain_ && r.ExcludeKernelCallChain() == 0u) {
+      // If current record contains no user callchain, skip it.
+      return true;
+    }
+    if (fp_callchain_sampling_ || dwarf_callchain_sampling_) {
+      r.AdjustCallChainGeneratedByKernel();
+    }
+    if (unwind_callchain) {
+      UnwindRecord(r);
     }
     sample_record_count_++;
   } else if (record->type() == PERF_RECORD_LOST) {
     lost_record_count_ += static_cast<LostRecord*>(record)->lost;
+  } else if (unwind_callchain) {
+    thread_tree_.Update(*record);
   }
   bool result = record_file_writer_->WriteRecord(*record);
   return result;
@@ -985,28 +989,25 @@ void RecordCommand::UpdateRecordForEmbeddedElfPath(Record* record) {
   }
 }
 
-bool RecordCommand::UnwindRecord(Record* record) {
-  if (record->type() == PERF_RECORD_SAMPLE) {
-    SampleRecord& r = *static_cast<SampleRecord*>(record);
-    if ((r.sample_type & PERF_SAMPLE_CALLCHAIN) &&
-        (r.sample_type & PERF_SAMPLE_REGS_USER) &&
-        (r.regs_user_data.reg_mask != 0) &&
-        (r.sample_type & PERF_SAMPLE_STACK_USER) &&
-        (r.GetValidStackSize() > 0)) {
-      ThreadEntry* thread =
-          thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-      RegSet regs = CreateRegSet(r.regs_user_data.abi,
-                                 r.regs_user_data.reg_mask,
-                                 r.regs_user_data.regs);
-      // Normally do strict arch check when unwinding stack. But allow unwinding
-      // 32-bit processes on 64-bit devices for system wide profiling.
-      bool strict_arch_check = !system_wide_collection_;
-      std::vector<uint64_t> unwind_ips =
-          UnwindCallChain(r.regs_user_data.abi, *thread, regs,
-                          r.stack_user_data.data,
-                          r.GetValidStackSize(), strict_arch_check);
-      r.ReplaceRegAndStackWithCallChain(unwind_ips);
-    }
+bool RecordCommand::UnwindRecord(SampleRecord& r) {
+  if ((r.sample_type & PERF_SAMPLE_CALLCHAIN) &&
+      (r.sample_type & PERF_SAMPLE_REGS_USER) &&
+      (r.regs_user_data.reg_mask != 0) &&
+      (r.sample_type & PERF_SAMPLE_STACK_USER) &&
+      (r.GetValidStackSize() > 0)) {
+    ThreadEntry* thread =
+        thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
+    RegSet regs = CreateRegSet(r.regs_user_data.abi,
+                               r.regs_user_data.reg_mask,
+                               r.regs_user_data.regs);
+    // Normally do strict arch check when unwinding stack. But allow unwinding
+    // 32-bit processes on 64-bit devices for system wide profiling.
+    bool strict_arch_check = !system_wide_collection_;
+    std::vector<uint64_t> unwind_ips =
+        UnwindCallChain(r.regs_user_data.abi, *thread, regs,
+                        r.stack_user_data.data,
+                        r.GetValidStackSize(), strict_arch_check);
+    r.ReplaceRegAndStackWithCallChain(unwind_ips);
   }
   return true;
 }
@@ -1026,8 +1027,10 @@ bool RecordCommand::PostUnwind(const std::vector<std::string>& args) {
   bool result = reader->ReadDataSection(
       [this](std::unique_ptr<Record> record) {
         thread_tree_.Update(*record);
-        if (!UnwindRecord(record.get())) {
-          return false;
+        if (record->type() == PERF_RECORD_SAMPLE) {
+          if (!UnwindRecord(*static_cast<SampleRecord*>(record.get()))) {
+            return false;
+          }
         }
         return record_file_writer_->WriteRecord(*record);
       },
