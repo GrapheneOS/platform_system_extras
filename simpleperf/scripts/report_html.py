@@ -554,6 +554,9 @@ class RecordData(object):
     def load_record_file(self, record_file):
         lib = ReportLib()
         lib.SetRecordFile(record_file)
+        # If not showing ip for unknown symbols, the percent of the unknown symbol may be
+        # accumulated to very big, and ranks first in the sample table.
+        lib.ShowIpForUnknownSymbol()
         if self.binary_cache_path:
             lib.SetSymfs(self.binary_cache_path)
         self.meta_info = lib.MetaInfo()
@@ -808,6 +811,8 @@ class ReportGenerator(object):
         self.hw.open_tag('style', type='text/css').add("""
             .colForLine { width: 50px; }
             .colForCount { width: 100px; }
+            .tableCell { font-size: 17px; }
+            .boldTableCell { font-weight: bold; font-size: 17px; }
             """).close_tag()
         self.hw.close_tag('head')
         self.hw.open_tag('body')
