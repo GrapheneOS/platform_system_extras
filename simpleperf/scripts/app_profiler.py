@@ -426,8 +426,10 @@ It restarts the app if the app is already running.""")
     parser.add_argument('--arch', help=
 """Select which arch the app is running on, possible values are:
 arm, arm64, x86, x86_64. If not set, the script will try to detect it.""")
-    parser.add_argument('-r', '--record_options', default="-e cpu-cycles:u -g -f 1000 --duration 10", help=
-"""Set options for `simpleperf record` command. Default is '-e cpu-cycles:u -g -f 1000 --duration 10'.""")
+    parser.add_argument('-r', '--record_options',
+                        default='-e task-clock:u -g -f 1000 --duration 10', help="""
+                        Set options for `simpleperf record` command.
+                        Default is "-e task-clock:u -g -f 1000 --duration 10".""")
     parser.add_argument('-o', '--perf_data_path', default="perf.data", help=
 """The path to store profiling data.""")
     parser.add_argument('-nb', '--skip_collect_binaries', action='store_true', help=
