@@ -323,7 +323,7 @@ class TestExampleBase(TestBase):
 
     def common_test_report_html(self):
         self.run_cmd(['report_html.py', '-h'])
-        self.run_app_profiler()
+        self.run_app_profiler(record_arg='-g -f 1000 --duration 3 -e task-clock:u')
         self.run_cmd(['report_html.py'])
         self.run_cmd(['report_html.py', '--add_source_code', '--source_dirs', 'testdata'])
         self.run_cmd(['report_html.py', '--add_disassembly'])
