@@ -285,8 +285,13 @@ Event* ReportLib::GetEventOfCurrentSample() {
         event_attrs_.push_back(attr);
       }
     }
-    size_t attr_index =
-        record_file_reader_->GetAttrIndexOfRecord(current_record_.get());
+    size_t attr_index;
+    if (trace_offcpu_) {
+      // For trace-offcpu, we don't want to show event sched:sched_switch.
+      attr_index = 0;
+    } else {
+      attr_index = record_file_reader_->GetAttrIndexOfRecord(current_record_.get());
+    }
     current_event_.name = event_attrs_[attr_index].name.c_str();
     update_flag_ |= UPDATE_FLAG_OF_EVENT;
   }

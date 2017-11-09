@@ -868,6 +868,7 @@ class TestReportLib(unittest.TestCase):
                 if callchain.entries[i].symbol.symbol_name == sleep_function_name:
                     sleep_function_period += sample.period
                     break
+            self.assertEqual(self.report_lib.GetEventOfCurrentSample().name, 'cpu-cycles')
         sleep_percentage = float(sleep_function_period) / total_period
         self.assertGreater(sleep_percentage, 0.30)
 
