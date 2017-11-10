@@ -59,6 +59,8 @@ class HtmlWriter(object):
             self.add(f.read())
         return self
 
+def modify_text_for_html(text):
+    return text.replace('>', '&gt;').replace('<', '&lt;')
 
 class EventScope(object):
 
@@ -745,11 +747,8 @@ class RecordData(object):
                     thread_names[thread.tid] = thread.name
         return thread_names
 
-    def _modify_name_for_html(self, name):
-        return name.replace('>', '&gt;').replace('<', '&lt;')
-
     def _gen_lib_list(self):
-        return [self._modify_name_for_html(x) for x in self.libs.lib_id_to_name]
+        return [modify_text_for_html(x) for x in self.libs.lib_id_to_name]
 
     def _gen_function_map(self):
         func_map = {}
@@ -757,11 +756,14 @@ class RecordData(object):
             function = self.functions.id_to_func[func_id]
             func_data = {}
             func_data['l'] = function.lib_id
-            func_data['f'] = self._modify_name_for_html(function.func_name)
+            func_data['f'] = modify_text_for_html(function.func_name)
             if function.source_info:
                 func_data['s'] = function.source_info
             if function.disassembly:
-                func_data['d'] = function.disassembly
+                disassembly_list = []
+                for code, addr in function.disassembly:
+                    disassembly_list.append([modify_text_for_html(code), addr])
+                func_data['d'] = disassembly_list
             func_map[func_id] = func_data
         return func_map
 
@@ -780,7 +782,10 @@ class RecordData(object):
                 file_data['code'] = {}
             else:
                 file_data['path'] = source_file.real_path
-                file_data['code'] = source_file.line_to_code
+                code_map = {}
+                for line in source_file.line_to_code:
+                    code_map[line] = modify_text_for_html(source_file.line_to_code[line])
+                file_data['code'] = code_map
             file_list.append(file_data)
         return file_list
 
