@@ -101,6 +101,11 @@ function getSourceCode(sourceFileId) {
     return gSourceFiles[sourceFileId].code;
 }
 
+function isClockEvent(eventInfo) {
+    return eventInfo.eventName.includes('task-clock') ||
+            eventInfo.eventName.includes('cpu-clock');
+}
+
 class TabManager {
     constructor(divContainer) {
         this.div = $('<div>', {id: 'tabs'});
@@ -167,19 +172,43 @@ class RecordFileView {
     }
 
     draw() {
+        google.charts.setOnLoadCallback(() => this.realDraw());
+    }
+
+    realDraw() {
+        this.div.empty();
+        // Draw a table of 'Name', 'Value'.
+        let rows = [];
         if (gRecordInfo.recordTime) {
-            this.div.append(getHtml('p', {text: 'Record Time: ' + gRecordInfo.recordTime}));
+            rows.push(['Record Time', gRecordInfo.recordTime]);
         }
         if (gRecordInfo.machineType) {
-            this.div.append(getHtml('p', {text: 'Machine Type: ' + gRecordInfo.machineType}));
+            rows.push(['Machine Type', gRecordInfo.machineType]);
         }
         if (gRecordInfo.androidVersion) {
-            this.div.append(getHtml('p', {text: 'Android Version: ' + gRecordInfo.androidVersion}));
+            rows.push(['Android Version', gRecordInfo.androidVersion]);
         }
         if (gRecordInfo.recordCmdline) {
-            this.div.append(getHtml('p', {text: 'Record Cmdline: ' + gRecordInfo.recordCmdline}));
+            rows.push(['Record cmdline', gRecordInfo.recordCmdline]);
         }
-        this.div.append(getHtml('p', {text: 'Total Samples: ' + gRecordInfo.totalSamples}));
+        rows.push(['Total Samples', '' + gRecordInfo.totalSamples]);
+
+        let data = new google.visualization.DataTable();
+        data.addColumn('string', '');
+        data.addColumn('string', '');
+        data.addRows(rows);
+        for (let i = 0; i < rows.length; ++i) {
+            data.setProperty(i, 0, 'className', 'boldTableCell');
+        }
+        let table = new google.visualization.Table(this.div.get(0));
+        table.draw(data, {
+            width: '100%',
+            sort: 'disable',
+            allowHtml: true,
+            cssClassNames: {
+                'tableCell': 'tableCell',
+            },
+        });
     }
 }
 
@@ -199,6 +228,13 @@ class ChartView {
             SHOW_THREAD_INFO: 3,
             SHOW_LIB_INFO: 4,
         };
+        if (isClockEvent(this.eventInfo)) {
+            this.getSampleWeight = function (eventCount) {
+                return (eventCount / 1000000.0).toFixed(3) + ' ms';
+            }
+        } else {
+            this.getSampleWeight = (eventCount) => '' + eventCount;
+        }
     }
 
     _getState() {
@@ -212,29 +248,6 @@ class ChartView {
             return this.states.SHOW_PROCESS_INFO;
         }
         return this.states.SHOW_EVENT_INFO;
-    }
-
-    _drawTitle() {
-        if (this.eventInfo) {
-            this.div.append(getHtml('p', {text: `Event Type: ${this.eventInfo.eventName}`}));
-        }
-        if (this.processInfo) {
-            this.div.append(getHtml('p',
-                {text: `Process: ${getProcessName(this.processInfo.pid)}`}));
-        }
-        if (this.threadInfo) {
-            this.div.append(getHtml('p',
-                {text: `Thread: ${getThreadName(this.threadInfo.tid)}`}));
-        }
-        if (this.libInfo) {
-            this.div.append(getHtml('p',
-                {text: `Library: ${getLibName(this.libInfo.libId)}`}));
-        }
-        if (this.processInfo) {
-            let button = $('<button>', {text: 'Back'});
-            button.appendTo(this.div);
-            button.button().click(() => this._goBack());
-        }
     }
 
     _goBack() {
@@ -271,56 +284,108 @@ class ChartView {
     realDraw() {
         this.div.empty();
         this._drawTitle();
+        this._drawPieChart();
+    }
+
+    _drawTitle() {
+        // Draw a table of 'Name', 'Event Count'.
+        let rows = [];
+        rows.push(['Event Type: ' + this.eventInfo.eventName,
+                   this.getSampleWeight(this.eventInfo.eventCount)]);
+        if (this.processInfo) {
+            rows.push(['Process: ' + getProcessName(this.processInfo.pid),
+                       this.getSampleWeight(this.processInfo.eventCount)]);
+        }
+        if (this.threadInfo) {
+            rows.push(['Thread: ' + getThreadName(this.threadInfo.tid),
+                       this.getSampleWeight(this.threadInfo.eventCount)]);
+        }
+        if (this.libInfo) {
+            rows.push(['Library: ' + getLibName(this.libInfo.libId),
+                       this.getSampleWeight(this.libInfo.eventCount)]);
+        }
         let data = new google.visualization.DataTable();
-        let title;
+        data.addColumn('string', '');
+        data.addColumn('string', '');
+        data.addRows(rows);
+        for (let i = 0; i < rows.length; ++i) {
+            data.setProperty(i, 0, 'className', 'boldTableCell');
+        }
+        let wrapperDiv = $('<div>');
+        wrapperDiv.appendTo(this.div);
+        let table = new google.visualization.Table(wrapperDiv.get(0));
+        table.draw(data, {
+            width: '100%',
+            sort: 'disable',
+            allowHtml: true,
+            cssClassNames: {
+                'tableCell': 'tableCell',
+            },
+        });
+        if (this._getState() != this.states.SHOW_EVENT_INFO) {
+            let button = $('<button>', {text: 'Back'});
+            button.appendTo(this.div);
+            button.button().click(() => this._goBack());
+        }
+    }
+
+    _drawPieChart() {
         let state = this._getState();
-        if (state == this.states.SHOW_EVENT_INFO) {
-            title = 'Processes in event type ' + this.eventInfo.eventName;
-            data.addColumn('string', 'Process');
-            data.addColumn('number', 'EventCount');
-            let rows = [];
-            for (let process of this.eventInfo.processes) {
-                rows.push([getProcessName(process.pid), process.eventCount]);
-            }
-            data.addRows(rows);
-        } else if (state == this.states.SHOW_PROCESS_INFO) {
-            title = 'Threads in process ' + getProcessName(this.processInfo.pid);
-            data.addColumn('string', 'Thread');
-            data.addColumn('number', 'EventCount');
-            let rows = [];
-            for (let thread of this.processInfo.threads) {
-                rows.push([getThreadName(thread.tid), thread.eventCount]);
-            }
-            data.addRows(rows);
-        } else if (state == this.states.SHOW_THREAD_INFO) {
-            title = 'Libraries in thread ' + getThreadName(this.threadInfo.tid);
-            data.addColumn('string', 'Lib');
-            data.addColumn('number', 'EventCount');
-            let rows = [];
-            for (let lib of this.threadInfo.libs) {
-                rows.push([getLibName(lib.libId), lib.eventCount]);
-            }
-            data.addRows(rows);
-        } else if (state == this.states.SHOW_LIB_INFO) {
-            title = 'Functions in library ' + getLibName(this.libInfo.libId);
-            data.addColumn('string', 'Function');
-            data.addColumn('number', 'EventCount');
-            let rows = [];
-            for (let func of this.libInfo.functions) {
-                rows.push([getFuncName(func.g.f), func.g.e]);
-            }
-            data.addRows(rows);
+        let title = null;
+        let firstColumn = null;
+        let rows = [];
+        let thisObj = this;
+        function getItem(name, eventCount, totalEventCount) {
+            let sampleWeight = thisObj.getSampleWeight(eventCount);
+            let percent = (eventCount * 100.0 / totalEventCount).toFixed(2) + '%';
+            return [name, eventCount, getHtml('pre', {text: name}) +
+                        getHtml('b', {text: `${sampleWeight} (${percent})`})];
         }
 
-        let options = {
-            title: title,
-            width: 1000,
-            height: 600,
-        };
+        if (state == this.states.SHOW_EVENT_INFO) {
+            title = 'Processes in event type ' + this.eventInfo.eventName;
+            firstColumn = 'Process';
+            for (let process of this.eventInfo.processes) {
+                rows.push(getItem('Process: ' + getProcessName(process.pid), process.eventCount,
+                                  this.eventInfo.eventCount));
+            }
+        } else if (state == this.states.SHOW_PROCESS_INFO) {
+            title = 'Threads in process ' + getProcessName(this.processInfo.pid);
+            firstColumn = 'Thread';
+            for (let thread of this.processInfo.threads) {
+                rows.push(getItem('Thread: ' + getThreadName(thread.tid), thread.eventCount,
+                                  this.processInfo.eventCount));
+            }
+        } else if (state == this.states.SHOW_THREAD_INFO) {
+            title = 'Libraries in thread ' + getThreadName(this.threadInfo.tid);
+            firstColumn = 'Library';
+            for (let lib of this.threadInfo.libs) {
+                rows.push(getItem('Library: ' + getLibName(lib.libId), lib.eventCount,
+                                  this.threadInfo.eventCount));
+            }
+        } else if (state == this.states.SHOW_LIB_INFO) {
+            title = 'Functions in library ' + getLibName(this.libInfo.libId);
+            firstColumn = 'Function';
+            for (let func of this.libInfo.functions) {
+                rows.push(getItem('Function: ' + getFuncName(func.g.f), func.g.e,
+                                  this.libInfo.eventCount));
+            }
+        }
+        let data = new google.visualization.DataTable();
+        data.addColumn('string', firstColumn);
+        data.addColumn('number', 'EventCount');
+        data.addColumn({type: 'string', role: 'tooltip', p: {html: true}});
+        data.addRows(rows);
+
         let wrapperDiv = $('<div>');
         wrapperDiv.appendTo(this.div);
         let chart = new google.visualization.PieChart(wrapperDiv.get(0));
-        chart.draw(data, options);
+        chart.draw(data, {
+            title: title,
+            width: 1000,
+            height: 600,
+            tooltip: {isHtml: true},
+        });
         google.visualization.events.addListener(chart, 'select', () => this._selectHandler(chart));
     }
 }
@@ -354,64 +419,155 @@ class SampleTableTab {
 
     init(div) {
         this.div = div;
+        this.selectorView = null;
+        this.sampleTableViews = [];
     }
 
     draw() {
-        for (let tId = 0; tId < gSampleInfo.length; tId++) {
-            let eventInfo = gSampleInfo[tId];
-            let eventName = eventInfo.eventName;
-            this.div.append(getHtml('p', {text: 'Sample table for event ' + eventName}));
-            let percentMul = 100.0 / eventInfo.eventCount;
-            let tableId = 'reportTable_' + tId;
-            let titles = ['Total', 'Self', 'SampleCount', 'Process', 'Thread', 'Lib', 'Function'];
-            let tableStr = openHtml('table', {id: tableId, cellspacing: '0', width: '100%'}) +
-                           getHtml('thead', {text: getTableRow(titles, 'th')}) +
-                           getHtml('tfoot', {text: getTableRow(titles, 'th')}) +
-                           openHtml('tbody');
+        this.selectorView = new SampleTableWeightSelectorView(this.div, gSampleInfo[0],
+                                                              () => this.onSampleWeightChange());
+        this.selectorView.draw();
+        for (let eventInfo of gSampleInfo) {
+            this.div.append(getHtml('hr'));
+            this.sampleTableViews.push(new SampleTableView(this.div, eventInfo));
+        }
+        this.onSampleWeightChange();
+    }
 
-            for (let i = 0; i < eventInfo.processes.length; ++i) {
-                let processInfo = eventInfo.processes[i];
-                let processName = getProcessName(processInfo.pid);
-                for (let j = 0; j < processInfo.threads.length; ++j) {
-                    let threadInfo = processInfo.threads[j];
-                    let threadName = getThreadName(threadInfo.tid);
-                    for (let k = 0; k < threadInfo.libs.length; ++k) {
-                        let lib = threadInfo.libs[k];
-                        for (let t = 0; t < lib.functions.length; ++t) {
-                            let func = lib.functions[t];
-                            let key = [i, j, k, t].join('_');
-                            let treePercentage = toPercentageStr(func.g.s * percentMul);
-                            let selfPercenetage = toPercentageStr(func.g.e * percentMul);
-                            tableStr += getTableRow([treePercentage, selfPercenetage, func.c,
-                                processName, threadName, getLibName(lib.libId),
-                                getFuncName(func.g.f)], 'td', {key: key});
-                        }
+    onSampleWeightChange() {
+        for (let i = 0; i < gSampleInfo.length; ++i) {
+            let sampleWeightFunction = this.selectorView.getSampleWeightFunction(gSampleInfo[i]);
+            let sampleWeightSuffix = this.selectorView.getSampleWeightSuffix(gSampleInfo[i]);
+            this.sampleTableViews[i].draw(sampleWeightFunction, sampleWeightSuffix);
+        }
+    }
+}
+
+// Select the way to show sample weight in SampleTableTab.
+// 1. Show percentage of event count.
+// 2. Show event count (For cpu-clock and task-clock events, it is time in ms).
+class SampleTableWeightSelectorView {
+    constructor(divContainer, firstEventInfo, onSelectChange) {
+        this.div = $('<div>');
+        this.div.appendTo(divContainer);
+        this.onSelectChange = onSelectChange;
+        this.options = {
+            SHOW_PERCENT: 0,
+            SHOW_EVENT_COUNT: 1,
+        };
+        if (isClockEvent(firstEventInfo)) {
+            this.curOption = this.options.SHOW_EVENT_COUNT;
+        } else {
+            this.curOption = this.options.SHOW_PERCENT;
+        }
+    }
+
+    draw() {
+        let options = ['Show percentage of event count', 'Show event count'];
+        let optionStr = '';
+        for (let i = 0; i < options.length; ++i) {
+            optionStr += getHtml('option', {value: i, text: options[i]});
+        }
+        this.div.append(getHtml('select', {text: optionStr}));
+        let selectMenu = this.div.children().last();
+        selectMenu.children().eq(this.curOption).attr('selected', 'selected');
+        let thisObj = this;
+        selectMenu.selectmenu({
+            change: function() {
+                thisObj.curOption = this.value;
+                thisObj.onSelectChange();
+            },
+            width: '100%',
+        });
+    }
+
+    getSampleWeightFunction(eventInfo) {
+        if (this.curOption == this.options.SHOW_PERCENT) {
+            return function(eventCount) {
+                return (eventCount * 100.0 / eventInfo.eventCount).toFixed(2) + '%';
+            }
+        }
+        if (isClockEvent(eventInfo)) {
+            return (eventCount) => (eventCount / 1000000.0).toFixed(3);
+        }
+        return (eventCount) => '' + eventCount;
+    }
+
+    getSampleWeightSuffix(eventInfo) {
+        if (this.curOption == this.options.SHOW_EVENT_COUNT && isClockEvent(eventInfo)) {
+            return ' ms';
+        }
+        return '';
+    }
+}
+
+
+class SampleTableView {
+    constructor(divContainer, eventInfo) {
+        this.id = divContainer.children().length;
+        this.div = $('<div>');
+        this.div.appendTo(divContainer);
+        this.eventInfo = eventInfo;
+    }
+
+    draw(getSampleWeight, sampleWeightSuffix) {
+        // Draw a table of 'Total', 'Self', 'Samples', 'Process', 'Thread', 'Library', 'Function'.
+        this.div.empty();
+        let eventInfo = this.eventInfo;
+        let sampleWeight = getSampleWeight(eventInfo.eventCount);
+        this.div.append(getHtml('p', {text: `Sample table for event ${eventInfo.eventName}, ` +
+                `total count ${sampleWeight}${sampleWeightSuffix}`}));
+        let tableId = 'sampleTable_' + this.id;
+        let valueSuffix = sampleWeightSuffix.length > 0 ? `(in${sampleWeightSuffix})` : '';
+        let titles = ['Total' + valueSuffix, 'Self' + valueSuffix, 'Samples',
+                      'Process', 'Thread', 'Library', 'Function'];
+        let tableStr = openHtml('table', {id: tableId, cellspacing: '0', width: '100%'}) +
+                        getHtml('thead', {text: getTableRow(titles, 'th')}) +
+                        getHtml('tfoot', {text: getTableRow(titles, 'th')}) +
+                        openHtml('tbody');
+        for (let i = 0; i < eventInfo.processes.length; ++i) {
+            let processInfo = eventInfo.processes[i];
+            let processName = getProcessName(processInfo.pid);
+            for (let j = 0; j < processInfo.threads.length; ++j) {
+                let threadInfo = processInfo.threads[j];
+                let threadName = getThreadName(threadInfo.tid);
+                for (let k = 0; k < threadInfo.libs.length; ++k) {
+                    let lib = threadInfo.libs[k];
+                    let libName = getLibName(lib.libId);
+                    for (let t = 0; t < lib.functions.length; ++t) {
+                        let func = lib.functions[t];
+                        let key = [i, j, k, t].join('_');
+                        let totalValue = getSampleWeight(func.g.s);
+                        let selfValue = getSampleWeight(func.g.e);
+                        tableStr += getTableRow([totalValue, selfValue, func.c,
+                                                 processName, threadName, libName,
+                                                 getFuncName(func.g.f)], 'td', {key: key});
                     }
                 }
             }
-            tableStr += closeHtml('tbody') + closeHtml('table');
-            this.div.append(tableStr);
-            let table = this.div.find(`table#${tableId}`).dataTable({
-                lengthMenu: [10, 20, 50, 100, -1],
-                processing: true,
-                order: [0, 'desc'],
-                responsive: true,
-            });
-
-            table.find('tr').css('cursor', 'pointer');
-            table.on('click', 'tr', function() {
-                let key = this.getAttribute('key');
-                if (!key) {
-                    return;
-                }
-                let indexes = key.split('_');
-                let processInfo = eventInfo.processes[indexes[0]];
-                let threadInfo = processInfo.threads[indexes[1]];
-                let lib = threadInfo.libs[indexes[2]];
-                let func = lib.functions[indexes[3]];
-                FunctionTab.showFunction(eventInfo, processInfo, threadInfo, lib, func);
-            });
         }
+        tableStr += closeHtml('tbody') + closeHtml('table');
+        this.div.append(tableStr);
+        let table = this.div.find(`table#${tableId}`).dataTable({
+            lengthMenu: [10, 20, 50, 100, -1],
+            processing: true,
+            order: [0, 'desc'],
+            responsive: true,
+        });
+
+        table.find('tr').css('cursor', 'pointer');
+        table.on('click', 'tr', function() {
+            let key = this.getAttribute('key');
+            if (!key) {
+                return;
+            }
+            let indexes = key.split('_');
+            let processInfo = eventInfo.processes[indexes[0]];
+            let threadInfo = processInfo.threads[indexes[1]];
+            let lib = threadInfo.libs[indexes[2]];
+            let func = lib.functions[indexes[3]];
+            FunctionTab.showFunction(eventInfo, processInfo, threadInfo, lib, func);
+        });
     }
 }
 
@@ -474,23 +630,14 @@ class FunctionTab {
             return;
         }
         this.div.empty();
-        let eventName = this.eventInfo.eventName;
-        let processName = getProcessName(this.processInfo.pid);
-        let threadName = getThreadName(this.threadInfo.tid);
-        let libName = getLibName(this.lib.libId);
-        let funcName = getFuncName(this.func.g.f);
-        let title = getHtml('p', {text: `Event ${eventName}`}) +
-                    getHtml('p', {text: `Process ${processName}`}) +
-                    getHtml('p', {text: `Thread ${threadName}`}) +
-                    getHtml('p', {text: `Library ${libName}`}) +
-                    getHtml('p', {text: `Function ${funcName}`});
-        this.div.append(title);
+        this._drawTitle();
 
         this.selectorView = new FunctionSampleWeightSelectorView(this.div, this.eventInfo,
             this.processInfo, this.threadInfo, () => this.onSampleWeightChange());
         this.selectorView.draw();
 
         this.div.append(getHtml('hr'));
+        let funcName = getFuncName(this.func.g.f);
         this.div.append(getHtml('b', {text: `Functions called by ${funcName}`}) + '<br/>');
         this.callgraphView = new FlameGraphView(this.div, this.func.g, false);
 
@@ -513,6 +660,39 @@ class FunctionTab {
         }
 
         this.onSampleWeightChange();  // Manually set sample weight function for the first time.
+    }
+
+    _drawTitle() {
+        let eventName = this.eventInfo.eventName;
+        let processName = getProcessName(this.processInfo.pid);
+        let threadName = getThreadName(this.threadInfo.tid);
+        let libName = getLibName(this.lib.libId);
+        let funcName = getFuncName(this.func.g.f);
+        // Draw a table of 'Name', 'Value'.
+        let rows = [];
+        rows.push(['Event Type', eventName]);
+        rows.push(['Process', processName]);
+        rows.push(['Thread', threadName]);
+        rows.push(['Library', libName]);
+        rows.push(['Function', getHtml('pre', {text: funcName})]);
+        let data = new google.visualization.DataTable();
+        data.addColumn('string', '');
+        data.addColumn('string', '');
+        data.addRows(rows);
+        for (let i = 0; i < rows.length; ++i) {
+            data.setProperty(i, 0, 'className', 'boldTableCell');
+        }
+        let wrapperDiv = $('<div>');
+        wrapperDiv.appendTo(this.div);
+        let table = new google.visualization.Table(wrapperDiv.get(0));
+        table.draw(data, {
+            width: '100%',
+            sort: 'disable',
+            allowHtml: true,
+            cssClassNames: {
+                'tableCell': 'tableCell',
+            },
+        });
     }
 
     onSampleWeightChange() {
@@ -555,7 +735,7 @@ class FunctionSampleWeightSelectorView {
             EVENT_COUNT_IN_TIME: 4,
         };
         let name = eventInfo.eventName;
-        this.supportEventCountInTime = name.includes('task-clock') || name.includes('cpu-clock');
+        this.supportEventCountInTime = isClockEvent(eventInfo);
         if (this.supportEventCountInTime) {
             this.curOption = this.options.EVENT_COUNT_IN_TIME;
         } else {
@@ -1011,7 +1191,7 @@ class SourceCodeView {
             data.addColumn('string', 'Self');
             data.addColumn('string', 'Code');
             data.addRows(rows);
-            for (let i = 0; i < lineNumbers.length; ++i) {
+            for (let i = 0; i < rows.length; ++i) {
                 data.setProperty(i, 0, 'className', 'colForLine');
                 for (let j = 1; j <= 2; ++j) {
                     data.setProperty(i, j, 'className', 'colForCount');
@@ -1107,7 +1287,7 @@ class DisassemblyView {
         data.addColumn('string', 'Self');
         data.addColumn('string', 'Code');
         data.addRows(rows);
-        for (let i = 0; i < this.disassembly.length; ++i) {
+        for (let i = 0; i < rows.length; ++i) {
             for (let j = 0; j < 2; ++j) {
                 data.setProperty(i, j, 'className', 'colForCount');
             }

@@ -6,13 +6,7 @@ cc_library {
     host_supported: true,
     srcs: [
         "ext4_utils.c",
-        "allocate.c",
-        "contents.c",
-        "extent.c",
-        "indirect.c",
-        "sha1.c",
         "wipe.c",
-        "crc16.c",
         "ext4_sb.c",
     ],
     // Various instances of dereferencing a type-punned pointer in extent.c

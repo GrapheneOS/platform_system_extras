@@ -323,7 +323,7 @@ class TestExampleBase(TestBase):
 
     def common_test_report_html(self):
         self.run_cmd(['report_html.py', '-h'])
-        self.run_app_profiler()
+        self.run_app_profiler(record_arg='-g -f 1000 --duration 3 -e task-clock:u')
         self.run_cmd(['report_html.py'])
         self.run_cmd(['report_html.py', '--add_source_code', '--source_dirs', 'testdata'])
         self.run_cmd(['report_html.py', '--add_disassembly'])
@@ -868,6 +868,7 @@ class TestReportLib(unittest.TestCase):
                 if callchain.entries[i].symbol.symbol_name == sleep_function_name:
                     sleep_function_period += sample.period
                     break
+            self.assertEqual(self.report_lib.GetEventOfCurrentSample().name, 'cpu-cycles')
         sleep_percentage = float(sleep_function_period) / total_period
         self.assertGreater(sleep_percentage, 0.30)
 
