@@ -48,11 +48,12 @@ def _char_pt_to_str(char_pt):
 
 class SampleStruct(ct.Structure):
     """ Instance of a sample in perf.data.
-        ip: the address of the instruction the cpu is running when the sample happens.
+        ip: the program counter of the thread generating the sample.
         pid: process id (or thread group id) of the thread generating the sample.
         tid: thread id.
         thread_comm: thread name.
-        time: timestamp of a sample, the meaning is decided by simpleperf record --clockid option.
+        time: time at which the sample was generated. The value is in nanoseconds.
+              The clock is decided by the --clockid option in `simpleperf record`.
         in_kernel: whether the instruction is in kernel space or user space.
         cpu: the cpu generating the sample.
         period: count of events have happened since last sample. For example, if we use
