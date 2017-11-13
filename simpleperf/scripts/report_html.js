@@ -936,10 +936,10 @@ class FlameGraphView {
 
     _renderPercentNode() {
         this.svg.append(`<rect style="stroke:rgb(0,0,0);" rx="10" ry="10" \
-                         x="934" y="10" width="100" height="30" \
+                         x="934" y="10" width="150" height="30" \
                          fill="rgb(255,255,255)"/> \
                          <text id="percent_text_${this.id}" text-anchor="end" \
-                         x="1024" y="30">100.00%</text>`);
+                         x="1074" y="30"></text>`);
     }
 
     _adjustTextSizeForNode(g) {
@@ -1280,7 +1280,7 @@ class DisassemblyView {
                 totalValue = sampleWeightFunction(line.subtreeEventCount);
                 selfValue = sampleWeightFunction(line.eventCount);
             }
-            rows.push([totalValue, selfValue, line.code]);
+            rows.push([totalValue, selfValue, code]);
         }
         let data = new google.visualization.DataTable();
         data.addColumn('string', 'Total');
