@@ -186,15 +186,8 @@ def output_report(process, args):
     if not args.embedded_flamegraph:
         f.write("<script>document.addEventListener('DOMContentLoaded', flamegraphInit);</script>")
 
-    # Output tid == pid Thread first.
-    main_thread = [x for x in process.threads.values() if x.tid == process.pid]
-    for thread in main_thread:
-        f.write("<br/><br/><b>Main Thread %d (%s) (%d samples):</b><br/>\n\n\n\n" % (
-                thread.tid, thread.name, thread.num_samples))
-        renderSVG(thread.flamegraph, f, args.color)
-
-    other_threads = [x for x in process.threads.values() if x.tid != process.pid]
-    for thread in other_threads:
+    # Sort threads by the event count in a thread.
+    for thread in sorted(process.threads.values(), key=lambda x: x.event_count, reverse=True):
         f.write("<br/><br/><b>Thread %d (%s) (%d samples):</b><br/>\n\n\n\n" % (
                 thread.tid, thread.name, thread.num_samples))
         renderSVG(thread.flamegraph, f, args.color)
