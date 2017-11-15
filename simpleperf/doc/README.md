@@ -48,6 +48,17 @@ Bugs and feature requests can be submitted at http://github.com/android-ndk/ndk/
         - [Filter samples](#filter-samples)
         - [Group samples into sample entries](#group-samples-into-sample-entries)
         - [Report call graphs](#report-call-graphs-in-report-cmd)
+- [Scripts reference](#scripts-reference)
+    - [app_profiler py](#app_profiler-py)
+        - [Profile from launch of an application](#profile-from-launch-of-an-application)
+    - [binary_cache_builder.py](#binary_cache_builder-py)
+    - [run_simpleperf_on_device.py](#run_simpleperf_on_device-py)
+    - [report.py](#report-py)
+    - [report_html.py](#report_html-py)
+    - [inferno](#inferno)
+    - [pprof_proto_generator.py](#pprof_proto_generator-py)
+    - [report_sample.py](#report_sample-py)
+    - [simpleperf_report_lib.py](#simpleperf_report_lib-py)
 - [Answers to common issues](#answers-to-common-issues)
     - [Why we suggest profiling on android >= N devices](#why-we-suggest-profiling-on-android-n-devices)
     - [Suggestions about recording call graphs](#suggestions-about-recording-call-graphs)
@@ -71,16 +82,16 @@ Android profiling:
     save storage space.
 
     e. It supports adding additional information (like symbols) in perf.data, to
-    support recording on device and reporting on host.
+    support recording on the device and reporting on the host.
 
 2. Using python scripts for profiling tasks
 
 3. Easy to release
 
-    a. Simpleperf executables on device are built as static binaries. They can be
+    a. Simpleperf executables on the device are built as static binaries. They can be
     pushed on any Android device and run.
 
-    b. Simpleperf executables on host are built as static binaries, and support
+    b. Simpleperf executables on the host are built as static binaries, and support
     different hosts: mac, linux and windows.
 
 
@@ -103,8 +114,8 @@ and `bin/windows`. Each host and architecture has one executable, like
 `bin/linux/x86_64/simpleperf`. It provides a command-line interface for
 reporting profiling data on hosts.
 
-**Simpleperf report shared libraries used on host**
-Simpleperf report shared libraries used on host are located at `bin/darwin`,
+**Simpleperf report shared libraries used on hosts**
+Simpleperf report shared libraries used on hosts are located at `bin/darwin`,
 `bin/linux` and `bin/windows`. Each host and architecture has one library, like
 `bin/linux/x86_64/libsimpleperf_report.so`. It is a library for parsing
 profiling data.
@@ -124,7 +135,7 @@ Python scripts are written to help different profiling tasks.
 
 `report_sample.py` is used to generate flamegraph.
 
-`run_simpleperf_on_device.py` is a simple wrapper to run simpleperf on device.
+`run_simpleperf_on_device.py` is a simple wrapper to run simpleperf on the device.
 
 `simpleperf_report_lib.py` provides a python interface for parsing profiling data.
 
@@ -266,7 +277,7 @@ On Android <= M, pidof may not exist or work well, and you can try
 
     # The app uses /arm64/boot.oat, so push simpleperf in bin/android/arm64/ to device.
 
-    # Now download the simpleperf for the app's architecture on device.
+    # Now download the simpleperf for the app's architecture on the device.
     $ cd ../../scripts/
     $ adb push bin/android/arm64/simpleperf /data/local/tmp
     $ adb shell chmod a+x /data/local/tmp/simpleperf
@@ -289,7 +300,7 @@ There are many options to record profiling data, check [record command](#simplep
 
 **6. Report perf.data**
 
-    # Pull perf.data on host.
+    # Pull perf.data on the host.
     $ adb pull /data/local/tmp/perf.data
 
     # Report samples using report.py, report.py is a python wrapper of simpleperf report command.
@@ -305,8 +316,8 @@ There are many ways to show reports, check [report command](#simpleperf-report) 
 ### Record and report profiling data (using python scripts)
 
 Besides command lines, we can use `app-profiler.py` to profile Android applications.
-It downloads simpleperf on device, records perf.data, and collects profiling
-results and native binaries on host.
+It downloads simpleperf on the device, records perf.data, and collects profiling
+results and native binaries on the host.
 
 **1. Record perf.data by running `app-profiler.py`**
 
@@ -1094,6 +1105,210 @@ as [here](#record-call-graphs-in-record-cmd).
 $ simpleperf report -g
 ```
 
+## Scripts reference
+
+<a name="app_profiler-py"></a>
+### app_profiler.py
+
+app_profiler.py is used to record profiling data for Android applications and native executables.
+
+```sh
+# Record an Android application.
+$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative
+
+# Record an Android application without compiling the Java code into native instructions.
+# Used when you only profile the C++ code, or the Java code has already been compiled into native
+# instructions.
+$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -nc
+
+# Record running a specific activity of an Android application.
+$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .SleepActivity
+
+# Record a native process.
+$ python app_profiler.py -np surfaceflinger
+
+# Record a command.
+$ python app_profiler.py -cmd \
+    "dex2oat --dex-file=/data/local/tmp/app-profiling.apk --oat-file=/data/local/tmp/a.oat" \
+    --arch arm
+
+# Record an Android application, and use -r to send custom options to the record command.
+$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
+    -r "-e cpu-clock -g --duration 30"
+
+# Record both on CPU time and off CPU time.
+$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
+    -r "-e task-clock -g -f 1000 --duration 10 --trace-offcpu"
+
+# Profile activity startup time using --profile_from_launch.
+$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
+    --profile_from_launch --arch arm64
+```
+
+#### Profile from launch of an application
+
+Sometimes we want to profile the launch-time of an application. To support this, we added --app in
+the record command. The --app option sets the package name of the Android application to profile.
+If the app is not already running, the record command will poll for the app process in a loop with
+an interval of 1ms. So to profile from launch of an application, we can first start the record
+command with --app, then start the app. Below is an example.
+
+```sh
+$ python run_simpleperf_on_device.py record
+    --app com.example.simpleperf.simpleperfexamplewithnative \
+    -g --duration 1 -o /data/local/tmp/perf.data
+# Start the app manually or using the `am` command.
+```
+
+To make it convenient to use, app_profiler.py combines these in the --profile_from_launch option.
+
+```sh
+$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .MainActivity \
+    --arch arm64 --profile_from_launch
+```
+
+<a name="binary_cache_builder-py"></a>
+### binary_cache_builder.py
+
+The binary_cache directory is a directory holding binaries needed by a profiling data file. The
+binaries are expected to be unstripped, having debug information and symbol tables. The
+binary_cache directory is used by report scripts to read symbols of binaries. It is also used by
+report_html.py to generate annotated source code and disassembly.
+
+By default, app_profiler.py builds the binary_cache directory after recording. But we can also
+build binary_cache for existing profiling data files using binary_cache_builder.py. It is useful
+when you record profiling data using `simpleperf record` directly, to do system wide profiling or
+record without usb cable connected.
+
+binary_cache_builder.py can either pull binaries from an Android device, or find binaries in
+directories on the host (via -lib).
+
+```sh
+# Generate binary_cache for perf.data, by pulling binaries from the device.
+$ python binary_cache_builder.py
+
+# Generate binary_cache, by pulling binaries from the device and finding binaries in ../demo.
+$ python binary_cache_builder.py -lib ../demo
+```
+
+<a name="run_simpleperf_on_device-py"></a>
+### run_simpleperf_on_device.py
+
+This script pushes the simpleperf executable on the device, and run a simpleperf command on the
+device. It is more convenient than running adb commands manually.
+
+<a name="report-py"></a>
+### report.py
+
+report.py is a wrapper of the report command on the host. It accepts all options of the report
+command.
+
+```sh
+# Report call graph
+$ python report.py -g
+
+# Report call graph in a GUI window implemented by python Tk.
+$ python report.py -g --gui
+```
+
+<a name="report_html-py"></a>
+### report_html.py
+
+report_html.py generates report.html based on the profiling data. Then the report.html can show
+the profiling result without depending on other files. So it can be shown in local browsers or
+passed to other machines. Depending on which command-line options are used, the content of the
+report.html can include: chart statistics, sample table, flame graphs, annotated source code for
+each function, annotated disassembly for each function.
+
+```sh
+# Generate chart statistics, sample table and flame graphs, based on perf.data.
+$ python report_html.py
+
+# Add source code.
+$ python report_html.py --add_source_code --source_dirs ../demo/SimpleperfExampleWithNative
+
+# Add disassembly.
+$ python report_html.py --add_disassembly
+```
+
+Below is an example of generating html profiling results for SimpleperfExampleWithNative.
+
+```sh
+$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative
+$ python report_html.py --add_source_code --source_dirs ../demo --add_disassembly
+```
+
+After opening the generated [report.html](./report_html.html) in a browser, there are several tabs:
+
+The first tab is "Chart Statistics". You can click the pie chart to show the time consumed by each
+process, thread, library and function.
+
+The second tab is "Sample Table". It shows the time taken by each function. By clicking one row in
+the table, we can jump to a new tab called "Function".
+
+The third tab is "Flamegraph". It shows the flame graphs generated by [inferno](./inferno.md).
+
+The fourth tab is "Function". It only appears when users click a row in the "Sample Table" tab.
+It shows information of a function, including:
+
+1. A flame graph showing functions called by that function.
+2. A flame graph showing functions calling that function.
+3. Annotated source code of that function. It only appears when there are source code files for
+   that function.
+4. Annotated disassembly of that function. It only appears when there are binaries containing that
+   function.
+
+### inferno
+
+[inferno](./inferno.md) is a tool used to generate flame graph in a html file.
+
+```sh
+# Generate flame graph based on perf.data.
+# On Windows, use inferno.bat instead of ./inferno.sh.
+$ ./inferno.sh -sc --record_file perf.data
+
+# Record a native program and generate flame graph.
+$ ./inferno.sh -np surfaceflinger
+```
+
+<a name="pprof_proto_generator-py"></a>
+### pprof_proto_generator.py
+
+It converts a profiling data file into pprof.proto, a format used by [pprof](https://github.com/google/pprof).
+
+```sh
+# Convert perf.data in the current directory to pprof.proto format.
+$ python pprof_proto_generator.py
+$ pprof -pdf pprof.profile
+```
+
+<a name="report_sample-py"></a>
+### report_sample.py
+
+It converts a profiling data file into a format used by [FlameGraph](https://github.com/brendangregg/FlameGraph).
+
+```sh
+# Convert perf.data in the current directory to a format used by FlameGraph.
+$ python report_sample.py --symfs binary_cache >out.perf
+$ git clone https://github.com/brendangregg/FlameGraph.git
+$ FlameGraph/stackcollapse-perf.pl out.perf >out.folded
+$ FlameGraph/flamegraph.pl out.folded >a.svg
+```
+
+<a name="simpleperf_report_lib-py"></a>
+### simpleperf_report_lib.py
+
+simpleperf_report_lib.py is a Python library used to parse profiling data files generated by the
+record command. Internally, it uses libsimpleperf_report.so to do the work. Generally, for each
+profiling data file, we create an instance of ReportLib, pass it the file path (via SetRecordFile).
+Then we can read all samples through GetNextSample(). For each sample, we can read its event info
+(via GetEventOfCurrentSample), symbol info (via GetSymbolOfCurrentSample) and call chain info
+(via GetCallChainOfCurrentSample). We can also get some global information, like record options
+(via GetRecordCmd), the arch of the device (via GetArch) and meta strings (via MetaInfo).
+
+Examples of using simpleperf_report_lib.py are in report_sample.py, report_html.py,
+pprof_proto_generator.py and inferno/inferno.py.
+
 ## Answers to common issues
 
 ### Why we suggest profiling on Android >= N devices?
@@ -1137,11 +1352,11 @@ better. After all, you can always try dwarf based call graph first, because it a
 reasonable results when given unstripped binaries properly. If it doesn't work well enough, then
 try stack frame based call graphs instead.
 
-Simpleperf needs to have unstripped native binaries on device to generate good dwarf based call
+Simpleperf needs to have unstripped native binaries on the device to generate good dwarf based call
 graphs. It can be supported in two ways:
 1. Use unstripped native binaries when building the apk, as [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo/SimpleperfExampleWithNative/app/profiling.gradle).
 2. Pass directory containing unstripped native libraries to app_profiler.py via -lib. And it will
-   download the unstripped native libraries on device.
+   download the unstripped native libraries on the device.
 
 ```sh
 $ python app_profiler.py -lib NATIVE_LIB_DIR
