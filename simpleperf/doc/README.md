@@ -12,9 +12,8 @@ Bugs and feature requests can be submitted at http://github.com/android-ndk/ndk/
 
 ## Table of Contents
 
-- [Simpleperf introduction](#simpleperf-introduction)
-    - [Why simpleperf](#why-simpleperf)
-    - [Tools in simpleperf](#tools-in-simpleperf)
+- [Introduction](#introduction)
+- [Tools in simpleperf](#tools-in-simpleperf)
 - [Android application profiling](#android-application-profiling)
     - [Prepare an Android application](#prepare-an-android-application)
     - [Record and report profiling data (using command-lines)](#record-and-report-profiling-data-using-commandlines)
@@ -63,82 +62,82 @@ Bugs and feature requests can be submitted at http://github.com/android-ndk/ndk/
     - [Why we suggest profiling on android >= N devices](#why-we-suggest-profiling-on-android-n-devices)
     - [Suggestions about recording call graphs](#suggestions-about-recording-call-graphs)
 
-## Simpleperf introduction
+## Introduction
 
-### Why simpleperf
+Simpleperf contains two parts: the simpleperf executable and Python scripts.
 
-Simpleperf works similar to linux-tools-perf, but it has some specific features for
-Android profiling:
+The simpleperf executable works similar to linux-tools-perf, but has some specific features for
+the Android profiling environment:
 
-1. Aware of Android environment
+1. It collects more info in profiling data. Since the common workflow is "record on the device, and
+   report on the host", simpleperf not only collects samples in profiling data, but also collects
+   needed symbols, device info and recording time.
 
-    a. It can profile embedded shared libraries in apk.
+2. It delivers new features for recording.
+   a. When recording dwarf based call graph, simpleperf unwinds the stack before writing a sample
+      to file. This is to save storage space on the device.
+   b. Support tracing both on CPU time and off CPU time with --trace-offcpu option.
 
-    b. It reads symbols and debug information from .gnu_debugdata section.
+3. It relates closely to the Android platform.
+   a. Is aware of Android environment, like using system properties to enable profiling, using
+      run-as to profile in application's context.
+   b. Supports reading symbols and debug information from the .gnu_debugdata section, because
+      system libraries are built with .gnu_debugdata section starting from Android O.
+   c. Supports profiling shared libraries embedded in apk files.
+   d. It uses the standard Android stack unwinder, so its results are consistent with all other
+      Android tools.
 
-    c. It gives suggestions when errors occur.
+4. It builds executables and shared libraries for different usages.
+   a. Builds static executables on the device. Since static executables don't rely on any library,
+      simpleperf executables can be pushed on any Android device and used to record profiling data.
+   b. Builds executables on different hosts: Linux, Mac and Windows. These executables can be used
+      to report on hosts.
+   c. Builds report shared libraries on different hosts. The report library is used by different
+      Python scripts to parse profiling data.
 
-    d. When recording with -g, unwind the stack before writing to file to
-    save storage space.
+Detailed documentation for the simpleperf executable is [here](#executable-commands-reference).
 
-    e. It supports adding additional information (like symbols) in perf.data, to
-    support recording on the device and reporting on the host.
+Python scripts are split into three parts according to their functions:
 
-2. Using python scripts for profiling tasks
+1. Scripts used for simplifying recording, like app_profiler.py.
 
-3. Easy to release
+2. Scripts used for reporting, like report.py, report_html.py, inferno.
 
-    a. Simpleperf executables on the device are built as static binaries. They can be
-    pushed on any Android device and run.
+3. Scripts used for parsing profiling data, like simpleperf_report_lib.py.
 
-    b. Simpleperf executables on the host are built as static binaries, and support
-    different hosts: mac, linux and windows.
+Detailed documentation for the Python scripts is [here](#scripts-reference).
 
+## Tools in simpleperf
 
-### Tools in simpleperf
+The simpleperf executables and Python scripts are located in simpleperf/ in ndk releases, and in
+system/extras/simpleperf/scripts/ in AOSP. Their functions are listed below.
 
-Simpleperf is periodically released with Android ndk, located at `simpleperf/`.
-The latest release can be found [here](https://android.googlesource.com/platform/prebuilts/simpleperf/).
-Simpleperf tools contain executables, shared libraries and python scripts.
+bin/: contains executables and shared libraries.
 
-**Simpleperf executables running on Android device**
-Simpleperf executables running on Android device are located at `bin/android/`.
-Each architecture has one executable, like `bin/android/arm64/simpleperf`. It
-can record and report profiling data. It provides a command-line interface
-broadly the same as the linux-tools perf, and also supports some additional
-features for Android-specific profiling.
+bin/android/${arch}/simpleperf: static simpleperf executables used on the device.
 
-**Simpleperf executables running on hosts**
-Simpleperf executables running on hosts are located at `bin/darwin`, `bin/linux`
-and `bin/windows`. Each host and architecture has one executable, like
-`bin/linux/x86_64/simpleperf`. It provides a command-line interface for
-reporting profiling data on hosts.
+bin/${host}/${arch}/simpleperf: simpleperf executables used on the host, only supports reporting.
 
-**Simpleperf report shared libraries used on hosts**
-Simpleperf report shared libraries used on hosts are located at `bin/darwin`,
-`bin/linux` and `bin/windows`. Each host and architecture has one library, like
-`bin/linux/x86_64/libsimpleperf_report.so`. It is a library for parsing
-profiling data.
+bin/${host}/${arch}/libsimpleperf_report.${so/dylib/dll}: report shared libraries used on the host.
 
-**Python scripts**
-Python scripts are written to help different profiling tasks.
+[app_profiler.py](#app_profiler-py): recording profiling data.
 
-`annotate.py` is used to annotate source files based on profiling data.
+[binary_cache_builder.py](#binary_cache_builder-py): building binary cache for profiling data.
 
-`app_profiler.py` is used to profile Android applications and native programs.
+[report.py](#report-py): reporting in stdio interface.
 
-`binary_cache_builder.py` is used to pull libraries from Android devices.
+[report_html.py](#report_html-py): reporting in html interface.
 
-`pprof_proto_generator.py` is used to convert profiling data to format used by pprof.
+[inferno.sh](#inferno) (or inferno.bat on Windows): generating flamegraph in html interface.
 
-`report.py` is used to provide a GUI interface to report profiling result.
+inferno/: implementation of inferno. Used by inferno.sh.
 
-`report_sample.py` is used to generate flamegraph.
+[pprof_proto_generator.py](#pprof_proto_generator-py): converting profiling data to the format
+       used by [pprof](https://github.com/google/pprof).
 
-`run_simpleperf_on_device.py` is a simple wrapper to run simpleperf on the device.
+[report_sample.py](#report_sample-py): converting profiling data to the format used by [FlameGraph](https://github.com/brendangregg/FlameGraph).
 
-`simpleperf_report_lib.py` provides a python interface for parsing profiling data.
-
+[simpleperf_report_lib.py](#simpleperf_report_lib-py): library for parsing profiling data.
 
 ## Android application profiling
 
@@ -211,7 +210,7 @@ It builds an app-profiling.apk for profiling.
 
 ### Record and report profiling data (using command-lines)
 
-We recommend using python scripts for profiling because they are more convenient.
+We recommend using Python scripts for profiling because they are more convenient.
 But using command-line will give us a better understanding of the profile process
 step by step. So we first show how to use command lines.
 
@@ -602,7 +601,7 @@ Simpleperf supports several commands, listed below:
 ```
 The dump command: dumps content in perf.data, used for debugging simpleperf.
 The help command: prints help information for other commands.
-The kmem command: collects kernel memory allocation information (will be replaced by python scripts).
+The kmem command: collects kernel memory allocation information (will be replaced by Python scripts).
 The list command: lists all event types supported on the Android device.
 The record command: profiles processes and stores profiling data in perf.data.
 The report command: reports profiling data in perf.data.
@@ -1207,7 +1206,7 @@ command.
 # Report call graph
 $ python report.py -g
 
-# Report call graph in a GUI window implemented by python Tk.
+# Report call graph in a GUI window implemented by Python Tk.
 $ python report.py -g --gui
 ```
 
