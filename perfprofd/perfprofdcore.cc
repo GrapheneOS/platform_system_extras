@@ -35,6 +35,7 @@
 #include <cctype>
 
 #include <android-base/file.h>
+#include <android-base/logging.h>
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 
@@ -539,6 +540,7 @@ static PROFILE_RESULT invoke_perf(const std::string &perf_path,
                                   unsigned sampling_period,
                                   const char *stack_profile_opt,
                                   unsigned duration,
+                                  const std::string &data_dir_path,
                                   const std::string &data_file_path,
                                   const std::string &perf_stderr_path)
 {
@@ -550,6 +552,11 @@ static PROFILE_RESULT invoke_perf(const std::string &perf_path,
 
   if (pid == 0) {
     // child
+
+    // Workaround for temporary files.
+    if (chdir(data_dir_path.c_str()) != 0) {
+      PLOG(WARNING) << "Could not change working directory to " << data_dir_path;
+    }
 
     // Open file to receive stderr/stdout from perf
     FILE *efp = fopen(perf_stderr_path.c_str(), "w");
@@ -730,9 +737,8 @@ static PROFILE_RESULT collect_profile(const ConfigReader &config, int seq)
   // Form perf.data file name, perf error output file name
   //
   std::string destdir = config.getStringValue("destination_directory");
-  std::string data_file_path(destdir);
-  data_file_path += "/";
-  data_file_path += PERF_OUTPUT;
+  std::string data_dir_path(destdir);
+  std::string data_file_path = data_dir_path + "/" PERF_OUTPUT;
   std::string perf_stderr_path(destdir);
   perf_stderr_path += "/perferr.txt";
 
@@ -777,6 +783,7 @@ static PROFILE_RESULT collect_profile(const ConfigReader &config, int seq)
                                   period,
                                   stack_profile_opt,
                                   duration,
+                                  data_dir_path,
                                   data_file_path,
                                   perf_stderr_path);
   if (ret != OK_PROFILE_COLLECTION) {
