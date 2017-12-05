@@ -65,7 +65,6 @@ cc_binary {
         "liblog",
         "libprotobuf-cpp-lite",
         "libbase",
-        "libcutils"
     ],
     system_shared_libs: [
         "libc", "libdl",

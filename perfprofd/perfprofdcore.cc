@@ -35,8 +35,8 @@
 #include <cctype>
 
 #include <android-base/file.h>
+#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
-#include <cutils/properties.h>
 
 #include "perfprofdcore.h"
 #include "perfprofdutils.h"
@@ -237,10 +237,7 @@ static CKPROFILE_RESULT check_profiling_enabled(ConfigReader &config)
 
 bool get_booting()
 {
-  char propBuf[PROPERTY_VALUE_MAX];
-  propBuf[0] = '\0';
-  property_get("sys.boot_completed", propBuf, "");
-  return (propBuf[0] != '1');
+  return android::base::GetBoolProperty("sys.boot_completed", false) != true;
 }
 
 //
@@ -858,12 +855,8 @@ static void init(ConfigReader &config)
   set_seed(config);
   cleanup_destination_dir(config);
 
-  char propBuf[PROPERTY_VALUE_MAX];
-  propBuf[0] = '\0';
-  property_get("ro.kernel.qemu", propBuf, "");
-  running_in_emulator = (propBuf[0] == '1');
-  property_get("ro.debuggable", propBuf, "");
-  is_debug_build = (propBuf[0] == '1');
+  running_in_emulator = android::base::GetBoolProperty("ro.kernel.qemu", false);
+  is_debug_build = android::base::GetBoolProperty("ro.debuggable", false);
 
   signal(SIGHUP, sig_hup);
 }
