@@ -24,7 +24,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#include <cutils/properties.h>
+#include <android-base/properties.h>
 
 #include "cpuconfig.h"
 #include "perfprofdutils.h"
@@ -53,9 +53,7 @@ HardwireCpuHelper::~HardwireCpuHelper()
 
 bool HardwireCpuHelper::GetMpdecisionRunning()
 {
-  char propBuf[PROPERTY_VALUE_MAX];
-  property_get("init.svc.mpdecision", propBuf, "");
-  return strcmp(propBuf, "running") == 0;
+  return android::base::GetProperty("init.svc.mpdecision", "") == "running";
 }
 
 
@@ -89,7 +87,7 @@ void HardwireCpuHelper::OnlineCore(int i, int onoff)
 
 void HardwireCpuHelper::StopMpdecision()
 {
-  if (property_set("ctl.stop", "mpdecision")) {
+  if (!android::base::SetProperty("ctl.stop", "mpdecision")) {
     W_ALOGE("setprop ctl.stop mpdecision failed");
   }
 }
@@ -99,7 +97,7 @@ void HardwireCpuHelper::RestartMpdecision()
   // Don't try to offline the cores we previously onlined -- let
   // mpdecision figure out what to do
 
-  if (property_set("ctl.start", "mpdecision")) {
+  if (!android::base::SetProperty("ctl.start", "mpdecision")) {
     W_ALOGE("setprop ctl.start mpdecision failed");
   }
 }
