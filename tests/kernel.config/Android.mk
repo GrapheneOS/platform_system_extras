@@ -18,7 +18,6 @@ cts_src_files := \
     logger_test.cpp \
     multicast_test.cpp \
     nfs_test.cpp \
-    pstore_test.cpp \
     sysvipc_test.cpp \
 
 # Required plus Recommended Tests
@@ -28,6 +27,7 @@ test_src_files := \
     aslr_test.cpp \
     aslr_rec_test.cpp \
     mmc_max_speed_test.cpp \
+    pstore_test.cpp \
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := kernel-config-unit-tests
@@ -51,7 +51,7 @@ LOCAL_MODULE_STEM_64 := $(LOCAL_MODULE)64
 LOCAL_SHARED_LIBRARIES := libbase
 LOCAL_STATIC_LIBRARIES := libgtest libgtest_main
 
-LOCAL_COMPATIBILITY_SUITE := cts
+LOCAL_COMPATIBILITY_SUITE := cts vts
 LOCAL_CTS_TEST_PACKAGE := android.kernel.config
 include $(BUILD_CTS_EXECUTABLE)
 
