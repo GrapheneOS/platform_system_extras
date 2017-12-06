@@ -713,6 +713,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   for (; i < args.size(); ++i) {
     non_option_args->push_back(args[i]);
   }
+
+  SetTempDirectoryUsedInRecording(android::base::Dirname(record_filename_));
   return true;
 }
 
