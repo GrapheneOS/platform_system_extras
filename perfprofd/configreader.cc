@@ -18,6 +18,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include <algorithm>
 #include <sstream>
 
 #include <android-base/file.h>
@@ -238,13 +240,8 @@ void ConfigReader::parseLine(const char *key,
 
 static bool isblank(const std::string &line)
 {
-  for (std::string::const_iterator it = line.begin(); it != line.end(); ++it)
-  {
-    if (isspace(*it) == 0) {
-      return false;
-    }
-  }
-  return true;
+  auto non_space = [](char c) { return isspace(c) == 0; };
+  return std::find_if(line.begin(), line.end(), non_space) == line.end();
 }
 
 bool ConfigReader::readFile()

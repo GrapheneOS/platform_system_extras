@@ -35,8 +35,9 @@
 #include <cctype>
 
 #include <android-base/file.h>
+#include <android-base/logging.h>
+#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
-#include <cutils/properties.h>
 
 #include "perfprofdcore.h"
 #include "perfprofdutils.h"
@@ -237,10 +238,7 @@ static CKPROFILE_RESULT check_profiling_enabled(ConfigReader &config)
 
 bool get_booting()
 {
-  char propBuf[PROPERTY_VALUE_MAX];
-  propBuf[0] = '\0';
-  property_get("sys.boot_completed", propBuf, "");
-  return (propBuf[0] != '1');
+  return android::base::GetBoolProperty("sys.boot_completed", false) != true;
 }
 
 //
@@ -542,6 +540,7 @@ static PROFILE_RESULT invoke_perf(const std::string &perf_path,
                                   unsigned sampling_period,
                                   const char *stack_profile_opt,
                                   unsigned duration,
+                                  const std::string &data_dir_path,
                                   const std::string &data_file_path,
                                   const std::string &perf_stderr_path)
 {
@@ -553,6 +552,11 @@ static PROFILE_RESULT invoke_perf(const std::string &perf_path,
 
   if (pid == 0) {
     // child
+
+    // Workaround for temporary files.
+    if (chdir(data_dir_path.c_str()) != 0) {
+      PLOG(WARNING) << "Could not change working directory to " << data_dir_path;
+    }
 
     // Open file to receive stderr/stdout from perf
     FILE *efp = fopen(perf_stderr_path.c_str(), "w");
@@ -733,9 +737,8 @@ static PROFILE_RESULT collect_profile(const ConfigReader &config, int seq)
   // Form perf.data file name, perf error output file name
   //
   std::string destdir = config.getStringValue("destination_directory");
-  std::string data_file_path(destdir);
-  data_file_path += "/";
-  data_file_path += PERF_OUTPUT;
+  std::string data_dir_path(destdir);
+  std::string data_file_path = data_dir_path + "/" PERF_OUTPUT;
   std::string perf_stderr_path(destdir);
   perf_stderr_path += "/perferr.txt";
 
@@ -780,6 +783,7 @@ static PROFILE_RESULT collect_profile(const ConfigReader &config, int seq)
                                   period,
                                   stack_profile_opt,
                                   duration,
+                                  data_dir_path,
                                   data_file_path,
                                   perf_stderr_path);
   if (ret != OK_PROFILE_COLLECTION) {
@@ -858,12 +862,8 @@ static void init(ConfigReader &config)
   set_seed(config);
   cleanup_destination_dir(config);
 
-  char propBuf[PROPERTY_VALUE_MAX];
-  propBuf[0] = '\0';
-  property_get("ro.kernel.qemu", propBuf, "");
-  running_in_emulator = (propBuf[0] == '1');
-  property_get("ro.debuggable", propBuf, "");
-  is_debug_build = (propBuf[0] == '1');
+  running_in_emulator = android::base::GetBoolProperty("ro.kernel.qemu", false);
+  is_debug_build = android::base::GetBoolProperty("ro.debuggable", false);
 
   signal(SIGHUP, sig_hup);
 }

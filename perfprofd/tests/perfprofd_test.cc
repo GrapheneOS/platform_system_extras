@@ -24,8 +24,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
-#include <cutils/properties.h>
 
 #include "perfprofdcore.h"
 #include "configreader.h"
@@ -804,17 +804,6 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
 
 TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
 {
-  //
-  // Callchain profiles are only supported on certain devices.
-  // For now this test is stubbed out except when run on "angler".
-  //
-  char propBuf[PROPERTY_VALUE_MAX];
-  propBuf[0] = '\0';
-  property_get("ro.hardware", propBuf, "");
-  if (strcmp(propBuf, "angler")) {
-    return;
-  }
-
   //
   // Collect a callchain profile, so as to exercise the code in
   // perf_data post-processing that digests callchains.
