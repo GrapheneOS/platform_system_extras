@@ -274,6 +274,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   if (!CheckPerfEventLimit()) {
     return false;
   }
+  AllowMoreOpenedFiles();
 
   // 1. Parse options, and use default measured event type if not given.
   std::vector<std::string> workload_args;
