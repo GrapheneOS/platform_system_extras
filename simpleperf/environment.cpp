@@ -20,6 +20,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/resource.h>
 #include <sys/utsname.h>
 
 #include <limits>
@@ -676,4 +677,14 @@ void SetDefaultAppPackageName(const std::string& package_name) {
 
 const std::string& GetDefaultAppPackageName() {
   return default_package_name;
+}
+
+void AllowMoreOpenedFiles() {
+  // On Android <= O, the hard limit is 4096, and the soft limit is 1024.
+  // On Android >= P, both the hard and soft limit are 32768.
+  rlimit limit;
+  if (getrlimit(RLIMIT_NOFILE, &limit) == 0) {
+    limit.rlim_cur = limit.rlim_max;
+    setrlimit(RLIMIT_NOFILE, &limit);
+  }
 }
