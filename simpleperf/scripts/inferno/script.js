@@ -93,7 +93,7 @@ function zoom(e) {
     let svgElement = e.ownerSVGElement;
     let zoomStack = svgElement.zoomStack;
     zoomStack.push(e);
-    displayFromElement(e);
+    displaySVGElement(svgElement);
     select(e);
 
     // Show zoom out button.
@@ -101,19 +101,31 @@ function zoom(e) {
     svgElement.getElementById('zoom_text').style.display = 'block';
 }
 
-function displayFromElement(e) {
+function displaySVGElement(svgElement) {
+    let zoomStack = svgElement.zoomStack;
+    let e = zoomStack[zoomStack.length - 1];
     let clicked_rect = e.getElementsByTagName('rect')[0];
-    let clicked_origin_x = clicked_rect.attributes['ox'].value;
+    let clicked_origin_x;
     let clicked_origin_y = clicked_rect.attributes['oy'].value;
-    let clicked_origin_width = clicked_rect.attributes['owidth'].value;
+    let clicked_origin_width;
+
+    if (zoomStack.length == 1) {
+        // Show all nodes when zoomStack only contains the root node.
+        // This is needed to show flamegraph containing more than one node at the root level.
+        clicked_origin_x = 0;
+        clicked_origin_width = 100;
+    } else {
+        clicked_origin_x = clicked_rect.attributes['ox'].value;
+        clicked_origin_width = clicked_rect.attributes['owidth'].value;
+    }
 
 
-    let svgBox = e.ownerSVGElement.getBoundingClientRect();
+    let svgBox = svgElement.getBoundingClientRect();
     let svgBoxHeight = svgBox.height;
     let svgBoxWidth = 100;
     let scaleFactor = svgBoxWidth / clicked_origin_width;
 
-    let callsites = e.ownerSVGElement.getElementsByTagName('g');
+    let callsites = svgElement.getElementsByTagName('g');
     for (let i = 0; i < callsites.length; i++) {
         let text = callsites[i].getElementsByTagName('text')[0];
         let rect = callsites[i].getElementsByTagName('rect')[0];
@@ -141,7 +153,7 @@ function displayFromElement(e) {
         rect.attributes['width'].value = (rect.attributes['owidth'].value * scaleFactor) + '%';
     }
 
-    adjust_text_size(e.ownerSVGElement);
+    adjust_text_size(svgElement);
 }
 
 function unzoom(e) {
@@ -158,7 +170,6 @@ function unzoom(e) {
         let previouslySelected = stack.pop();
         select(previouslySelected);
     }
-    let nextElement = stack[stack.length-1];
 
     // Hide zoom out button.
     if (stack.length == 1) {
@@ -166,7 +177,7 @@ function unzoom(e) {
         svgOwner.getElementById('zoom_text').style.display = 'none';
     }
 
-    displayFromElement(nextElement);
+    displaySVGElement(svgOwner);
 }
 
 function search(e) {
