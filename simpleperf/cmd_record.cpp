@@ -939,15 +939,17 @@ bool RecordCommand::ProcessRecord(Record* record) {
 
   if (record->type() == PERF_RECORD_SAMPLE) {
     auto& r = *static_cast<SampleRecord*>(record);
+    if (unwind_callchain) {
+      UnwindRecord(r);
+    }
+    // ExcludeKernelCallChain() should go after UnwindRecord() to notice the generated user call
+    // chain.
     if (r.InKernel() && exclude_kernel_callchain_ && r.ExcludeKernelCallChain() == 0u) {
       // If current record contains no user callchain, skip it.
       return true;
     }
     if (fp_callchain_sampling_ || dwarf_callchain_sampling_) {
       r.AdjustCallChainGeneratedByKernel();
-    }
-    if (unwind_callchain) {
-      UnwindRecord(r);
     }
     sample_record_count_++;
   } else if (record->type() == PERF_RECORD_LOST) {
