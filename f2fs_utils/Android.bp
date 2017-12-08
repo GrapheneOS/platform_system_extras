@@ -40,6 +40,6 @@ cc_prebuilt_binary {
     name: "mkf2fsuserimg.sh",
 
     srcs: ["mkf2fsuserimg.sh"],
-
+    required: ["make_f2fs", "sload_f2fs"],
     host_supported: true,
 }
