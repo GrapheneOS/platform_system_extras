@@ -487,7 +487,7 @@ void PrepareVdsoFile() {
   std::string s(vdso_map->len, '\0');
   memcpy(&s[0], reinterpret_cast<void*>(static_cast<uintptr_t>(vdso_map->start_addr)),
          vdso_map->len);
-  std::unique_ptr<TemporaryFile> tmpfile(new TemporaryFile);
+  std::unique_ptr<TemporaryFile> tmpfile = CreateTempFileUsedInRecording();
   if (!android::base::WriteStringToFile(s, tmpfile->path)) {
     return;
   }
@@ -687,4 +687,14 @@ void AllowMoreOpenedFiles() {
     limit.rlim_cur = limit.rlim_max;
     setrlimit(RLIMIT_NOFILE, &limit);
   }
+}
+
+static std::string temp_dir_used_in_recording;
+void SetTempDirectoryUsedInRecording(const std::string& tmp_dir) {
+  temp_dir_used_in_recording = tmp_dir;
+}
+
+std::unique_ptr<TemporaryFile> CreateTempFileUsedInRecording() {
+  CHECK(!temp_dir_used_in_recording.empty());
+  return std::unique_ptr<TemporaryFile>(new TemporaryFile(temp_dir_used_in_recording));
 }
