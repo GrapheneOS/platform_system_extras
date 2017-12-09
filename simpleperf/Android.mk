@@ -108,6 +108,7 @@ libsimpleperf_src_files := \
   utils.cpp \
 
 libsimpleperf_src_files_linux := \
+  CallChainJoiner.cpp \
   cmd_list.cpp \
   cmd_record.cpp \
   cmd_stat.cpp \
@@ -361,6 +362,7 @@ simpleperf_unit_test_src_files := \
   utils_test.cpp \
 
 simpleperf_unit_test_src_files_linux := \
+  CallChainJoiner_test.cpp \
   cmd_dumprecord_test.cpp \
   cmd_list_test.cpp \
   cmd_record_test.cpp \
