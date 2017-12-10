@@ -77,7 +77,8 @@ def build_testdata():
     if (not os.path.isdir(from_testdata_path) or not os.path.isdir(from_demo_path) or
         not from_script_testdata_path):
         return
-    copy_testdata_list = ['perf_with_symbols.data', 'perf_with_trace_offcpu.data']
+    copy_testdata_list = ['perf_with_symbols.data', 'perf_with_trace_offcpu.data',
+                          'perf_with_tracepoint_event.data']
     copy_demo_list = ['SimpleperfExamplePureJava', 'SimpleperfExampleWithNative',
                       'SimpleperfExampleOfKotlin']
 
@@ -840,7 +841,7 @@ class TestReportLib(unittest.TestCase):
         self.assertTrue("product_props" in meta_info)
 
     def test_event_name_from_meta_info(self):
-        self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_trace_offcpu.data'))
+        self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_tracepoint_event.data'))
         event_names = set()
         while self.report_lib.GetNextSample():
             event_names.add(self.report_lib.GetEventOfCurrentSample().name)
@@ -952,12 +953,11 @@ class TestTools(unittest.TestCase):
                 for line in source_str.split('\n'):
                     items = line.split(':')
                     expected_source.append((items[0].strip(), int(items[1])))
-                actual_source = dso.get_addr_source(test_addr['addr'])
+                actual_source = addr2line.get_addr_source(dso, test_addr['addr'])
                 self.assertTrue(actual_source is not None)
                 self.assertEqual(len(actual_source), len(expected_source))
                 for i in range(len(expected_source)):
-                    actual_file_id, actual_line = actual_source[i]
-                    actual_file_path = addr2line.get_file_path(actual_file_id)
+                    actual_file_path, actual_line = actual_source[i]
                     self.assertEqual(actual_file_path, expected_source[i][0])
                     self.assertEqual(actual_line, expected_source[i][1])
 
