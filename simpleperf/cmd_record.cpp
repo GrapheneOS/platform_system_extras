@@ -38,11 +38,11 @@
 
 #include "CallChainJoiner.h"
 #include "command.h"
-#include "dwarf_unwind.h"
 #include "environment.h"
 #include "event_selection_set.h"
 #include "event_type.h"
 #include "IOEventLoop.h"
+#include "OfflineUnwinder.h"
 #include "perf_clock.h"
 #include "read_apk.h"
 #include "read_elf.h"
@@ -264,6 +264,7 @@ class RecordCommand : public Command {
   uint32_t dump_stack_size_in_dwarf_sampling_;
   bool unwind_dwarf_callchain_;
   bool post_unwind_;
+  std::unique_ptr<OfflineUnwinder> offline_unwinder_;
   bool child_inherit_;
   double duration_in_sec_;
   bool can_dump_kernel_symbols_;
@@ -355,6 +356,13 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   }
   if (!SetEventSelectionFlags()) {
     return false;
+  }
+  if (unwind_dwarf_callchain_) {
+    // Normally do strict arch check when unwinding stack. But allow unwinding
+    // 32-bit processes on 64-bit devices for system wide profiling.
+    bool strict_arch_check = !system_wide_collection_;
+    bool collect_stat = WOULD_LOG(DEBUG);
+    offline_unwinder_.reset(new OfflineUnwinder(strict_arch_check, collect_stat));
   }
   if (unwind_dwarf_callchain_ && !post_unwind_ && allow_callchain_joiner_) {
     bool keep_original_callchains = WOULD_LOG(DEBUG);
@@ -1070,14 +1078,20 @@ bool RecordCommand::UnwindRecord(SampleRecord& r) {
     RegSet regs = CreateRegSet(r.regs_user_data.abi,
                                r.regs_user_data.reg_mask,
                                r.regs_user_data.regs);
-    // Normally do strict arch check when unwinding stack. But allow unwinding
-    // 32-bit processes on 64-bit devices for system wide profiling.
-    bool strict_arch_check = !system_wide_collection_;
     std::vector<uint64_t> ips;
     std::vector<uint64_t> sps;
-    if (!UnwindCallChain(r.regs_user_data.abi, *thread, regs, r.stack_user_data.data,
-                         r.GetValidStackSize(), strict_arch_check, &ips, &sps)) {
+    if (!offline_unwinder_->UnwindCallChain(r.regs_user_data.abi, *thread, regs,
+                                            r.stack_user_data.data, r.GetValidStackSize(),
+                                            &ips, &sps)) {
       return false;
+    }
+    if (offline_unwinder_->HasStat()) {
+      const UnwindingResult& unwinding_result = offline_unwinder_->GetUnwindingResult();
+      UnwindingResultRecord record(r.time_data.time, unwinding_result.used_time,
+                                   unwinding_result.stop_reason, unwinding_result.stop_info.regno);
+      if (!record_file_writer_->WriteRecord(record)) {
+        return false;
+      }
     }
     r.ReplaceRegAndStackWithCallChain(ips);
     if (callchain_joiner_) {

@@ -20,12 +20,14 @@
 #include <unordered_map>
 
 #include "callchain.h"
-#include "dwarf_unwind.h"
+#include "OfflineUnwinder.h"
 #include "perf_regs.h"
 #include "record.h"
 #include "SampleComparator.h"
 #include "SampleDisplayer.h"
 #include "thread_tree.h"
+
+using namespace simpleperf;
 
 // A SampleTree is a collection of samples. A profiling report is mainly about
 // constructing a SampleTree and display it. There are three steps involved:
@@ -60,8 +62,7 @@ class SampleTreeBuilder {
         callchain_sample_set_(comparator),
         use_branch_address_(false),
         build_callchain_(false),
-        use_caller_as_callchain_root_(false),
-        strict_unwind_arch_check_(false) {}
+        use_caller_as_callchain_root_(false) {}
 
   virtual ~SampleTreeBuilder() {}
 
@@ -76,7 +77,9 @@ class SampleTreeBuilder {
     accumulate_callchain_ = accumulate_callchain;
     build_callchain_ = build_callchain;
     use_caller_as_callchain_root_ = use_caller_as_callchain_root;
-    strict_unwind_arch_check_ = strict_unwind_arch_check;
+    if (accumulate_callchain_) {
+      offline_unwinder_.reset(new OfflineUnwinder(strict_unwind_arch_check, false));
+    }
   }
 
   void ProcessSampleRecord(const SampleRecord& r) {
@@ -113,8 +116,9 @@ class SampleTreeBuilder {
                                    r.regs_user_data.regs);
         std::vector<uint64_t> user_ips;
         std::vector<uint64_t> sps;
-        if (UnwindCallChain(r.regs_user_data.abi, *thread, regs, r.stack_user_data.data,
-                            r.GetValidStackSize(), strict_unwind_arch_check_, &user_ips, &sps)) {
+        if (offline_unwinder_->UnwindCallChain(r.regs_user_data.abi, *thread, regs,
+                                               r.stack_user_data.data, r.GetValidStackSize(),
+                                               &user_ips, &sps)) {
           ips.push_back(PERF_CONTEXT_USER);
           ips.insert(ips.end(), user_ips.begin(), user_ips.end());
         }
@@ -302,7 +306,7 @@ class SampleTreeBuilder {
   bool use_branch_address_;
   bool build_callchain_;
   bool use_caller_as_callchain_root_;
-  bool strict_unwind_arch_check_;
+  std::unique_ptr<OfflineUnwinder> offline_unwinder_;
 };
 
 template <typename EntryT>
