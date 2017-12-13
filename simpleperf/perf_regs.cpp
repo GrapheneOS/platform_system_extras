@@ -233,3 +233,22 @@ bool GetSpRegValue(const RegSet& regs, ArchType arch, uint64_t* value) {
   }
   return GetRegValue(regs, regno, value);
 }
+
+bool GetIpRegValue(const RegSet& regs, ArchType arch, uint64_t* value) {
+  size_t regno;
+  switch (arch) {
+    case ARCH_X86_64:
+    case ARCH_X86_32:
+      regno = PERF_REG_X86_IP;
+      break;
+    case ARCH_ARM:
+      regno = PERF_REG_ARM_PC;
+      break;
+    case ARCH_ARM64:
+      regno = PERF_REG_ARM64_PC;
+      break;
+    default:
+      return false;
+  }
+  return GetRegValue(regs, regno, value);
+}
