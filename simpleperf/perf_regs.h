@@ -96,5 +96,6 @@ RegSet CreateRegSet(int abi, uint64_t valid_mask, const uint64_t* valid_regs);
 
 bool GetRegValue(const RegSet& regs, size_t regno, uint64_t* value);
 bool GetSpRegValue(const RegSet& regs, ArchType arch, uint64_t* value);
+bool GetIpRegValue(const RegSet& regs, ArchType arch, uint64_t* value);
 
 #endif  // SIMPLE_PERF_PERF_REGS_H_

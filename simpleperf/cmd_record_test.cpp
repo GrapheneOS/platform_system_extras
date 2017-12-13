@@ -559,3 +559,8 @@ TEST(record_cmd, generate_samples_by_hw_counters) {
     ASSERT_TRUE(has_sample);
   }
 }
+
+TEST(record_cmd, callchain_joiner_options) {
+  ASSERT_TRUE(RunRecordCmd({"--no-callchain-joiner"}));
+  ASSERT_TRUE(RunRecordCmd({"--callchain-joiner-min-matching-nodes", "2"}));
+}
