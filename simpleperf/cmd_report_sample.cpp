@@ -94,8 +94,6 @@ class ReportSampleCommand : public Command {
   bool ProcessRecord(std::unique_ptr<Record> record);
   bool PrintSampleRecordInProtobuf(const SampleRecord& record);
   bool GetCallEntry(const ThreadEntry* thread, bool in_kernel, uint64_t ip, bool omit_unknown_dso,
-                    uint64_t* pvaddr_in_file, uint32_t* pfile_id, int32_t* psymbol_id);
-  bool GetCallEntry(const ThreadEntry* thread, bool in_kernel, uint64_t ip, bool omit_unknown_dso,
                     uint64_t* pvaddr_in_file, Dso** pdso, const Symbol** psymbol);
   bool WriteRecordInProtobuf(proto::Record& proto_record);
   bool PrintLostSituationInProtobuf();
@@ -418,10 +416,15 @@ bool ReportSampleCommand::ProcessRecord(std::unique_ptr<Record> record) {
   return true;
 }
 
+
 bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
-  uint64_t vaddr_in_file;
-  uint32_t file_id;
-  int32_t symbol_id;
+  struct Node {
+    Dso* dso;
+    const Symbol* symbol;
+    uint64_t vaddr_in_file;
+  };
+  std::vector<Node> nodes;
+  Node node;
   proto::Record proto_record;
   proto::Sample* sample = proto_record.mutable_sample();
   sample->set_time(r.time_data.time);
@@ -432,14 +435,10 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
   bool in_kernel = r.InKernel();
   const ThreadEntry* thread =
       thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-  bool ret = GetCallEntry(thread, in_kernel, r.ip_data.ip, false, &vaddr_in_file, &file_id,
-                          &symbol_id);
+  bool ret = GetCallEntry(thread, in_kernel, r.ip_data.ip, false, &node.vaddr_in_file,
+                          &node.dso, &node.symbol);
   CHECK(ret);
-  proto::Sample_CallChainEntry* callchain = sample->add_callchain();
-  callchain->set_vaddr_in_file(vaddr_in_file);
-  callchain->set_file_id(file_id);
-  callchain->set_symbol_id(symbol_id);
-
+  nodes.push_back(node);
   if (show_callchain_ && (r.sample_type & PERF_SAMPLE_CALLCHAIN)) {
     bool first_ip = true;
     for (uint64_t i = 0; i < r.callchain_data.ip_nr; ++i) {
@@ -464,14 +463,40 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
             continue;
           }
         }
-        if (!GetCallEntry(thread, in_kernel, ip, true, &vaddr_in_file, &file_id, &symbol_id)) {
+        if (!GetCallEntry(thread, in_kernel, ip, true, &node.vaddr_in_file, &node.dso,
+                          &node.symbol)) {
           break;
         }
-        callchain = sample->add_callchain();
-        callchain->set_vaddr_in_file(vaddr_in_file);
-        callchain->set_file_id(file_id);
-        callchain->set_symbol_id(symbol_id);
+        nodes.push_back(node);
       }
+    }
+  }
+
+  for (const Node& node : nodes) {
+    proto::Sample_CallChainEntry* callchain = sample->add_callchain();
+    uint32_t file_id;
+    if (!node.dso->GetDumpId(&file_id)) {
+      file_id = node.dso->CreateDumpId();
+    }
+    int32_t symbol_id = -1;
+    if (node.symbol != thread_tree_.UnknownSymbol()) {
+      if (!node.symbol->GetDumpId(reinterpret_cast<uint32_t*>(&symbol_id))) {
+        symbol_id = node.dso->CreateSymbolDumpId(node.symbol);
+      }
+    }
+    callchain->set_vaddr_in_file(node.vaddr_in_file);
+    callchain->set_file_id(file_id);
+    callchain->set_symbol_id(symbol_id);
+
+    // Android studio wants a clear call chain end to notify whether a call chain is complete.
+    // For the main thread, the call chain ends at __libc_init in libc.so. For other threads,
+    // the call chain ends at __start_thread in libc.so.
+    // The call chain of the main thread can go beyond __libc_init, to _start (<= android O) or
+    // _start_main (> android O).
+    if (node.dso->FileName() == "libc.so" &&
+        (strcmp(node.symbol->Name(), "__libc_init") == 0 ||
+            strcmp(node.symbol->Name(), "__start_thread") == 0)) {
+      break;
     }
   }
   return WriteRecordInProtobuf(proto_record);
@@ -482,30 +507,6 @@ bool ReportSampleCommand::WriteRecordInProtobuf(proto::Record& proto_record) {
   if (!proto_record.SerializeToCodedStream(coded_os_)) {
     LOG(ERROR) << "failed to write record to protobuf";
     return false;
-  }
-  return true;
-}
-
-bool ReportSampleCommand::GetCallEntry(const ThreadEntry* thread,
-                                       bool in_kernel, uint64_t ip,
-                                       bool omit_unknown_dso,
-                                       uint64_t* pvaddr_in_file,
-                                       uint32_t* pfile_id,
-                                       int32_t* psymbol_id) {
-  Dso* dso;
-  const Symbol* symbol;
-  if (!GetCallEntry(thread, in_kernel, ip, omit_unknown_dso, pvaddr_in_file, &dso, &symbol)) {
-    return false;
-  }
-  if (!dso->GetDumpId(pfile_id)) {
-    *pfile_id = dso->CreateDumpId();
-  }
-  if (symbol != thread_tree_.UnknownSymbol()) {
-    if (!symbol->GetDumpId(reinterpret_cast<uint32_t*>(psymbol_id))) {
-      *psymbol_id = dso->CreateSymbolDumpId(symbol);
-    }
-  } else {
-    *psymbol_id = -1;
   }
   return true;
 }

@@ -94,22 +94,32 @@ static ucontext_t BuildUContextFromRegs(const RegSet& regs __attribute__((unused
   return ucontext;
 }
 
-std::vector<uint64_t> UnwindCallChain(int abi, const ThreadEntry& thread,
-                                      const RegSet& regs, const char* stack,
-                                      size_t stack_size, bool strict_arch_check) {
+bool UnwindCallChain(int abi, const ThreadEntry& thread, const RegSet& regs, const char* stack,
+                     size_t stack_size, bool strict_arch_check,
+                     std::vector<uint64_t>* ips, std::vector<uint64_t>* sps) {
   std::vector<uint64_t> result;
   ArchType arch = (abi != PERF_SAMPLE_REGS_ABI_32) ?
                       ScopedCurrentArch::GetCurrentArch() :
                       ScopedCurrentArch::GetCurrentArch32();
   if (!IsArchTheSame(arch, GetBuildArch(), strict_arch_check)) {
-    LOG(FATAL) << "simpleperf is built in arch " << GetArchString(GetBuildArch())
-            << ", and can't do stack unwinding for arch " << GetArchString(arch);
-    return result;
+    LOG(ERROR) << "simpleperf is built in arch " << GetArchString(GetBuildArch())
+                << ", and can't do stack unwinding for arch " << GetArchString(arch);
+    return false;
   }
   uint64_t sp_reg_value;
   if (!GetSpRegValue(regs, arch, &sp_reg_value)) {
     LOG(ERROR) << "can't get sp reg value";
-    return result;
+    return false;
+  }
+  if (arch != GetBuildArch()) {
+    uint64_t ip_reg_value;
+    if (!GetIpRegValue(regs, arch, &ip_reg_value)) {
+      LOG(ERROR) << "can't get ip reg value";
+      return false;
+    }
+    ips->push_back(ip_reg_value);
+    sps->push_back(sp_reg_value);
+    return true;
   }
   uint64_t stack_addr = sp_reg_value;
 
@@ -121,6 +131,7 @@ std::vector<uint64_t> UnwindCallChain(int abi, const ThreadEntry& thread,
     bt_map.end = map->start_addr + map->len;
     bt_map.offset = map->pgoff;
     bt_map.name = map->dso->GetDebugFilePath();
+    bt_map.flags = PROT_READ | PROT_EXEC;
   }
   std::unique_ptr<BacktraceMap> backtrace_map(BacktraceMap::Create(thread.pid, bt_maps));
 
@@ -138,8 +149,9 @@ std::vector<uint64_t> UnwindCallChain(int abi, const ThreadEntry& thread,
       if (it->pc == 0) {
         break;
       }
-      result.push_back(it->pc);
+      ips->push_back(it->pc);
+      sps->push_back(it->sp);
     }
   }
-  return result;
+  return !ips->empty();
 }
