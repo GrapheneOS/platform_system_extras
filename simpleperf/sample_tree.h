@@ -111,13 +111,12 @@ class SampleTreeBuilder {
         RegSet regs = CreateRegSet(r.regs_user_data.abi,
                                    r.regs_user_data.reg_mask,
                                    r.regs_user_data.regs);
-        std::vector<uint64_t> unwind_ips =
-            UnwindCallChain(r.regs_user_data.abi, *thread, regs,
-                            r.stack_user_data.data,
-                            r.GetValidStackSize(), strict_unwind_arch_check_);
-        if (!unwind_ips.empty()) {
+        std::vector<uint64_t> user_ips;
+        std::vector<uint64_t> sps;
+        if (UnwindCallChain(r.regs_user_data.abi, *thread, regs, r.stack_user_data.data,
+                            r.GetValidStackSize(), strict_unwind_arch_check_, &user_ips, &sps)) {
           ips.push_back(PERF_CONTEXT_USER);
-          ips.insert(ips.end(), unwind_ips.begin(), unwind_ips.end());
+          ips.insert(ips.end(), user_ips.begin(), user_ips.end());
         }
       }
 
