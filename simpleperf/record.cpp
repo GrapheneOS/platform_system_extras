@@ -28,6 +28,8 @@
 #include "tracing.h"
 #include "utils.h"
 
+using namespace simpleperf;
+
 static std::string RecordTypeToString(int record_type) {
   static std::unordered_map<int, std::string> record_type_names = {
       {PERF_RECORD_MMAP, "mmap"},
@@ -46,6 +48,7 @@ static std::string RecordTypeToString(int record_type) {
       {SIMPLE_PERF_RECORD_DSO, "dso"},
       {SIMPLE_PERF_RECORD_SYMBOL, "symbol"},
       {SIMPLE_PERF_RECORD_EVENT_ID, "event_id"},
+      {SIMPLE_PERF_RECORD_CALLCHAIN, "callchain"},
   };
 
   auto it = record_type_names.find(record_type);
@@ -616,6 +619,97 @@ size_t SampleRecord::ExcludeKernelCallChain() {
   return user_callchain_length;
 }
 
+bool SampleRecord::HasUserCallChain() const {
+  if ((sample_type & PERF_SAMPLE_CALLCHAIN) == 0) {
+    return false;
+  }
+  bool in_user_context = !InKernel();
+  for (size_t i = 0; i < callchain_data.ip_nr; ++i) {
+    if (in_user_context && callchain_data.ips[i] < PERF_CONTEXT_MAX) {
+      return true;
+    }
+    if (callchain_data.ips[i] == PERF_CONTEXT_USER) {
+      in_user_context = true;
+    }
+  }
+  return false;
+}
+
+void SampleRecord::UpdateUserCallChain(const std::vector<uint64_t>& user_ips) {
+  std::vector<uint64_t> kernel_ips;
+  for (size_t i = 0; i < callchain_data.ip_nr; ++i) {
+    if (callchain_data.ips[i] == PERF_CONTEXT_USER) {
+      break;
+    }
+    kernel_ips.push_back(callchain_data.ips[i]);
+  }
+  kernel_ips.push_back(PERF_CONTEXT_USER);
+  size_t new_size = size() - callchain_data.ip_nr * sizeof(uint64_t) +
+                    (kernel_ips.size() + user_ips.size()) * sizeof(uint64_t);
+  if (new_size == size()) {
+    return;
+  }
+  char* new_binary = new char[new_size];
+  char* p = new_binary;
+  SetSize(new_size);
+  MoveToBinaryFormat(header, p);
+  if (sample_type & PERF_SAMPLE_IDENTIFIER) {
+    MoveToBinaryFormat(id_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_IP) {
+    MoveToBinaryFormat(ip_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_TID) {
+    MoveToBinaryFormat(tid_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_TIME) {
+    MoveToBinaryFormat(time_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_ADDR) {
+    MoveToBinaryFormat(addr_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_ID) {
+    MoveToBinaryFormat(id_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_STREAM_ID) {
+    MoveToBinaryFormat(stream_id_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_CPU) {
+    MoveToBinaryFormat(cpu_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_PERIOD) {
+    MoveToBinaryFormat(period_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_CALLCHAIN) {
+    callchain_data.ip_nr = kernel_ips.size() + user_ips.size();
+    MoveToBinaryFormat(callchain_data.ip_nr, p);
+    callchain_data.ips = reinterpret_cast<uint64_t*>(p);
+    MoveToBinaryFormat(kernel_ips.data(), kernel_ips.size(), p);
+    MoveToBinaryFormat(user_ips.data(), user_ips.size(), p);
+  }
+  if (sample_type & PERF_SAMPLE_RAW) {
+    MoveToBinaryFormat(raw_data.size, p);
+    MoveToBinaryFormat(raw_data.data, raw_data.size, p);
+    raw_data.data = p - raw_data.size;
+  }
+  if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
+    MoveToBinaryFormat(branch_stack_data.stack_nr, p);
+    char* old_p = p;
+    MoveToBinaryFormat(branch_stack_data.stack, branch_stack_data.stack_nr, p);
+    branch_stack_data.stack = reinterpret_cast<BranchStackItemType*>(old_p);
+  }
+  if (sample_type & PERF_SAMPLE_REGS_USER) {
+    MoveToBinaryFormat(regs_user_data.abi, p);
+    CHECK_EQ(regs_user_data.abi, 0u);
+  }
+  if (sample_type & PERF_SAMPLE_STACK_USER) {
+    MoveToBinaryFormat(stack_user_data.size, p);
+    CHECK_EQ(stack_user_data.size, 0u);
+  }
+  CHECK_EQ(p, new_binary + new_size) << "sample_type = " << std::hex << sample_type;
+  UpdateBinary(new_binary);
+}
+
 void SampleRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "sample_type: 0x%" PRIx64 "\n", sample_type);
   if (sample_type & PERF_SAMPLE_IP) {
@@ -918,6 +1012,65 @@ void EventIdRecord::DumpData(size_t indent) const {
   }
 }
 
+CallChainRecord::CallChainRecord(char* p) : Record(p) {
+  const char* end = p + size();
+  p += header_size();
+  MoveFromBinaryFormat(pid, p);
+  MoveFromBinaryFormat(tid, p);
+  MoveFromBinaryFormat(chain_type, p);
+  MoveFromBinaryFormat(time, p);
+  MoveFromBinaryFormat(ip_nr, p);
+  ips = reinterpret_cast<uint64_t*>(p);
+  p += ip_nr * sizeof(uint64_t);
+  sps = reinterpret_cast<uint64_t*>(p);
+  p += ip_nr * sizeof(uint64_t);
+  CHECK_EQ(p, end);
+}
+
+CallChainRecord::CallChainRecord(pid_t pid, pid_t tid, CallChainJoiner::ChainType type,
+                                 uint64_t time, const std::vector<uint64_t>& ips,
+                                 const std::vector<uint64_t>& sps) {
+  CHECK_EQ(ips.size(), sps.size());
+  SetTypeAndMisc(SIMPLE_PERF_RECORD_CALLCHAIN, 0);
+  this->pid = pid;
+  this->tid = tid;
+  this->chain_type = static_cast<int>(type);
+  this->time = time;
+  this->ip_nr = ips.size();
+  SetSize(header_size() + (4 + ips.size() * 2) * sizeof(uint64_t));
+  char* new_binary = new char[size()];
+  char* p = new_binary;
+  MoveToBinaryFormat(header, p);
+  MoveToBinaryFormat(this->pid, p);
+  MoveToBinaryFormat(this->tid, p);
+  MoveToBinaryFormat(this->chain_type, p);
+  MoveToBinaryFormat(this->time, p);
+  MoveToBinaryFormat(this->ip_nr, p);
+  this->ips = reinterpret_cast<uint64_t*>(p);
+  MoveToBinaryFormat(ips.data(), ips.size(), p);
+  this->sps = reinterpret_cast<uint64_t*>(p);
+  MoveToBinaryFormat(sps.data(), sps.size(), p);
+  UpdateBinary(new_binary);
+}
+
+void CallChainRecord::DumpData(size_t indent) const {
+  const char* type_name = "";
+  switch (chain_type) {
+    case CallChainJoiner::ORIGINAL_OFFLINE: type_name = "ORIGINAL_OFFLINE"; break;
+    case CallChainJoiner::ORIGINAL_REMOTE: type_name = "ORIGINAL_REMOTE"; break;
+    case CallChainJoiner::JOINED_OFFLINE: type_name = "JOINED_OFFLINE"; break;
+    case CallChainJoiner::JOINED_REMOTE: type_name = "JOINED_REMOTE"; break;
+  }
+  PrintIndented(indent, "pid %u\n", pid);
+  PrintIndented(indent, "tid %u\n", tid);
+  PrintIndented(indent, "chain_type %s\n", type_name);
+  PrintIndented(indent, "time %" PRIu64 "\n", time);
+  PrintIndented(indent, "ip_nr %" PRIu64 "\n", ip_nr);
+  for (size_t i = 0; i < ip_nr; ++i) {
+    PrintIndented(indent + 1, "ip 0x%" PRIx64 ", sp 0x%" PRIx64 "\n", ips[i], sps[i]);
+  }
+}
+
 UnknownRecord::UnknownRecord(char* p) : Record(p) {
   p += header_size();
   data = p;
@@ -951,6 +1104,8 @@ std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr, uint32
       return std::unique_ptr<Record>(new SymbolRecord(p));
     case SIMPLE_PERF_RECORD_EVENT_ID:
       return std::unique_ptr<Record>(new EventIdRecord(p));
+    case SIMPLE_PERF_RECORD_CALLCHAIN:
+      return std::unique_ptr<Record>(new CallChainRecord(p));
     default:
       return std::unique_ptr<Record>(new UnknownRecord(p));
   }
