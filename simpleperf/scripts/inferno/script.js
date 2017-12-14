@@ -258,7 +258,7 @@ function select(e) {
 
     // Parse info
     // '/system/lib64/libhwbinder.so (4 events: 0.28%)'
-    let regexp = /(.*) \(.* (\d*\.\d*%)\)/g;
+    let regexp = /(.*) \((.*)\)/g;
     let match = regexp.exec(info);
     if (match.length > 2) {
         let percentage = match[2];
