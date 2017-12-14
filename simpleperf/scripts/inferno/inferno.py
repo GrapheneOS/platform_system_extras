@@ -160,12 +160,13 @@ def output_report(process, args):
                       ) if args.capture_duration else ""
     f.write("""<div style='display:inline-block;'>
                   <font size='8'>
-                  Inferno Flamegraph Report</font><br/><br/>
+                  Inferno Flamegraph Report%s</font><br/><br/>
                   %s
                   Date&nbsp;&nbsp;&nbsp;&nbsp;: %s<br/>
                   Threads : %d <br/>
                   Samples : %d</br>
                   %s""" % (
+        (': ' + args.title) if args.title else '',
         process_entry,
         datetime.datetime.now().strftime("%Y-%m-%d (%A) %H:%M:%S"),
         len(process.threads),
@@ -247,6 +248,7 @@ def main():
                         e.g: "10000 cpu-cyles". A few examples of event_name: cpu-cycles,
                         cache-references, cache-misses, branch-instructions, branch-misses""",
                         default="")
+    parser.add_argument('--title', help='Show a title in the report.')
     parser.add_argument('--disable_adb_root', action='store_true', help="""Force adb to run in non
                         root mode.""")
     parser.add_argument('-o', '--report_path', default='report.html', help="Set report path.")
