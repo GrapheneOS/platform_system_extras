@@ -50,9 +50,7 @@ struct UnwindingResult {
 
 class OfflineUnwinder {
  public:
-  OfflineUnwinder(bool strict_arch_check, bool collect_stat)
-      : strict_arch_check_(strict_arch_check), collect_stat_(collect_stat) {
-  }
+  OfflineUnwinder(bool strict_arch_check, bool collect_stat);
 
   bool UnwindCallChain(int abi, const ThreadEntry& thread, const RegSet& regs,
                        const char* stack, size_t stack_size,
