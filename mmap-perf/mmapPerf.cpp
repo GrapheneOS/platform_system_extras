@@ -153,4 +153,4 @@ static void benchLinearWrite(benchmark::State& state) {
 }
 BENCHMARK(benchLinearWrite);
 
-BENCHMARK_MAIN()
+BENCHMARK_MAIN();
