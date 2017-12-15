@@ -698,3 +698,16 @@ std::unique_ptr<TemporaryFile> CreateTempFileUsedInRecording() {
   CHECK(!temp_dir_used_in_recording.empty());
   return std::unique_ptr<TemporaryFile>(new TemporaryFile(temp_dir_used_in_recording));
 }
+
+bool SignalIsIgnored(int signo) {
+  struct sigaction act;
+  if (sigaction(signo, nullptr, &act) != 0) {
+    PLOG(FATAL) << "failed to query signal handler for signal " << signo;
+  }
+
+  if ((act.sa_flags & SA_SIGINFO)) {
+    return false;
+  }
+
+  return act.sa_handler == SIG_IGN;
+}
