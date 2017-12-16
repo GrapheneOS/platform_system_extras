@@ -24,6 +24,7 @@
 #include <android-base/stringprintf.h>
 
 #include "dso.h"
+#include "OfflineUnwinder.h"
 #include "perf_regs.h"
 #include "tracing.h"
 #include "utils.h"
@@ -49,6 +50,7 @@ static std::string RecordTypeToString(int record_type) {
       {SIMPLE_PERF_RECORD_SYMBOL, "symbol"},
       {SIMPLE_PERF_RECORD_EVENT_ID, "event_id"},
       {SIMPLE_PERF_RECORD_CALLCHAIN, "callchain"},
+      {SIMPLE_PERF_RECORD_UNWINDING_RESULT, "unwinding_result"},
   };
 
   auto it = record_type_names.find(record_type);
@@ -1071,6 +1073,56 @@ void CallChainRecord::DumpData(size_t indent) const {
   }
 }
 
+UnwindingResultRecord::UnwindingResultRecord(char* p) : Record(p) {
+  const char* end = p + size();
+  p += header_size();
+  MoveFromBinaryFormat(time, p);
+  MoveFromBinaryFormat(used_time, p);
+  MoveFromBinaryFormat(stop_reason, p);
+  MoveFromBinaryFormat(stop_info, p);
+  CHECK_EQ(p, end);
+}
+
+UnwindingResultRecord::UnwindingResultRecord(uint64_t time, uint64_t used_time,
+                                             int stop_reason, uint64_t stop_info) {
+  SetTypeAndMisc(SIMPLE_PERF_RECORD_UNWINDING_RESULT, 0);
+  SetSize(header_size() + 4 * sizeof(uint64_t));
+  this->time = time;
+  this->used_time = used_time;
+  this->stop_reason = stop_reason;
+  this->stop_info = stop_info;
+  char* new_binary = new char[size()];
+  char* p = new_binary;
+  MoveToBinaryFormat(header, p);
+  MoveToBinaryFormat(this->time, p);
+  MoveToBinaryFormat(this->used_time, p);
+  MoveToBinaryFormat(this->stop_reason, p);
+  MoveToBinaryFormat(this->stop_info, p);
+  UpdateBinary(new_binary);
+}
+
+void UnwindingResultRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "time %" PRIu64 "\n", time);
+  PrintIndented(indent, "used_time %" PRIu64 "\n", used_time);
+  static std::unordered_map<int, std::string> map = {
+      {UnwindingResult::UNKNOWN_REASON, "UNKNOWN_REASON"},
+      {UnwindingResult::EXCEED_MAX_FRAMES_LIMIT, "EXCEED_MAX_FRAME_LIMIT"},
+      {UnwindingResult::ACCESS_REG_FAILED, "ACCESS_REG_FAILED"},
+      {UnwindingResult::ACCESS_STACK_FAILED, "ACCESS_STACK_FAILED"},
+      {UnwindingResult::ACCESS_MEM_FAILED, "ACCESS_MEM_FAILED"},
+      {UnwindingResult::FIND_PROC_INFO_FAILED, "FIND_PROC_INFO_FAILED"},
+      {UnwindingResult::EXECUTE_DWARF_INSTRUCTION_FAILED, "EXECUTE_DWARF_INSTRUCTION_FAILED"},
+      {UnwindingResult::DIFFERENT_ARCH, "DIFFERENT_ARCH"},
+  };
+  PrintIndented(indent, "stop_reason %s\n", map[stop_reason].c_str());
+  if (stop_reason == UnwindingResult::ACCESS_REG_FAILED) {
+    PrintIndented(indent, "regno %" PRIu64 "\n", stop_info);
+  } else if (stop_reason == UnwindingResult::ACCESS_STACK_FAILED ||
+             stop_reason == UnwindingResult::ACCESS_MEM_FAILED) {
+    PrintIndented(indent, "addr 0x%" PRIx64 "\n", stop_info);
+  }
+}
+
 UnknownRecord::UnknownRecord(char* p) : Record(p) {
   p += header_size();
   data = p;
@@ -1106,6 +1158,8 @@ std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr, uint32
       return std::unique_ptr<Record>(new EventIdRecord(p));
     case SIMPLE_PERF_RECORD_CALLCHAIN:
       return std::unique_ptr<Record>(new CallChainRecord(p));
+    case SIMPLE_PERF_RECORD_UNWINDING_RESULT:
+      return std::unique_ptr<Record>(new UnwindingResultRecord(p));
     default:
       return std::unique_ptr<Record>(new UnknownRecord(p));
   }

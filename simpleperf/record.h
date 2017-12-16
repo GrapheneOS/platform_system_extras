@@ -29,6 +29,7 @@
 
 #include "build_id.h"
 #include "CallChainJoiner.h"
+#include "OfflineUnwinder.h"
 #include "perf_event.h"
 
 enum user_record_type {
@@ -48,6 +49,7 @@ enum user_record_type {
   SIMPLE_PERF_RECORD_SPLIT_END,
   SIMPLE_PERF_RECORD_EVENT_ID,
   SIMPLE_PERF_RECORD_CALLCHAIN,
+  SIMPLE_PERF_RECORD_UNWINDING_RESULT,
 };
 
 // perf_event_header uses u16 to store record size. However, that is not
@@ -512,6 +514,25 @@ struct CallChainRecord : public Record {
 
   CallChainRecord(pid_t pid, pid_t tid, simpleperf::CallChainJoiner::ChainType type, uint64_t time,
                   const std::vector<uint64_t>& ips, const std::vector<uint64_t>& sps);
+
+  uint64_t Timestamp() const override {
+    return time;
+  }
+
+ protected:
+  void DumpData(size_t indent) const override;
+};
+
+struct UnwindingResultRecord : public Record {
+  uint64_t time;
+  uint64_t used_time;
+  uint64_t stop_reason;
+  uint64_t stop_info;
+
+  explicit UnwindingResultRecord(char* p);
+
+  UnwindingResultRecord(uint64_t time, uint64_t used_time, int stop_reason,
+                        uint64_t stop_info);
 
   uint64_t Timestamp() const override {
     return time;

@@ -14,14 +14,17 @@
  * limitations under the License.
  */
 
-#include "dwarf_unwind.h"
+#include "OfflineUnwinder.h"
 
 #include <ucontext.h>
 
-#include <backtrace/Backtrace.h>
 #include <android-base/logging.h>
+#include <backtrace/Backtrace.h>
 
+#include "environment.h"
 #include "thread_tree.h"
+
+namespace simpleperf {
 
 #define SetUContextReg(dst, perf_regno)          \
   do {                                           \
@@ -94,14 +97,18 @@ static ucontext_t BuildUContextFromRegs(const RegSet& regs __attribute__((unused
   return ucontext;
 }
 
-bool UnwindCallChain(int abi, const ThreadEntry& thread, const RegSet& regs, const char* stack,
-                     size_t stack_size, bool strict_arch_check,
-                     std::vector<uint64_t>* ips, std::vector<uint64_t>* sps) {
+bool OfflineUnwinder::UnwindCallChain(int abi, const ThreadEntry& thread, const RegSet& regs,
+                                      const char* stack, size_t stack_size,
+                                      std::vector<uint64_t>* ips, std::vector<uint64_t>* sps) {
+  uint64_t start_time;
+  if (collect_stat_) {
+    start_time = GetSystemClock();
+  }
   std::vector<uint64_t> result;
   ArchType arch = (abi != PERF_SAMPLE_REGS_ABI_32) ?
                       ScopedCurrentArch::GetCurrentArch() :
                       ScopedCurrentArch::GetCurrentArch32();
-  if (!IsArchTheSame(arch, GetBuildArch(), strict_arch_check)) {
+  if (!IsArchTheSame(arch, GetBuildArch(), strict_arch_check_)) {
     LOG(ERROR) << "simpleperf is built in arch " << GetArchString(GetBuildArch())
                 << ", and can't do stack unwinding for arch " << GetArchString(arch);
     return false;
@@ -119,6 +126,10 @@ bool UnwindCallChain(int abi, const ThreadEntry& thread, const RegSet& regs, con
     }
     ips->push_back(ip_reg_value);
     sps->push_back(sp_reg_value);
+    if (collect_stat_) {
+      unwinding_result_.used_time = GetSystemClock() - start_time;
+      unwinding_result_.stop_reason = UnwindingResult::DIFFERENT_ARCH;
+    }
     return true;
   }
   uint64_t stack_addr = sp_reg_value;
@@ -153,5 +164,43 @@ bool UnwindCallChain(int abi, const ThreadEntry& thread, const RegSet& regs, con
       sps->push_back(it->sp);
     }
   }
-  return !ips->empty();
+  if (ips->empty()) {
+    return false;
+  }
+  if (collect_stat_) {
+    unwinding_result_.used_time = GetSystemClock() - start_time;
+    BacktraceUnwindError error = backtrace->GetError();
+    switch (error.error_code) {
+      case BACKTRACE_UNWIND_ERROR_EXCEED_MAX_FRAMES_LIMIT:
+        unwinding_result_.stop_reason = UnwindingResult::EXCEED_MAX_FRAMES_LIMIT;
+        break;
+      case BACKTRACE_UNWIND_ERROR_ACCESS_REG_FAILED:
+        unwinding_result_.stop_reason = UnwindingResult::ACCESS_REG_FAILED;
+        unwinding_result_.stop_info.regno = error.error_info.regno;
+        break;
+      case BACKTRACE_UNWIND_ERROR_ACCESS_MEM_FAILED:
+        // Because we don't have precise stack range here, just guess an addr is in stack
+        // if sp - 128K <= addr <= sp.
+        if (error.error_info.addr <= stack_addr &&
+            error.error_info.addr >= stack_addr - 128 * 1024) {
+          unwinding_result_.stop_reason = UnwindingResult::ACCESS_STACK_FAILED;
+        } else {
+          unwinding_result_.stop_reason = UnwindingResult::ACCESS_MEM_FAILED;
+        }
+        unwinding_result_.stop_info.addr = error.error_info.addr;
+        break;
+      case BACKTRACE_UNWIND_ERROR_FIND_PROC_INFO_FAILED:
+        unwinding_result_.stop_reason = UnwindingResult::FIND_PROC_INFO_FAILED;
+        break;
+      case BACKTRACE_UNWIND_ERROR_EXECUTE_DWARF_INSTRUCTION_FAILED:
+        unwinding_result_.stop_reason = UnwindingResult::EXECUTE_DWARF_INSTRUCTION_FAILED;
+        break;
+      default:
+        unwinding_result_.stop_reason = UnwindingResult::UNKNOWN_REASON;
+        break;
+    }
+  }
+  return true;
 }
+
+}  // namespace simpleperf
