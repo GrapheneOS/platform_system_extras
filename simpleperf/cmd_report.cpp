@@ -32,7 +32,6 @@
 #include <android-base/strings.h>
 
 #include "command.h"
-#include "dwarf_unwind.h"
 #include "event_attr.h"
 #include "event_type.h"
 #include "perf_regs.h"
