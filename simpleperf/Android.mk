@@ -112,12 +112,12 @@ libsimpleperf_src_files_linux := \
   cmd_list.cpp \
   cmd_record.cpp \
   cmd_stat.cpp \
-  dwarf_unwind.cpp \
   environment.cpp \
   event_fd.cpp \
   event_selection_set.cpp \
   InplaceSamplerClient.cpp \
   IOEventLoop.cpp \
+  OfflineUnwinder.cpp \
   perf_clock.cpp \
   record_file_writer.cpp \
   UnixSocket.cpp \
