@@ -106,4 +106,6 @@ void AllowMoreOpenedFiles();
 void SetTempDirectoryUsedInRecording(const std::string& tmp_dir);
 std::unique_ptr<TemporaryFile> CreateTempFileUsedInRecording();
 
+bool SignalIsIgnored(int signo);
+
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_
