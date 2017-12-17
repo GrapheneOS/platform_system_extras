@@ -64,7 +64,7 @@ class OfflineUnwinder {
   }
 
  private:
-  bool strict_arch_check_;
+  bool strict_arch_check_ __attribute__((unused));
   bool collect_stat_;
   UnwindingResult unwinding_result_;
 };
