@@ -612,7 +612,7 @@ bool RunInAppContext(const std::string& app_package_name, const std::string& cmd
   std::string output_basename = output_filepath.empty() ? "" :
                                     android::base::Basename(output_filepath);
   std::vector<std::string> new_args =
-      {"run-as", app_package_name, "./simpleperf", cmd, "--in-app"};
+      {"run-as", app_package_name, "./simpleperf", cmd, "--in-app", "--log", GetLogSeverityName()};
   if (need_tracepoint_events) {
     new_args.push_back("--tracepoint-events");
     new_args.push_back(tracepoint_file);
