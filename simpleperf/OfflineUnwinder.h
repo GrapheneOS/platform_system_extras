@@ -36,6 +36,7 @@ struct UnwindingResult {
     FIND_PROC_INFO_FAILED,
     EXECUTE_DWARF_INSTRUCTION_FAILED,
     DIFFERENT_ARCH,
+    MAP_MISSING,
   } stop_reason;
   union {
     // for ACCESS_REG_FAILED
