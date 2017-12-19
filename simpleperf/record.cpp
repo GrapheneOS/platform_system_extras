@@ -1113,6 +1113,7 @@ void UnwindingResultRecord::DumpData(size_t indent) const {
       {UnwindingResult::FIND_PROC_INFO_FAILED, "FIND_PROC_INFO_FAILED"},
       {UnwindingResult::EXECUTE_DWARF_INSTRUCTION_FAILED, "EXECUTE_DWARF_INSTRUCTION_FAILED"},
       {UnwindingResult::DIFFERENT_ARCH, "DIFFERENT_ARCH"},
+      {UnwindingResult::MAP_MISSING, "MAP_MISSING"},
   };
   PrintIndented(indent, "stop_reason %s\n", map[stop_reason].c_str());
   if (stop_reason == UnwindingResult::ACCESS_REG_FAILED) {
