@@ -157,6 +157,7 @@ bool MkdirWithParents(const std::string& path);
 bool XzDecompress(const std::string& compressed_data, std::string* decompressed_data);
 
 bool GetLogSeverity(const std::string& name, android::base::LogSeverity* severity);
+std::string GetLogSeverityName();
 
 bool IsRoot();
 
