@@ -431,7 +431,10 @@ class TestExamplePureJava(TestExampleBase):
         remove(test_dir)
         os.mkdir(test_dir)
         os.chdir(test_dir)
-        self.run_cmd([inferno_script])
+        self.run_cmd(['python', os.path.join(saved_dir, 'app_profiler.py'),
+                      '--app', self.package_name, '-r', '-e task-clock:u -g --duration 3'])
+        self.check_exist(file="perf.data")
+        self.run_cmd([inferno_script, "-sc"])
         os.chdir(saved_dir)
         remove(test_dir)
 
