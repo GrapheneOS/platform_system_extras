@@ -195,7 +195,7 @@ const char *profile_result_to_string(PROFILE_RESULT result)
 //
 // Check to see whether we should perform a profile collection
 //
-static CKPROFILE_RESULT check_profiling_enabled(ConfigReader &config)
+static CKPROFILE_RESULT check_profiling_enabled(const Config& config)
 {
   //
   // Profile collection in the emulator doesn't make sense
@@ -208,22 +208,21 @@ static CKPROFILE_RESULT check_profiling_enabled(ConfigReader &config)
   //
   // Check for existence of semaphore file in config directory
   //
-  if (access(config.getStringValue("config_directory").c_str(), F_OK) == -1) {
+  if (access(config.config_directory.c_str(), F_OK) == -1) {
     W_ALOGW("unable to open config directory %s: (%s)",
-            config.getStringValue("config_directory").c_str(), strerror(errno));
+            config.config_directory.c_str(), strerror(errno));
     return DONT_PROFILE_MISSING_CONFIG_DIR;
   }
 
-
   // Check for existence of semaphore file
-  std::string semaphore_filepath = config.getStringValue("config_directory")
+  std::string semaphore_filepath = config.config_directory
                                    + "/" + SEMAPHORE_FILENAME;
   if (access(semaphore_filepath.c_str(), F_OK) == -1) {
     return DONT_PROFILE_MISSING_SEMAPHORE;
   }
 
   // Check for existence of simpleperf/perf executable
-  std::string pp = config.getStringValue("perf_path");
+  std::string pp = config.perf_path;
   if (access(pp.c_str(), R_OK|X_OK) == -1) {
     W_ALOGW("unable to access/execute %s", pp.c_str());
     return DONT_PROFILE_MISSING_PERF_EXECUTABLE;
@@ -423,13 +422,13 @@ unsigned collect_cpu_utilization()
 }
 
 static void annotate_encoded_perf_profile(wireless_android_play_playlog::AndroidPerfProfile *profile,
-                                          const ConfigReader &config,
+                                          const Config& config,
                                           unsigned cpu_utilization)
 {
   //
   // Incorporate cpu utilization (collected prior to perf run)
   //
-  if (config.getUnsignedValue("collect_cpu_utilization")) {
+  if (config.collect_cpu_utilization) {
     profile->set_cpu_utilization(cpu_utilization);
   }
 
@@ -450,13 +449,13 @@ static void annotate_encoded_perf_profile(wireless_android_play_playlog::Android
   // Device still booting? Camera in use? Plugged into charger?
   //
   bool is_booting = get_booting();
-  if (config.getUnsignedValue("collect_booting")) {
+  if (config.collect_booting) {
     profile->set_booting(is_booting);
   }
-  if (config.getUnsignedValue("collect_camera_active")) {
+  if (config.collect_camera_active) {
     profile->set_camera_active(is_booting ? false : get_camera_active());
   }
-  if (config.getUnsignedValue("collect_charging_state")) {
+  if (config.collect_charging_state) {
     profile->set_on_charger(get_charging());
   }
 
@@ -480,7 +479,7 @@ inline char* string_as_array(std::string* str) {
 
 PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
                                const char *encoded_file_path,
-                               const ConfigReader &config,
+                               const Config& config,
                                unsigned cpu_utilization)
 {
   //
@@ -630,9 +629,8 @@ static PROFILE_RESULT invoke_perf(const std::string &perf_path,
 //
 // Remove all files in the destination directory during initialization
 //
-static void cleanup_destination_dir(const ConfigReader &config)
+static void cleanup_destination_dir(const std::string& dest_dir)
 {
-  std::string dest_dir = config.getStringValue("destination_directory");
   DIR* dir = opendir(dest_dir.c_str());
   if (dir != NULL) {
     struct dirent* e;
@@ -657,11 +655,11 @@ static void cleanup_destination_dir(const ConfigReader &config)
 //   numbers that have been processed and append the current seq number
 // Returns true if the current_seq should increment.
 //
-static bool post_process(const ConfigReader &config, int current_seq)
+static bool post_process(const Config& config, int current_seq)
 {
-  std::string dest_dir = config.getStringValue("destination_directory");
+  const std::string& dest_dir = config.destination_directory;
   std::string processed_file_path =
-      config.getStringValue("config_directory") + "/" + PROCESSED_FILENAME;
+      config.config_directory + "/" + PROCESSED_FILENAME;
   std::string produced_file_path = dest_dir + "/" + PRODUCED_FILENAME;
 
 
@@ -690,7 +688,7 @@ static bool post_process(const ConfigReader &config, int current_seq)
     fclose(fp);
   }
 
-  unsigned maxLive = config.getUnsignedValue("max_unprocessed_profiles");
+  uint32_t maxLive = config.max_unprocessed_profiles;
   if (produced.size() >= maxLive) {
     return false;
   }
@@ -716,20 +714,20 @@ static bool post_process(const ConfigReader &config, int current_seq)
 // - kick off 'perf record'
 // - read perf.data, convert to protocol buf
 //
-static PROFILE_RESULT collect_profile(const ConfigReader &config, int seq)
+static PROFILE_RESULT collect_profile(const Config& config, int seq)
 {
   //
   // Collect cpu utilization if enabled
   //
   unsigned cpu_utilization = 0;
-  if (config.getUnsignedValue("collect_cpu_utilization")) {
+  if (config.collect_cpu_utilization) {
     cpu_utilization = collect_cpu_utilization();
   }
 
   //
   // Form perf.data file name, perf error output file name
   //
-  std::string destdir = config.getStringValue("destination_directory");
+  const std::string& destdir = config.destination_directory;
   std::string data_file_path(destdir);
   data_file_path += "/";
   data_file_path += PERF_OUTPUT;
@@ -759,9 +757,9 @@ static PROFILE_RESULT collect_profile(const ConfigReader &config, int seq)
   // destructor (invoked when this routine terminates) will then
   // restart the service again when needed.
   //
-  unsigned duration = config.getUnsignedValue("sample_duration");
-  unsigned hardwire = config.getUnsignedValue("hardwire_cpus");
-  unsigned max_duration = config.getUnsignedValue("hardwire_cpus_max_duration");
+  uint32_t duration = config.sample_duration_in_s;
+  bool hardwire = config.hardwire_cpus;
+  uint32_t max_duration = config.hardwire_cpus_max_duration_in_s;
   bool take_action = (hardwire && duration <= max_duration);
   HardwireCpuHelper helper(take_action);
 
@@ -769,9 +767,9 @@ static PROFILE_RESULT collect_profile(const ConfigReader &config, int seq)
   // Invoke perf
   //
   const char *stack_profile_opt =
-      (config.getUnsignedValue("stack_profile") != 0 ? "-g" : nullptr);
-  std::string perf_path = config.getStringValue("perf_path");
-  unsigned period = config.getUnsignedValue("sampling_period");
+      (config.stack_profile ? "-g" : nullptr);
+  const std::string& perf_path = config.perf_path;
+  uint32_t period = config.sampling_period;
 
   PROFILE_RESULT ret = invoke_perf(perf_path.c_str(),
                                   period,
@@ -809,10 +807,9 @@ static void determine_before_after(unsigned &sleep_before_collect,
 //
 // Set random number generator seed
 //
-static void set_seed(ConfigReader &config)
+static void set_seed(uint32_t use_fixed_seed)
 {
   unsigned seed = 0;
-  unsigned use_fixed_seed = config.getUnsignedValue("use_fixed_seed");
   if (use_fixed_seed) {
     //
     // Use fixed user-specified seed
@@ -852,8 +849,8 @@ static void init(ConfigReader &config)
     W_ALOGE("unable to write to %s", oomscore_path.str().c_str());
   }
 
-  set_seed(config);
-  cleanup_destination_dir(config);
+  set_seed(config.getUnsignedValue("use_fixed_seed"));
+  cleanup_destination_dir(config.getStringValue("destination_directory"));
 
   running_in_emulator = android::base::GetBoolProperty("ro.kernel.qemu", false);
   is_debug_build = android::base::GetBoolProperty("ro.debuggable", false);
@@ -870,59 +867,60 @@ static void init(ConfigReader &config)
 //       perform a profile collection
 //    }
 //
-int perfprofd_main(int argc, char** argv)
+int perfprofd_main(int argc, char** argv, Config* config)
 {
-  ConfigReader config;
+  ConfigReader config_reader;
 
   W_ALOGI("starting Android Wide Profiling daemon");
 
   parse_args(argc, argv);
-  init(config);
+  init(config_reader);
+  config_reader.FillConfig(config);
 
   if (!perf_file_to_convert.empty()) {
     std::string encoded_path = perf_file_to_convert + ".encoded";
-    encode_to_proto(perf_file_to_convert, encoded_path.c_str(), config, 0);
+    encode_to_proto(perf_file_to_convert, encoded_path.c_str(), *config, 0);
     return 0;
   }
 
   // Early exit if we're not supposed to run on this build flavor
-  if (is_debug_build != 1 &&
-      config.getUnsignedValue("only_debug_build") == 1) {
+  if (is_debug_build != 1 && config->only_debug_build) {
     W_ALOGI("early exit due to inappropriate build type");
     return 0;
   }
 
   unsigned iterations = 0;
   int seq = 0;
-  while(config.getUnsignedValue("main_loop_iterations") == 0 ||
-        iterations < config.getUnsignedValue("main_loop_iterations")) {
+  while(config->main_loop_iterations == 0 ||
+        iterations < config->main_loop_iterations) {
 
     // Figure out where in the collection interval we're going to actually
     // run perf
     unsigned sleep_before_collect = 0;
     unsigned sleep_after_collect = 0;
     determine_before_after(sleep_before_collect, sleep_after_collect,
-                           config.getUnsignedValue("collection_interval"));
+                           config->collection_interval_in_s);
     perfprofd_sleep(sleep_before_collect);
 
     // Reread config file -- the uploader may have rewritten it as a result
     // of a gservices change
-    config.readFile();
+    config_reader.readFile();
+    config_reader.FillConfig(config);
 
     // Check for profiling enabled...
-    CKPROFILE_RESULT ckresult = check_profiling_enabled(config);
+    CKPROFILE_RESULT ckresult = check_profiling_enabled(*config);
     if (ckresult != DO_COLLECT_PROFILE) {
       W_ALOGI("profile collection skipped (%s)",
               ckprofile_result_to_string(ckresult));
     } else {
       // Kick off the profiling run...
       W_ALOGI("initiating profile collection");
-      PROFILE_RESULT result = collect_profile(config, seq);
+      PROFILE_RESULT result = collect_profile(*config, seq);
       if (result != OK_PROFILE_COLLECTION) {
         W_ALOGI("profile collection failed (%s)",
                 profile_result_to_string(result));
       } else {
-        if (post_process(config, seq)) {
+        if (post_process(*config, seq)) {
           seq++;
         }
         W_ALOGI("profile collection complete");

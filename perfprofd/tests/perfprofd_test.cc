@@ -27,8 +27,9 @@
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 
-#include "perfprofdcore.h"
+#include "config.h"
 #include "configreader.h"
+#include "perfprofdcore.h"
 #include "perfprofdutils.h"
 #include "perfprofdmockutils.h"
 
@@ -229,7 +230,8 @@ class PerfProfdRunner {
     writeConfigFile(config_path_, config_text_);
 
     // execute daemon main
-    return perfprofd_main(3, (char **) argv);
+    Config config;
+    return perfprofd_main(3, (char **) argv, &config);
   }
 
  private:
@@ -549,10 +551,12 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
   input_perf_data += "/canned.perf.data";
 
   // Set up config to avoid these annotations (they are tested elsewhere)
-  ConfigReader config;
-  config.overrideUnsignedEntry("collect_cpu_utilization", 0);
-  config.overrideUnsignedEntry("collect_charging_state", 0);
-  config.overrideUnsignedEntry("collect_camera_active", 0);
+  ConfigReader config_reader;
+  config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
+  config_reader.overrideUnsignedEntry("collect_charging_state", 0);
+  config_reader.overrideUnsignedEntry("collect_camera_active", 0);
+  Config config;
+  config_reader.FillConfig(&config);
 
   // Kick off encoder and check return code
   PROFILE_RESULT result =
@@ -621,10 +625,12 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
   input_perf_data += "/callchain.canned.perf.data";
 
   // Set up config to avoid these annotations (they are tested elsewhere)
-  ConfigReader config;
-  config.overrideUnsignedEntry("collect_cpu_utilization", 0);
-  config.overrideUnsignedEntry("collect_charging_state", 0);
-  config.overrideUnsignedEntry("collect_camera_active", 0);
+  ConfigReader config_reader;
+  config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
+  config_reader.overrideUnsignedEntry("collect_charging_state", 0);
+  config_reader.overrideUnsignedEntry("collect_camera_active", 0);
+  Config config;
+  config_reader.FillConfig(&config);
 
   // Kick off encoder and check return code
   PROFILE_RESULT result =
