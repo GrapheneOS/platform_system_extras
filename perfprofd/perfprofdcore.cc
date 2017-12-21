@@ -900,7 +900,7 @@ int perfprofd_main(int argc, char** argv, Config* config)
     unsigned sleep_after_collect = 0;
     determine_before_after(sleep_before_collect, sleep_after_collect,
                            config->collection_interval_in_s);
-    perfprofd_sleep(sleep_before_collect);
+    config->Sleep(sleep_before_collect);
 
     // Reread config file -- the uploader may have rewritten it as a result
     // of a gservices change
@@ -926,7 +926,7 @@ int perfprofd_main(int argc, char** argv, Config* config)
         W_ALOGI("profile collection complete");
       }
     }
-    perfprofd_sleep(sleep_after_collect);
+    config->Sleep(sleep_after_collect);
     iterations += 1;
   }
 

@@ -222,6 +222,13 @@ class PerfProfdRunner {
     unlink(processed.c_str());
   }
 
+  struct LoggingConfig : public Config {
+    void Sleep(size_t seconds) override {
+      // Log sleep calls but don't sleep.
+      perfprofd_log_info("sleep %d seconds", seconds);
+    }
+  };
+
   int invoke()
   {
     static const char *argv[3] = { "perfprofd", "-c", "" };
@@ -230,7 +237,7 @@ class PerfProfdRunner {
     writeConfigFile(config_path_, config_text_);
 
     // execute daemon main
-    Config config;
+    LoggingConfig config;
     return perfprofd_main(3, (char **) argv, &config);
   }
 
@@ -555,7 +562,7 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
   config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
   config_reader.overrideUnsignedEntry("collect_charging_state", 0);
   config_reader.overrideUnsignedEntry("collect_camera_active", 0);
-  Config config;
+  PerfProfdRunner::LoggingConfig config;
   config_reader.FillConfig(&config);
 
   // Kick off encoder and check return code
@@ -629,7 +636,7 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
   config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
   config_reader.overrideUnsignedEntry("collect_charging_state", 0);
   config_reader.overrideUnsignedEntry("collect_camera_active", 0);
-  Config config;
+  PerfProfdRunner::LoggingConfig config;
   config_reader.FillConfig(&config);
 
   // Kick off encoder and check return code

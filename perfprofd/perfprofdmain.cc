@@ -21,6 +21,11 @@ extern int perfprofd_main(int argc, char** argv, Config* config);
 
 int main(int argc, char** argv)
 {
-  Config config;
+  struct PosixSleepConfig : public Config {
+    void Sleep(size_t seconds) override {
+      sleep(seconds);
+    }
+  };
+  PosixSleepConfig config;
   return perfprofd_main(argc, argv, &config);
 }

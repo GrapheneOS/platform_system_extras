@@ -85,6 +85,9 @@ struct Config {
   bool collect_charging_state = true;
   bool collect_booting = true;
   bool collect_camera_active = false;
+
+  // Sleep for the given number of seconds.
+  virtual void Sleep(size_t seconds) = 0;
 };
 
 #endif  // SYSTEM_EXTRAS_PERFPROFD_CONFIG_H_
