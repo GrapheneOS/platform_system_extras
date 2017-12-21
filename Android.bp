@@ -6,8 +6,6 @@ cc_defaults {
         "-Wno-unused-parameter",
         "-Wno-unused-result",
         "-Wno-unused-variable",
-        // There are some -Wformat errors to fix, for the mac target
-        "-Wno-error=format",
     ],
     clang_cflags: [
         "-Wno-incompatible-pointer-types-discards-qualifiers",
