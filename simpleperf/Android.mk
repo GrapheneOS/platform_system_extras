@@ -514,7 +514,8 @@ SIMPLEPERF_SCRIPT_LIST := \
     $(call all-java-files-under,demo) \
     $(call all-named-files-under,*.kt,demo) \
     testdata/perf_with_symbols.data \
-    testdata/perf_with_trace_offcpu.data
+    testdata/perf_with_trace_offcpu.data \
+    testdata/perf_with_tracepoint_event.data
 
 SIMPLEPERF_SCRIPT_LIST := $(addprefix -f $(LOCAL_PATH)/,$(SIMPLEPERF_SCRIPT_LIST))
 
