@@ -35,6 +35,7 @@
 #include <cctype>
 
 #include <android-base/file.h>
+#include <android-base/macros.h>
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 
@@ -858,6 +859,48 @@ static void init(ConfigReader &config)
   signal(SIGHUP, sig_hup);
 }
 
+template <typename UpdateFn>
+static void ProfilingLoopImpl(Config* config, UpdateFn fn) {
+  unsigned iterations = 0;
+  int seq = 0;
+  while(config->main_loop_iterations == 0 ||
+      iterations < config->main_loop_iterations) {
+
+    // Figure out where in the collection interval we're going to actually
+    // run perf
+    unsigned sleep_before_collect = 0;
+    unsigned sleep_after_collect = 0;
+    determine_before_after(sleep_before_collect, sleep_after_collect,
+                           config->collection_interval_in_s);
+    config->Sleep(sleep_before_collect);
+
+    // Run any necessary updates.
+    fn(config);
+
+    // Check for profiling enabled...
+    CKPROFILE_RESULT ckresult = check_profiling_enabled(*config);
+    if (ckresult != DO_COLLECT_PROFILE) {
+      W_ALOGI("profile collection skipped (%s)",
+              ckprofile_result_to_string(ckresult));
+    } else {
+      // Kick off the profiling run...
+      W_ALOGI("initiating profile collection");
+      PROFILE_RESULT result = collect_profile(*config, seq);
+      if (result != OK_PROFILE_COLLECTION) {
+        W_ALOGI("profile collection failed (%s)",
+                profile_result_to_string(result));
+      } else {
+        if (post_process(*config, seq)) {
+          seq++;
+        }
+        W_ALOGI("profile collection complete");
+      }
+    }
+    config->Sleep(sleep_after_collect);
+    iterations += 1;
+  }
+}
+
 //
 // Main routine:
 // 1. parse cmd line args
@@ -889,46 +932,13 @@ int perfprofd_main(int argc, char** argv, Config* config)
     return 0;
   }
 
-  unsigned iterations = 0;
-  int seq = 0;
-  while(config->main_loop_iterations == 0 ||
-        iterations < config->main_loop_iterations) {
-
-    // Figure out where in the collection interval we're going to actually
-    // run perf
-    unsigned sleep_before_collect = 0;
-    unsigned sleep_after_collect = 0;
-    determine_before_after(sleep_before_collect, sleep_after_collect,
-                           config->collection_interval_in_s);
-    config->Sleep(sleep_before_collect);
-
+  auto reread_config = [&config_reader](Config* config_) {
     // Reread config file -- the uploader may have rewritten it as a result
     // of a gservices change
     config_reader.readFile();
-    config_reader.FillConfig(config);
-
-    // Check for profiling enabled...
-    CKPROFILE_RESULT ckresult = check_profiling_enabled(*config);
-    if (ckresult != DO_COLLECT_PROFILE) {
-      W_ALOGI("profile collection skipped (%s)",
-              ckprofile_result_to_string(ckresult));
-    } else {
-      // Kick off the profiling run...
-      W_ALOGI("initiating profile collection");
-      PROFILE_RESULT result = collect_profile(*config, seq);
-      if (result != OK_PROFILE_COLLECTION) {
-        W_ALOGI("profile collection failed (%s)",
-                profile_result_to_string(result));
-      } else {
-        if (post_process(*config, seq)) {
-          seq++;
-        }
-        W_ALOGI("profile collection complete");
-      }
-    }
-    config->Sleep(sleep_after_collect);
-    iterations += 1;
-  }
+    config_reader.FillConfig(config_);
+  };
+  ProfilingLoopImpl(config, reread_config);
 
   W_ALOGI("finishing Android Wide Profiling daemon");
   return 0;
