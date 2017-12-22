@@ -535,7 +535,8 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
 // Invoke "perf record". Return value is OK_PROFILE_COLLECTION for
 // success, or some other error code if something went wrong.
 //
-static PROFILE_RESULT invoke_perf(const std::string &perf_path,
+static PROFILE_RESULT invoke_perf(Config& config,
+                                  const std::string &perf_path,
                                   unsigned sampling_period,
                                   const char *stack_profile_opt,
                                   unsigned duration,
@@ -610,12 +611,27 @@ static PROFILE_RESULT invoke_perf(const std::string &perf_path,
 
   } else {
     // parent
+
+    // Try to sleep.
+    config.Sleep(duration);
+
+    // We may have been woken up to stop profiling.
+    if (config.ShouldStopProfiling()) {
+      // Send SIGHUP to simpleperf to make it stop.
+      kill(pid, SIGHUP);
+    }
+
+    // Wait for the child, so it's reaped correctly.
     int st = 0;
     pid_t reaped = TEMP_FAILURE_RETRY(waitpid(pid, &st, 0));
 
     if (reaped == -1) {
       W_ALOGW("waitpid failed: %s", strerror(errno));
     } else if (WIFSIGNALED(st)) {
+      if (WTERMSIG(st) == SIGHUP && config.ShouldStopProfiling()) {
+        // That was us...
+        return OK_PROFILE_COLLECTION;
+      }
       W_ALOGW("perf killed by signal %d", WTERMSIG(st));
     } else if (WEXITSTATUS(st) != 0) {
       W_ALOGW("perf bad exit status %d", WEXITSTATUS(st));
@@ -715,7 +731,7 @@ static bool post_process(const Config& config, int current_seq)
 // - kick off 'perf record'
 // - read perf.data, convert to protocol buf
 //
-static PROFILE_RESULT collect_profile(const Config& config, int seq)
+static PROFILE_RESULT collect_profile(Config& config, int seq)
 {
   //
   // Collect cpu utilization if enabled
@@ -772,12 +788,13 @@ static PROFILE_RESULT collect_profile(const Config& config, int seq)
   const std::string& perf_path = config.perf_path;
   uint32_t period = config.sampling_period;
 
-  PROFILE_RESULT ret = invoke_perf(perf_path.c_str(),
-                                  period,
-                                  stack_profile_opt,
-                                  duration,
-                                  data_file_path,
-                                  perf_stderr_path);
+  PROFILE_RESULT ret = invoke_perf(config,
+                                   perf_path.c_str(),
+                                   period,
+                                   stack_profile_opt,
+                                   duration,
+                                   data_file_path,
+                                   perf_stderr_path);
   if (ret != OK_PROFILE_COLLECTION) {
     return ret;
   }
