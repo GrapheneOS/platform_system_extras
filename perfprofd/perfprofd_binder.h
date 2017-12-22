@@ -48,6 +48,16 @@ namespace perfprofd {
 
 class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
                                public os::BnPerfProfd {
+ private:
+  struct BinderConfig : public Config {
+    bool is_profiling = false;
+
+    void Sleep(size_t seconds) override {
+      // TODO: Replace with condition_variable::wait ...
+      sleep(seconds);
+    }
+  };
+
  public:
   static status_t start() {
     IPCThreadState::self()->disableBackgroundScheduling(true);
@@ -73,8 +83,31 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
   binder::Status startProfiling(int32_t profilingDuration,
                                 int32_t profilingInterval,
                                 int32_t iterations) override {
-    UNIMPLEMENTED(ERROR) << "startProfiling: To be implemented";
-    return binder::Status::fromExceptionCode(1);
+    std::lock_guard<std::mutex> guard(lock_);
+
+    if (cur_config_.is_profiling) {
+      // TODO: Define error code?
+      return binder::Status::fromServiceSpecificError(1);
+    }
+    cur_config_.is_profiling = true;
+
+    ConfigReader().FillConfig(&cur_config_);  // Create a default config.
+
+    cur_config_.sample_duration_in_s = static_cast<uint32_t>(profilingDuration);
+    cur_config_.collection_interval_in_s = static_cast<uint32_t>(profilingInterval);
+    cur_config_.main_loop_iterations = static_cast<uint32_t>(iterations);
+
+    auto profile_runner = [](PerfProfdNativeService* service) {
+      ProfilingLoop(service->cur_config_);
+
+      // This thread is done.
+      std::lock_guard<std::mutex> unset_guard(service->lock_);
+      service->cur_config_.is_profiling = false;
+    };
+    std::thread profiling_thread(profile_runner, this);
+    profiling_thread.detach();  // Let it go.
+
+    return binder::Status::ok();
   }
 
   binder::Status stopProfiling() override {
@@ -155,6 +188,10 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
     }
     return BAD_VALUE;
   }
+
+  std::mutex lock_;
+
+  BinderConfig cur_config_;
 };
 
 }  // namespace perfprofd

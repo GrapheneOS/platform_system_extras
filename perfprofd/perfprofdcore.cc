@@ -831,16 +831,7 @@ static void set_seed(uint32_t use_fixed_seed)
   random_seed[2] = (random_seed[0] ^ random_seed[1]);
 }
 
-//
-// Initialization
-//
-static void init(ConfigReader &config)
-{
-  if (!config.readFile()) {
-    W_ALOGE("unable to open configuration file %s",
-            config.getConfigFilePath());
-  }
-
+static void CommonInit(uint32_t use_fixed_seed, const char* dest_dir) {
   // Children of init inherit an artificially low OOM score -- this is not
   // desirable for perfprofd (its OOM score should be on par with
   // other user processes).
@@ -850,55 +841,88 @@ static void init(ConfigReader &config)
     W_ALOGE("unable to write to %s", oomscore_path.str().c_str());
   }
 
-  set_seed(config.getUnsignedValue("use_fixed_seed"));
-  cleanup_destination_dir(config.getStringValue("destination_directory"));
+  set_seed(use_fixed_seed);
+  if (dest_dir != nullptr) {
+    cleanup_destination_dir(dest_dir);
+  }
 
   running_in_emulator = android::base::GetBoolProperty("ro.kernel.qemu", false);
   is_debug_build = android::base::GetBoolProperty("ro.debuggable", false);
+}
+
+//
+// Initialization
+//
+static void init(const Config& config)
+{
+  // TODO: Consider whether we want to clean things or just overwrite.
+  CommonInit(config.use_fixed_seed, nullptr);
+}
+
+static void init(ConfigReader &config)
+{
+  if (!config.readFile()) {
+    W_ALOGE("unable to open configuration file %s",
+            config.getConfigFilePath());
+  }
+
+  CommonInit(static_cast<uint32_t>(config.getUnsignedValue("use_fixed_seed")),
+             config.getStringValue("destination_directory").c_str());
 
   signal(SIGHUP, sig_hup);
 }
 
-template <typename UpdateFn>
-static void ProfilingLoopImpl(Config* config, UpdateFn fn) {
+template <typename ConfigFn, typename UpdateFn>
+static void ProfilingLoopImpl(ConfigFn config, UpdateFn update) {
   unsigned iterations = 0;
   int seq = 0;
-  while(config->main_loop_iterations == 0 ||
-      iterations < config->main_loop_iterations) {
+  while(config()->main_loop_iterations == 0 ||
+      iterations < config()->main_loop_iterations) {
 
     // Figure out where in the collection interval we're going to actually
     // run perf
     unsigned sleep_before_collect = 0;
     unsigned sleep_after_collect = 0;
     determine_before_after(sleep_before_collect, sleep_after_collect,
-                           config->collection_interval_in_s);
-    config->Sleep(sleep_before_collect);
+                           config()->collection_interval_in_s);
+    config()->Sleep(sleep_before_collect);
 
     // Run any necessary updates.
-    fn(config);
+    update();
 
     // Check for profiling enabled...
-    CKPROFILE_RESULT ckresult = check_profiling_enabled(*config);
+    CKPROFILE_RESULT ckresult = check_profiling_enabled(*config());
     if (ckresult != DO_COLLECT_PROFILE) {
       W_ALOGI("profile collection skipped (%s)",
               ckprofile_result_to_string(ckresult));
     } else {
       // Kick off the profiling run...
       W_ALOGI("initiating profile collection");
-      PROFILE_RESULT result = collect_profile(*config, seq);
+      PROFILE_RESULT result = collect_profile(*config(), seq);
       if (result != OK_PROFILE_COLLECTION) {
         W_ALOGI("profile collection failed (%s)",
                 profile_result_to_string(result));
       } else {
-        if (post_process(*config, seq)) {
+        if (post_process(*config(), seq)) {
           seq++;
         }
         W_ALOGI("profile collection complete");
       }
     }
-    config->Sleep(sleep_after_collect);
+    config()->Sleep(sleep_after_collect);
     iterations += 1;
   }
+}
+
+void ProfilingLoop(Config& config) {
+  init(config);
+
+  auto config_fn = [&config]() {
+    return &config;;
+  };
+  auto do_nothing = []() {
+  };
+  ProfilingLoopImpl(config_fn, do_nothing);
 }
 
 //
@@ -932,13 +956,16 @@ int perfprofd_main(int argc, char** argv, Config* config)
     return 0;
   }
 
-  auto reread_config = [&config_reader](Config* config_) {
+  auto config_fn = [config]() {
+    return config;
+  };
+  auto reread_config = [&config_reader, config]() {
     // Reread config file -- the uploader may have rewritten it as a result
     // of a gservices change
     config_reader.readFile();
-    config_reader.FillConfig(config_);
+    config_reader.FillConfig(config);
   };
-  ProfilingLoopImpl(config, reread_config);
+  ProfilingLoopImpl(config_fn, reread_config);
 
   W_ALOGI("finishing Android Wide Profiling daemon");
   return 0;
