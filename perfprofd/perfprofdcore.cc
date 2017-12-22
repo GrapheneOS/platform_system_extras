@@ -878,6 +878,9 @@ static void ProfilingLoopImpl(ConfigFn config, UpdateFn update) {
   int seq = 0;
   while(config()->main_loop_iterations == 0 ||
       iterations < config()->main_loop_iterations) {
+    if (config()->ShouldStopProfiling()) {
+      return;
+    }
 
     // Figure out where in the collection interval we're going to actually
     // run perf
@@ -886,6 +889,10 @@ static void ProfilingLoopImpl(ConfigFn config, UpdateFn update) {
     determine_before_after(sleep_before_collect, sleep_after_collect,
                            config()->collection_interval_in_s);
     config()->Sleep(sleep_before_collect);
+
+    if (config()->ShouldStopProfiling()) {
+      return;
+    }
 
     // Run any necessary updates.
     update();
@@ -909,6 +916,11 @@ static void ProfilingLoopImpl(ConfigFn config, UpdateFn update) {
         W_ALOGI("profile collection complete");
       }
     }
+
+    if (config()->ShouldStopProfiling()) {
+      return;
+    }
+
     config()->Sleep(sleep_after_collect);
     iterations += 1;
   }

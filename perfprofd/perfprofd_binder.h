@@ -18,6 +18,8 @@
 #ifndef SYSTEM_EXTRAS_PERFPROFD_PERFPROFD_BINDER_H_
 #define SYSTEM_EXTRAS_PERFPROFD_PERFPROFD_BINDER_H_
 
+#include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <fstream>
 #include <memory>
@@ -49,13 +51,34 @@ namespace perfprofd {
 class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
                                public os::BnPerfProfd {
  private:
-  struct BinderConfig : public Config {
+  class BinderConfig : public Config {
+   public:
     bool is_profiling = false;
 
     void Sleep(size_t seconds) override {
-      // TODO: Replace with condition_variable::wait ...
-      sleep(seconds);
+      std::unique_lock<std::mutex> guard(mutex_);
+      using namespace std::chrono_literals;
+      cv_.wait_for(guard, seconds * 1s, [&]() { return interrupted_; });
     }
+    bool ShouldStopProfiling() override {
+      std::unique_lock<std::mutex> guard(mutex_);
+      return interrupted_;
+    }
+
+    void ResetStopProfiling() {
+      std::unique_lock<std::mutex> guard(mutex_);
+      interrupted_ = false;
+    }
+    void StopProfiling() {
+      std::unique_lock<std::mutex> guard(mutex_);
+      interrupted_ = true;
+      cv_.notify_all();
+    }
+
+   private:
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    bool interrupted_ = false;
   };
 
  public:
@@ -90,6 +113,7 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
       return binder::Status::fromServiceSpecificError(1);
     }
     cur_config_.is_profiling = true;
+    cur_config_.ResetStopProfiling();
 
     ConfigReader().FillConfig(&cur_config_);  // Create a default config.
 
@@ -111,8 +135,15 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
   }
 
   binder::Status stopProfiling() override {
-    UNIMPLEMENTED(ERROR) << "stopProfiling: To be implemented";
-    return binder::Status::fromExceptionCode(1);
+    std::lock_guard<std::mutex> guard(lock_);
+    if (!cur_config_.is_profiling) {
+      // TODO: Define error code?
+      return binder::Status::fromServiceSpecificError(1);
+    }
+
+    cur_config_.StopProfiling();
+
+    return binder::Status::ok();
   }
 
   // Override onTransact so we can handle shellCommand.
