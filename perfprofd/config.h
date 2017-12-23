@@ -88,6 +88,11 @@ struct Config {
 
   // Sleep for the given number of seconds.
   virtual void Sleep(size_t seconds) = 0;
+
+  // Should the profiling be stopped immediately?
+  virtual bool ShouldStopProfiling() {
+    return false;
+  }
 };
 
 #endif  // SYSTEM_EXTRAS_PERFPROFD_CONFIG_H_

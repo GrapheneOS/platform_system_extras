@@ -72,6 +72,8 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
                                const Config& config,
                                unsigned cpu_utilization);
 
+void ProfilingLoop(Config& config);
+
 //
 // Exposed for unit testing
 //
