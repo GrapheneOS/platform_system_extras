@@ -21,6 +21,8 @@
 #include <string>
 #include <map>
 
+#include "config.h"
+
 //
 // This table describes the perfprofd config file syntax in terms of
 // key/value pairs.  Values come in two flavors: strings, or unsigned
@@ -35,6 +37,7 @@ class ConfigReader {
 
   // Ask for the current setting of a config item
   unsigned getUnsignedValue(const char *key) const;
+  bool getBoolValue(const char *key) const;
   std::string getStringValue(const char *key) const;
 
   // read the specified config file, applying any settings it contains
@@ -47,6 +50,8 @@ class ConfigReader {
 
   // override a config item (for unit testing purposes)
   void overrideUnsignedEntry(const char *key, unsigned new_value);
+
+  void FillConfig(Config* config);
 
  private:
   void addUnsignedEntry(const char *key,
