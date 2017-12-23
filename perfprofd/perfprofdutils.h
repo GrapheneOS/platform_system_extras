@@ -27,7 +27,6 @@ __BEGIN_DECLS
 extern void perfprofd_log_error(const char *fmt, ...);
 extern void perfprofd_log_warning(const char *fmt, ...);
 extern void perfprofd_log_info(const char *fmt, ...);
-extern void perfprofd_sleep(int seconds);
 
 #define W_ALOGE perfprofd_log_error
 #define W_ALOGW perfprofd_log_warning
