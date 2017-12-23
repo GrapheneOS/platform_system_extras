@@ -166,6 +166,14 @@ unsigned ConfigReader::getUnsignedValue(const char *key) const
   return it->second;
 }
 
+bool ConfigReader::getBoolValue(const char *key) const
+{
+  std::string ks(key);
+  auto it = u_entries.find(ks);
+  assert(it != u_entries.end());
+  return it->second != 0;
+}
+
 std::string ConfigReader::getStringValue(const char *key) const
 {
   std::string ks(key);
@@ -282,4 +290,38 @@ bool ConfigReader::readFile()
   }
 
   return true;
+}
+
+void ConfigReader::FillConfig(Config* config) {
+  config->collection_interval_in_s = getUnsignedValue("collection_interval");
+
+  config->use_fixed_seed = getUnsignedValue("use_fixed_seed");
+
+  config->main_loop_iterations = getUnsignedValue("main_loop_iterations");
+
+  config->destination_directory = getStringValue("destination_directory");
+
+  config->config_directory = getStringValue("config_directory");
+
+  config->perf_path = getStringValue("perf_path");
+
+  config->sampling_period = getUnsignedValue("sampling_period");
+
+  config->sample_duration_in_s = getUnsignedValue("sample_duration");
+
+  config->only_debug_build = getBoolValue("only_debug_build");
+
+  config->hardwire_cpus = getBoolValue("hardwire_cpus");
+  config->hardwire_cpus_max_duration_in_s = getUnsignedValue("hardwire_cpus_max_duration");
+
+  config->max_unprocessed_profiles = getUnsignedValue("max_unprocessed_profiles");
+
+  config->stack_profile = getBoolValue("stack_profile");
+
+  config->trace_config_read = getBoolValue("trace_config_read");
+
+  config->collect_cpu_utilization = getBoolValue("collect_cpu_utilization");
+  config->collect_charging_state = getBoolValue("collect_charging_state");
+  config->collect_booting = getBoolValue("collect_booting");
+  config->collect_camera_active = getBoolValue("collect_camera_active");
 }

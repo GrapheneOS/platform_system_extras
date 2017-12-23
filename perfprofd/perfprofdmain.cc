@@ -15,9 +15,17 @@
 ** limitations under the License.
 */
 
-extern int perfprofd_main(int argc, char** argv);
+#include "config.h"
+
+extern int perfprofd_main(int argc, char** argv, Config* config);
 
 int main(int argc, char** argv)
 {
-  return perfprofd_main(argc, argv);
+  struct PosixSleepConfig : public Config {
+    void Sleep(size_t seconds) override {
+      sleep(seconds);
+    }
+  };
+  PosixSleepConfig config;
+  return perfprofd_main(argc, argv, &config);
 }
