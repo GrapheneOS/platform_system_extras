@@ -15,12 +15,34 @@
 ** limitations under the License.
 */
 
+#include <string.h>
+
+#include <android-base/logging.h>
+
 #include "config.h"
+#include "perfprofd_binder.h"
 
 extern int perfprofd_main(int argc, char** argv, Config* config);
 
+static int MainBinder() {
+  android::status_t ret;
+  if ((ret = android::perfprofd::PerfProfdNativeService::start()) != android::OK) {
+    LOG(ERROR) << "Unable to start InstalldNativeService: %d" << ret;
+    exit(1);
+  }
+
+  android::IPCThreadState::self()->joinThreadPool();
+
+  LOG(INFO) << "Exiting perfprofd";
+  return 0;
+}
+
 int main(int argc, char** argv)
 {
+  if (argc > 1 && strcmp(argv[1], "--binder") == 0) {
+    return MainBinder();
+  }
+
   struct PosixSleepConfig : public Config {
     void Sleep(size_t seconds) override {
       sleep(seconds);
