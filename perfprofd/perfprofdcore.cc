@@ -535,7 +535,8 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
 // Invoke "perf record". Return value is OK_PROFILE_COLLECTION for
 // success, or some other error code if something went wrong.
 //
-static PROFILE_RESULT invoke_perf(const std::string &perf_path,
+static PROFILE_RESULT invoke_perf(Config& config,
+                                  const std::string &perf_path,
                                   unsigned sampling_period,
                                   const char *stack_profile_opt,
                                   unsigned duration,
@@ -610,12 +611,27 @@ static PROFILE_RESULT invoke_perf(const std::string &perf_path,
 
   } else {
     // parent
+
+    // Try to sleep.
+    config.Sleep(duration);
+
+    // We may have been woken up to stop profiling.
+    if (config.ShouldStopProfiling()) {
+      // Send SIGHUP to simpleperf to make it stop.
+      kill(pid, SIGHUP);
+    }
+
+    // Wait for the child, so it's reaped correctly.
     int st = 0;
     pid_t reaped = TEMP_FAILURE_RETRY(waitpid(pid, &st, 0));
 
     if (reaped == -1) {
       W_ALOGW("waitpid failed: %s", strerror(errno));
     } else if (WIFSIGNALED(st)) {
+      if (WTERMSIG(st) == SIGHUP && config.ShouldStopProfiling()) {
+        // That was us...
+        return OK_PROFILE_COLLECTION;
+      }
       W_ALOGW("perf killed by signal %d", WTERMSIG(st));
     } else if (WEXITSTATUS(st) != 0) {
       W_ALOGW("perf bad exit status %d", WEXITSTATUS(st));
@@ -715,7 +731,7 @@ static bool post_process(const Config& config, int current_seq)
 // - kick off 'perf record'
 // - read perf.data, convert to protocol buf
 //
-static PROFILE_RESULT collect_profile(const Config& config, int seq)
+static PROFILE_RESULT collect_profile(Config& config, int seq)
 {
   //
   // Collect cpu utilization if enabled
@@ -772,12 +788,13 @@ static PROFILE_RESULT collect_profile(const Config& config, int seq)
   const std::string& perf_path = config.perf_path;
   uint32_t period = config.sampling_period;
 
-  PROFILE_RESULT ret = invoke_perf(perf_path.c_str(),
-                                  period,
-                                  stack_profile_opt,
-                                  duration,
-                                  data_file_path,
-                                  perf_stderr_path);
+  PROFILE_RESULT ret = invoke_perf(config,
+                                   perf_path.c_str(),
+                                   period,
+                                   stack_profile_opt,
+                                   duration,
+                                   data_file_path,
+                                   perf_stderr_path);
   if (ret != OK_PROFILE_COLLECTION) {
     return ret;
   }
@@ -831,16 +848,7 @@ static void set_seed(uint32_t use_fixed_seed)
   random_seed[2] = (random_seed[0] ^ random_seed[1]);
 }
 
-//
-// Initialization
-//
-static void init(ConfigReader &config)
-{
-  if (!config.readFile()) {
-    W_ALOGE("unable to open configuration file %s",
-            config.getConfigFilePath());
-  }
-
+static void CommonInit(uint32_t use_fixed_seed, const char* dest_dir) {
   // Children of init inherit an artificially low OOM score -- this is not
   // desirable for perfprofd (its OOM score should be on par with
   // other user processes).
@@ -850,55 +858,100 @@ static void init(ConfigReader &config)
     W_ALOGE("unable to write to %s", oomscore_path.str().c_str());
   }
 
-  set_seed(config.getUnsignedValue("use_fixed_seed"));
-  cleanup_destination_dir(config.getStringValue("destination_directory"));
+  set_seed(use_fixed_seed);
+  if (dest_dir != nullptr) {
+    cleanup_destination_dir(dest_dir);
+  }
 
   running_in_emulator = android::base::GetBoolProperty("ro.kernel.qemu", false);
   is_debug_build = android::base::GetBoolProperty("ro.debuggable", false);
+}
+
+//
+// Initialization
+//
+static void init(const Config& config)
+{
+  // TODO: Consider whether we want to clean things or just overwrite.
+  CommonInit(config.use_fixed_seed, nullptr);
+}
+
+static void init(ConfigReader &config)
+{
+  if (!config.readFile()) {
+    W_ALOGE("unable to open configuration file %s",
+            config.getConfigFilePath());
+  }
+
+  CommonInit(static_cast<uint32_t>(config.getUnsignedValue("use_fixed_seed")),
+             config.getStringValue("destination_directory").c_str());
 
   signal(SIGHUP, sig_hup);
 }
 
-template <typename UpdateFn>
-static void ProfilingLoopImpl(Config* config, UpdateFn fn) {
+template <typename ConfigFn, typename UpdateFn>
+static void ProfilingLoopImpl(ConfigFn config, UpdateFn update) {
   unsigned iterations = 0;
   int seq = 0;
-  while(config->main_loop_iterations == 0 ||
-      iterations < config->main_loop_iterations) {
+  while(config()->main_loop_iterations == 0 ||
+      iterations < config()->main_loop_iterations) {
+    if (config()->ShouldStopProfiling()) {
+      return;
+    }
 
     // Figure out where in the collection interval we're going to actually
     // run perf
     unsigned sleep_before_collect = 0;
     unsigned sleep_after_collect = 0;
     determine_before_after(sleep_before_collect, sleep_after_collect,
-                           config->collection_interval_in_s);
-    config->Sleep(sleep_before_collect);
+                           config()->collection_interval_in_s);
+    config()->Sleep(sleep_before_collect);
+
+    if (config()->ShouldStopProfiling()) {
+      return;
+    }
 
     // Run any necessary updates.
-    fn(config);
+    update();
 
     // Check for profiling enabled...
-    CKPROFILE_RESULT ckresult = check_profiling_enabled(*config);
+    CKPROFILE_RESULT ckresult = check_profiling_enabled(*config());
     if (ckresult != DO_COLLECT_PROFILE) {
       W_ALOGI("profile collection skipped (%s)",
               ckprofile_result_to_string(ckresult));
     } else {
       // Kick off the profiling run...
       W_ALOGI("initiating profile collection");
-      PROFILE_RESULT result = collect_profile(*config, seq);
+      PROFILE_RESULT result = collect_profile(*config(), seq);
       if (result != OK_PROFILE_COLLECTION) {
         W_ALOGI("profile collection failed (%s)",
                 profile_result_to_string(result));
       } else {
-        if (post_process(*config, seq)) {
+        if (post_process(*config(), seq)) {
           seq++;
         }
         W_ALOGI("profile collection complete");
       }
     }
-    config->Sleep(sleep_after_collect);
+
+    if (config()->ShouldStopProfiling()) {
+      return;
+    }
+
+    config()->Sleep(sleep_after_collect);
     iterations += 1;
   }
+}
+
+void ProfilingLoop(Config& config) {
+  init(config);
+
+  auto config_fn = [&config]() {
+    return &config;;
+  };
+  auto do_nothing = []() {
+  };
+  ProfilingLoopImpl(config_fn, do_nothing);
 }
 
 //
@@ -932,13 +985,16 @@ int perfprofd_main(int argc, char** argv, Config* config)
     return 0;
   }
 
-  auto reread_config = [&config_reader](Config* config_) {
+  auto config_fn = [config]() {
+    return config;
+  };
+  auto reread_config = [&config_reader, config]() {
     // Reread config file -- the uploader may have rewritten it as a result
     // of a gservices change
     config_reader.readFile();
-    config_reader.FillConfig(config_);
+    config_reader.FillConfig(config);
   };
-  ProfilingLoopImpl(config, reread_config);
+  ProfilingLoopImpl(config_fn, reread_config);
 
   W_ALOGI("finishing Android Wide Profiling daemon");
   return 0;

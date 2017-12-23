@@ -56,7 +56,10 @@ cc_library_static {
 cc_binary {
     name: "perfprofd",
 
-    srcs: ["perfprofdmain.cc"],
+    srcs: [
+        "perfprofdmain.cc",
+        ":perfprofd_aidl",
+    ],
     static_libs: [
         "libperfprofdcore",
         "libperfprofdutils",
@@ -65,6 +68,8 @@ cc_binary {
         "liblog",
         "libprotobuf-cpp-lite",
         "libbase",
+        "libbinder",
+        "libutils",
     ],
     system_shared_libs: [
         "libc", "libdl",
@@ -73,6 +78,13 @@ cc_binary {
     cppflags: perfprofd_cppflags,
 
     init_rc: ["perfprofd.rc"],
+}
+
+filegroup {
+    name: "perfprofd_aidl",
+    srcs: [
+        "binder/android/os/IPerfProfd.aidl",
+    ],
 }
 
 subdirs = ["tests"]
