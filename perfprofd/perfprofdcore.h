@@ -18,7 +18,7 @@
 #ifndef SYSTEM_EXTRAS_PERFPROFD_PERFPROFDCORE_H_
 #define SYSTEM_EXTRAS_PERFPROFD_PERFPROFDCORE_H_
 
-class ConfigReader;
+struct Config;
 
 // Semaphore file that indicates that the user is opting in
 #define SEMAPHORE_FILENAME "perf_profile_collection_enabled.txt"
@@ -34,7 +34,7 @@ class ConfigReader;
 #define PRODUCED_FILENAME "perfprofd_produced.txt"
 
 // Main routine for perfprofd daemon
-extern int perfprofd_main(int argc, char **argv);
+extern int perfprofd_main(int argc, char **argv, Config* config);
 
 //
 // This enumeration holds the results of what happened when on an
@@ -69,8 +69,10 @@ typedef enum {
 //
 PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
                                const char *encoded_file_path,
-                               const ConfigReader &config,
+                               const Config& config,
                                unsigned cpu_utilization);
+
+void ProfilingLoop(Config& config);
 
 //
 // Exposed for unit testing
