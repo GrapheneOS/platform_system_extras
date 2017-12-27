@@ -34,11 +34,13 @@
 #include <binder/BinderService.h>
 #include <binder/IResultReceiver.h>
 #include <binder/Status.h>
+#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <utils/String16.h>
 #include <utils/String8.h>
 #include <utils/Vector.h>
 
 #include "android/os/BnPerfProfd.h"
+#include "perfprofd_config.pb.h"
 
 #include "config.h"
 #include "configreader.h"
@@ -93,6 +95,7 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
   Status startProfiling(int32_t profilingDuration,
                                 int32_t profilingInterval,
                                 int32_t iterations) override;
+  Status startProfilingProtobuf(const std::vector<uint8_t>& config_proto) override;
 
   Status stopProfiling() override;
 
@@ -104,6 +107,10 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
 
  private:
   status_t shellCommand(int /*in*/, int out, int err, Vector<String16>& args);
+
+  template <typename ConfigFn> Status StartProfiling(ConfigFn fn);
+  template <typename ProtoLoaderFn> Status StartProfilingProtobuf(ProtoLoaderFn fn);
+  Status StartProfilingProtobufFd(int fd);
 
   std::mutex lock_;
 
@@ -130,22 +137,36 @@ status_t PerfProfdNativeService::dump(int fd, const Vector<String16> &args) {
 }
 
 Status PerfProfdNativeService::startProfiling(int32_t profilingDuration,
-                                                      int32_t profilingInterval,
-                                                      int32_t iterations) {
+                                              int32_t profilingInterval,
+                                              int32_t iterations) {
+  auto config_fn = [&](Config& config) {
+    ConfigReader().FillConfig(&config);  // Create a default config.
+
+    config.sample_duration_in_s = static_cast<uint32_t>(profilingDuration);
+    config.collection_interval_in_s = static_cast<uint32_t>(profilingInterval);
+    config.main_loop_iterations = static_cast<uint32_t>(iterations);
+  };
+  return StartProfiling(config_fn);
+}
+Status PerfProfdNativeService::startProfilingProtobuf(const std::vector<uint8_t>& config_proto) {
+  auto proto_loader_fn = [&config_proto](ProfilingConfig& proto_config) {
+    return proto_config.ParseFromArray(config_proto.data(), config_proto.size());
+  };
+  return StartProfilingProtobuf(proto_loader_fn);
+}
+
+template <typename ConfigFn>
+Status PerfProfdNativeService::StartProfiling(ConfigFn fn) {
   std::lock_guard<std::mutex> guard(lock_);
 
   if (cur_config_.is_profiling) {
     // TODO: Define error code?
-    return Status::fromServiceSpecificError(1);
+    return binder::Status::fromServiceSpecificError(1);
   }
   cur_config_.is_profiling = true;
   cur_config_.ResetStopProfiling();
 
-  ConfigReader().FillConfig(&cur_config_);  // Create a default config.
-
-  cur_config_.sample_duration_in_s = static_cast<uint32_t>(profilingDuration);
-  cur_config_.collection_interval_in_s = static_cast<uint32_t>(profilingInterval);
-  cur_config_.main_loop_iterations = static_cast<uint32_t>(iterations);
+  fn(cur_config_);
 
   auto profile_runner = [](PerfProfdNativeService* service) {
     ProfilingLoop(service->cur_config_);
@@ -157,7 +178,70 @@ Status PerfProfdNativeService::startProfiling(int32_t profilingDuration,
   std::thread profiling_thread(profile_runner, this);
   profiling_thread.detach();  // Let it go.
 
-  return Status::ok();
+  return binder::Status::ok();
+}
+
+template <typename ProtoLoaderFn>
+Status PerfProfdNativeService::StartProfilingProtobuf(ProtoLoaderFn fn) {
+  ProfilingConfig proto_config;
+  if (!fn(proto_config)) {
+    return binder::Status::fromExceptionCode(2);
+  }
+  auto config_fn = [&proto_config](Config& config) {
+    ConfigReader().FillConfig(&config);  // Create a default config.
+
+    // Copy proto values.
+#define CHECK_AND_COPY_FROM_PROTO(name)      \
+    if (proto_config.has_ ## name ()) {      \
+      config. name = proto_config. name ();  \
+    }
+    CHECK_AND_COPY_FROM_PROTO(collection_interval_in_s)
+    CHECK_AND_COPY_FROM_PROTO(use_fixed_seed)
+    CHECK_AND_COPY_FROM_PROTO(main_loop_iterations)
+    CHECK_AND_COPY_FROM_PROTO(destination_directory)
+    CHECK_AND_COPY_FROM_PROTO(config_directory)
+    CHECK_AND_COPY_FROM_PROTO(perf_path)
+    CHECK_AND_COPY_FROM_PROTO(sampling_period)
+    CHECK_AND_COPY_FROM_PROTO(sample_duration_in_s)
+    CHECK_AND_COPY_FROM_PROTO(only_debug_build)
+    CHECK_AND_COPY_FROM_PROTO(hardwire_cpus)
+    CHECK_AND_COPY_FROM_PROTO(hardwire_cpus_max_duration_in_s)
+    CHECK_AND_COPY_FROM_PROTO(max_unprocessed_profiles)
+    CHECK_AND_COPY_FROM_PROTO(stack_profile)
+    CHECK_AND_COPY_FROM_PROTO(collect_cpu_utilization)
+    CHECK_AND_COPY_FROM_PROTO(collect_charging_state)
+    CHECK_AND_COPY_FROM_PROTO(collect_booting)
+    CHECK_AND_COPY_FROM_PROTO(collect_camera_active)
+#undef CHECK_AND_COPY_FROM_PROTO
+  };
+  return StartProfiling(config_fn);
+}
+
+Status PerfProfdNativeService::StartProfilingProtobufFd(int fd) {
+  auto proto_loader_fn = [fd](ProfilingConfig& proto_config) {
+    struct IstreamCopyingInputStream : public google::protobuf::io::CopyingInputStream {
+      IstreamCopyingInputStream(int fd_in)
+                : stream(base::StringPrintf("/proc/self/fd/%d", fd_in),
+                         std::ios::binary | std::ios::in) {
+      }
+
+      int Read(void* buffer, int size) override {
+        stream.read(reinterpret_cast<char*>(buffer), size);
+        size_t count = stream.gcount();
+        if (count > 0) {
+          return count;
+        }
+        return -1;
+      }
+
+      std::ifstream stream;
+    };
+    std::unique_ptr<IstreamCopyingInputStream> is(new IstreamCopyingInputStream(fd));
+    std::unique_ptr<google::protobuf::io::CopyingInputStreamAdaptor> is_adaptor(
+        new google::protobuf::io::CopyingInputStreamAdaptor(is.get()));
+    return proto_config.ParseFromZeroCopyStream(is_adaptor.get());
+  };
+  return StartProfilingProtobuf(proto_loader_fn);
 }
 
 Status PerfProfdNativeService::stopProfiling() {
@@ -172,7 +256,7 @@ Status PerfProfdNativeService::stopProfiling() {
   return Status::ok();
 }
 
-status_t PerfProfdNativeService::shellCommand(int /*in*/,
+status_t PerfProfdNativeService::shellCommand(int in,
                                               int out,
                                               int err,
                                               Vector<String16>& args) {
@@ -197,6 +281,25 @@ status_t PerfProfdNativeService::shellCommand(int /*in*/,
       int32_t interval = strtol(String8(args[2]).string(), nullptr, 0);
       int32_t iterations = strtol(String8(args[3]).string(), nullptr, 0);
       Status status = startProfiling(duration, interval, iterations);
+      if (status.isOk()) {
+        return OK;
+      } else {
+        return status.serviceSpecificErrorCode();
+      }
+    } else if (args[0] == String16("startProfilingProto")) {
+      if (args.size() < 2) {
+        return BAD_VALUE;
+      }
+      int fd = -1;
+      if (args[1] == String16("-")) {
+        fd = in;
+      } else {
+        // TODO: Implement reading from disk?
+      }
+      if (fd < 0) {
+        return BAD_VALUE;
+      }
+      binder::Status status = StartProfilingProtobufFd(fd);
       if (status.isOk()) {
         return OK;
       } else {
