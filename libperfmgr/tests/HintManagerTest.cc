@@ -18,6 +18,7 @@
 #include <thread>
 
 #include <android-base/file.h>
+#include <android-base/logging.h>
 #include <android-base/test_utils.h>
 
 #include <gtest/gtest.h>
@@ -94,7 +95,9 @@ class HintManagerTest : public ::testing::Test, public HintManager {
   protected:
     HintManagerTest()
         : HintManager(nullptr,
-                      std::map<std::string, std::vector<NodeAction>>{}) {}
+                      std::map<std::string, std::vector<NodeAction>>{}) {
+        android::base::SetMinimumLogSeverity(android::base::VERBOSE);
+    }
 
     virtual void SetUp() {
         // Set up dummy nodes
