@@ -40,6 +40,7 @@ bool HintManager::ValidateHint(const std::string& hint_type) const {
 }
 
 bool HintManager::DoHint(const std::string& hint_type) {
+    std::lock_guard<std::mutex> lk(lock_);
     LOG(VERBOSE) << "Do Powerhint: " << hint_type;
     return ValidateHint(hint_type)
                ? nm_->Request(actions_[hint_type], hint_type)
@@ -48,6 +49,7 @@ bool HintManager::DoHint(const std::string& hint_type) {
 
 bool HintManager::DoHint(const std::string& hint_type,
                          std::chrono::milliseconds timeout_ms_override) {
+    std::lock_guard<std::mutex> lk(lock_);
     LOG(VERBOSE) << "Do Powerhint: " << hint_type << " for "
                  << timeout_ms_override.count() << "ms";
     if (!ValidateHint(hint_type)) {
@@ -61,6 +63,7 @@ bool HintManager::DoHint(const std::string& hint_type,
 }
 
 bool HintManager::EndHint(const std::string& hint_type) {
+    std::lock_guard<std::mutex> lk(lock_);
     LOG(VERBOSE) << "End Powerhint: " << hint_type;
     return ValidateHint(hint_type) ? nm_->Cancel(actions_[hint_type], hint_type)
                                    : false;
@@ -229,7 +232,7 @@ std::map<std::string, std::vector<NodeAction>> HintManager::ParseActions(
     std::size_t total_parsed = 0;
 
     std::map<std::string, std::size_t> nodes_index;
-    for (uint32_t i = 0; i <= nodes.size(); ++i) {
+    for (std::size_t i = 0; i < nodes.size(); ++i) {
         nodes_index[nodes[i]->GetName()] = i;
     }
 
@@ -275,6 +278,8 @@ std::map<std::string, std::vector<NodeAction>> HintManager::ParseActions(
             return actions_parsed;
         }
         LOG(VERBOSE) << "Action[" << i << "]'s ValueIndex: " << value_index;
+        LOG(VERBOSE) << "Action[" << i << "]'s Node Value: "
+                     << nodes[node_index]->GetValues()[value_index];
 
         Json::UInt64 duration = 0;
         if (actions[i]["Duration"].empty() ||
