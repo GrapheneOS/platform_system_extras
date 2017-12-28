@@ -93,6 +93,9 @@ struct Config {
   virtual bool ShouldStopProfiling() {
     return false;
   }
+
+  // Is profiling enabled?
+  virtual bool IsProfilingEnabled() const = 0;
 };
 
 #endif  // SYSTEM_EXTRAS_PERFPROFD_CONFIG_H_
