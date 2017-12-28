@@ -74,6 +74,10 @@ class BinderConfig : public Config {
     cv_.notify_all();
   }
 
+  bool IsProfilingEnabled() const override {
+    return true;
+  }
+
  private:
   std::mutex mutex_;
   std::condition_variable cv_;

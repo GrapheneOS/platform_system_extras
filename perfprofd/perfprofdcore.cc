@@ -206,20 +206,8 @@ static CKPROFILE_RESULT check_profiling_enabled(const Config& config)
     return DONT_PROFILE_RUNNING_IN_EMULATOR;
   }
 
-  //
-  // Check for existence of semaphore file in config directory
-  //
-  if (access(config.config_directory.c_str(), F_OK) == -1) {
-    W_ALOGW("unable to open config directory %s: (%s)",
-            config.config_directory.c_str(), strerror(errno));
+  if (!config.IsProfilingEnabled()) {
     return DONT_PROFILE_MISSING_CONFIG_DIR;
-  }
-
-  // Check for existence of semaphore file
-  std::string semaphore_filepath = config.config_directory
-                                   + "/" + SEMAPHORE_FILENAME;
-  if (access(semaphore_filepath.c_str(), F_OK) == -1) {
-    return DONT_PROFILE_MISSING_SEMAPHORE;
   }
 
   // Check for existence of simpleperf/perf executable
