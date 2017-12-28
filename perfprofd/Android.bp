@@ -156,6 +156,7 @@ cc_binary {
         "libprotobuf-cpp-lite",
         "libbase",
         "libbinder",
+        "libservices",
         "libutils",
     ],
 
