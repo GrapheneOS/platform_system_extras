@@ -227,6 +227,26 @@ class PerfProfdRunner {
       // Log sleep calls but don't sleep.
       perfprofd_log_info("sleep %d seconds", seconds);
     }
+
+    bool IsProfilingEnabled() const override {
+      //
+      // Check for existence of semaphore file in config directory
+      //
+      if (access(config_directory.c_str(), F_OK) == -1) {
+        W_ALOGW("unable to open config directory %s: (%s)",
+                config_directory.c_str(), strerror(errno));
+        return false;
+      }
+
+      // Check for existence of semaphore file
+      std::string semaphore_filepath = config_directory
+          + "/" + SEMAPHORE_FILENAME;
+      if (access(semaphore_filepath.c_str(), F_OK) == -1) {
+        return false;
+      }
+
+      return true;
+    }
   };
 
   int invoke()
