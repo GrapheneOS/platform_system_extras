@@ -51,6 +51,26 @@ cc_library_static {
 }
 
 //
+// Static library with binder service.
+//
+cc_library_static {
+    name: "libperfprofd_binder",
+
+    export_include_dirs: ["."],
+    static_libs: [
+        "libbase",
+        "libbinder",
+    ],
+    srcs: [
+        "perfprofd_binder.cc",
+        ":perfprofd_aidl",
+    ],
+
+    cflags: perfprofd_cflags,
+    cppflags: perfprofd_cppflags,
+}
+
+//
 // Main daemon
 //
 cc_binary {
@@ -58,11 +78,11 @@ cc_binary {
 
     srcs: [
         "perfprofdmain.cc",
-        ":perfprofd_aidl",
     ],
     static_libs: [
         "libperfprofdcore",
         "libperfprofdutils",
+        "libperfprofd_binder",
     ],
     shared_libs: [
         "liblog",
