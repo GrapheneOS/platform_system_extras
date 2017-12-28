@@ -23,6 +23,10 @@ interface IPerfProfd {
      */
     void startProfiling(int profilingDuration, int profilingInterval,
             int iterations);
+    /**
+     * Start profiling with the parameters in the given protobuf.
+     */
+    void startProfilingProtobuf(in byte[] config_proto);
 
     /**
      * Stop an active profiling session.
