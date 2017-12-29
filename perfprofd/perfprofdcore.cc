@@ -550,7 +550,7 @@ static PROFILE_RESULT invoke_perf(Config& config,
     }
 
     // marshall arguments
-    constexpr unsigned max_args = 13;
+    constexpr unsigned max_args = 14;
     const char *argv[max_args];
     unsigned slot = 0;
     argv[slot++] = perf_path.c_str();
@@ -569,8 +569,15 @@ static PROFILE_RESULT invoke_perf(Config& config,
     if (stack_profile_opt)
       argv[slot++] = stack_profile_opt;
 
-    // system wide profiling
-    argv[slot++] = "-a";
+    std::string pid_str;
+    if (config.process < 0) {
+      // system wide profiling
+      argv[slot++] = "-a";
+    } else {
+      argv[slot++] = "-p";
+      pid_str = std::to_string(config.process);
+      argv[slot++] = pid_str.c_str();
+    }
 
     // no need for kernel symbols
     argv[slot++] = "--no-dump-kernel-symbols";

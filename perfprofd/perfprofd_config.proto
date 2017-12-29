@@ -66,4 +66,8 @@ message ProfilingConfig {
   optional bool collect_charging_state = 15;
   optional bool collect_booting = 16;
   optional bool collect_camera_active = 17;
+
+  // The pid of the process to profile. May be negative, in which case
+  // the whole system will be profiled.
+  optional int32 process = 18;
 };
