@@ -40,22 +40,20 @@ bool HintManager::ValidateHint(const std::string& hint_type) const {
 }
 
 bool HintManager::DoHint(const std::string& hint_type) {
-    std::lock_guard<std::mutex> lk(lock_);
     LOG(VERBOSE) << "Do Powerhint: " << hint_type;
     return ValidateHint(hint_type)
-               ? nm_->Request(actions_[hint_type], hint_type)
+               ? nm_->Request(actions_.at(hint_type), hint_type)
                : false;
 }
 
 bool HintManager::DoHint(const std::string& hint_type,
                          std::chrono::milliseconds timeout_ms_override) {
-    std::lock_guard<std::mutex> lk(lock_);
     LOG(VERBOSE) << "Do Powerhint: " << hint_type << " for "
                  << timeout_ms_override.count() << "ms";
     if (!ValidateHint(hint_type)) {
         return false;
     }
-    std::vector<NodeAction> actions_override = actions_[hint_type];
+    std::vector<NodeAction> actions_override = actions_.at(hint_type);
     for (auto& action : actions_override) {
         action.timeout_ms = timeout_ms_override;
     }
@@ -63,10 +61,10 @@ bool HintManager::DoHint(const std::string& hint_type,
 }
 
 bool HintManager::EndHint(const std::string& hint_type) {
-    std::lock_guard<std::mutex> lk(lock_);
     LOG(VERBOSE) << "End Powerhint: " << hint_type;
-    return ValidateHint(hint_type) ? nm_->Cancel(actions_[hint_type], hint_type)
-                                   : false;
+    return ValidateHint(hint_type)
+               ? nm_->Cancel(actions_.at(hint_type), hint_type)
+               : false;
 }
 
 bool HintManager::IsRunning() const {

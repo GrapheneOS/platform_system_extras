@@ -18,7 +18,6 @@
 #define ANDROID_LIBPERFMGR_HINTMANAGER_H_
 
 #include <cstddef>
-#include <mutex>
 #include <string>
 #include <vector>
 
@@ -34,7 +33,7 @@ namespace perfmgr {
 class HintManager {
   public:
     HintManager(sp<NodeLooperThread> nm,
-                std::map<std::string, std::vector<NodeAction>> actions)
+                const std::map<std::string, std::vector<NodeAction>>& actions)
         : nm_(std::move(nm)), actions_(actions) {}
     ~HintManager() {
         if (nm_.get() != nullptr) nm_->Stop();
@@ -75,8 +74,7 @@ class HintManager {
     bool ValidateHint(const std::string& hint_type) const;
 
     sp<NodeLooperThread> nm_;
-    std::map<std::string, std::vector<NodeAction>> actions_;
-    std::mutex lock_;
+    const std::map<std::string, std::vector<NodeAction>> actions_;
 };
 
 }  // namespace perfmgr
