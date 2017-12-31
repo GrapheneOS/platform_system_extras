@@ -38,6 +38,10 @@ struct Config {
   // loop.  Value of zero indicates that we should loop forever.
   uint32_t main_loop_iterations = 0;
 
+  // The pid of the process to profile. May be negative, in which case
+  // the whole system will be profiled.
+  int32_t process = -1;
+
   // Destination directory (where to write profiles). This location
   // chosen since it is accessible to the uploader service.
   std::string destination_directory = "/data/misc/perfprofd";
@@ -93,6 +97,9 @@ struct Config {
   virtual bool ShouldStopProfiling() {
     return false;
   }
+
+  // Is profiling enabled?
+  virtual bool IsProfilingEnabled() const = 0;
 };
 
 #endif  // SYSTEM_EXTRAS_PERFPROFD_CONFIG_H_

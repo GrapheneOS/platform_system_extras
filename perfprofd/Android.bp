@@ -60,10 +60,12 @@ cc_library_static {
     static_libs: [
         "libbase",
         "libbinder",
+        "libprotobuf-cpp-lite",
     ],
     srcs: [
         "perfprofd_binder.cc",
         ":perfprofd_aidl",
+        "perfprofd_config.proto",
     ],
 
     cflags: perfprofd_cflags,
