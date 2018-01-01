@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "libperfmgr"
+
 #include <android-base/file.h>
 #include <android-base/logging.h>
 
@@ -34,7 +36,7 @@ Node::Node(std::string name, std::string node_path,
     if (reset_on_init) {
         // Assigning an invalid value so the next Update() will update the
         // Node's value to default
-        current_val_index_ = req_sorted.size();
+        current_val_index_ = req_sorted_.size();
         Update();
     } else {
         current_val_index_ = default_val_index;
@@ -76,16 +78,16 @@ std::chrono::milliseconds Node::Update() {
 
     // Update node only if request index changes
     if (value_index != current_val_index_) {
-        current_val_index_ = value_index;
-        std::string req_value =
-            req_sorted_[current_val_index_].GetRequestValue();
+        std::string req_value = req_sorted_[value_index].GetRequestValue();
 
         fd_.reset(TEMP_FAILURE_RETRY(
             open(node_path_.c_str(), O_WRONLY | O_CLOEXEC | O_TRUNC)));
 
         if (fd_ == -1 || !android::base::WriteStringToFd(req_value, fd_)) {
             LOG(ERROR) << "Failed to write to node: " << node_path_
-                       << " with value: " << req_value;
+                       << " with value: " << req_value << ", fd: " << fd_;
+            // Retry in 500ms or sooner
+            expire_time = std::min(expire_time, std::chrono::milliseconds(500));
         } else {
             // For regular file system, we need fsync
             fsync(fd_);
@@ -97,6 +99,8 @@ std::chrono::milliseconds Node::Update() {
             if ((!hold_fd_) || value_index == default_val_index_) {
                 fd_.reset();
             }
+            // Update current index only when succeed
+            current_val_index_ = value_index;
         }
     }
     return expire_time;
