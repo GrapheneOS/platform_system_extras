@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "libperfmgr"
+
 #include <android-base/file.h>
 #include <android-base/logging.h>
 
