@@ -77,11 +77,7 @@ class NodeLooperThread : public ::android::Thread {
     bool threadLoop() override;
     void onFirstRef() override;
 
-    // std::chrono::milliseconds::max() is too long
-    // maintain the list every 60 seconds as the overhead
-    // to loop is not too much if nothing changes
-    static constexpr auto kMaxUpdatePeriod =
-        std::chrono::milliseconds(60 * 1000);
+    static constexpr auto kMaxUpdatePeriod = std::chrono::milliseconds::max();
 
     std::vector<std::unique_ptr<Node>> nodes_;  // parsed from Config
 

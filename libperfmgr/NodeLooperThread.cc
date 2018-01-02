@@ -95,9 +95,11 @@ bool NodeLooperThread::threadLoop() {
         auto t = n->Update();
         timeout_ms = std::min(t, timeout_ms);
     }
-    // For unsigned types, convert to float to avoid wrap around
-    nsecs_t sleep_timeout_ns =
-        static_cast<nsecs_t>(timeout_ms.count() * 1000.0f * 1000.0f);
+
+    nsecs_t sleep_timeout_ns = std::numeric_limits<nsecs_t>::max();
+    if (timeout_ms.count() < sleep_timeout_ns / 1000 / 1000) {
+        sleep_timeout_ns = timeout_ms.count() * 1000 * 1000;
+    }
     // VERBOSE level won't print by default in user/userdebug build
     LOG(VERBOSE) << "NodeLooperThread will wait for " << sleep_timeout_ns
                  << "ns";
