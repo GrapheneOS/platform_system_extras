@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "libperfmgr"
+
 #include "perfmgr/RequestGroup.h"
 
 namespace android {
