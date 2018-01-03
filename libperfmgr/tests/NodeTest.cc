@@ -50,6 +50,9 @@ TEST(NodeTest, InitDefaultTest) {
     TemporaryFile tf;
     Node t("t", tf.path, {{"value0"}, {"value1"}, {"value2"}}, 1, true);
     _VerifyPathValue(tf.path, "value1");
+    TemporaryFile tf2;
+    Node t2("t2", tf2.path, {{"value0"}, {"value1"}, {"value2"}}, 0, true);
+    _VerifyPathValue(tf2.path, "value0");
 }
 
 // Test GetValueIndex
@@ -86,6 +89,24 @@ TEST(NodeTest, GetPropertiesTest) {
     EXPECT_EQ(0u, t.GetDefaultIndex());
     EXPECT_FALSE(t.GetResetOnInit());
     EXPECT_TRUE(t.GetHoldFd());
+}
+
+// Test add request fail and retry
+TEST(NodeTest, AddRequestTestFail) {
+    Node t("t", "/sys/android/nonexist_node_test",
+           {{"value0"}, {"value1"}, {"value2"}}, 2, true);
+    auto start = std::chrono::steady_clock::now();
+    EXPECT_TRUE(t.AddRequest(1, "INTERACTION", start + 200ms));
+    std::chrono::milliseconds expire_time = t.Update();
+    // Add request @ value1
+    EXPECT_NEAR(std::chrono::milliseconds(200).count(), expire_time.count(),
+                kTIMING_TOLERANCE_MS);
+    // Add request @ value0 higher prio than value1
+    EXPECT_TRUE(t.AddRequest(0, "LAUNCH", start + 2000ms));
+    expire_time = t.Update();
+    // Retry in 500 ms
+    EXPECT_NEAR(std::chrono::milliseconds(500).count(), expire_time.count(),
+                kTIMING_TOLERANCE_MS);
 }
 
 // Test add request
