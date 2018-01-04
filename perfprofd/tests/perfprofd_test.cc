@@ -430,7 +430,7 @@ TEST_F(PerfProfdTest, MissingOptInSemaphoreFile)
 
   // Verify log contents
   const std::string expected = RAW_RESULT(
-      I: profile collection skipped (missing semaphore file)
+      I: profile collection skipped (missing config directory)
                                           );
   // check to make sure log excerpt matches
   compareLogMessages(mock_perfprofdutils_getlogged(),
@@ -762,6 +762,7 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
       I: random seed set to 12345678
       I: sleep 674 seconds
       I: initiating profile collection
+      I: sleep 2 seconds
       I: profile collection complete
       I: sleep 9325 seconds
       I: finishing Android Wide Profiling daemon
@@ -818,14 +819,17 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
       I: random seed set to 12345678
       I: sleep 674 seconds
       I: initiating profile collection
+      I: sleep 2 seconds
       I: profile collection complete
       I: sleep 9325 seconds
       I: sleep 4974 seconds
       I: initiating profile collection
+      I: sleep 2 seconds
       I: profile collection complete
       I: sleep 5025 seconds
       I: sleep 501 seconds
       I: initiating profile collection
+      I: sleep 2 seconds
       I: profile collection complete
       I: sleep 9498 seconds
       I: finishing Android Wide Profiling daemon
@@ -877,6 +881,7 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
       I: random seed set to 12345678
       I: sleep 674 seconds
       I: initiating profile collection
+      I: sleep 2 seconds
       I: profile collection complete
       I: sleep 9325 seconds
       I: finishing Android Wide Profiling daemon
