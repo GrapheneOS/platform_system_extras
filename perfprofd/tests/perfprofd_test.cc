@@ -14,18 +14,24 @@
  * limitations under the License.
  */
 
-#include <gtest/gtest.h>
 #include <algorithm>
 #include <cctype>
-#include <string>
+#include <memory>
 #include <regex>
+#include <string>
+
+#include <fcntl.h>
 #include <stdio.h>
+#include <libgen.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fcntl.h>
 
+#include <android-base/file.h>
+#include <android-base/logging.h>
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
+#include <android-base/test_utils.h>
+#include <gtest/gtest.h>
 
 #include "config.h"
 #include "configreader.h"
@@ -39,18 +45,7 @@
 //
 // Set to argv[0] on startup
 //
-static const char *executable_path;
-
-//
-// test_dir is the directory containing the test executable and
-// any files associated with the test (will be created by the harness).
-//
-// dest_dir is a subdirectory of test_dir that we'll create on the fly
-// at the start of each testpoint (into which new files can be written),
-// then delete at end of testpoint.
-//
-static std::string test_dir;
-static std::string dest_dir;
+static std::string gExecutableRealpath;
 
 // Path to perf executable on device
 #define PERFPATH "/system/bin/perf"
@@ -58,59 +53,49 @@ static std::string dest_dir;
 // Temporary config file that we will emit for the daemon to read
 #define CONFIGFILE "perfprofd.conf"
 
-static std::string encoded_file_path(int seq)
-{
-  return android::base::StringPrintf("%s/perf.data.encoded.%d",
-                                     dest_dir.c_str(), seq);
-}
-
 class PerfProfdTest : public testing::Test {
  protected:
   virtual void SetUp() {
     mock_perfprofdutils_init();
-    create_dest_dir();
-    yesclean();
+    create_dirs();
   }
 
   virtual void TearDown() {
     mock_perfprofdutils_finish();
+
+    // TODO: proper management of test files. For now, use old system() code.
+    for (const auto dir : { &dest_dir, &conf_dir }) {
+      std::string cmd("rm -rf ");
+      cmd += *dir;
+      int ret = system(cmd.c_str());
+      CHECK_EQ(0, ret);
+    }
   }
 
-  void noclean() {
-    clean_ = false;
-  }
-  void yesclean() {
-    clean_ = true;
-  }
+ protected:
+  // test_dir is the directory containing the test executable and
+  // any files associated with the test (will be created by the harness).
+  std::string test_dir;
+
+  // dest_dir is a temporary directory that we're using as the destination directory.
+  // It is backed by temp_dir1.
+  std::string dest_dir;
+
+  // conf_dir is a temporary directory that we're using as the configuration directory.
+  // It is backed by temp_dir2.
+  std::string conf_dir;
 
  private:
-  bool clean_;
-
-  void create_dest_dir() {
-    setup_dirs();
-    ASSERT_FALSE(dest_dir == "");
-    if (clean_) {
-      std::string cmd("rm -rf ");
-      cmd += dest_dir;
-      system(cmd.c_str());
-    }
-    std::string cmd("mkdir -p ");
-    cmd += dest_dir;
-    system(cmd.c_str());
+  void create_dirs() {
+    temp_dir1.reset(new TemporaryDir());
+    temp_dir2.reset(new TemporaryDir());
+    dest_dir = temp_dir1->path;
+    conf_dir = temp_dir2->path;
+    test_dir = android::base::Dirname(gExecutableRealpath);
   }
 
-  void setup_dirs()
-  {
-    if (test_dir == "") {
-      ASSERT_TRUE(executable_path != nullptr);
-      std::string s(executable_path);
-      auto found = s.find_last_of('/');
-      test_dir = s.substr(0,found);
-      dest_dir = test_dir;
-      dest_dir += "/tmp";
-    }
-  }
-
+  std::unique_ptr<TemporaryDir> temp_dir1;
+  std::unique_ptr<TemporaryDir> temp_dir2;
 };
 
 static bool bothWhiteSpace(char lhs, char rhs)
@@ -175,10 +160,10 @@ static std::string expandVars(const std::string &str) {
 ///
 class PerfProfdRunner {
  public:
-  PerfProfdRunner()
-      : config_path_(test_dir)
+  explicit PerfProfdRunner(const std::string& config_dir)
+      : config_dir_(config_dir)
   {
-    config_path_ += "/" CONFIGFILE;
+    config_path_ = config_dir + "/" CONFIGFILE;
   }
 
   ~PerfProfdRunner()
@@ -194,21 +179,21 @@ class PerfProfdRunner {
 
   void remove_semaphore_file()
   {
-    std::string semaphore(test_dir);
+    std::string semaphore(config_dir_);
     semaphore += "/" SEMAPHORE_FILENAME;
     unlink(semaphore.c_str());
   }
 
   void create_semaphore_file()
   {
-    std::string semaphore(test_dir);
+    std::string semaphore(config_dir_);
     semaphore += "/" SEMAPHORE_FILENAME;
     close(open(semaphore.c_str(), O_WRONLY|O_CREAT, 0600));
   }
 
   void write_processed_file(int start_seq, int end_seq)
   {
-    std::string processed = test_dir + "/" PROCESSED_FILENAME;
+    std::string processed = config_dir_ + "/" PROCESSED_FILENAME;
     FILE *fp = fopen(processed.c_str(), "w");
     for (int i = start_seq; i < end_seq; i++) {
       fprintf(fp, "%d\n", i);
@@ -218,7 +203,7 @@ class PerfProfdRunner {
 
   void remove_processed_file()
   {
-    std::string processed = test_dir + "/" PROCESSED_FILENAME;
+    std::string processed = config_dir_ + "/" PROCESSED_FILENAME;
     unlink(processed.c_str());
   }
 
@@ -262,6 +247,7 @@ class PerfProfdRunner {
   }
 
  private:
+  std::string config_dir_;
   std::string config_path_;
   std::string config_text_;
 
@@ -277,17 +263,24 @@ class PerfProfdRunner {
 
 //......................................................................
 
-static void readEncodedProfile(const char *testpoint,
+static std::string encoded_file_path(const std::string& dest_dir,
+                                     int seq) {
+  return android::base::StringPrintf("%s/perf.data.encoded.%d",
+                                     dest_dir.c_str(), seq);
+}
+
+static void readEncodedProfile(const std::string& dest_dir,
+                               const char *testpoint,
                                wireless_android_play_playlog::AndroidPerfProfile &encodedProfile)
 {
   struct stat statb;
-  int perf_data_stat_result = stat(encoded_file_path(0).c_str(), &statb);
+  int perf_data_stat_result = stat(encoded_file_path(dest_dir, 0).c_str(), &statb);
   ASSERT_NE(-1, perf_data_stat_result);
 
   // read
   std::string encoded;
   encoded.resize(statb.st_size);
-  FILE *ifp = fopen(encoded_file_path(0).c_str(), "r");
+  FILE *ifp = fopen(encoded_file_path(dest_dir, 0).c_str(), "r");
   ASSERT_NE(nullptr, ifp);
   size_t items_read = fread((void*) encoded.data(), statb.st_size, 1, ifp);
   ASSERT_EQ(1, items_read);
@@ -374,7 +367,7 @@ TEST_F(PerfProfdTest, MissingGMS)
   // may not be there. This test insures that the daemon does the
   // right thing in this case.
   //
-  PerfProfdRunner runner;
+  PerfProfdRunner runner(conf_dir);
   runner.addToConfig("only_debug_build=0");
   runner.addToConfig("trace_config_read=0");
   runner.addToConfig("config_directory=/does/not/exist");
@@ -410,9 +403,9 @@ TEST_F(PerfProfdTest, MissingOptInSemaphoreFile)
   // passes, then it creates a semaphore file for the daemon to pick
   // up on.
   //
-  PerfProfdRunner runner;
+  PerfProfdRunner runner(conf_dir);
   runner.addToConfig("only_debug_build=0");
-  std::string cfparam("config_directory="); cfparam += test_dir;
+  std::string cfparam("config_directory="); cfparam += conf_dir;
   runner.addToConfig(cfparam);
   std::string ddparam("destination_directory="); ddparam += dest_dir;
   runner.addToConfig(ddparam);
@@ -445,10 +438,10 @@ TEST_F(PerfProfdTest, MissingPerfExecutable)
   // checks to make sure that if 'simpleperf' is not present we bail out
   // from collecting profiles.
   //
-  PerfProfdRunner runner;
+  PerfProfdRunner runner(conf_dir);
   runner.addToConfig("only_debug_build=0");
   runner.addToConfig("trace_config_read=1");
-  std::string cfparam("config_directory="); cfparam += test_dir;
+  std::string cfparam("config_directory="); cfparam += conf_dir;
   runner.addToConfig(cfparam);
   std::string ddparam("destination_directory="); ddparam += dest_dir;
   runner.addToConfig(ddparam);
@@ -483,9 +476,9 @@ TEST_F(PerfProfdTest, BadPerfRun)
   // crash. This test makes sure that we detect such a case and log
   // the error.
   //
-  PerfProfdRunner runner;
+  PerfProfdRunner runner(conf_dir);
   runner.addToConfig("only_debug_build=0");
-  std::string cfparam("config_directory="); cfparam += test_dir;
+  std::string cfparam("config_directory="); cfparam += conf_dir;
   runner.addToConfig(cfparam);
   std::string ddparam("destination_directory="); ddparam += dest_dir;
   runner.addToConfig(ddparam);
@@ -518,7 +511,7 @@ TEST_F(PerfProfdTest, ConfigFileParsing)
   //
   // Gracefully handly malformed items in the config file
   //
-  PerfProfdRunner runner;
+  PerfProfdRunner runner(conf_dir);
   runner.addToConfig("only_debug_build=0");
   runner.addToConfig("main_loop_iterations=1");
   runner.addToConfig("collection_interval=100");
@@ -587,12 +580,13 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
 
   // Kick off encoder and check return code
   PROFILE_RESULT result =
-      encode_to_proto(input_perf_data, encoded_file_path(0).c_str(), config, 0);
+      encode_to_proto(input_perf_data, encoded_file_path(dest_dir, 0).c_str(), config, 0);
   EXPECT_EQ(OK_PROFILE_COLLECTION, result);
 
   // Read and decode the resulting perf.data.encoded file
   wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
-  readEncodedProfile("BasicRunWithCannedPerf",
+  readEncodedProfile(dest_dir,
+                     "BasicRunWithCannedPerf",
                      encodedProfile);
 
   // Expect 45 programs
@@ -661,12 +655,13 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
 
   // Kick off encoder and check return code
   PROFILE_RESULT result =
-      encode_to_proto(input_perf_data, encoded_file_path(0).c_str(), config, 0);
+      encode_to_proto(input_perf_data, encoded_file_path(dest_dir, 0).c_str(), config, 0);
   EXPECT_EQ(OK_PROFILE_COLLECTION, result);
 
   // Read and decode the resulting perf.data.encoded file
   wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
-  readEncodedProfile("BasicRunWithCannedPerf",
+  readEncodedProfile(dest_dir,
+                     "BasicRunWithCannedPerf",
                      encodedProfile);
 
 
@@ -726,11 +721,11 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
   // Basic test to exercise the main loop of the daemon. It includes
   // a live 'perf' run
   //
-  PerfProfdRunner runner;
+  PerfProfdRunner runner(conf_dir);
   runner.addToConfig("only_debug_build=0");
   std::string ddparam("destination_directory="); ddparam += dest_dir;
   runner.addToConfig(ddparam);
-  std::string cfparam("config_directory="); cfparam += test_dir;
+  std::string cfparam("config_directory="); cfparam += conf_dir;
   runner.addToConfig(cfparam);
   runner.addToConfig("main_loop_iterations=1");
   runner.addToConfig("use_fixed_seed=12345678");
@@ -749,16 +744,17 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
 
   // Read and decode the resulting perf.data.encoded file
   wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
-  readEncodedProfile("BasicRunWithLivePerf", encodedProfile);
+  readEncodedProfile(dest_dir, "BasicRunWithLivePerf", encodedProfile);
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
   EXPECT_LT(0, encodedProfile.programs_size());
 
   // Verify log contents
-  const std::string expected = RAW_RESULT(
-      I: starting Android Wide Profiling daemon
-      I: config file path set to $NATIVE_TESTS/perfprofd_test/perfprofd.conf
+  const std::string expected = std::string(
+      "I: starting Android Wide Profiling daemon ") +
+      "I: config file path set to " + conf_dir + "/perfprofd.conf " +
+      RAW_RESULT(
       I: random seed set to 12345678
       I: sleep 674 seconds
       I: initiating profile collection
@@ -778,11 +774,11 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
   // Basic test to exercise the main loop of the daemon. It includes
   // a live 'perf' run
   //
-  PerfProfdRunner runner;
+  PerfProfdRunner runner(conf_dir);
   runner.addToConfig("only_debug_build=0");
   std::string ddparam("destination_directory="); ddparam += dest_dir;
   runner.addToConfig(ddparam);
-  std::string cfparam("config_directory="); cfparam += test_dir;
+  std::string cfparam("config_directory="); cfparam += conf_dir;
   runner.addToConfig(cfparam);
   runner.addToConfig("main_loop_iterations=3");
   runner.addToConfig("use_fixed_seed=12345678");
@@ -801,21 +797,22 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
 
   // Read and decode the resulting perf.data.encoded file
   wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
-  readEncodedProfile("BasicRunWithLivePerf", encodedProfile);
+  readEncodedProfile(dest_dir, "BasicRunWithLivePerf", encodedProfile);
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
   EXPECT_LT(0, encodedProfile.programs_size());
 
   // Examine that encoded.1 file is removed while encoded.{0|2} exists.
-  EXPECT_EQ(0, access(encoded_file_path(0).c_str(), F_OK));
-  EXPECT_NE(0, access(encoded_file_path(1).c_str(), F_OK));
-  EXPECT_EQ(0, access(encoded_file_path(2).c_str(), F_OK));
+  EXPECT_EQ(0, access(encoded_file_path(dest_dir, 0).c_str(), F_OK));
+  EXPECT_NE(0, access(encoded_file_path(dest_dir, 1).c_str(), F_OK));
+  EXPECT_EQ(0, access(encoded_file_path(dest_dir, 2).c_str(), F_OK));
 
   // Verify log contents
-  const std::string expected = RAW_RESULT(
-      I: starting Android Wide Profiling daemon
-      I: config file path set to $NATIVE_TESTS/perfprofd_test/perfprofd.conf
+  const std::string expected = std::string(
+      "I: starting Android Wide Profiling daemon ") +
+      "I: config file path set to " + conf_dir + "/perfprofd.conf " +
+      RAW_RESULT(
       I: random seed set to 12345678
       I: sleep 674 seconds
       I: initiating profile collection
@@ -845,10 +842,10 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
   // Collect a callchain profile, so as to exercise the code in
   // perf_data post-processing that digests callchains.
   //
-  PerfProfdRunner runner;
+  PerfProfdRunner runner(conf_dir);
   std::string ddparam("destination_directory="); ddparam += dest_dir;
   runner.addToConfig(ddparam);
-  std::string cfparam("config_directory="); cfparam += test_dir;
+  std::string cfparam("config_directory="); cfparam += conf_dir;
   runner.addToConfig(cfparam);
   runner.addToConfig("main_loop_iterations=1");
   runner.addToConfig("use_fixed_seed=12345678");
@@ -868,16 +865,17 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
 
   // Read and decode the resulting perf.data.encoded file
   wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
-  readEncodedProfile("CallChainRunWithLivePerf", encodedProfile);
+  readEncodedProfile(dest_dir, "CallChainRunWithLivePerf", encodedProfile);
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
   EXPECT_LT(0, encodedProfile.programs_size());
 
   // Verify log contents
-  const std::string expected = RAW_RESULT(
-      I: starting Android Wide Profiling daemon
-      I: config file path set to $NATIVE_TESTS/perfprofd_test/perfprofd.conf
+  const std::string expected = std::string(
+      "I: starting Android Wide Profiling daemon ") +
+      "I: config file path set to " + conf_dir + "/perfprofd.conf " +
+      RAW_RESULT(
       I: random seed set to 12345678
       I: sleep 674 seconds
       I: initiating profile collection
@@ -892,7 +890,11 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
 }
 
 int main(int argc, char **argv) {
-  executable_path = argv[0];
+  // Always log to cerr, so that device failures are visible.
+  android::base::SetLogger(android::base::StderrLogger);
+
+  CHECK(android::base::Realpath(argv[0], &gExecutableRealpath));
+
   // switch to / before starting testing (perfprofd
   // should be location-independent)
   chdir("/");
