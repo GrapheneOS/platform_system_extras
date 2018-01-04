@@ -38,6 +38,7 @@
 #include "perfprofdcore.h"
 #include "perfprofdutils.h"
 #include "perfprofdmockutils.h"
+#include "symbolizer.h"
 
 #include "perf_profile.pb.h"
 #include "google/protobuf/text_format.h"
@@ -296,6 +297,9 @@ static std::string encodedLoadModuleToString(const wireless_android_play_playlog
   ss << "name: \"" << lm.name() << "\"\n";
   if (lm.build_id() != "") {
     ss << "build_id: \"" << lm.build_id() << "\"\n";
+  }
+  for (const auto& symbol : lm.symbol()) {
+    ss << "symbol: \"" << symbol << "\"\n";
   }
   return ss.str();
 }
@@ -580,7 +584,7 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
 
   // Kick off encoder and check return code
   PROFILE_RESULT result =
-      encode_to_proto(input_perf_data, encoded_file_path(dest_dir, 0).c_str(), config, 0);
+      encode_to_proto(input_perf_data, encoded_file_path(dest_dir, 0).c_str(), config, 0, nullptr);
   EXPECT_EQ(OK_PROFILE_COLLECTION, result);
 
   // Read and decode the resulting perf.data.encoded file
@@ -637,6 +641,96 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
   }
 }
 
+TEST_F(PerfProfdTest, BasicRunWithCannedPerfWithSymbolizer)
+{
+  //
+  // Verify the portion of the daemon that reads and encodes
+  // perf.data files. Here we run the encoder on a canned perf.data
+  // file and verify that the resulting protobuf contains what
+  // we think it should contain.
+  //
+  std::string input_perf_data(test_dir);
+  input_perf_data += "/canned.perf.data";
+
+  // Set up config to avoid these annotations (they are tested elsewhere)
+  ConfigReader config_reader;
+  config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
+  config_reader.overrideUnsignedEntry("collect_charging_state", 0);
+  config_reader.overrideUnsignedEntry("collect_camera_active", 0);
+  PerfProfdRunner::LoggingConfig config;
+  config_reader.FillConfig(&config);
+
+  // Kick off encoder and check return code
+  struct TestSymbolizer : public perfprofd::Symbolizer {
+    std::string Decode(const std::string& dso, uint64_t address) override {
+      return dso + "@" + std::to_string(address);
+    }
+  };
+  TestSymbolizer test_symbolizer;
+  PROFILE_RESULT result =
+      encode_to_proto(input_perf_data,
+                      encoded_file_path(dest_dir, 0).c_str(),
+                      config,
+                      0,
+                      &test_symbolizer);
+  EXPECT_EQ(OK_PROFILE_COLLECTION, result);
+
+  // Read and decode the resulting perf.data.encoded file
+  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
+  readEncodedProfile(dest_dir,
+                     "BasicRunWithCannedPerf",
+                     encodedProfile);
+
+  // Expect 45 programs
+  EXPECT_EQ(45, encodedProfile.programs_size());
+
+  // Check a couple of load modules
+  { const auto &lm0 = encodedProfile.load_modules(0);
+    std::string act_lm0 = encodedLoadModuleToString(lm0);
+    std::string sqact0 = squeezeWhite(act_lm0, "actual for lm 0");
+    const std::string expected_lm0 = RAW_RESULT(
+        name: "/data/app/com.google.android.apps.plus-1/lib/arm/libcronet.so"
+        symbol: "/data/app/com.google.android.apps.plus-1/lib/arm/libcronet.so@310106"
+        symbol: "/data/app/com.google.android.apps.plus-1/lib/arm/libcronet.so@1949952"
+                                                );
+    std::string sqexp0 = squeezeWhite(expected_lm0, "expected_lm0");
+    EXPECT_STREQ(sqexp0.c_str(), sqact0.c_str());
+  }
+  { const auto &lm9 = encodedProfile.load_modules(9);
+    std::string act_lm9 = encodedLoadModuleToString(lm9);
+    std::string sqact9 = squeezeWhite(act_lm9, "actual for lm 9");
+    const std::string expected_lm9 = RAW_RESULT(
+        name: "/system/lib/libandroid_runtime.so" build_id: "8164ed7b3a8b8f5a220d027788922510"
+                                                );
+    std::string sqexp9 = squeezeWhite(expected_lm9, "expected_lm9");
+    EXPECT_STREQ(sqexp9.c_str(), sqact9.c_str());
+  }
+
+  // Examine some of the samples now
+  { const auto &p1 = encodedProfile.programs(0);
+    const auto &lm1 = p1.modules(0);
+    std::string act_lm1 = encodedModuleSamplesToString(lm1);
+    std::string sqact1 = squeezeWhite(act_lm1, "actual for lm1");
+    const std::string expected_lm1 = RAW_RESULT(
+        load_module_id: 9 address_samples { address: 296100 count: 1 }
+                                                );
+    std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
+    EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
+  }
+  { const auto &p1 = encodedProfile.programs(2);
+    const auto &lm2 = p1.modules(0);
+    std::string act_lm2 = encodedModuleSamplesToString(lm2);
+    std::string sqact2 = squeezeWhite(act_lm2, "actual for lm2");
+    const std::string expected_lm2 = RAW_RESULT(
+        load_module_id: 2
+        address_samples { address: 18446744073709551615 count: 1 }
+        address_samples { address: 18446744073709551614 count: 1 }
+                                                );
+    std::string sqexp2 = squeezeWhite(expected_lm2, "expected_lm2");
+    EXPECT_STREQ(sqexp2.c_str(), sqact2.c_str());
+  }
+}
+
 TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
 {
   // This test makes sure that the perf.data converter
@@ -655,7 +749,7 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
 
   // Kick off encoder and check return code
   PROFILE_RESULT result =
-      encode_to_proto(input_perf_data, encoded_file_path(dest_dir, 0).c_str(), config, 0);
+      encode_to_proto(input_perf_data, encoded_file_path(dest_dir, 0).c_str(), config, 0, nullptr);
   EXPECT_EQ(OK_PROFILE_COLLECTION, result);
 
   // Read and decode the resulting perf.data.encoded file
