@@ -44,6 +44,8 @@ struct UnwindingResult {
     // for ACCESS_MEM_FAILED and ACCESS_STACK_FAILED
     uint64_t addr;
   } stop_info;
+  uint64_t stack_start;
+  uint64_t stack_end;
 };
 
 class OfflineUnwinder {
