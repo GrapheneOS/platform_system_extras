@@ -1077,33 +1077,38 @@ UnwindingResultRecord::UnwindingResultRecord(char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
   MoveFromBinaryFormat(time, p);
-  MoveFromBinaryFormat(used_time, p);
+  MoveFromBinaryFormat(unwinding_result.used_time, p);
+  uint64_t stop_reason;
   MoveFromBinaryFormat(stop_reason, p);
-  MoveFromBinaryFormat(stop_info, p);
+  unwinding_result.stop_reason = static_cast<decltype(unwinding_result.stop_reason)>(stop_reason);
+  MoveFromBinaryFormat(unwinding_result.stop_info, p);
+  MoveFromBinaryFormat(unwinding_result.stack_start, p);
+  MoveFromBinaryFormat(unwinding_result.stack_end, p);
   CHECK_EQ(p, end);
 }
 
-UnwindingResultRecord::UnwindingResultRecord(uint64_t time, uint64_t used_time,
-                                             int stop_reason, uint64_t stop_info) {
+UnwindingResultRecord::UnwindingResultRecord(uint64_t time,
+                                             const UnwindingResult& unwinding_result) {
   SetTypeAndMisc(SIMPLE_PERF_RECORD_UNWINDING_RESULT, 0);
-  SetSize(header_size() + 4 * sizeof(uint64_t));
+  SetSize(header_size() + 6 * sizeof(uint64_t));
   this->time = time;
-  this->used_time = used_time;
-  this->stop_reason = stop_reason;
-  this->stop_info = stop_info;
+  this->unwinding_result = unwinding_result;
   char* new_binary = new char[size()];
   char* p = new_binary;
   MoveToBinaryFormat(header, p);
   MoveToBinaryFormat(this->time, p);
-  MoveToBinaryFormat(this->used_time, p);
-  MoveToBinaryFormat(this->stop_reason, p);
-  MoveToBinaryFormat(this->stop_info, p);
+  MoveToBinaryFormat(unwinding_result.used_time, p);
+  uint64_t stop_reason = unwinding_result.stop_reason;
+  MoveToBinaryFormat(stop_reason, p);
+  MoveToBinaryFormat(unwinding_result.stop_info, p);
+  MoveToBinaryFormat(unwinding_result.stack_start, p);
+  MoveToBinaryFormat(unwinding_result.stack_end, p);
   UpdateBinary(new_binary);
 }
 
 void UnwindingResultRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "time %" PRIu64 "\n", time);
-  PrintIndented(indent, "used_time %" PRIu64 "\n", used_time);
+  PrintIndented(indent, "used_time %" PRIu64 "\n", unwinding_result.used_time);
   static std::unordered_map<int, std::string> map = {
       {UnwindingResult::UNKNOWN_REASON, "UNKNOWN_REASON"},
       {UnwindingResult::EXCEED_MAX_FRAMES_LIMIT, "EXCEED_MAX_FRAME_LIMIT"},
@@ -1115,13 +1120,15 @@ void UnwindingResultRecord::DumpData(size_t indent) const {
       {UnwindingResult::DIFFERENT_ARCH, "DIFFERENT_ARCH"},
       {UnwindingResult::MAP_MISSING, "MAP_MISSING"},
   };
-  PrintIndented(indent, "stop_reason %s\n", map[stop_reason].c_str());
-  if (stop_reason == UnwindingResult::ACCESS_REG_FAILED) {
-    PrintIndented(indent, "regno %" PRIu64 "\n", stop_info);
-  } else if (stop_reason == UnwindingResult::ACCESS_STACK_FAILED ||
-             stop_reason == UnwindingResult::ACCESS_MEM_FAILED) {
-    PrintIndented(indent, "addr 0x%" PRIx64 "\n", stop_info);
+  PrintIndented(indent, "stop_reason %s\n", map[unwinding_result.stop_reason].c_str());
+  if (unwinding_result.stop_reason == UnwindingResult::ACCESS_REG_FAILED) {
+    PrintIndented(indent, "regno %" PRIu64 "\n", unwinding_result.stop_info);
+  } else if (unwinding_result.stop_reason == UnwindingResult::ACCESS_STACK_FAILED ||
+             unwinding_result.stop_reason == UnwindingResult::ACCESS_MEM_FAILED) {
+    PrintIndented(indent, "addr 0x%" PRIx64 "\n", unwinding_result.stop_info);
   }
+  PrintIndented(indent, "stack_start 0x%" PRIx64 "\n", unwinding_result.stack_start);
+  PrintIndented(indent, "stack_end 0x%" PRIx64 "\n", unwinding_result.stack_end);
 }
 
 UnknownRecord::UnknownRecord(char* p) : Record(p) {
