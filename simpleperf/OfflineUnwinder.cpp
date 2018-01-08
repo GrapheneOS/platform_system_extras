@@ -202,6 +202,8 @@ bool OfflineUnwinder::UnwindCallChain(int abi, const ThreadEntry& thread, const 
         unwinding_result_.stop_reason = UnwindingResult::UNKNOWN_REASON;
         break;
     }
+    unwinding_result_.stack_start = stack_info.start;
+    unwinding_result_.stack_end = stack_info.end;
   }
   return true;
 }
