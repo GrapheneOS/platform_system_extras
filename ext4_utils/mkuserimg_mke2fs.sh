@@ -133,8 +133,9 @@ if [[ $1 ]]; then
 fi
 
 case $EXT_VARIANT in
+  ext2) ;;
   ext4) ;;
-  *) echo "Only ext4 is supported!"; exit 3 ;;
+  *) echo "Only ext2/4 are supported!"; exit 3 ;;
 esac
 
 if [ -z $MOUNT_POINT ]; then
