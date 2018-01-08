@@ -90,6 +90,9 @@ struct Config {
   bool collect_booting = true;
   bool collect_camera_active = false;
 
+  // If true, use an ELF symbolizer to on-device symbolize.
+  bool use_elf_symbolizer = true;
+
   // Sleep for the given number of seconds.
   virtual void Sleep(size_t seconds) = 0;
 
