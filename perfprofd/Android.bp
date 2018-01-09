@@ -93,9 +93,6 @@ cc_binary {
         "libbinder",
         "libutils",
     ],
-    system_shared_libs: [
-        "libc", "libdl",
-    ],
     cflags: perfprofd_cflags,
     cppflags: perfprofd_cppflags,
 
