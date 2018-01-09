@@ -28,11 +28,13 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
-#include <string>
-#include <sstream>
-#include <map>
-#include <set>
+
 #include <cctype>
+#include <map>
+#include <memory>
+#include <set>
+#include <sstream>
+#include <string>
 
 #include <android-base/file.h>
 #include <android-base/macros.h>
@@ -44,6 +46,7 @@
 #include "perf_data_converter.h"
 #include "cpuconfig.h"
 #include "configreader.h"
+#include "symbolizer.h"
 
 //
 // Perf profiling daemon -- collects system-wide profiles using
@@ -801,7 +804,11 @@ static PROFILE_RESULT collect_profile(Config& config, int seq)
   //
   std::string path = android::base::StringPrintf(
       "%s.encoded.%d", data_file_path.c_str(), seq);
-  return encode_to_proto(data_file_path, path.c_str(), config, cpu_utilization, nullptr);
+  std::unique_ptr<perfprofd::Symbolizer> symbolizer;
+  if (config.use_elf_symbolizer) {
+    symbolizer = perfprofd::CreateELFSymbolizer();
+  }
+  return encode_to_proto(data_file_path, path.c_str(), config, cpu_utilization, symbolizer.get());
 }
 
 //
