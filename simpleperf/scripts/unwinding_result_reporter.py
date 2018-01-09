@@ -25,6 +25,7 @@
 from __future__ import print_function
 import argparse
 import bisect
+import collections
 import copy
 import re
 import subprocess
@@ -124,23 +125,17 @@ class SampleResult(object):
 
     """ Unwinding result per sample. """
 
-    def __init__(self, pid, tid, sample_time, stop_reason, stop_info, callchain):
+    def __init__(self, pid, tid, unwinding_result, callchain):
         self.pid = pid
         self.tid = tid
-        self.sample_time = sample_time
-        self.stop_reason = stop_reason
-        self.stop_info = stop_info
+        self.unwinding_result = unwinding_result
         self.callchain = callchain
 
     def show(self):
         print('  pid: %d' % self.pid)
         print('  tid: %d' % self.tid)
-        print('  sample_time: %d' % self.sample_time)
-        print('  stop_reason: %s' % self.stop_reason)
-        if self.stop_reason == 'ACCESS_REG_FAILED':
-            print('  failed_regno = %d' % self.stop_info)
-        elif self.stop_reason in ['ACCESS_STACK_FAILED', 'ACCESS_MEM_FAILED']:
-            print('  failed_addr = 0x%x' % self.stop_info)
+        for key, value in self.unwinding_result.items():
+            print('  %s: %s' % (key, value))
         for i, node in enumerate(self.callchain):
             print('  node %d: ip 0x%x, sp 0x%x, %s (%s[+%x]), map [%x-%x]' % (
                 i, node.ip, node.sp, node.function_name, node.filename, node.vaddr_in_file,
@@ -156,7 +151,7 @@ class FunctionResult(object):
         self.sample_results = {}
 
     def add_sample_result(self, sample_result):
-        stop_reason = sample_result.stop_reason
+        stop_reason = sample_result.unwinding_result['stop_reason']
         result_list = self.sample_results.get(stop_reason)
         if not result_list:
             result_list = self.sample_results[stop_reason] = []
@@ -200,14 +195,15 @@ class UnwindingResultErrorReport(object):
 
     """ Report time used for unwinding and unwinding result errors. """
 
-    def __init__(self):
+    def __init__(self, omit_callchains_fixed_by_joiner):
+        self.omit_callchains_fixed_by_joiner = omit_callchains_fixed_by_joiner
         self.process_maps = ProcessMaps()
         self.unwinding_times = UnwindingTimes()
         self.file_results = {}  # map from filename to FileResult.
 
-    def add_sample_result(self, used_time, sample_result):
-        self.unwinding_times.add_time(used_time)
-        if self.should_omit(sample_result):
+    def add_sample_result(self, sample_result, joined_record):
+        self.unwinding_times.add_time(int(sample_result.unwinding_result['used_time']))
+        if self.should_omit(sample_result, joined_record):
             return
         filename = sample_result.callchain[-1].filename
         file_result = self.file_results.get(filename)
@@ -215,17 +211,24 @@ class UnwindingResultErrorReport(object):
             file_result = self.file_results[filename] = FileResult()
         file_result.add_sample_result(sample_result)
 
-    def should_omit(self, sample_result):
+    def should_omit(self, sample_result, joined_record):
         # 1. Can't unwind code generated in memory.
-        if sample_result.callchain[-1].filename in ['/dev/ashmem/dalvik-jit-code-cache',
-                                                    '//anon']:
-            return True
+        for name in ['/dev/ashmem/dalvik-jit-code-cache', '//anon']:
+            if name in sample_result.callchain[-1].filename:
+                return True
         # 2. Don't report complete callchains, which can reach __libc_init or __start_thread in
         # libc.so.
-        for node in sample_result.callchain:
-            if (node.filename.endswith('libc.so') and
-                node.function_name in ['__libc_init', '__start_thread']):
-                return True
+        def is_callchain_complete(callchain):
+            for node in callchain:
+                if (node.filename.endswith('libc.so') and
+                        node.function_name in ['__libc_init', '__start_thread']):
+                    return True
+            return False
+        if is_callchain_complete(sample_result.callchain):
+            return True
+        # 3. Omit callchains made complete by callchain joiner.
+        if self.omit_callchains_fixed_by_joiner and is_callchain_complete(joined_record.callchain):
+            return True
         return False
 
     def show(self):
@@ -244,7 +247,83 @@ class UnwindingResultErrorReport(object):
             print('\n')
 
 
-def build_unwinding_result_report(record_file):
+class CallChainRecord(object):
+    """ Store data of a callchain record. """
+
+    def __init__(self):
+        self.pid = None
+        self.tid = None
+        self.callchain = []
+
+
+def parse_callchain_record(lines, i, chain_type, process_maps):
+    if i == len(lines) or not lines[i].startswith('record callchain:'):
+        log_fatal('unexpected dump output near line %d' % i)
+    i += 1
+    record = CallChainRecord()
+    ips = []
+    sps = []
+    function_names = []
+    filenames = []
+    vaddr_in_files = []
+    map_start_addrs = []
+    map_end_addrs = []
+    in_callchain = False
+    while i < len(lines) and not lines[i].startswith('record'):
+        line = lines[i].strip()
+        items = line.split()
+        if not items:
+            i += 1
+            continue
+        if items[0] == 'pid' and len(items) == 2:
+            record.pid = int(items[1])
+        elif items[0] == 'tid' and len(items) == 2:
+            record.tid = int(items[1])
+        elif items[0] == 'chain_type' and len(items) == 2:
+            if items[1] != chain_type:
+                log_fatal('unexpected dump output near line %d' % i)
+        elif items[0] == 'ip':
+            m = re.search(r'ip\s+0x(\w+),\s+sp\s+0x(\w+)$', line)
+            if m:
+                ips.append(int(m.group(1), 16))
+                sps.append(int(m.group(2), 16))
+        elif items[0] == 'callchain:':
+            in_callchain = True
+        elif in_callchain:
+            # "dalvik-jit-code-cache (deleted)[+346c] (/dev/ashmem/dalvik-jit-code-cache (deleted)[+346c])"
+            if re.search(r'\)\[\+\w+\]\)$', line):
+                break_pos = line.rfind('(', 0, line.rfind('('))
+            else:
+                break_pos = line.rfind('(')
+            if break_pos > 0:
+                m = re.match('(.+)\[\+(\w+)\]\)', line[break_pos + 1:])
+                if m:
+                    function_names.append(line[:break_pos].strip())
+                    filenames.append(m.group(1))
+                    vaddr_in_files.append(int(m.group(2), 16))
+        i += 1
+
+    for ip in ips:
+        map_entry = process_maps.find(record.pid, ip)
+        if map_entry:
+            map_start_addrs.append(map_entry.start)
+            map_end_addrs.append(map_entry.end)
+        else:
+            map_start_addrs.append(0)
+            map_end_addrs.append(0)
+    n = len(ips)
+    if (None in [record.pid, record.tid] or n == 0 or len(sps) != n or
+            len(function_names) != n or len(filenames) != n or len(vaddr_in_files) != n or
+            len(map_start_addrs) != n or len(map_end_addrs) != n):
+        log_fatal('unexpected dump output near line %d' % i)
+    for j in range(n):
+        record.callchain.append(CallChainNode(ips[j], sps[j], filenames[j], vaddr_in_files[j],
+                                              function_names[j], map_start_addrs[j],
+                                              map_end_addrs[j]))
+    return i, record
+
+
+def build_unwinding_result_report(record_file, omit_callchains_fixed_by_joiner):
     simpleperf_path = get_host_binary_path('simpleperf')
     args = [simpleperf_path, 'dump', record_file]
     proc = subprocess.Popen(args, stdout=subprocess.PIPE)
@@ -252,7 +331,7 @@ def build_unwinding_result_report(record_file):
     if 'record callchain' not in stdoutdata or 'record unwinding_result' not in stdoutdata:
         log_exit("Can't parse unwinding result. Because %s is not recorded using '--log debug'."
                  % record_file)
-    unwinding_report = UnwindingResultErrorReport()
+    unwinding_report = UnwindingResultErrorReport(omit_callchains_fixed_by_joiner)
     process_maps = unwinding_report.process_maps
     lines = stdoutdata.split('\n')
     i = 0
@@ -279,85 +358,21 @@ def build_unwinding_result_report(record_file):
             process_maps.add(pid, MapEntry(start, end, filename))
         elif lines[i].startswith('record unwinding_result:'):
             i += 1
-            sample_time = None
-            used_time = None
-            stop_reason = None
-            stop_info = 0
+            unwinding_result = collections.OrderedDict()
             while i < len(lines) and not lines[i].startswith('record'):
                 strs = (lines[i].strip()).split()
                 if len(strs) == 2:
-                    if strs[0] == 'time':
-                        sample_time = int(strs[1])
-                    elif strs[0] == 'used_time':
-                        used_time = int(strs[1])
-                    elif strs[0] == 'stop_reason':
-                        stop_reason = strs[1]
-                    elif strs[0] == 'regno':
-                        stop_info = int(strs[1])
-                    elif strs[0] == 'addr':
-                        stop_info = int(strs[1][2:], 16)
+                    unwinding_result[strs[0]] = strs[1]
                 i += 1
-            if (None in [sample_time, used_time, stop_reason] or i == len(lines) or
-                not lines[i].startswith('record callchain:')):
-                log_fatal('unexpected dump output near line %d' % i)
-            i += 1
-            pid = None
-            tid = None
-            ips = []
-            sps = []
-            function_names = []
-            filenames = []
-            vaddr_in_files = []
-            map_start_addrs = []
-            map_end_addrs = []
-            in_callchain = False
-            while i < len(lines) and not lines[i].startswith('record'):
-                if lines[i].startswith('  pid'):
-                    pid = int(lines[i][len('  pid'):])
-                elif lines[i].startswith('  tid'):
-                    tid = int(lines[i][len('  tid'):])
-                elif lines[i].startswith('  chain_type'):
-                    if 'ORIGINAL_OFFLINE' not in lines[i]:
-                        log_fatal('unexpected dump output near line %d' % i)
-                elif lines[i].startswith('    ip'):
-                    m = re.search(r'ip\s+0x(\w+),\s+sp\s+0x(\w+)$', lines[i])
-                    if m:
-                        ips.append(int(m.group(1), 16))
-                        sps.append(int(m.group(2), 16))
-                    #print('ip = %x, sp = %x' % (ips[-1], sps[-1]))
-                elif lines[i].startswith('  callchain:'):
-                    in_callchain = True
-                elif in_callchain:
-                    line = lines[i].strip()
-                    m = re.match(r'(.+)\s+\((.+?)\[\+(\w+)\]\)', line)
-                    #print('search callchain in line %s, m = %s' % (line, m))
-                    if m:
-                        function_names.append(m.group(1))
-                        filenames.append(m.group(2))
-                        vaddr_in_files.append(int(m.group(3), 16))
-                i += 1
-            for ip in ips:
-                map_entry = process_maps.find(pid, ip)
-                if map_entry:
-                    map_start_addrs.append(map_entry.start)
-                    map_end_addrs.append(map_entry.end)
-                else:
-                    map_start_addrs.append(0)
-                    map_end_addrs.append(0)
-            n = len(ips)
-            if (None in [pid, tid] or n == 0 or len(sps) != n or len(function_names) != n or
-                len(filenames) != n or len(vaddr_in_files) != n or len(map_start_addrs) != n or
-                len(map_end_addrs) != n):
-                log_fatal('unexpected dump output near line %d' % i)
-            callchain = []
-            for j in range(n):
-                callchain.append(CallChainNode(ips[j], sps[j], filenames[j], vaddr_in_files[j],
-                                               function_names[
-                                                   j], map_start_addrs[j],
-                                               map_end_addrs[j]))
-            sample_result = SampleResult(
-                pid, tid, sample_time, stop_reason, stop_info, callchain)
-            unwinding_report.add_sample_result(used_time, sample_result)
+            for key in ['time', 'used_time', 'stop_reason']:
+                if key not in unwinding_result:
+                    log_fatal('unexpected dump output near line %d' % i)
+
+            i, original_record = parse_callchain_record(lines, i, 'ORIGINAL_OFFLINE', process_maps)
+            i, joined_record = parse_callchain_record(lines, i, 'JOINED_OFFLINE', process_maps)
+            sample_result = SampleResult(original_record.pid, original_record.tid,
+                                         unwinding_result, original_record.callchain)
+            unwinding_report.add_sample_result(sample_result, joined_record)
         elif lines[i].startswith('record fork:'):
             i += 1
             pid = None
@@ -382,8 +397,11 @@ def main():
         description='report unwinding result in profiling data')
     parser.add_argument('-i', '--record_file', nargs=1, default=['perf.data'], help="""
                         Set profiling data to report. Default is perf.data.""")
+    parser.add_argument('--omit-callchains-fixed-by-joiner', action='store_true', help="""
+                        Don't show incomplete callchains fixed by callchain joiner.""")
     args = parser.parse_args()
-    report = build_unwinding_result_report(args.record_file[0])
+    report = build_unwinding_result_report(args.record_file[0],
+                                           args.omit_callchains_fixed_by_joiner)
     report.show()
 
 if __name__ == '__main__':
