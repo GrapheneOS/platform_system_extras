@@ -9,6 +9,58 @@ perfprofd_cppflags = [
 ]
 
 //
+// Static library for ELF symbolization.
+//
+// TODO: make this a proper part of simpleperf once that is moved to Soong.
+//
+
+cc_library_static {
+    name: "libperfprofd_elf_read",
+
+    export_include_dirs: [
+        "simpleperf",
+    ],
+
+    cflags: [
+        "-DSIMPLEPERF_REVISION=\"dummy\"",
+    ],
+
+    static_libs: [
+        "libbase",
+    ],
+    // Use whole-static to avoid having to pull this in later.
+    whole_static_libs: [
+        "libLLVMObject",
+        "libLLVMBitReader",
+        "libLLVMMC",
+        "libLLVMMCParser",
+        "libLLVMCore",
+        "libLLVMSupport",
+        "liblog",
+        "liblzma",
+        "libz",
+        "libziparchive",
+    ],
+
+    target: {
+        // Required for LLVM.
+        linux_glibc: {
+            host_ldlibs: [
+                "-lncurses",
+            ],
+        },
+    },
+
+    srcs: [
+        "simpleperf/read_apk.cpp",
+        "simpleperf/read_elf.cpp",
+        "simpleperf/utils.cpp",
+    ],
+
+    group_static_libs: true,
+}
+
+//
 // Static library containing guts of AWP daemon.
 //
 
@@ -17,7 +69,10 @@ cc_library_static {
 
     local_include_dirs: ["quipper/kernel-headers"],
     export_include_dirs: ["."],
-    static_libs: ["libbase"],
+    static_libs: [
+        "libbase",
+        "libperfprofd_elf_read",
+    ],
     srcs: [
         "perf_profile.proto",
         "quipper/perf_utils.cc",
@@ -29,6 +84,7 @@ cc_library_static {
         "configreader.cc",
         "cpuconfig.cc",
         "perfprofdcore.cc",
+        "symbolizer.cc"
     ],
 
     cflags: perfprofd_cflags,
@@ -85,6 +141,7 @@ cc_binary {
         "libperfprofdcore",
         "libperfprofdutils",
         "libperfprofd_binder",
+        "libperfprofd_elf_read",
     ],
     shared_libs: [
         "liblog",

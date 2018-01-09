@@ -18,12 +18,16 @@
 #ifndef SYSTEM_EXTRAS_PERFPROFD_SYMBOLIZER_H_
 #define SYSTEM_EXTRAS_PERFPROFD_SYMBOLIZER_H_
 
+#include <memory>
+
 namespace perfprofd {
 
 struct Symbolizer {
   virtual ~Symbolizer() {}
   virtual std::string Decode(const std::string& dso, uint64_t address) = 0;
 };
+
+std::unique_ptr<Symbolizer> CreateELFSymbolizer();
 
 }  // namespace perfprofd
 
