@@ -43,8 +43,9 @@ import sys
 import tempfile
 import time
 import unittest
-from utils import *
+
 from simpleperf_report_lib import ReportLib
+from utils import *
 
 has_google_protobuf = True
 try:
@@ -365,20 +366,25 @@ class TestExamplePureJava(TestExampleBase):
     def test_app_profiler_with_ctrl_c(self):
         if is_windows():
             return
-        # `adb root` and `adb unroot` may consumes more time than 3 sec. So
-        # do it in advance to make sure ctrl-c happens when recording.
-        if self.adb_root:
-            self.adb.switch_to_root()
-        else:
-            self.adb._unroot()
+        self.adb.check_run(['shell', 'am', 'start', '-n', self.package_name + '/.MainActivity'])
+        time.sleep(1)
         args = [sys.executable, "app_profiler.py", "--app", self.package_name,
-                "-r", "--duration 10000", "-nc"]
-        if not self.adb_root:
-            args.append("--disable_adb_root")
+                "-r", "--duration 10000", "-nc", "--disable_adb_root"]
         subproc = subprocess.Popen(args)
         time.sleep(3)
 
         subproc.send_signal(signal.SIGINT)
+        subproc.wait()
+        self.assertEqual(subproc.returncode, 0)
+        self.run_cmd(["report.py"])
+
+    def test_app_profiler_stop_after_app_exit(self):
+        self.adb.check_run(['shell', 'am', 'start', '-n', self.package_name + '/.MainActivity'])
+        time.sleep(1)
+        subproc = subprocess.Popen([sys.executable, 'app_profiler.py', '--app', self.package_name,
+                                    '-r', '--duration 10000', '-nc', '--disable_adb_root'])
+        time.sleep(3)
+        self.adb.check_run(['shell', 'am', 'force-stop', self.package_name])
         subproc.wait()
         self.assertEqual(subproc.returncode, 0)
         self.run_cmd(["report.py"])

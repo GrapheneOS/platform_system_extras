@@ -47,6 +47,9 @@ message LoadModule {
 
   // LoadModule's linker build_id.
   optional string build_id = 2;
+
+  // On-device symbolized entries.
+  repeated string symbol = 3;
 }
 
 // All samples for a load_module.

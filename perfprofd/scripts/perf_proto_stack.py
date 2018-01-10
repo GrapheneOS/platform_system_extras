@@ -43,44 +43,77 @@ module_list = profile.load_modules
 
 counters = {}
 
-for program in profile.programs:
-    print program.name
-    for module in program.modules:
-        if module.HasField('load_module_id'):
-            module_descr = module_list[module.load_module_id]
-            print ' ', module_descr.name
-            if module_descr.HasField('build_id'):
-                print '   ', module_descr.build_id
-            for addr in module.address_samples:
-                # TODO: Stacks vs single samples.
-                addr_rel = addr.address[0]
-                print '     ', addr.count, addr_rel
-                if module_descr.name != '[kernel.kallsyms]':
+def indent(txt, stops = 1):
+    return '\n'.join('  ' * stops + line for line in txt.splitlines())
+
+
+def print_samples(module_list, programs, counters):
+    print 'Samples:'
+    for program in programs:
+        print indent(program.name, 1)
+        for module in program.modules:
+            if module.HasField('load_module_id'):
+                module_descr = module_list[module.load_module_id]
+                print indent(module_descr.name, 2)
+                has_build_id = module_descr.HasField('build_id')
+                if has_build_id:
+                    print indent('Build ID: %s' % (module_descr.build_id), 3)
+                for addr in module.address_samples:
+                    # TODO: Stacks vs single samples.
+                    addr_rel = addr.address[0]
                     addr_rel_hex = "%x" % addr_rel
-                    info = symbol.SymbolInformation(module_descr.name, addr_rel_hex)
-                    # As-is, only info[0] (inner-most inlined function) is recognized.
-                    (source_symbol, source_location, object_symbol_with_offset) = info[0]
-                    if source_symbol is not None:
-                        print source_symbol, source_location, object_symbol_with_offset
-                    counters_key = None
-                    if source_symbol is not None:
-                        counters_key = (module_descr.name, source_symbol)
-                    else:
-                        counters_key = (module_descr.name, addr_rel_hex)
-                    if counters_key in counters:
-                        counters[counters_key] = counters[counters_key] + 1
-                    else:
-                        counters[counters_key] = 1
-        else:
-            print '  Missing module'
+                    print indent('%d %s' % (addr.count, addr_rel_hex), 3)
+                    if module_descr.name != '[kernel.kallsyms]':
+                        if has_build_id:
+                            info = symbol.SymbolInformation(module_descr.name, addr_rel_hex)
+                            # As-is, only info[0] (inner-most inlined function) is recognized.
+                            (source_symbol, source_location, object_symbol_with_offset) = info[0]
+                            if object_symbol_with_offset is not None:
+                                print indent(object_symbol_with_offset, 4)
+                            if source_symbol is not None:
+                                for (sym_inlined, loc_inlined, _) in info:
+                                    print indent(sym_inlined, 5)
+                                    if loc_inlined is not None:
+                                        print ' %s' % (indent(loc_inlined, 5))
+                        elif module_descr.symbol and (addr_rel & 0x8000000000000000 != 0):
+                            index = 0xffffffffffffffff - addr_rel
+                            source_symbol = module_descr.symbol[index]
+                            print indent(source_symbol, 4)
+                        counters_key = None
+                        if source_symbol is not None:
+                            counters_key = (module_descr.name, source_symbol)
+                        else:
+                            counters_key = (module_descr.name, addr_rel_hex)
+                        if counters_key in counters:
+                            counters[counters_key] = counters[counters_key] + addr.count
+                        else:
+                            counters[counters_key] = addr.count
+            else:
+                print indent('<Missing module>', 2)
 
-# Create a sorted list of top samples.
-counter_list = []
-for key, value in counters.iteritems():
-    temp = (key,value)
-    counter_list.append(temp)
-counter_list.sort(key=lambda counter: counter[1], reverse=True)
+def print_histogram(counters, size):
+    # Create a sorted list of top samples.
+    counter_list = []
+    for key, value in counters.iteritems():
+        temp = (key,value)
+        counter_list.append(temp)
+    counter_list.sort(key=lambda counter: counter[1], reverse=True)
 
-# Print top-100 samples.
-for i in range(0, 100):
-    print i+1, counter_list[i]
+    # Print top-size samples.
+    print 'Histogram top-%d:' % (size)
+    for i in xrange(0, min(len(counter_list), size)):
+        print indent('%d: %s' % (i+1, counter_list[i]), 1)
+
+def print_modules(module_list):
+    print 'Modules:'
+    for module in module_list:
+        print indent(module.name, 1)
+        if module.HasField('build_id'):
+            print indent('Build ID: %s' % (module.build_id), 2)
+        print indent('Symbols:', 2)
+        for symbol in module.symbol:
+            print indent(symbol, 3)
+
+print_samples(module_list, profile.programs, counters)
+print_modules(module_list)
+print_histogram(counters, 100)

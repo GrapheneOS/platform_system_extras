@@ -33,6 +33,7 @@ cc_test {
     static_libs: [
         "libperfprofdcore",
         "libperfprofdmockutils",
+        "libperfprofd_elf_read",
         "libbase",
     ],
     shared_libs: [

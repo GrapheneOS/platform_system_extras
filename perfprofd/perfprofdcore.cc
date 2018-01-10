@@ -28,11 +28,13 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
-#include <string>
-#include <sstream>
-#include <map>
-#include <set>
+
 #include <cctype>
+#include <map>
+#include <memory>
+#include <set>
+#include <sstream>
+#include <string>
 
 #include <android-base/file.h>
 #include <android-base/macros.h>
@@ -44,6 +46,7 @@
 #include "perf_data_converter.h"
 #include "cpuconfig.h"
 #include "configreader.h"
+#include "symbolizer.h"
 
 //
 // Perf profiling daemon -- collects system-wide profiles using
@@ -469,13 +472,14 @@ inline char* string_as_array(std::string* str) {
 PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
                                const char *encoded_file_path,
                                const Config& config,
-                               unsigned cpu_utilization)
+                               unsigned cpu_utilization,
+                               perfprofd::Symbolizer* symbolizer)
 {
   //
   // Open and read perf.data file
   //
   const wireless_android_play_playlog::AndroidPerfProfile &encodedProfile =
-      wireless_android_logging_awp::RawPerfDataToAndroidPerfProfile(data_file_path);
+      wireless_android_logging_awp::RawPerfDataToAndroidPerfProfile(data_file_path, symbolizer);
 
   //
   // Issue error if no samples
@@ -800,7 +804,11 @@ static PROFILE_RESULT collect_profile(Config& config, int seq)
   //
   std::string path = android::base::StringPrintf(
       "%s.encoded.%d", data_file_path.c_str(), seq);
-  return encode_to_proto(data_file_path, path.c_str(), config, cpu_utilization);
+  std::unique_ptr<perfprofd::Symbolizer> symbolizer;
+  if (config.use_elf_symbolizer) {
+    symbolizer = perfprofd::CreateELFSymbolizer();
+  }
+  return encode_to_proto(data_file_path, path.c_str(), config, cpu_utilization, symbolizer.get());
 }
 
 //
@@ -970,7 +978,7 @@ int perfprofd_main(int argc, char** argv, Config* config)
 
   if (!perf_file_to_convert.empty()) {
     std::string encoded_path = perf_file_to_convert + ".encoded";
-    encode_to_proto(perf_file_to_convert, encoded_path.c_str(), *config, 0);
+    encode_to_proto(perf_file_to_convert, encoded_path.c_str(), *config, 0, nullptr);
     return 0;
   }
 
