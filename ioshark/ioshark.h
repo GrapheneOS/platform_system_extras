@@ -21,7 +21,7 @@
  * 3) Table of IO operations to perform on the files
  */
 
-#pragma pack(1)
+#pragma pack(push, 1)
 
 /*
  * The parsed workload file starts off with the header, which
@@ -126,4 +126,4 @@ struct ioshark_filename_struct
 	char path[MAX_IOSHARK_PATHLEN];
 };
 
-#pragma options align=reset
+#pragma pack(pop)
