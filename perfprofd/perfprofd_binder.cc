@@ -217,6 +217,7 @@ Status PerfProfdNativeService::StartProfilingProtobuf(ProtoLoaderFn fn) {
     CHECK_AND_COPY_FROM_PROTO(collect_booting)
     CHECK_AND_COPY_FROM_PROTO(collect_camera_active)
     CHECK_AND_COPY_FROM_PROTO(process)
+    CHECK_AND_COPY_FROM_PROTO(use_elf_symbolizer)
 #undef CHECK_AND_COPY_FROM_PROTO
   };
   return StartProfiling(config_fn);

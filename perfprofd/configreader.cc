@@ -324,4 +324,7 @@ void ConfigReader::FillConfig(Config* config) {
   config->collect_charging_state = getBoolValue("collect_charging_state");
   config->collect_booting = getBoolValue("collect_booting");
   config->collect_camera_active = getBoolValue("collect_camera_active");
+
+  config->process = -1;
+  config->use_elf_symbolizer = true;
 }
