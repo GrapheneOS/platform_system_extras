@@ -70,4 +70,7 @@ message ProfilingConfig {
   // The pid of the process to profile. May be negative, in which case
   // the whole system will be profiled.
   optional int32 process = 18;
+
+  // Whether to use a symbolizer on-device.
+  optional bool use_elf_symbolizer = 19;
 };
