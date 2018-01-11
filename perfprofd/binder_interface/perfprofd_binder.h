@@ -15,8 +15,8 @@
 ** limitations under the License.
 */
 
-#ifndef SYSTEM_EXTRAS_PERFPROFD_PERFPROFD_BINDER_H_
-#define SYSTEM_EXTRAS_PERFPROFD_PERFPROFD_BINDER_H_
+#ifndef SYSTEM_EXTRAS_PERFPROFD_BINDER_INTERFACE_PERFPROFD_BINDER_H_
+#define SYSTEM_EXTRAS_PERFPROFD_BINDER_INTERFACE_PERFPROFD_BINDER_H_
 
 namespace android {
 namespace perfprofd {
@@ -28,4 +28,4 @@ int Main();
 }  // namespace perfprofd
 }  // namespace android
 
-#endif  // SYSTEM_EXTRAS_PERFPROFD_PERFPROFD_BINDER_H_
+#endif  // SYSTEM_EXTRAS_PERFPROFD_BINDER_INTERFACE_PERFPROFD_BINDER_H_
