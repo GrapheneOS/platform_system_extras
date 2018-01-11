@@ -18,7 +18,7 @@
 
 # Generate with:
 #  aprotoc -I=system/extras/perfprofd --python_out=system/extras/perfprofd/scripts \
-#      system/extras/perfprofd/perfprofd_config.proto
+#      system/extras/perfprofd/binder_interface/perfprofd_config.proto
 import perfprofd_config_pb2
 
 import sys
