@@ -25,6 +25,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <functional>
 
 #include <inttypes.h>
 #include <unistd.h>
@@ -41,6 +42,7 @@
 
 #include "android/os/BnPerfProfd.h"
 #include "perfprofd_config.pb.h"
+#include "perf_profile.pb.h"
 
 #include "config.h"
 #include "configreader.h"
@@ -110,6 +112,12 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
                       uint32_t _aidl_flags = 0) override;
 
  private:
+  // Handler for ProfilingLoop.
+  bool BinderHandler(wireless_android_play_playlog::AndroidPerfProfile* encodedProfile,
+                     Config* config);
+  // Helper for the handler.
+  HandlerFn GetBinderHandler();
+
   status_t shellCommand(int /*in*/, int out, int err, Vector<String16>& args);
 
   template <typename ConfigFn> Status StartProfiling(ConfigFn fn);
@@ -119,7 +127,33 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
   std::mutex lock_;
 
   BinderConfig cur_config_;
+
+  int seq_ = 0;
 };
+
+bool PerfProfdNativeService::BinderHandler(
+    wireless_android_play_playlog::AndroidPerfProfile* encodedProfile, Config* config) {
+  if (encodedProfile == nullptr) {
+    return false;
+  }
+  std::string data_file_path(config->destination_directory);
+  data_file_path += "/perf.data";
+  std::string path = android::base::StringPrintf("%s.encoded.%d", data_file_path.c_str(), seq_);
+  PROFILE_RESULT result = SerializeProtobuf(encodedProfile, path.c_str());
+  if (result != PROFILE_RESULT::OK_PROFILE_COLLECTION) {
+    return false;
+  }
+
+  seq_++;
+  return true;
+}
+
+HandlerFn PerfProfdNativeService::GetBinderHandler() {
+  return HandlerFn(std::bind(&PerfProfdNativeService::BinderHandler,
+                             this,
+                             std::placeholders::_1,
+                             std::placeholders::_2));
+}
 
 status_t PerfProfdNativeService::start() {
   IPCThreadState::self()->disableBackgroundScheduling(true);
@@ -172,8 +206,9 @@ Status PerfProfdNativeService::StartProfiling(ConfigFn fn) {
 
   fn(cur_config_);
 
-  auto profile_runner = [](PerfProfdNativeService* service) {
-    ProfilingLoop(service->cur_config_);
+  HandlerFn handler = GetBinderHandler();
+  auto profile_runner = [handler](PerfProfdNativeService* service) {
+    ProfilingLoop(service->cur_config_, handler);
 
     // This thread is done.
     std::lock_guard<std::mutex> unset_guard(service->lock_);
