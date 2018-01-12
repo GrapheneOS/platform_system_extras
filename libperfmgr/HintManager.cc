@@ -297,6 +297,15 @@ std::map<std::string, std::vector<NodeAction>> HintManager::ParseActions(
                 {node_index, static_cast<std::size_t>(value_index),
                  std::chrono::milliseconds(duration)}};
         } else {
+            for (const auto& action : actions_parsed[hint_type]) {
+                if (action.node_index == node_index) {
+                    LOG(ERROR)
+                        << "Action[" << i
+                        << "]'s NodeIndex is duplicated with another Action";
+                    actions_parsed.clear();
+                    return actions_parsed;
+                }
+            }
             actions_parsed[hint_type].emplace_back(
                 node_index, static_cast<std::size_t>(value_index),
                 std::chrono::milliseconds(duration));
@@ -307,7 +316,7 @@ std::map<std::string, std::vector<NodeAction>> HintManager::ParseActions(
 
     LOG(INFO) << total_parsed << " Actions parsed successfully";
 
-    for (auto& action : actions_parsed) {
+    for (const auto& action : actions_parsed) {
         LOG(INFO) << "PowerHint " << action.first << " has "
                   << action.second.size() << " actions parsed";
     }
