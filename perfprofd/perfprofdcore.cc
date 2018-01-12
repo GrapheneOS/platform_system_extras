@@ -41,6 +41,9 @@
 #include <android-base/macros.h>
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
+#include <android-base/unique_fd.h>
+
+#include "perf_profile.pb.h"
 
 #include "perfprofdcore.h"
 #include "perf_data_converter.h"
@@ -465,8 +468,52 @@ static void annotate_encoded_perf_profile(wireless_android_play_playlog::Android
   }
 }
 
-inline char* string_as_array(std::string* str) {
-  return str->empty() ? NULL : &*str->begin();
+using ProtoUniquePtr = std::unique_ptr<wireless_android_play_playlog::AndroidPerfProfile>;
+static ProtoUniquePtr encode_to_proto(const std::string &data_file_path,
+                                      const Config& config,
+                                      unsigned cpu_utilization,
+                                      perfprofd::Symbolizer* symbolizer) {
+  //
+  // Open and read perf.data file
+  //
+  ProtoUniquePtr encodedProfile(
+      wireless_android_logging_awp::RawPerfDataToAndroidPerfProfile(data_file_path, symbolizer));
+  if (encodedProfile == nullptr) {
+    return nullptr;
+  }
+
+  // All of the info in 'encodedProfile' is derived from the perf.data file;
+  // here we tack display status, cpu utilization, system load, etc.
+  annotate_encoded_perf_profile(encodedProfile.get(), config, cpu_utilization);
+
+  return encodedProfile;
+}
+
+PROFILE_RESULT SerializeProtobuf(wireless_android_play_playlog::AndroidPerfProfile* encodedProfile,
+                                 const char* encoded_file_path) {
+  //
+  // Serialize protobuf to array
+  //
+  size_t size = encodedProfile->ByteSize();
+  std::unique_ptr<uint8_t[]> data(new uint8_t[size]);
+  encodedProfile->SerializeWithCachedSizesToArray(data.get());
+
+  //
+  // Open file and write encoded data to it
+  //
+  unlink(encoded_file_path);  // Attempt to unlink for a clean slate.
+  constexpr int kFlags = O_CREAT | O_WRONLY | O_TRUNC | O_NOFOLLOW | O_CLOEXEC;
+  android::base::unique_fd fd(open(encoded_file_path, kFlags, 0664));
+  if (fd.get() == -1) {
+    PLOG(WARNING) << "Could not open " << encoded_file_path << " for serialization";
+    return ERR_OPEN_ENCODED_FILE_FAILED;
+  }
+  if (!android::base::WriteFully(fd.get(), data.get(), size)) {
+    PLOG(WARNING) << "Could not write to " << encoded_file_path;
+    return ERR_WRITE_ENCODED_FILE_FAILED;
+  }
+
+  return OK_PROFILE_COLLECTION;
 }
 
 PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
@@ -475,52 +522,19 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
                                unsigned cpu_utilization,
                                perfprofd::Symbolizer* symbolizer)
 {
-  //
-  // Open and read perf.data file
-  //
-  const wireless_android_play_playlog::AndroidPerfProfile &encodedProfile =
-      wireless_android_logging_awp::RawPerfDataToAndroidPerfProfile(data_file_path, symbolizer);
+  ProtoUniquePtr encodedProfile = encode_to_proto(data_file_path,
+                                                  config,
+                                                  cpu_utilization,
+                                                  symbolizer);
 
   //
   // Issue error if no samples
   //
-  if (encodedProfile.programs().size() == 0) {
+  if (encodedProfile == nullptr || encodedProfile->programs().size() == 0) {
     return ERR_PERF_ENCODE_FAILED;
   }
 
-  // All of the info in 'encodedProfile' is derived from the perf.data file;
-  // here we tack display status, cpu utilization, system load, etc.
-  wireless_android_play_playlog::AndroidPerfProfile &prof =
-      const_cast<wireless_android_play_playlog::AndroidPerfProfile&>
-      (encodedProfile);
-  annotate_encoded_perf_profile(&prof, config, cpu_utilization);
-
-  //
-  // Serialize protobuf to array
-  //
-  int size = encodedProfile.ByteSize();
-  std::string data;
-  data.resize(size);
-  ::google::protobuf::uint8* dtarget =
-        reinterpret_cast<::google::protobuf::uint8*>(string_as_array(&data));
-  encodedProfile.SerializeWithCachedSizesToArray(dtarget);
-
-  //
-  // Open file and write encoded data to it
-  //
-  FILE *fp = fopen(encoded_file_path, "w");
-  if (!fp) {
-    return ERR_OPEN_ENCODED_FILE_FAILED;
-  }
-  size_t fsiz = size;
-  if (fwrite(dtarget, fsiz, 1, fp) != 1) {
-    fclose(fp);
-    return ERR_WRITE_ENCODED_FILE_FAILED;
-  }
-  fclose(fp);
-  chmod(encoded_file_path, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
-
-  return OK_PROFILE_COLLECTION;
+  return SerializeProtobuf(encodedProfile.get(), encoded_file_path);
 }
 
 //
@@ -729,7 +743,7 @@ static bool post_process(const Config& config, int current_seq)
 // - kick off 'perf record'
 // - read perf.data, convert to protocol buf
 //
-static PROFILE_RESULT collect_profile(Config& config, int seq)
+static ProtoUniquePtr collect_profile(Config& config)
 {
   //
   // Collect cpu utilization if enabled
@@ -794,20 +808,18 @@ static PROFILE_RESULT collect_profile(Config& config, int seq)
                                    data_file_path,
                                    perf_stderr_path);
   if (ret != OK_PROFILE_COLLECTION) {
-    return ret;
+    return nullptr;
   }
 
   //
   // Read the resulting perf.data file, encode into protocol buffer, then write
   // the result to the file perf.data.encoded
   //
-  std::string path = android::base::StringPrintf(
-      "%s.encoded.%d", data_file_path.c_str(), seq);
   std::unique_ptr<perfprofd::Symbolizer> symbolizer;
   if (config.use_elf_symbolizer) {
     symbolizer = perfprofd::CreateELFSymbolizer();
   }
-  return encode_to_proto(data_file_path, path.c_str(), config, cpu_utilization, symbolizer.get());
+  return encode_to_proto(data_file_path, config, cpu_utilization, symbolizer.get());
 }
 
 //
@@ -891,9 +903,8 @@ static void init(ConfigReader &config)
 }
 
 template <typename ConfigFn, typename UpdateFn>
-static void ProfilingLoopImpl(ConfigFn config, UpdateFn update) {
+static void ProfilingLoopImpl(ConfigFn config, UpdateFn update, HandlerFn handler) {
   unsigned iterations = 0;
-  int seq = 0;
   while(config()->main_loop_iterations == 0 ||
       iterations < config()->main_loop_iterations) {
     if (config()->ShouldStopProfiling()) {
@@ -922,14 +933,17 @@ static void ProfilingLoopImpl(ConfigFn config, UpdateFn update) {
     } else {
       // Kick off the profiling run...
       LOG(INFO) << "initiating profile collection";
-      PROFILE_RESULT result = collect_profile(*config(), seq);
-      if (result != OK_PROFILE_COLLECTION) {
-        LOG(INFO) << "profile collection failed (" << profile_result_to_string(result) << ")";
-      } else {
-        if (post_process(*config(), seq)) {
-          seq++;
-        }
+      ProtoUniquePtr proto = collect_profile(*config());
+      if (proto == nullptr) {
+        LOG(WARNING) << "profile collection failed";
+      }
+
+      // Always report, even a null result.
+      bool handle_result = handler(proto.get(), config());
+      if (handle_result) {
         LOG(INFO) << "profile collection complete";
+      } else if (proto != nullptr) {
+        LOG(WARNING) << "profile handling failed";
       }
     }
 
@@ -942,7 +956,7 @@ static void ProfilingLoopImpl(ConfigFn config, UpdateFn update) {
   }
 }
 
-void ProfilingLoop(Config& config) {
+void ProfilingLoop(Config& config, HandlerFn handler) {
   init(config);
 
   auto config_fn = [&config]() {
@@ -950,7 +964,7 @@ void ProfilingLoop(Config& config) {
   };
   auto do_nothing = []() {
   };
-  ProfilingLoopImpl(config_fn, do_nothing);
+  ProfilingLoopImpl(config_fn, do_nothing, handler);
 }
 
 //
@@ -993,7 +1007,28 @@ int perfprofd_main(int argc, char** argv, Config* config)
     config_reader.readFile();
     config_reader.FillConfig(config);
   };
-  ProfilingLoopImpl(config_fn, reread_config);
+  int seq = 0;
+  auto handler = [&seq](wireless_android_play_playlog::AndroidPerfProfile* proto,
+                        Config* handler_config) {
+    if (proto == nullptr) {
+      return false;
+    }
+    std::string data_file_path(handler_config->destination_directory);
+    data_file_path += "/";
+    data_file_path += PERF_OUTPUT;
+    std::string path = android::base::StringPrintf("%s.encoded.%d", data_file_path.c_str(), seq);
+    PROFILE_RESULT result = SerializeProtobuf(proto, path.c_str());
+    if (result != PROFILE_RESULT::OK_PROFILE_COLLECTION) {
+      return false;
+    }
+
+    if (!post_process(*handler_config, seq)) {
+      return false;
+    }
+    seq++;
+    return true;
+  };
+  ProfilingLoopImpl(config_fn, reread_config, handler);
 
   LOG(INFO) << "finishing Android Wide Profiling daemon";
   return 0;

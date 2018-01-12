@@ -8,6 +8,8 @@
 
 #include <android-base/strings.h>
 
+#include "perf_profile.pb.h"
+
 #include "quipper/perf_parser.h"
 #include "symbolizer.h"
 
@@ -72,14 +74,15 @@ struct BinaryProfile {
   map<const callchain *, uint64, callchain_lt> callchain_count_map;
 };
 
-wireless_android_play_playlog::AndroidPerfProfile
+wireless_android_play_playlog::AndroidPerfProfile*
 RawPerfDataToAndroidPerfProfile(const string &perf_file,
                                 ::perfprofd::Symbolizer* symbolizer) {
-  wireless_android_play_playlog::AndroidPerfProfile ret;
   quipper::PerfParser parser;
   if (!parser.ReadFile(perf_file) || !parser.ParseRawEvents()) {
-    return ret;
+    return nullptr;
   }
+  std::unique_ptr<wireless_android_play_playlog::AndroidPerfProfile> ret(
+      new wireless_android_play_playlog::AndroidPerfProfile());
 
   typedef map<string, BinaryProfile> ModuleProfileMap;
   typedef map<string, ModuleProfileMap> ProgramProfileMap;
@@ -184,10 +187,10 @@ RawPerfDataToAndroidPerfProfile(const string &perf_file,
 
   map<string, string> name_buildid_map;
   parser.GetFilenamesToBuildIDs(&name_buildid_map);
-  ret.set_total_samples(total_samples);
+  ret->set_total_samples(total_samples);
 
   for (auto& name_data : name_data_map) {
-    auto load_module = ret.add_load_modules();
+    auto load_module = ret->add_load_modules();
     load_module->set_name(name_data.first);
     auto nbmi = name_buildid_map.find(name_data.first);
     bool has_build_id = nbmi != name_buildid_map.end();
@@ -240,7 +243,7 @@ RawPerfDataToAndroidPerfProfile(const string &perf_file,
   };
 
   for (const auto &program_profile : name_profile_map) {
-    auto program = ret.add_programs();
+    auto program = ret->add_programs();
     program->set_name(program_profile.first);
     for (const auto &module_profile : program_profile.second) {
       ModuleData& module_data = name_data_map[module_profile.first];
@@ -286,7 +289,7 @@ RawPerfDataToAndroidPerfProfile(const string &perf_file,
     }
   }
 
-  return ret;
+  return ret.release();
 }
 
 }  // namespace wireless_android_logging_awp
