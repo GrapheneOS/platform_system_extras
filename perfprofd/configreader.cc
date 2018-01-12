@@ -20,12 +20,13 @@
 #include <stdlib.h>
 
 #include <algorithm>
+#include <cstring>
 #include <sstream>
 
 #include <android-base/file.h>
+#include <android-base/logging.h>
 
 #include "configreader.h"
-#include "perfprofdutils.h"
 
 //
 // Config file path
@@ -51,7 +52,7 @@ const char *ConfigReader::getConfigFilePath()
 void ConfigReader::setConfigFilePath(const char *path)
 {
   config_file_path = strdup(path);
-  W_ALOGI("config file path set to %s", config_file_path);
+  LOG(INFO) << "config file path set to " << config_file_path;
 }
 
 //
@@ -131,11 +132,9 @@ void ConfigReader::addUnsignedEntry(const char *key,
                                     unsigned max_value)
 {
   std::string ks(key);
-  if (u_entries.find(ks) != u_entries.end() ||
-      s_entries.find(ks) != s_entries.end()) {
-    W_ALOGE("internal error -- duplicate entry for key %s", key);
-    exit(9);
-  }
+  CHECK(u_entries.find(ks) == u_entries.end() &&
+        s_entries.find(ks) == s_entries.end())
+      << "internal error -- duplicate entry for key " << key;
   values vals;
   vals.minv = min_value;
   vals.maxv = max_value;
@@ -146,15 +145,10 @@ void ConfigReader::addUnsignedEntry(const char *key,
 void ConfigReader::addStringEntry(const char *key, const char *default_value)
 {
   std::string ks(key);
-  if (u_entries.find(ks) != u_entries.end() ||
-      s_entries.find(ks) != s_entries.end()) {
-    W_ALOGE("internal error -- duplicate entry for key %s", key);
-    exit(9);
-  }
-  if (default_value == nullptr) {
-    W_ALOGE("internal error -- bad default value for key %s", key);
-    exit(9);
-  }
+  CHECK(u_entries.find(ks) == u_entries.end() &&
+        s_entries.find(ks) == s_entries.end())
+      << "internal error -- duplicate entry for key " << key;
+  CHECK(default_value != nullptr) << "internal error -- bad default value for key " << key;
   s_entries[ks] = std::string(default_value);
 }
 
@@ -162,7 +156,7 @@ unsigned ConfigReader::getUnsignedValue(const char *key) const
 {
   std::string ks(key);
   auto it = u_entries.find(ks);
-  assert(it != u_entries.end());
+  CHECK(it != u_entries.end());
   return it->second;
 }
 
@@ -170,7 +164,7 @@ bool ConfigReader::getBoolValue(const char *key) const
 {
   std::string ks(key);
   auto it = u_entries.find(ks);
-  assert(it != u_entries.end());
+  CHECK(it != u_entries.end());
   return it->second != 0;
 }
 
@@ -178,7 +172,7 @@ std::string ConfigReader::getStringValue(const char *key) const
 {
   std::string ks(key);
   auto it = s_entries.find(ks);
-  assert(it != s_entries.end());
+  CHECK(it != s_entries.end());
   return it->second;
 }
 
@@ -186,14 +180,14 @@ void ConfigReader::overrideUnsignedEntry(const char *key, unsigned new_value)
 {
   std::string ks(key);
   auto it = u_entries.find(ks);
-  assert(it != u_entries.end());
+  CHECK(it != u_entries.end());
   values vals;
   auto iit = u_info.find(key);
-  assert(iit != u_info.end());
+  CHECK(iit != u_info.end());
   vals = iit->second;
-  assert(new_value >= vals.minv && new_value <= vals.maxv);
+  CHECK(new_value >= vals.minv && new_value <= vals.maxv);
   it->second = new_value;
-  W_ALOGI("option %s overridden to %u", key, new_value);
+  LOG(INFO) << "option " << key << " overridden to " << new_value;
 }
 
 
@@ -213,19 +207,20 @@ void ConfigReader::parseLine(const char *key,
   if (uit != u_entries.end()) {
     unsigned uvalue = 0;
     if (isdigit(value[0]) == 0 || sscanf(value, "%u", &uvalue) != 1) {
-      W_ALOGW("line %d: malformed unsigned value (ignored)", linecount);
+      LOG(WARNING) << "line " << linecount << ": malformed unsigned value (ignored)";
     } else {
       values vals;
       auto iit = u_info.find(key);
       assert(iit != u_info.end());
       vals = iit->second;
       if (uvalue < vals.minv || uvalue > vals.maxv) {
-        W_ALOGW("line %d: specified value %u for '%s' "
-                "outside permitted range [%u %u] (ignored)",
-                linecount, uvalue, key, vals.minv, vals.maxv);
+        LOG(WARNING) << "line " << linecount << ": "
+                     << "specified value " << uvalue << " for '" << key << "' "
+                     << "outside permitted range [" << vals.minv << " " << vals.maxv
+                     << "] (ignored)";
       } else {
         if (trace_config_read) {
-          W_ALOGI("option %s set to %u", key, uvalue);
+          LOG(INFO) << "option " << key << " set to " << uvalue;
         }
         uit->second = uvalue;
       }
@@ -237,13 +232,13 @@ void ConfigReader::parseLine(const char *key,
   auto sit = s_entries.find(key);
   if (sit != s_entries.end()) {
     if (trace_config_read) {
-      W_ALOGI("option %s set to %s", key, value);
+      LOG(INFO) << "option " << key << " set to " << value;
     }
     sit->second = std::string(value);
     return;
   }
 
-  W_ALOGW("line %d: unknown option '%s' ignored", linecount, key);
+  LOG(WARNING) << "line " << linecount << ": unknown option '" << key << "' ignored";
 }
 
 static bool isblank(const std::string &line)
@@ -279,7 +274,7 @@ bool ConfigReader::readFile()
     // look for X=Y assignment
     auto efound = line.find('=');
     if (efound == std::string::npos) {
-      W_ALOGW("line %d: line malformed (no '=' found)", linecount);
+      LOG(WARNING) << "line " << linecount << ": line malformed (no '=' found)";
       continue;
     }
 
