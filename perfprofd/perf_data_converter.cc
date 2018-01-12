@@ -6,6 +6,8 @@
 #include <map>
 #include <unordered_map>
 
+#include <android-base/strings.h>
+
 #include "quipper/perf_parser.h"
 #include "symbolizer.h"
 
@@ -91,6 +93,20 @@ RawPerfDataToAndroidPerfProfile(const string &perf_file,
   uint64 total_samples = 0;
   bool seen_branch_stack = false;
   bool seen_callchain = false;
+
+  auto is_kernel_dso = [](const std::string& dso) {
+    constexpr const char* kKernelDsos[] = {
+        "[kernel.kallsyms]",
+        "[vdso]",
+    };
+    for (auto kernel_dso : kKernelDsos) {
+      if (dso == kernel_dso) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   for (const auto &event : parser.parsed_events()) {
     if (!event.raw_event ||
         event.raw_event->header.type != PERF_RECORD_SAMPLE) {
@@ -99,13 +115,17 @@ RawPerfDataToAndroidPerfProfile(const string &perf_file,
     string dso_name = event.dso_and_offset.dso_name();
     string program_name = event.command();
     const string kernel_name = "[kernel.kallsyms]";
-    if (dso_name.substr(0, kernel_name.length()) == kernel_name) {
+    if (android::base::StartsWith(dso_name, kernel_name)) {
       dso_name = kernel_name;
       if (program_name == "") {
         program_name = "kernel";
       }
     } else if (program_name == "") {
-      program_name = "unknown_program";
+      if (is_kernel_dso(dso_name)) {
+        program_name = "kernel";
+      } else {
+        program_name = "unknown_program";
+      }
     }
     total_samples++;
     // We expect to see either all callchain events, all branch stack
@@ -179,7 +199,7 @@ RawPerfDataToAndroidPerfProfile(const string &perf_file,
         load_module->set_build_id(build_id);
       }
     }
-    if (kUseSymbolizer && symbolizer != nullptr && name_data.first != "[kernel.kallsyms]") {
+    if (kUseSymbolizer && symbolizer != nullptr && !is_kernel_dso(name_data.first)) {
       if (kUseSymbolizerForModulesWithBuildId || !has_build_id) {
         // Add the module to signal that we'd want to add symbols.
         name_data.second.module = load_module;

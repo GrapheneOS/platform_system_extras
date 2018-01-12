@@ -118,20 +118,6 @@ cc_library_static {
 }
 
 //
-// Static library with primary utilities layer (called by perfprofd core)
-//
-cc_library_static {
-    name: "libperfprofdutils",
-    defaults: [
-        "perfprofd_defaults",
-    ],
-
-    srcs: [
-        "perfprofdutils.cc",
-    ],
-}
-
-//
 // Main daemon
 //
 cc_binary {
@@ -146,7 +132,6 @@ cc_binary {
 
     static_libs: [
         "libperfprofdcore",
-        "libperfprofdutils",
         "libperfprofd_binder",
         "libperfprofd_elf_read",
     ],
