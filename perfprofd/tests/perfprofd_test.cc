@@ -534,7 +534,8 @@ TEST_F(PerfProfdTest, BadPerfRun)
 
   // Verify log contents
   const std::string expected = RAW_RESULT(
-      I: profile collection failed (perf record returned bad exit status)
+      W: perf bad exit status 1
+      W: profile collection failed
                                           );
 
   // check to make sure log excerpt matches
@@ -615,7 +616,7 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
   // Kick off encoder and check return code
   PROFILE_RESULT result =
       encode_to_proto(input_perf_data, encoded_file_path(dest_dir, 0).c_str(), config, 0, nullptr);
-  EXPECT_EQ(OK_PROFILE_COLLECTION, result);
+  ASSERT_EQ(OK_PROFILE_COLLECTION, result) << JoinTestLog(" ");
 
   // Read and decode the resulting perf.data.encoded file
   wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
@@ -703,7 +704,7 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerfWithSymbolizer)
                       config,
                       0,
                       &test_symbolizer);
-  EXPECT_EQ(OK_PROFILE_COLLECTION, result);
+  ASSERT_EQ(OK_PROFILE_COLLECTION, result);
 
   // Read and decode the resulting perf.data.encoded file
   wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
@@ -780,7 +781,7 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
   // Kick off encoder and check return code
   PROFILE_RESULT result =
       encode_to_proto(input_perf_data, encoded_file_path(dest_dir, 0).c_str(), config, 0, nullptr);
-  EXPECT_EQ(OK_PROFILE_COLLECTION, result);
+  ASSERT_EQ(OK_PROFILE_COLLECTION, result);
 
   // Read and decode the resulting perf.data.encoded file
   wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
@@ -864,7 +865,7 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
   int daemon_main_return_code = runner.invoke();
 
   // Check return code from daemon
-  EXPECT_EQ(0, daemon_main_return_code);
+  ASSERT_EQ(0, daemon_main_return_code);
 
   // Read and decode the resulting perf.data.encoded file
   wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
@@ -916,7 +917,7 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
   int daemon_main_return_code = runner.invoke();
 
   // Check return code from daemon
-  EXPECT_EQ(0, daemon_main_return_code);
+  ASSERT_EQ(0, daemon_main_return_code);
 
   // Read and decode the resulting perf.data.encoded file
   wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
@@ -983,7 +984,7 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
   int daemon_main_return_code = runner.invoke();
 
   // Check return code from daemon
-  EXPECT_EQ(0, daemon_main_return_code);
+  ASSERT_EQ(0, daemon_main_return_code);
 
   // Read and decode the resulting perf.data.encoded file
   wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
