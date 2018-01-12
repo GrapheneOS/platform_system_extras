@@ -3,15 +3,17 @@
 
 #include <string>
 
-#include "perf_profile.pb.h"
-
 namespace perfprofd {
 struct Symbolizer;
-}
+}  // namespace perfprofd
+
+namespace wireless_android_play_playlog {
+class AndroidPerfProfile;
+}  // namespace wireless_android_play_playlog
 
 namespace wireless_android_logging_awp {
 
-wireless_android_play_playlog::AndroidPerfProfile
+wireless_android_play_playlog::AndroidPerfProfile*
 RawPerfDataToAndroidPerfProfile(const std::string &perf_file,
                                 ::perfprofd::Symbolizer* symbolizer);
 
