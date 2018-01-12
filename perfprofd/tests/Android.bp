@@ -1,25 +1,22 @@
 // Build the unit tests.
 
-perfprofd_test_cflags = [
-    "-Wall",
-    "-Werror",
-]
+cc_defaults {
+    name: "perfprofd_test_defaults",
 
-perfprofd_test_cppflags = [
-    "-Wno-sign-compare",
-    "-Wno-unused-parameter",
-]
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-O0",
+        "-g",
+    ],
+    cppflags: [
+        "-Wno-sign-compare",
+        "-Wno-unused-parameter",
+    ],
 
-//
-// Static library with mockup utilities layer (called by unit test).
-//
-cc_library_static {
-    name: "libperfprofdmockutils",
-
-    include_dirs: ["system/extras/perfprofd"],
-    cflags: perfprofd_test_cflags,
-    cppflags: perfprofd_test_cppflags,
-    srcs: ["perfprofdmockutils.cc"],
+    strip: {
+        keep_symbols: true,
+    },
 }
 
 //
@@ -27,12 +24,14 @@ cc_library_static {
 //
 cc_test {
     name: "perfprofd_test",
+    defaults: [
+        "perfprofd_test_defaults",
+    ],
     test_suites: ["device-tests"],
 
     stl: "libc++",
     static_libs: [
         "libperfprofdcore",
-        "libperfprofdmockutils",
         "libperfprofd_elf_read",
         "libbase",
     ],
@@ -40,9 +39,9 @@ cc_test {
         "libprotobuf-cpp-lite",
         "liblog",
     ],
-    srcs: ["perfprofd_test.cc"],
-    cflags: perfprofd_test_cflags,
-    cppflags: perfprofd_test_cppflags,
+    srcs: [
+        "perfprofd_test.cc",
+    ],
     data: [
         "canned.perf.data",
         "callchain.canned.perf.data",

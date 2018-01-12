@@ -24,10 +24,10 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include <android-base/logging.h>
 #include <android-base/properties.h>
 
 #include "cpuconfig.h"
-#include "perfprofdutils.h"
 
 #define SYSFSCPU "/sys/devices/system/cpu"
 
@@ -81,14 +81,14 @@ void HardwireCpuHelper::OnlineCore(int i, int onoff)
     fprintf(fp, onoff ? "1\n" : "0\n");
     fclose(fp);
   } else {
-    W_ALOGW("open failed for %s", ss.str().c_str());
+    PLOG(WARNING) << "open failed for " << ss.str();
   }
 }
 
 void HardwireCpuHelper::StopMpdecision()
 {
   if (!android::base::SetProperty("ctl.stop", "mpdecision")) {
-    W_ALOGE("setprop ctl.stop mpdecision failed");
+    LOG(ERROR) << "setprop ctl.stop mpdecision failed";
   }
 }
 
@@ -98,6 +98,6 @@ void HardwireCpuHelper::RestartMpdecision()
   // mpdecision figure out what to do
 
   if (!android::base::SetProperty("ctl.start", "mpdecision")) {
-    W_ALOGE("setprop ctl.start mpdecision failed");
+    LOG(ERROR) << "setprop ctl.start mpdecision failed";
   }
 }

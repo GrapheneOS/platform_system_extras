@@ -28,16 +28,16 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/macros.h>
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <android-base/test_utils.h>
 #include <gtest/gtest.h>
 
 #include "config.h"
 #include "configreader.h"
 #include "perfprofdcore.h"
-#include "perfprofdutils.h"
-#include "perfprofdmockutils.h"
 #include "symbolizer.h"
 
 #include "perf_profile.pb.h"
@@ -48,6 +48,40 @@
 //
 static std::string gExecutableRealpath;
 
+namespace {
+
+using android::base::LogId;
+using android::base::LogSeverity;
+
+static std::vector<std::string>* gTestLogMessages = nullptr;
+
+static void TestLogFunction(LogId log_id ATTRIBUTE_UNUSED,
+                            LogSeverity severity,
+                            const char* tag,
+                            const char* file ATTRIBUTE_UNUSED,
+                            unsigned int line ATTRIBUTE_UNUSED,
+                            const char* message) {
+  constexpr char log_characters[] = "VDIWEFF";
+  char severity_char = log_characters[severity];
+  gTestLogMessages->push_back(android::base::StringPrintf("%c: %s", severity_char, message));
+}
+
+static void InitTestLog() {
+  CHECK(gTestLogMessages == nullptr);
+  gTestLogMessages = new std::vector<std::string>();
+}
+static void ClearTestLog() {
+  CHECK(gTestLogMessages != nullptr);
+  delete gTestLogMessages;
+  gTestLogMessages = nullptr;
+}
+static std::string JoinTestLog(const char* delimiter) {
+  CHECK(gTestLogMessages != nullptr);
+  return android::base::Join(*gTestLogMessages, delimiter);
+}
+
+}  // namespace
+
 // Path to perf executable on device
 #define PERFPATH "/system/bin/perf"
 
@@ -57,12 +91,14 @@ static std::string gExecutableRealpath;
 class PerfProfdTest : public testing::Test {
  protected:
   virtual void SetUp() {
-    mock_perfprofdutils_init();
+    InitTestLog();
+    android::base::SetLogger(TestLogFunction);
     create_dirs();
   }
 
   virtual void TearDown() {
-    mock_perfprofdutils_finish();
+    android::base::SetLogger(android::base::StderrLogger);
+    ClearTestLog();
 
     // TODO: proper management of test files. For now, use old system() code.
     for (const auto dir : { &dest_dir, &conf_dir }) {
@@ -211,7 +247,7 @@ class PerfProfdRunner {
   struct LoggingConfig : public Config {
     void Sleep(size_t seconds) override {
       // Log sleep calls but don't sleep.
-      perfprofd_log_info("sleep %d seconds", seconds);
+      LOG(INFO) << "sleep " << seconds << " seconds";
     }
 
     bool IsProfilingEnabled() const override {
@@ -219,8 +255,7 @@ class PerfProfdRunner {
       // Check for existence of semaphore file in config directory
       //
       if (access(config_directory.c_str(), F_OK) == -1) {
-        W_ALOGW("unable to open config directory %s: (%s)",
-                config_directory.c_str(), strerror(errno));
+        PLOG(WARNING) << "unable to open config directory " << config_directory;
         return false;
       }
 
@@ -388,13 +423,12 @@ TEST_F(PerfProfdTest, MissingGMS)
   // Verify log contents
   const std::string expected = RAW_RESULT(
       I: sleep 90 seconds
-      W: unable to open config directory /does/not/exist: (No such file or directory)
+      W: unable to open config directory /does/not/exist: No such file or directory
       I: profile collection skipped (missing config directory)
                                           );
 
   // check to make sure entire log matches
-  compareLogMessages(mock_perfprofdutils_getlogged(),
-                     expected, "MissingGMS");
+  compareLogMessages(JoinTestLog(" "), expected, "MissingGMS");
 }
 
 
@@ -430,8 +464,7 @@ TEST_F(PerfProfdTest, MissingOptInSemaphoreFile)
       I: profile collection skipped (missing config directory)
                                           );
   // check to make sure log excerpt matches
-  compareLogMessages(mock_perfprofdutils_getlogged(),
-                     expected, "MissingOptInSemaphoreFile");
+  compareLogMessages(JoinTestLog(" "), expected, "MissingOptInSemaphoreFile");
 }
 
 TEST_F(PerfProfdTest, MissingPerfExecutable)
@@ -468,8 +501,7 @@ TEST_F(PerfProfdTest, MissingPerfExecutable)
       I: profile collection skipped (missing 'perf' executable)
                                           );
   // check to make sure log excerpt matches
-  compareLogMessages(mock_perfprofdutils_getlogged(),
-                     expected, "MissingPerfExecutable");
+  compareLogMessages(JoinTestLog(" "), expected, "MissingPerfExecutable");
 }
 
 TEST_F(PerfProfdTest, BadPerfRun)
@@ -506,8 +538,7 @@ TEST_F(PerfProfdTest, BadPerfRun)
                                           );
 
   // check to make sure log excerpt matches
-  compareLogMessages(mock_perfprofdutils_getlogged(),
-                     expected, "BadPerfRun");
+  compareLogMessages(JoinTestLog(" "), expected, "BadPerfRun");
 }
 
 TEST_F(PerfProfdTest, ConfigFileParsing)
@@ -545,8 +576,7 @@ TEST_F(PerfProfdTest, ConfigFileParsing)
                                           );
 
   // check to make sure log excerpt matches
-  compareLogMessages(mock_perfprofdutils_getlogged(),
-                     expected, "ConfigFileParsing");
+  compareLogMessages(JoinTestLog(" "), expected, "ConfigFileParsing");
 }
 
 TEST_F(PerfProfdTest, ProfileCollectionAnnotations)
@@ -858,8 +888,7 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
       I: finishing Android Wide Profiling daemon
                                           );
   // check to make sure log excerpt matches
-  compareLogMessages(mock_perfprofdutils_getlogged(),
-                     expandVars(expected), "BasicRunWithLivePerf", true);
+  compareLogMessages(JoinTestLog(" "), expandVars(expected), "BasicRunWithLivePerf", true);
 }
 
 TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
@@ -926,8 +955,7 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
       I: finishing Android Wide Profiling daemon
                                           );
   // check to make sure log excerpt matches
-  compareLogMessages(mock_perfprofdutils_getlogged(),
-                     expandVars(expected), "BasicRunWithLivePerf", true);
+  compareLogMessages(JoinTestLog(" "), expandVars(expected), "BasicRunWithLivePerf", true);
 }
 
 TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
@@ -979,8 +1007,7 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
       I: finishing Android Wide Profiling daemon
                                           );
   // check to make sure log excerpt matches
-  compareLogMessages(mock_perfprofdutils_getlogged(),
-                     expandVars(expected), "CallChainRunWithLivePerf", true);
+  compareLogMessages(JoinTestLog(" "), expandVars(expected), "CallChainRunWithLivePerf", true);
 }
 
 int main(int argc, char **argv) {
