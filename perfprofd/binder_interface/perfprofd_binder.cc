@@ -57,6 +57,9 @@ class BinderConfig : public Config {
   bool is_profiling = false;
 
   void Sleep(size_t seconds) override {
+    if (seconds == 0) {
+      return;
+    }
     std::unique_lock<std::mutex> guard(mutex_);
     using namespace std::chrono_literals;
     cv_.wait_for(guard, seconds * 1s, [&]() { return interrupted_; });
