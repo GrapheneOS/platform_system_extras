@@ -37,12 +37,15 @@
 #include <string>
 
 #include <android-base/file.h>
+#include <android-base/logging.h>
 #include <android-base/macros.h>
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
+#include <android-base/unique_fd.h>
+
+#include "perf_profile.pb.h"
 
 #include "perfprofdcore.h"
-#include "perfprofdutils.h"
 #include "perf_data_converter.h"
 #include "cpuconfig.h"
 #include "configreader.h"
@@ -116,7 +119,7 @@ static unsigned short random_seed[3];
 //
 static void sig_hup(int /* signum */)
 {
-  W_ALOGW("SIGHUP received");
+  LOG(WARNING) << "SIGHUP received";
 }
 
 //
@@ -133,20 +136,20 @@ static void parse_args(int argc, char** argv)
   for (ac = 1; ac < argc; ++ac) {
     if (!strcmp(argv[ac], "-c")) {
       if (ac >= argc-1) {
-        W_ALOGE("malformed command line: -c option requires argument)");
+        LOG(ERROR) << "malformed command line: -c option requires argument)";
         continue;
       }
       ConfigReader::setConfigFilePath(argv[ac+1]);
       ++ac;
     } else if (!strcmp(argv[ac], "-x")) {
       if (ac >= argc-1) {
-        W_ALOGE("malformed command line: -x option requires argument)");
+        LOG(ERROR) << "malformed command line: -x option requires argument)";
         continue;
       }
       perf_file_to_convert = argv[ac+1];
       ++ac;
     } else {
-      W_ALOGE("malformed command line: unknown option or arg %s)", argv[ac]);
+      LOG(ERROR) << "malformed command line: unknown option or arg " <<  argv[ac] << ")";
       continue;
     }
   }
@@ -216,7 +219,7 @@ static CKPROFILE_RESULT check_profiling_enabled(const Config& config)
   // Check for existence of simpleperf/perf executable
   std::string pp = config.perf_path;
   if (access(pp.c_str(), R_OK|X_OK) == -1) {
-    W_ALOGW("unable to access/execute %s", pp.c_str());
+    LOG(WARNING) << "unable to access/execute " << pp;
     return DONT_PROFILE_MISSING_PERF_EXECUTABLE;
   }
 
@@ -274,7 +277,7 @@ pid_t AlarmHelper::child_;
 
 void AlarmHelper::handler(int, siginfo_t *, void *)
 {
-  W_ALOGW("SIGALRM timeout");
+  LOG(WARNING) << "SIGALRM timeout";
   kill(child_, SIGKILL);
 }
 
@@ -290,12 +293,12 @@ bool get_camera_active()
 {
   int pipefds[2];
   if (pipe2(pipefds, O_CLOEXEC) != 0) {
-    W_ALOGE("pipe2() failed (%s)", strerror(errno));
+    PLOG(ERROR) << "pipe2() failed";
     return false;
   }
   pid_t pid = fork();
   if (pid == -1) {
-    W_ALOGE("fork() failed (%s)", strerror(errno));
+    PLOG(ERROR) << "fork() failed";
     close(pipefds[0]);
     close(pipefds[1]);
     return false;
@@ -310,7 +313,7 @@ bool get_camera_active()
     argv[slot++] = "media.camera";
     argv[slot++] = nullptr;
     execvp(argv[0], (char * const *)argv);
-    W_ALOGE("execvp() failed (%s)", strerror(errno));
+    PLOG(ERROR) << "execvp() failed";
     return false;
   }
   // parent
@@ -351,7 +354,7 @@ bool get_charging()
   std::string psdir("/sys/class/power_supply");
   DIR* dir = opendir(psdir.c_str());
   if (dir == NULL) {
-    W_ALOGE("Failed to open dir %s (%s)", psdir.c_str(), strerror(errno));
+    PLOG(ERROR) << "Failed to open dir " << psdir;
     return false;
   }
   struct dirent* e;
@@ -434,7 +437,7 @@ static void annotate_encoded_perf_profile(wireless_android_play_playlog::Android
     int iload = static_cast<int>(fload * 100.0);
     profile->set_sys_load_average(iload);
   } else {
-    W_ALOGE("Failed to read or scan /proc/loadavg (%s)", strerror(errno));
+    PLOG(ERROR) << "Failed to read or scan /proc/loadavg";
   }
 
   //
@@ -461,12 +464,56 @@ static void annotate_encoded_perf_profile(wireless_android_play_playlog::Android
     bool ison = (strstr(disp.c_str(), "PowerManagerService.Display") == 0);
     profile->set_display_on(ison);
   } else {
-    W_ALOGE("Failed to read /sys/power/wake_unlock (%s)", strerror(errno));
+    PLOG(ERROR) << "Failed to read /sys/power/wake_unlock";
   }
 }
 
-inline char* string_as_array(std::string* str) {
-  return str->empty() ? NULL : &*str->begin();
+using ProtoUniquePtr = std::unique_ptr<wireless_android_play_playlog::AndroidPerfProfile>;
+static ProtoUniquePtr encode_to_proto(const std::string &data_file_path,
+                                      const Config& config,
+                                      unsigned cpu_utilization,
+                                      perfprofd::Symbolizer* symbolizer) {
+  //
+  // Open and read perf.data file
+  //
+  ProtoUniquePtr encodedProfile(
+      wireless_android_logging_awp::RawPerfDataToAndroidPerfProfile(data_file_path, symbolizer));
+  if (encodedProfile == nullptr) {
+    return nullptr;
+  }
+
+  // All of the info in 'encodedProfile' is derived from the perf.data file;
+  // here we tack display status, cpu utilization, system load, etc.
+  annotate_encoded_perf_profile(encodedProfile.get(), config, cpu_utilization);
+
+  return encodedProfile;
+}
+
+PROFILE_RESULT SerializeProtobuf(wireless_android_play_playlog::AndroidPerfProfile* encodedProfile,
+                                 const char* encoded_file_path) {
+  //
+  // Serialize protobuf to array
+  //
+  size_t size = encodedProfile->ByteSize();
+  std::unique_ptr<uint8_t[]> data(new uint8_t[size]);
+  encodedProfile->SerializeWithCachedSizesToArray(data.get());
+
+  //
+  // Open file and write encoded data to it
+  //
+  unlink(encoded_file_path);  // Attempt to unlink for a clean slate.
+  constexpr int kFlags = O_CREAT | O_WRONLY | O_TRUNC | O_NOFOLLOW | O_CLOEXEC;
+  android::base::unique_fd fd(open(encoded_file_path, kFlags, 0664));
+  if (fd.get() == -1) {
+    PLOG(WARNING) << "Could not open " << encoded_file_path << " for serialization";
+    return ERR_OPEN_ENCODED_FILE_FAILED;
+  }
+  if (!android::base::WriteFully(fd.get(), data.get(), size)) {
+    PLOG(WARNING) << "Could not write to " << encoded_file_path;
+    return ERR_WRITE_ENCODED_FILE_FAILED;
+  }
+
+  return OK_PROFILE_COLLECTION;
 }
 
 PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
@@ -475,52 +522,19 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
                                unsigned cpu_utilization,
                                perfprofd::Symbolizer* symbolizer)
 {
-  //
-  // Open and read perf.data file
-  //
-  const wireless_android_play_playlog::AndroidPerfProfile &encodedProfile =
-      wireless_android_logging_awp::RawPerfDataToAndroidPerfProfile(data_file_path, symbolizer);
+  ProtoUniquePtr encodedProfile = encode_to_proto(data_file_path,
+                                                  config,
+                                                  cpu_utilization,
+                                                  symbolizer);
 
   //
   // Issue error if no samples
   //
-  if (encodedProfile.programs().size() == 0) {
+  if (encodedProfile == nullptr || encodedProfile->programs().size() == 0) {
     return ERR_PERF_ENCODE_FAILED;
   }
 
-  // All of the info in 'encodedProfile' is derived from the perf.data file;
-  // here we tack display status, cpu utilization, system load, etc.
-  wireless_android_play_playlog::AndroidPerfProfile &prof =
-      const_cast<wireless_android_play_playlog::AndroidPerfProfile&>
-      (encodedProfile);
-  annotate_encoded_perf_profile(&prof, config, cpu_utilization);
-
-  //
-  // Serialize protobuf to array
-  //
-  int size = encodedProfile.ByteSize();
-  std::string data;
-  data.resize(size);
-  ::google::protobuf::uint8* dtarget =
-        reinterpret_cast<::google::protobuf::uint8*>(string_as_array(&data));
-  encodedProfile.SerializeWithCachedSizesToArray(dtarget);
-
-  //
-  // Open file and write encoded data to it
-  //
-  FILE *fp = fopen(encoded_file_path, "w");
-  if (!fp) {
-    return ERR_OPEN_ENCODED_FILE_FAILED;
-  }
-  size_t fsiz = size;
-  if (fwrite(dtarget, fsiz, 1, fp) != 1) {
-    fclose(fp);
-    return ERR_WRITE_ENCODED_FILE_FAILED;
-  }
-  fclose(fp);
-  chmod(encoded_file_path, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
-
-  return OK_PROFILE_COLLECTION;
+  return SerializeProtobuf(encodedProfile.get(), encoded_file_path);
 }
 
 //
@@ -550,7 +564,7 @@ static PROFILE_RESULT invoke_perf(Config& config,
       dup2(fileno(efp), STDERR_FILENO);
       dup2(fileno(efp), STDOUT_FILENO);
     } else {
-      W_ALOGW("unable to open %s for writing", perf_stderr_path.c_str());
+      PLOG(WARNING) << "unable to open " << perf_stderr_path << " for writing";
     }
 
     // marshall arguments
@@ -625,15 +639,15 @@ static PROFILE_RESULT invoke_perf(Config& config,
     pid_t reaped = TEMP_FAILURE_RETRY(waitpid(pid, &st, 0));
 
     if (reaped == -1) {
-      W_ALOGW("waitpid failed: %s", strerror(errno));
+      PLOG(WARNING) << "waitpid failed";
     } else if (WIFSIGNALED(st)) {
       if (WTERMSIG(st) == SIGHUP && config.ShouldStopProfiling()) {
         // That was us...
         return OK_PROFILE_COLLECTION;
       }
-      W_ALOGW("perf killed by signal %d", WTERMSIG(st));
+      LOG(WARNING) << "perf killed by signal " << WTERMSIG(st);
     } else if (WEXITSTATUS(st) != 0) {
-      W_ALOGW("perf bad exit status %d", WEXITSTATUS(st));
+      LOG(WARNING) << "perf bad exit status " << WEXITSTATUS(st);
     } else {
       return OK_PROFILE_COLLECTION;
     }
@@ -658,8 +672,7 @@ static void cleanup_destination_dir(const std::string& dest_dir)
     }
     closedir(dir);
   } else {
-    W_ALOGW("unable to open destination dir %s for cleanup",
-            dest_dir.c_str());
+    PLOG(WARNING) << "unable to open destination dir " << dest_dir << " for cleanup";
   }
 }
 
@@ -712,7 +725,7 @@ static bool post_process(const Config& config, int current_seq)
   produced.insert(current_seq);
   fp = fopen(produced_file_path.c_str(), "w");
   if (fp == NULL) {
-    W_ALOGW("Cannot write %s", produced_file_path.c_str());
+    PLOG(WARNING) << "Cannot write " <<  produced_file_path;
     return false;
   }
   for (std::set<int>::const_iterator iter = produced.begin();
@@ -730,7 +743,7 @@ static bool post_process(const Config& config, int current_seq)
 // - kick off 'perf record'
 // - read perf.data, convert to protocol buf
 //
-static PROFILE_RESULT collect_profile(Config& config, int seq)
+static ProtoUniquePtr collect_profile(Config& config)
 {
   //
   // Collect cpu utilization if enabled
@@ -757,7 +770,7 @@ static PROFILE_RESULT collect_profile(Config& config, int seq)
   struct stat statb;
   if (stat(data_file_path.c_str(), &statb) == 0) { // if file exists...
     if (unlink(data_file_path.c_str())) {          // then try to remove
-      W_ALOGW("unable to unlink previous perf.data file");
+      PLOG(WARNING) << "unable to unlink previous perf.data file";
     }
   }
 
@@ -795,20 +808,18 @@ static PROFILE_RESULT collect_profile(Config& config, int seq)
                                    data_file_path,
                                    perf_stderr_path);
   if (ret != OK_PROFILE_COLLECTION) {
-    return ret;
+    return nullptr;
   }
 
   //
   // Read the resulting perf.data file, encode into protocol buffer, then write
   // the result to the file perf.data.encoded
   //
-  std::string path = android::base::StringPrintf(
-      "%s.encoded.%d", data_file_path.c_str(), seq);
   std::unique_ptr<perfprofd::Symbolizer> symbolizer;
   if (config.use_elf_symbolizer) {
     symbolizer = perfprofd::CreateELFSymbolizer();
   }
-  return encode_to_proto(data_file_path, path.c_str(), config, cpu_utilization, symbolizer.get());
+  return encode_to_proto(data_file_path, config, cpu_utilization, symbolizer.get());
 }
 
 //
@@ -842,7 +853,7 @@ static void set_seed(uint32_t use_fixed_seed)
     //
     seed = arc4random();
   }
-  W_ALOGI("random seed set to %u", seed);
+  LOG(INFO) << "random seed set to " << seed;
   // Distribute the 32-bit seed into the three 16-bit array
   // elements. The specific values being written do not especially
   // matter as long as we are setting them to something based on the seed.
@@ -858,7 +869,7 @@ static void CommonInit(uint32_t use_fixed_seed, const char* dest_dir) {
   std::stringstream oomscore_path;
   oomscore_path << "/proc/" << getpid() << "/oom_score_adj";
   if (!android::base::WriteStringToFile("0", oomscore_path.str())) {
-    W_ALOGE("unable to write to %s", oomscore_path.str().c_str());
+    LOG(ERROR) << "unable to write to " << oomscore_path.str();
   }
 
   set_seed(use_fixed_seed);
@@ -882,8 +893,7 @@ static void init(const Config& config)
 static void init(ConfigReader &config)
 {
   if (!config.readFile()) {
-    W_ALOGE("unable to open configuration file %s",
-            config.getConfigFilePath());
+    LOG(ERROR) << "unable to open configuration file " << config.getConfigFilePath();
   }
 
   CommonInit(static_cast<uint32_t>(config.getUnsignedValue("use_fixed_seed")),
@@ -893,9 +903,8 @@ static void init(ConfigReader &config)
 }
 
 template <typename ConfigFn, typename UpdateFn>
-static void ProfilingLoopImpl(ConfigFn config, UpdateFn update) {
+static void ProfilingLoopImpl(ConfigFn config, UpdateFn update, HandlerFn handler) {
   unsigned iterations = 0;
-  int seq = 0;
   while(config()->main_loop_iterations == 0 ||
       iterations < config()->main_loop_iterations) {
     if (config()->ShouldStopProfiling()) {
@@ -920,20 +929,21 @@ static void ProfilingLoopImpl(ConfigFn config, UpdateFn update) {
     // Check for profiling enabled...
     CKPROFILE_RESULT ckresult = check_profiling_enabled(*config());
     if (ckresult != DO_COLLECT_PROFILE) {
-      W_ALOGI("profile collection skipped (%s)",
-              ckprofile_result_to_string(ckresult));
+      LOG(INFO) << "profile collection skipped (" << ckprofile_result_to_string(ckresult) << ")";
     } else {
       // Kick off the profiling run...
-      W_ALOGI("initiating profile collection");
-      PROFILE_RESULT result = collect_profile(*config(), seq);
-      if (result != OK_PROFILE_COLLECTION) {
-        W_ALOGI("profile collection failed (%s)",
-                profile_result_to_string(result));
-      } else {
-        if (post_process(*config(), seq)) {
-          seq++;
-        }
-        W_ALOGI("profile collection complete");
+      LOG(INFO) << "initiating profile collection";
+      ProtoUniquePtr proto = collect_profile(*config());
+      if (proto == nullptr) {
+        LOG(WARNING) << "profile collection failed";
+      }
+
+      // Always report, even a null result.
+      bool handle_result = handler(proto.get(), config());
+      if (handle_result) {
+        LOG(INFO) << "profile collection complete";
+      } else if (proto != nullptr) {
+        LOG(WARNING) << "profile handling failed";
       }
     }
 
@@ -946,7 +956,7 @@ static void ProfilingLoopImpl(ConfigFn config, UpdateFn update) {
   }
 }
 
-void ProfilingLoop(Config& config) {
+void ProfilingLoop(Config& config, HandlerFn handler) {
   init(config);
 
   auto config_fn = [&config]() {
@@ -954,7 +964,7 @@ void ProfilingLoop(Config& config) {
   };
   auto do_nothing = []() {
   };
-  ProfilingLoopImpl(config_fn, do_nothing);
+  ProfilingLoopImpl(config_fn, do_nothing, handler);
 }
 
 //
@@ -970,7 +980,7 @@ int perfprofd_main(int argc, char** argv, Config* config)
 {
   ConfigReader config_reader;
 
-  W_ALOGI("starting Android Wide Profiling daemon");
+  LOG(INFO) << "starting Android Wide Profiling daemon";
 
   parse_args(argc, argv);
   init(config_reader);
@@ -984,7 +994,7 @@ int perfprofd_main(int argc, char** argv, Config* config)
 
   // Early exit if we're not supposed to run on this build flavor
   if (is_debug_build != 1 && config->only_debug_build) {
-    W_ALOGI("early exit due to inappropriate build type");
+    LOG(INFO) << "early exit due to inappropriate build type";
     return 0;
   }
 
@@ -997,8 +1007,29 @@ int perfprofd_main(int argc, char** argv, Config* config)
     config_reader.readFile();
     config_reader.FillConfig(config);
   };
-  ProfilingLoopImpl(config_fn, reread_config);
+  int seq = 0;
+  auto handler = [&seq](wireless_android_play_playlog::AndroidPerfProfile* proto,
+                        Config* handler_config) {
+    if (proto == nullptr) {
+      return false;
+    }
+    std::string data_file_path(handler_config->destination_directory);
+    data_file_path += "/";
+    data_file_path += PERF_OUTPUT;
+    std::string path = android::base::StringPrintf("%s.encoded.%d", data_file_path.c_str(), seq);
+    PROFILE_RESULT result = SerializeProtobuf(proto, path.c_str());
+    if (result != PROFILE_RESULT::OK_PROFILE_COLLECTION) {
+      return false;
+    }
 
-  W_ALOGI("finishing Android Wide Profiling daemon");
+    if (!post_process(*handler_config, seq)) {
+      return false;
+    }
+    seq++;
+    return true;
+  };
+  ProfilingLoopImpl(config_fn, reread_config, handler);
+
+  LOG(INFO) << "finishing Android Wide Profiling daemon";
   return 0;
 }
