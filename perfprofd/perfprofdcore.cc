@@ -171,9 +171,9 @@ const char *ckprofile_result_to_string(CKPROFILE_RESULT result)
       return "missing 'perf' executable";
     case DONT_PROFILE_RUNNING_IN_EMULATOR:
       return "running in emulator";
-    default: return "unknown";
+    default:
+      return "unknown";
   }
-  return "notreached";
 }
 
 //
@@ -194,9 +194,9 @@ const char *profile_result_to_string(PROFILE_RESULT result)
       return "failed to open encoded perf file";
     case ERR_WRITE_ENCODED_FILE_FAILED:
       return "write to encoded perf file failed";
-    default: return "unknown";
+    default:
+      return "unknown";
   }
-  return "notreached";
 }
 
 //
