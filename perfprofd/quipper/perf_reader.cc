@@ -1168,7 +1168,6 @@ bool PerfReader::ReadMetadata(const ConstBufferWithSize& data) {
     case HEADER_PMU_MAPPINGS:
       // ignore for now
       continue;
-      break;
     case HEADER_BRANCH_STACK:
       continue;
     default: LOG(INFO) << "Unsupported metadata type: " << type;
