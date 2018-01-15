@@ -19,7 +19,21 @@ cc_defaults {
 
     cflags: [
         "-Wall",
+        "-Wextra",
         "-Werror",
+
+        // Try some more extreme warnings.
+        "-Wpedantic",
+        "-Wunreachable-code-aggressive",
+        // And disable some dumb things.
+        "-Wno-zero-length-array",
+        "-Wno-c99-extensions",
+        "-Wno-language-extension-token",
+        "-Wno-gnu-zero-variadic-macro-arguments",
+        "-Wno-nested-anon-types",
+        "-Wno-gnu-statement-expression",
+        "-Wno-vla-extension",
+        "-Wno-extended-offsetof",
     ],
     cppflags: [
         "-Wno-sign-compare",
