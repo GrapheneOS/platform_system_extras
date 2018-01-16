@@ -134,6 +134,10 @@ uint64_t GetPerfSampleDataOffset(const event_t& event) {
   case PERF_RECORD_LOST:
     offset = sizeof(event.lost);
     break;
+  case PERF_RECORD_THROTTLE:
+  case PERF_RECORD_UNTHROTTLE:
+    offset = sizeof(event.throttle);
+    break;
   case PERF_RECORD_READ:
     offset = sizeof(event.read);
     break;
