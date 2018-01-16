@@ -100,7 +100,7 @@ LogMessage::~LogMessage() {
   __android_log_write(priority, LOG_TAG, str_newline.c_str());
 
   if (severity_ == LOG_FATAL) {
-    exit(9);
+    abort();
   }
 }
 
