@@ -72,7 +72,11 @@ def print_samples(module_list, programs, counters):
                                 print indent(object_symbol_with_offset, 4)
                             if source_symbol is not None:
                                 for (sym_inlined, loc_inlined, _) in info:
-                                    print indent(sym_inlined, 5)
+                                    # TODO: Figure out what's going on here:
+                                    if sym_inlined is not None:
+                                        print indent(sym_inlined, 5)
+                                    else:
+                                        print indent('???', 5)
                                     if loc_inlined is not None:
                                         print ' %s' % (indent(loc_inlined, 5))
                         elif module_descr.symbol and (addr_rel & 0x8000000000000000 != 0):
