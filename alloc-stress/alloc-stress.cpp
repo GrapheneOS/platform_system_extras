@@ -109,7 +109,8 @@ public:
     }
 };
 
-pid_t createProcess(Pipe pipe, const char *exName, const char *arg)
+pid_t createProcess(Pipe pipe, const char *exName,
+                    const char *arg, bool use_memcg)
 {
     pipe.preserveOverFork(true);
     pid_t pid = fork();
@@ -119,7 +120,8 @@ pid_t createProcess(Pipe pipe, const char *exName, const char *arg)
         char writeFdStr[16];
         snprintf(readFdStr, sizeof(readFdStr), "%d", pipe.getReadFd());
         snprintf(writeFdStr, sizeof(writeFdStr), "%d", pipe.getWriteFd());
-        execl(exName, exName, "--worker", arg, readFdStr, writeFdStr, nullptr);
+        execl(exName, exName, "--worker", arg, readFdStr, writeFdStr,
+            use_memcg ? "1" : "0", nullptr);
         ASSERT_TRUE(0);
     }
     // parent process
@@ -157,7 +159,6 @@ static void write_oomadj_to_lmkd(int oomadj) {
     cout << "Wrote " << written << " bytes to lmkd control socket." << endl;
 }
 
-#ifdef ENABLE_MEM_CGROUPS
 static void create_memcg() {
     char buf[256];
     uid_t uid = getuid();
@@ -187,16 +188,26 @@ static void create_memcg() {
     write(tasks, buf, strlen(buf));
     close(tasks);
 }
-#endif
+
+void usage() {
+    cout << "Application allocates memory until it's killed." << endl
+        << "It starts at max oom_score_adj and gradually "
+        << "decreases it to 0." << endl
+        << "Usage: alloc-stress [-g | --cgroup]" << endl
+        << "\t-g | --cgroup\tcreates memory cgroup for the process" << endl;
+}
 
 size_t s = 4 * (1 << 20);
 void *gptr;
 int main(int argc, char *argv[])
 {
+    bool use_memcg = false;
+
     if ((argc > 1) && (std::string(argv[1]) == "--worker")) {
-#ifdef ENABLE_MEM_CGROUPS
-        create_memcg();
-#endif
+        if (std::string(argv[5]) == "1") {
+            create_memcg();
+        }
+
         write_oomadj_to_lmkd(atoi(argv[2]));
         Pipe p{atoi(argv[3]), atoi(argv[4])};
 
@@ -216,7 +227,21 @@ int main(int argc, char *argv[])
             allocCount += s;
         }
     } else {
-        cout << "parent:" << argc << endl;
+        if (argc == 2) {
+            if (std::string(argv[1]) == "--help" ||
+                std::string(argv[1]) == "-h") {
+                usage();
+                return 0;
+            }
+
+            if (std::string(argv[1]) == "--cgroup" ||
+                std::string(argv[1]) == "-g") {
+                use_memcg = true;
+            }
+        }
+
+        cout << "Memory cgroups are "
+             << (use_memcg ? "used" : "not used") << endl;
 
         write_oomadj_to_lmkd(-1000);
         for (int i = 1000; i >= 0; i -= 100) {
@@ -224,7 +249,8 @@ int main(int argc, char *argv[])
             char arg[16];
             pid_t ch_pid;
             snprintf(arg, sizeof(arg), "%d", i);
-            ch_pid = createProcess(std::move(std::get<1>(pipes)), argv[0], arg);
+            ch_pid = createProcess(std::move(std::get<1>(pipes)),
+                                   argv[0], arg, use_memcg);
             Pipe &p = std::get<0>(pipes);
 
             size_t t = 0;
