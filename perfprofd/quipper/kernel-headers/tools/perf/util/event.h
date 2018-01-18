@@ -177,6 +177,12 @@ struct tracing_data_event {
   u32 size;
 /* WARNING: DO NOT EDIT, AUTO-GENERATED CODE - SEE TOP FOR INSTRUCTIONS */
 };
+struct throttle_event {
+  struct perf_event_header header;
+  u64 time;
+  u64 id;
+  u64 stream_id;
+};
 union perf_event {
   struct perf_event_header header;
   struct mmap_event mmap;
@@ -193,6 +199,8 @@ union perf_event {
 /* WARNING: DO NOT EDIT, AUTO-GENERATED CODE - SEE TOP FOR INSTRUCTIONS */
   struct tracing_data_event tracing_data;
   struct build_id_event build_id;
+
+  struct throttle_event throttle;
 };
 struct perf_tool;
 /* WARNING: DO NOT EDIT, AUTO-GENERATED CODE - SEE TOP FOR INSTRUCTIONS */
