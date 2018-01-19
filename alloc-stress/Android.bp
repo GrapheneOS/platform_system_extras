@@ -41,17 +41,3 @@ cc_binary {
         "-Wno-sign-compare"
     ]
 }
-
-cc_binary {
-    name: "multichild-stress",
-    srcs: ["multichild-stress.cpp"],
-    shared_libs: [
-        "libcutils",
-    ],
-    cppflags: [
-        "-g",
-        "-Wall",
-        "-Werror",
-        "-Wno-missing-field-initializers"
-    ]
-}
