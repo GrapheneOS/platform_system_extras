@@ -32,6 +32,7 @@
 
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
+#include <android/os/DropBoxManager.h>
 #include <binder/BinderService.h>
 #include <binder/IResultReceiver.h>
 #include <binder/Status.h>
@@ -55,6 +56,8 @@ using Status = ::android::binder::Status;
 
 class BinderConfig : public Config {
  public:
+  bool send_to_dropbox = true;
+
   bool is_profiling = false;
 
   void Sleep(size_t seconds) override {
@@ -89,6 +92,8 @@ class BinderConfig : public Config {
   BinderConfig& operator=(const BinderConfig& rhs) {
     // Copy base fields.
     *static_cast<Config*>(this) = static_cast<const Config&>(rhs);
+
+    send_to_dropbox = rhs.send_to_dropbox;
 
     return *this;
   }
@@ -143,7 +148,27 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
 };
 
 bool PerfProfdNativeService::BinderHandler(
-    wireless_android_play_playlog::AndroidPerfProfile* encodedProfile, Config* config) {
+    wireless_android_play_playlog::AndroidPerfProfile* encodedProfile,
+    Config* config) {
+  CHECK(config != nullptr);
+  if (static_cast<BinderConfig*>(config)->send_to_dropbox) {
+    size_t size = encodedProfile->ByteSize();
+    std::unique_ptr<uint8_t[]> data(new uint8_t[size]);
+    encodedProfile->SerializeWithCachedSizesToArray(data.get());
+
+    using DropBoxManager = android::os::DropBoxManager;
+    sp<DropBoxManager> dropbox(new DropBoxManager());
+    Status status = dropbox->addData(String16("perfprofd"),
+                                     data.get(),
+                                     size,
+                                     0);
+    if (!status.isOk()) {
+      LOG(WARNING) << "Failed dropbox submission: " << status.exceptionCode()
+                   << " " << status.exceptionMessage().c_str();
+    }
+    return status.isOk();
+  }
+
   if (encodedProfile == nullptr) {
     return false;
   }
@@ -264,6 +289,7 @@ Status PerfProfdNativeService::StartProfilingProtobuf(ProtoLoaderFn fn) {
     CHECK_AND_COPY_FROM_PROTO(collect_camera_active)
     CHECK_AND_COPY_FROM_PROTO(process)
     CHECK_AND_COPY_FROM_PROTO(use_elf_symbolizer)
+    CHECK_AND_COPY_FROM_PROTO(send_to_dropbox)
 #undef CHECK_AND_COPY_FROM_PROTO
   };
   return StartProfiling(config_fn);

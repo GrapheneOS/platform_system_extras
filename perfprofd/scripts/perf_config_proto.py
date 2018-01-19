@@ -43,6 +43,7 @@ config_options = [
     ('collect_camera_active', 'b'),
     ('process', 'i'),
     ('use_elf_symbolizer', 'b'),
+    ('send_to_dropbox', 'b'),
 ]
 
 def collect_and_write(filename):

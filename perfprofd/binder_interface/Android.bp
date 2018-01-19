@@ -30,6 +30,9 @@ cc_library_static {
         "libperfprofdcore",
         "libprotobuf-cpp-lite",
     ],
+    shared_libs: [
+        "libservices",
+    ],
     srcs: [
         "perfprofd_binder.cc",
         ":perfprofd_aidl",
