@@ -45,7 +45,6 @@
 #include "perf_profile.pb.h"
 
 #include "config.h"
-#include "configreader.h"
 #include "perfprofdcore.h"
 
 namespace android {
@@ -83,6 +82,15 @@ class BinderConfig : public Config {
 
   bool IsProfilingEnabled() const override {
     return true;
+  }
+
+  // Operator= to simplify setting the config values. This will retain the
+  // original mutex, condition-variable etc.
+  BinderConfig& operator=(const BinderConfig& rhs) {
+    // Copy base fields.
+    *static_cast<Config*>(this) = static_cast<const Config&>(rhs);
+
+    return *this;
   }
 
  private:
@@ -180,8 +188,8 @@ status_t PerfProfdNativeService::dump(int fd, const Vector<String16> &args) {
 Status PerfProfdNativeService::startProfiling(int32_t profilingDuration,
                                               int32_t profilingInterval,
                                               int32_t iterations) {
-  auto config_fn = [&](Config& config) {
-    ConfigReader().FillConfig(&config);  // Create a default config.
+  auto config_fn = [&](BinderConfig& config) {
+    config = BinderConfig();  // Reset to a default config.
 
     config.sample_duration_in_s = static_cast<uint32_t>(profilingDuration);
     config.collection_interval_in_s = static_cast<uint32_t>(profilingInterval);
@@ -229,8 +237,8 @@ Status PerfProfdNativeService::StartProfilingProtobuf(ProtoLoaderFn fn) {
   if (!fn(proto_config)) {
     return binder::Status::fromExceptionCode(2);
   }
-  auto config_fn = [&proto_config](Config& config) {
-    ConfigReader().FillConfig(&config);  // Create a default config.
+  auto config_fn = [&proto_config](BinderConfig& config) {
+    config = BinderConfig();  // Reset to a default config.
 
     // Copy proto values.
 #define CHECK_AND_COPY_FROM_PROTO(name)      \
