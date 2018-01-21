@@ -125,7 +125,7 @@ void ext4_create_fs_aux_info()
 
 	u32 last_group_size = aux_info.len_blocks % info.blocks_per_group;
 	u32 last_header_size = 2 + aux_info.inode_table_blocks;
-	if (ext4_bg_has_super_block(aux_info.groups - 1))
+	if (ext4_bg_has_super_block((int)aux_info.groups - 1))
 		last_header_size += 1 + aux_info.bg_desc_blocks +
 			info.bg_desc_reserve_blocks;
 	if (aux_info.groups <= 1 && last_group_size < last_header_size) {

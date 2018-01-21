@@ -14,35 +14,30 @@
 // limitations under the License.
 //
 
-//
-// Static library with binder service.
-//
-cc_library_static {
-    name: "libperfprofd_binder",
-    defaults: [
-        "perfprofd_defaults",
-    ],
-
-    export_include_dirs: ["."],
-    static_libs: [
-        "libbase",
-        "libbinder",
-        "libperfprofdcore",
-        "libprotobuf-cpp-lite",
-    ],
+cc_binary {
+    name: "alloc-stress",
+    srcs: ["alloc-stress.cpp"],
     shared_libs: [
-        "libservices",
+        "libhardware",
+        "libcutils",
     ],
-    srcs: [
-        "perfprofd_binder.cc",
-        ":perfprofd_aidl",
-        "perfprofd_config.proto",
-    ],
+    cppflags: [
+        "-g",
+        "-Wall",
+        "-Werror",
+        "-Wno-missing-field-initializers",
+        "-Wno-sign-compare"
+    ]
 }
 
-filegroup {
-    name: "perfprofd_aidl",
-    srcs: [
-        "aidl/android/os/IPerfProfd.aidl",
-    ],
+cc_binary {
+    name: "mem-pressure",
+    srcs: ["mem-pressure.cpp"],
+    cppflags: [
+        "-g",
+        "-Wall",
+        "-Werror",
+        "-Wno-missing-field-initializers",
+        "-Wno-sign-compare"
+    ]
 }

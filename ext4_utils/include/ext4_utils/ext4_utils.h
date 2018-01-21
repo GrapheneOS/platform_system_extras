@@ -117,9 +117,9 @@ struct fs_aux_info {
 	u32 groups;
 	u32 bg_desc_blocks;
 	u32 default_i_flags;
-	u32 blocks_per_ind;
-	u32 blocks_per_dind;
-	u32 blocks_per_tind;
+	u64 blocks_per_ind;
+	u64 blocks_per_dind;
+	u64 blocks_per_tind;
 };
 
 extern struct fs_info info;
