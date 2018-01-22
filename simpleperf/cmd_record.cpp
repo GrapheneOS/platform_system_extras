@@ -421,9 +421,6 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   if (!event_selection_set_.PrepareToReadMmapEventData(callback)) {
     return false;
   }
-  if (!event_selection_set_.HandleCpuHotplugEvents(cpus_)) {
-    return false;
-  }
   if (need_to_check_targets && !event_selection_set_.StopWhenNoMoreTargets()) {
     return false;
   }
