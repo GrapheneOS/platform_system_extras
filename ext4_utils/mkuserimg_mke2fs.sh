@@ -9,7 +9,7 @@ mkuserimg.sh [-s] SRC_DIR OUTPUT_FILE EXT_VARIANT MOUNT_POINT SIZE [-j <journal_
              [-T TIMESTAMP] [-C FS_CONFIG] [-D PRODUCT_OUT] [-B BLOCK_LIST_FILE]
              [-d BASE_ALLOC_FILE_IN ] [-A BASE_ALLOC_FILE_OUT ] [-L LABEL]
              [-i INODES ] [-e ERASE_BLOCK_SIZE] [-o FLASH_BLOCK_SIZE]
-             [-U MKE2FS_UUID] [-S MKE2FS_HASH_SEED] [FILE_CONTEXTS]
+             [-U MKE2FS_UUID] [-S MKE2FS_HASH_SEED] [-c] [FILE_CONTEXTS]
 EOT
 }
 
@@ -122,6 +122,11 @@ if [[ "$1" == "-S" ]]; then
   fi
   MKE2FS_EXTENDED_OPTS+="hash_seed=$2"
   shift; shift
+fi
+
+if [[ "$1" == "-c" ]]; then
+  E2FSDROID_OPTS+=" -s"
+  shift;
 fi
 
 if [[ $MKE2FS_EXTENDED_OPTS ]]; then
