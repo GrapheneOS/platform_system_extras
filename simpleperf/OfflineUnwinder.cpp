@@ -165,7 +165,13 @@ bool OfflineUnwinder::UnwindCallChain(int abi, const ThreadEntry& thread, const 
     }
   }
   if (ips->empty()) {
-    return false;
+    uint64_t ip_reg_value;
+    if (!GetIpRegValue(regs, arch, &ip_reg_value)) {
+      LOG(ERROR) << "can't get ip reg value";
+      return false;
+    }
+    ips->push_back(ip_reg_value);
+    sps->push_back(sp_reg_value);
   }
   if (collect_stat_) {
     unwinding_result_.used_time = GetSystemClock() - start_time;
