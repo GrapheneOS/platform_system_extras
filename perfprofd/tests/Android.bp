@@ -32,7 +32,7 @@ cc_test {
     stl: "libc++",
     static_libs: [
         "libperfprofdcore",
-        "libperfprofd_elf_read",
+        "libsimpleperf_elf_read",
         "libbase",
     ],
     shared_libs: [
