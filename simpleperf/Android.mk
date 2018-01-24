@@ -80,6 +80,7 @@ simpleperf_static_libraries_host_linux := \
   libbacktrace \
   libunwind \
   libunwindstack \
+  libdexfile \
   libcutils \
   libevent \
 
