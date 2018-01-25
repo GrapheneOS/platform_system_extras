@@ -55,3 +55,12 @@ cc_test {
         "tests/HintManagerTest.cc",
     ]
 }
+
+cc_binary {
+    name: "perfmgr_config_verifier",
+    defaults: ["libperfmgr_defaults"],
+    static_libs: ["libperfmgr"],
+    srcs: [
+        "tools/ConfigVerifier.cc",
+    ]
+}

@@ -156,6 +156,16 @@ static inline void _VerifyPathValue(std::string path, std::string value) {
     EXPECT_EQ(value, s);
 }
 
+// Test GetHints
+TEST_F(HintManagerTest, GetHintsTest) {
+    HintManager hm(nm_, actions_);
+    std::vector<std::string> hints = hm.GetHints();
+    EXPECT_TRUE(hm.IsRunning());
+    EXPECT_EQ(2u, hints.size());
+    EXPECT_NE(std::find(hints.begin(), hints.end(), "INTERACTION"), hints.end());
+    EXPECT_NE(std::find(hints.begin(), hints.end(), "LAUNCH"), hints.end());
+}
+
 // Test initialization of default values
 TEST_F(HintManagerTest, HintInitDefaultTest) {
     HintManager hm(nm_, actions_);
