@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2016 The Android Open Source Project
+// Copyright (C) 2018 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 //
 
 cc_defaults {
-    name: "perfprofd_defaults",
+    name: "simpleperf_defaults",
 
     cflags: [
         "-Wall",
@@ -41,74 +41,52 @@ cc_defaults {
     ],
 }
 
-//
-// Static library containing guts of AWP daemon.
-//
-
 cc_library_static {
-    name: "libperfprofdcore",
+    name: "libsimpleperf_elf_read",
     defaults: [
-        "perfprofd_defaults",
+        "simpleperf_defaults",
     ],
 
-    local_include_dirs: ["quipper/kernel-headers"],
-    export_include_dirs: ["."],
-    static_libs: [
-        "libbase",
-        "libsimpleperf_elf_read",
-    ],
-    srcs: [
-        "perf_profile.proto",
-        "quipper/perf_utils.cc",
-        "quipper/base/logging.cc",
-        "quipper/address_mapper.cc",
-        "quipper/perf_reader.cc",
-        "quipper/perf_parser.cc",
-        "perf_data_converter.cc",
-        "configreader.cc",
-        "cpuconfig.cc",
-        "perfprofdcore.cc",
-        "symbolizer.cc"
+    export_include_dirs: [
+        ".",
     ],
 
-    proto: {
-        export_proto_headers: true,
-    },
-}
-
-//
-// Main daemon
-//
-cc_binary {
-    name: "perfprofd",
-    defaults: [
-        "perfprofd_defaults",
-    ],
-
-    srcs: [
-        "perfprofdmain.cc",
+    // TODO: fix or workaround this.
+    cflags: [
+        "-DSIMPLEPERF_REVISION=\"dummy\"",
     ],
 
     static_libs: [
-        "libperfprofdcore",
-        "libperfprofd_binder",
-        "libsimpleperf_elf_read",
+        "libbase",
     ],
-    group_static_libs: true,
-
-    shared_libs: [
+    // Use whole-static to avoid having to pull this in later.
+    whole_static_libs: [
+        "libLLVMObject",
+        "libLLVMBitReader",
+        "libLLVMMC",
+        "libLLVMMCParser",
+        "libLLVMCore",
+        "libLLVMSupport",
         "liblog",
-        "libprotobuf-cpp-lite",
-        "libbase",
-        "libbinder",
-        "libservices",
-        "libutils",
+        "liblzma",
+        "libz",
+        "libziparchive",
     ],
 
-    init_rc: ["perfprofd.rc"],
-}
+    target: {
+        // Required for LLVM.
+        linux_glibc: {
+            host_ldlibs: [
+                "-lncurses",
+            ],
+        },
+    },
 
-subdirs = [
-    "binder_interface",
-    "tests",
-]
+    srcs: [
+        "read_apk.cpp",
+        "read_elf.cpp",
+        "utils.cpp",
+    ],
+
+    group_static_libs: true,
+}
