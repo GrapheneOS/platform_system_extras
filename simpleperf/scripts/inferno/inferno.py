@@ -102,6 +102,10 @@ def parse_samples(process, args):
         process.props['ro.product.manufacturer'] = tuple[0]
         process.props['ro.product.model'] = tuple[1]
         process.props['ro.product.name'] = tuple[2]
+    if lib.MetaInfo().get('trace_offcpu') == 'true':
+        process.props['trace_offcpu'] = True
+    else:
+        process.props['trace_offcpu'] = False
 
     while True:
         sample = lib.GetNextSample()
@@ -154,6 +158,10 @@ def output_report(process, args):
     f.write(get_local_asset_content("inferno.b64"))
     f.write('"/>')
     process_entry = ("Process : %s (%d)<br/>" % (process.name, process.pid)) if process.pid else ""
+    if process.props['trace_offcpu']:
+        event_entry = 'Total time: %s<br/>' % get_proper_scaled_time_string(process.num_events)
+    else:
+        event_entry = 'Event count: %s<br/>' % ("{:,}".format(process.num_events))
     # TODO: collect capture duration info from perf.data.
     duration_entry = ("Duration: %s seconds<br/>" % args.capture_duration
                       ) if args.capture_duration else ""
@@ -163,15 +171,15 @@ def output_report(process, args):
                   %s
                   Date&nbsp;&nbsp;&nbsp;&nbsp;: %s<br/>
                   Threads : %d <br/>
-                  Samples : %d</br>
-                  Event count: %d</br>
+                  Samples : %d<br/>
+                  %s
                   %s""" % (
         (': ' + args.title) if args.title else '',
         process_entry,
         datetime.datetime.now().strftime("%Y-%m-%d (%A) %H:%M:%S"),
         len(process.threads),
         process.num_samples,
-        process.num_events,
+        event_entry,
         duration_entry))
     if 'ro.product.model' in process.props:
         f.write(
@@ -192,7 +200,7 @@ def output_report(process, args):
     for thread in sorted(process.threads.values(), key=lambda x: x.num_events, reverse=True):
         f.write("<br/><br/><b>Thread %d (%s) (%d samples):</b><br/>\n\n\n\n" % (
                 thread.tid, thread.name, thread.num_samples))
-        renderSVG(thread.flamegraph, f, args.color)
+        renderSVG(process, thread.flamegraph, f, args.color)
 
     f.write("</div>")
     if not args.embedded_flamegraph:
@@ -215,7 +223,8 @@ def collect_machine_info(process):
 
 
 def main():
-
+    # Allow deep callchain with length >1000.
+    sys.setrecursionlimit(1500)
     parser = argparse.ArgumentParser(description='Report samples in perf.data.')
     parser.add_argument('--symfs', help="""Set the path to find binaries with symbols and debug
                         info.""")
