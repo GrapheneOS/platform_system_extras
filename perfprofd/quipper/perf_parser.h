@@ -50,6 +50,9 @@ struct ParsedEvent {
   // Command associated with this sample.
   const string* command_;
 
+  // Process' name (command where pid = tid for this thread's pid).
+  const string* process_command_;
+
   // Accessor for command string.
   const string command() const {
     if (command_)
@@ -59,6 +62,17 @@ struct ParsedEvent {
 
   void set_command(const string* command) {
     command_ = command;
+  }
+
+  // Accessor for process_command string.
+  const string process_command() const {
+    if (process_command_)
+      return *process_command_;
+    return string();
+  }
+
+  void set_process_command(const string* command) {
+    process_command_ = command;
   }
 
   // A struct that contains a DSO + offset pair.
