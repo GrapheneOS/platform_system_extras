@@ -73,6 +73,14 @@ bool HintManager::IsRunning() const {
     return (nm_.get() == nullptr) ? false : nm_->isRunning();
 }
 
+std::vector<std::string> HintManager::GetHints() const {
+    std::vector<std::string> hints;
+    for (auto const& action : actions_) {
+        hints.push_back(action.first);
+    }
+    return hints;
+}
+
 std::unique_ptr<HintManager> HintManager::GetFromJSON(
     const std::string& config_path) {
     std::string json_doc;
