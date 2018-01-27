@@ -265,6 +265,13 @@ bool PerfParser::MapSampleEvent(ParsedEvent* parsed_event) {
   if (comm_iter != pidtid_to_comm_map_.end()) {
     parsed_event->set_command(comm_iter->second);
   }
+  {
+    PidTid pidtid_main = std::make_pair(sample_info.pid, sample_info.pid);
+    const auto main_iter = pidtid_to_comm_map_.find(pidtid_main);
+    if (main_iter != pidtid_to_comm_map_.end()) {
+      parsed_event->set_process_command(main_iter->second);
+    }
+  }
 
   const uint64_t unmapped_event_ip = sample_info.ip;
 
