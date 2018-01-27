@@ -84,8 +84,17 @@ RawPerfDataToAndroidPerfProfile(const string &perf_file,
   std::unique_ptr<wireless_android_play_playlog::AndroidPerfProfile> ret(
       new wireless_android_play_playlog::AndroidPerfProfile());
 
-  typedef map<string, BinaryProfile> ModuleProfileMap;
-  typedef map<string, ModuleProfileMap> ProgramProfileMap;
+  using ModuleProfileMap = std::map<string, BinaryProfile>;
+  using Program = std::pair<uint32_t /* index into process name table, or uint32_t max */,
+                            std::string /* program name = comm of thread */>;
+  using ProgramProfileMap = std::map<Program, ModuleProfileMap>;
+
+  struct ProcessNameTable {
+    std::vector<std::string> names;
+    std::unordered_map<std::string, uint32_t> index_lookup;
+  };
+  constexpr uint32_t kNoProcessNameTableEntry = std::numeric_limits<uint32_t>::max();
+  ProcessNameTable process_name_table;
 
   // Note: the callchain_count_map member in BinaryProfile contains
   // pointers into callchains owned by "parser" above, meaning
@@ -116,20 +125,38 @@ RawPerfDataToAndroidPerfProfile(const string &perf_file,
       continue;
     }
     string dso_name = event.dso_and_offset.dso_name();
-    string program_name = event.command();
-    const string kernel_name = "[kernel.kallsyms]";
-    if (android::base::StartsWith(dso_name, kernel_name)) {
-      dso_name = kernel_name;
-      if (program_name == "") {
-        program_name = "kernel";
+    Program program_id;
+    {
+      std::string program_name = event.command();
+      const std::string kernel_name = "[kernel.kallsyms]";
+      if (android::base::StartsWith(dso_name, kernel_name)) {
+        dso_name = kernel_name;
+        if (program_name == "") {
+          program_name = "kernel";
+        }
+      } else if (program_name == "") {
+        if (is_kernel_dso(dso_name)) {
+          program_name = "kernel";
+        } else {
+          program_name = "unknown_program";
+        }
       }
-    } else if (program_name == "") {
-      if (is_kernel_dso(dso_name)) {
-        program_name = "kernel";
-      } else {
-        program_name = "unknown_program";
+      std::string process_name = event.process_command();
+      uint32_t process_name_index = kNoProcessNameTableEntry;
+      if (!process_name.empty()) {
+        auto name_iter = process_name_table.index_lookup.find(process_name);
+        if (name_iter == process_name_table.index_lookup.end()) {
+          process_name_index = process_name_table.names.size();
+          process_name_table.index_lookup.emplace(process_name, process_name_index);
+          process_name_table.names.push_back(process_name);
+        } else {
+          process_name_index = name_iter->second;
+        }
       }
+      program_id = std::make_pair(process_name_index, program_name);
     }
+    ModuleProfileMap& module_profile_map = name_profile_map[program_id];
+
     total_samples++;
     // We expect to see either all callchain events, all branch stack
     // events, or all flat sample events, not a mix. For callchains,
@@ -140,14 +167,14 @@ RawPerfDataToAndroidPerfProfile(const string &perf_file,
       CHECK(!seen_branch_stack && "examining callchain");
       seen_callchain = true;
       const callchain *cc = &event.callchain;
-      name_profile_map[program_name][dso_name].callchain_count_map[cc]++;
+      module_profile_map[dso_name].callchain_count_map[cc]++;
     } else if (!event.branch_stack.empty()) {
       CHECK(!seen_callchain && "examining branch stack");
       seen_branch_stack = true;
-      name_profile_map[program_name][dso_name].address_count_map[
+      module_profile_map[dso_name].address_count_map[
           event.dso_and_offset.offset()]++;
     } else {
-      name_profile_map[program_name][dso_name].address_count_map[
+      module_profile_map[dso_name].address_count_map[
           event.dso_and_offset.offset()]++;
     }
     for (size_t i = 1; i < event.branch_stack.size(); i++) {
@@ -160,7 +187,7 @@ RawPerfDataToAndroidPerfProfile(const string &perf_file,
           LOG(WARNING) << "Bogus LBR data: " << start << "->" << end;
           continue;
         }
-        name_profile_map[program_name][dso_name].range_count_map[
+        module_profile_map[dso_name].range_count_map[
             RangeTarget(start, end, to)]++;
       }
     }
@@ -244,7 +271,11 @@ RawPerfDataToAndroidPerfProfile(const string &perf_file,
 
   for (const auto &program_profile : name_profile_map) {
     auto program = ret->add_programs();
-    program->set_name(program_profile.first);
+    const Program& program_id = program_profile.first;
+    program->set_name(program_id.second);
+    if (program_id.first != kNoProcessNameTableEntry) {
+      program->set_process_name_id(program_id.first);
+    }
     for (const auto &module_profile : program_profile.second) {
       ModuleData& module_data = name_data_map[module_profile.first];
       int32 module_id = module_data.index;
@@ -286,6 +317,13 @@ RawPerfDataToAndroidPerfProfile(const string &perf_file,
       for (const std::string& symbol : name_data.second.symbols) {
         load_module->add_symbol(symbol);
       }
+    }
+  }
+
+  if (!process_name_table.names.empty()) {
+    wireless_android_play_playlog::ProcessNames* process_names = ret->mutable_process_names();
+    for (const std::string& name : process_name_table.names) {
+      process_names->add_name(name);
     }
   }
 

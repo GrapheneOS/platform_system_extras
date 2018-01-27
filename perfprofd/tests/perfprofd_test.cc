@@ -90,22 +90,26 @@ static std::string JoinTestLog(const char* delimiter) {
 
 class PerfProfdTest : public testing::Test {
  protected:
-  virtual void SetUp() {
+  void SetUp() override {
     InitTestLog();
     android::base::SetLogger(TestLogFunction);
     create_dirs();
   }
 
-  virtual void TearDown() {
+  void TearDown() override {
     android::base::SetLogger(android::base::StderrLogger);
     ClearTestLog();
 
     // TODO: proper management of test files. For now, use old system() code.
-    for (const auto dir : { &dest_dir, &conf_dir }) {
-      std::string cmd("rm -rf ");
-      cmd += *dir;
-      int ret = system(cmd.c_str());
-      CHECK_EQ(0, ret);
+    if (!HasFailure()) {
+      for (const auto dir : { &dest_dir, &conf_dir }) {
+        std::string cmd("rm -rf ");
+        cmd += *dir;
+        int ret = system(cmd.c_str());
+        CHECK_EQ(0, ret);
+      }
+    } else {
+      std::cerr << "Failed test: conf_dir=" << conf_dir << " dest_dir=" << dest_dir;
     }
   }
 
@@ -624,8 +628,8 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
                      "BasicRunWithCannedPerf",
                      encodedProfile);
 
-  // Expect 45 programs
-  EXPECT_EQ(45, encodedProfile.programs_size());
+  // Expect 48 programs
+  EXPECT_EQ(48, encodedProfile.programs_size());
 
   // Check a couple of load modules
   { const auto &lm0 = encodedProfile.load_modules(0);
@@ -648,7 +652,7 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
   }
 
   // Examine some of the samples now
-  { const auto &p1 = encodedProfile.programs(0);
+  { const auto &p1 = encodedProfile.programs(9);
     const auto &lm1 = p1.modules(0);
     std::string act_lm1 = encodedModuleSamplesToString(lm1);
     std::string sqact1 = squeezeWhite(act_lm1, "actual for lm1");
@@ -658,7 +662,7 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
     std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
     EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
   }
-  { const auto &p1 = encodedProfile.programs(2);
+  { const auto &p1 = encodedProfile.programs(11);
     const auto &lm2 = p1.modules(0);
     std::string act_lm2 = encodedModuleSamplesToString(lm2);
     std::string sqact2 = squeezeWhite(act_lm2, "actual for lm2");
@@ -713,7 +717,7 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerfWithSymbolizer)
                      encodedProfile);
 
   // Expect 45 programs
-  EXPECT_EQ(45, encodedProfile.programs_size());
+  EXPECT_EQ(48, encodedProfile.programs_size());
 
   // Check a couple of load modules
   { const auto &lm0 = encodedProfile.load_modules(0);
@@ -738,7 +742,7 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerfWithSymbolizer)
   }
 
   // Examine some of the samples now
-  { const auto &p1 = encodedProfile.programs(0);
+  { const auto &p1 = encodedProfile.programs(9);
     const auto &lm1 = p1.modules(0);
     std::string act_lm1 = encodedModuleSamplesToString(lm1);
     std::string sqact1 = squeezeWhite(act_lm1, "actual for lm1");
@@ -748,7 +752,7 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerfWithSymbolizer)
     std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
     EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
   }
-  { const auto &p1 = encodedProfile.programs(2);
+  { const auto &p1 = encodedProfile.programs(11);
     const auto &lm2 = p1.modules(0);
     std::string act_lm2 = encodedModuleSamplesToString(lm2);
     std::string sqact2 = squeezeWhite(act_lm2, "actual for lm2");
@@ -817,7 +821,7 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
   }
 
   // Examine some of the samples now
-  { const auto &p0 = encodedProfile.programs(0);
+  { const auto &p0 = encodedProfile.programs(1);
     const auto &lm1 = p0.modules(0);
     std::string act_lm1 = encodedModuleSamplesToString(lm1);
     std::string sqact1 = squeezeWhite(act_lm1, "actual for lm1");
