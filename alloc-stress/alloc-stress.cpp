@@ -120,7 +120,11 @@ pid_t createProcess(Pipe pipe, const char *exName,
         char writeFdStr[16];
         snprintf(readFdStr, sizeof(readFdStr), "%d", pipe.getReadFd());
         snprintf(writeFdStr, sizeof(writeFdStr), "%d", pipe.getWriteFd());
-        execl(exName, exName, "--worker", arg, readFdStr, writeFdStr,
+        char exPath[PATH_MAX];
+        ssize_t exPathLen = readlink("/proc/self/exe", exPath, sizeof(exPath));
+        bool isExPathAvailable =
+            exPathLen != -1 && exPathLen < static_cast<ssize_t>(sizeof(exPath));
+        execl(isExPathAvailable ? exPath : exName, exName, "--worker", arg, readFdStr, writeFdStr,
             use_memcg ? "1" : "0", nullptr);
         ASSERT_TRUE(0);
     }

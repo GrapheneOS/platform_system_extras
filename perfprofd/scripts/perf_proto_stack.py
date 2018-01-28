@@ -47,10 +47,13 @@ def indent(txt, stops = 1):
     return '\n'.join('  ' * stops + line for line in txt.splitlines())
 
 
-def print_samples(module_list, programs, counters):
+def print_samples(module_list, programs, process_names, counters):
     print 'Samples:'
     for program in programs:
-        print indent(program.name, 1)
+        process_name = '?'
+        if program.HasField('process_name_id'):
+            process_name = process_names[program.process_name_id]
+        print indent('%s (%s)' % (program.name, process_name), 1)
         for module in program.modules:
             if module.HasField('load_module_id'):
                 module_descr = module_list[module.load_module_id]
@@ -118,6 +121,17 @@ def print_modules(module_list):
         for symbol in module.symbol:
             print indent(symbol, 3)
 
-print_samples(module_list, profile.programs, counters)
+def print_process_names(process_names):
+    print 'Processes:'
+    for proc in process_names:
+        print indent(proc, 1)
+
+if profile.HasField('process_names'):
+    process_names = profile.process_names.name
+else:
+    process_names = []
+
+print_samples(module_list, profile.programs, process_names, counters)
 print_modules(module_list)
 print_histogram(counters, 100)
+print_process_names(process_names)
