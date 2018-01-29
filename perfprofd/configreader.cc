@@ -124,6 +124,9 @@ void ConfigReader::addDefaultEntries()
   addUnsignedEntry("collect_charging_state", 1, 0, 1);
   addUnsignedEntry("collect_booting", 1, 0, 1);
   addUnsignedEntry("collect_camera_active", 0, 0, 1);
+
+  // If true, use an ELF symbolizer to on-device symbolize.
+  addUnsignedEntry("use_elf_symbolizer", 1, 0, 1);
 }
 
 void ConfigReader::addUnsignedEntry(const char *key,
@@ -321,5 +324,5 @@ void ConfigReader::FillConfig(Config* config) {
   config->collect_camera_active = getBoolValue("collect_camera_active");
 
   config->process = -1;
-  config->use_elf_symbolizer = true;
+  config->use_elf_symbolizer = getBoolValue("use_elf_symbolizer");
 }
