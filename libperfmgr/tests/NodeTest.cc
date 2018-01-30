@@ -18,6 +18,7 @@
 #include <thread>
 
 #include <android-base/file.h>
+#include <android-base/stringprintf.h>
 #include <android-base/test_utils.h>
 
 #include <gtest/gtest.h>
@@ -32,7 +33,7 @@ using namespace std::chrono_literals;
 constexpr double kTIMING_TOLERANCE_MS = std::chrono::milliseconds(25).count();
 constexpr auto kSLEEP_TOLERANCE_MS = 2ms;
 
-static inline void _VerifyPathValue(std::string path, std::string value) {
+static inline void _VerifyPathValue(const std::string& path, const std::string& value) {
     std::string s;
     EXPECT_TRUE(android::base::ReadFileToString(path, &s)) << strerror(errno);
     EXPECT_EQ(value, s);
@@ -53,6 +54,18 @@ TEST(NodeTest, InitDefaultTest) {
     TemporaryFile tf2;
     Node t2("t2", tf2.path, {{"value0"}, {"value1"}, {"value2"}}, 0, true);
     _VerifyPathValue(tf2.path, "value0");
+}
+
+// Test DumpToFd
+TEST(NodeTest, DumpToFdTest) {
+    TemporaryFile tf;
+    Node t("test_dump", tf.path, {{"value0"}, {"value1"}, {"value2"}}, 1, true);
+    TemporaryFile dumptf;
+    t.DumpToFd(dumptf.fd);
+    fsync(dumptf.fd);
+    std::string buf(android::base::StringPrintf("test_dump\t%s\t1\tvalue1\n",
+                                                tf.path));
+    _VerifyPathValue(dumptf.path, buf);
 }
 
 // Test GetValueIndex

@@ -88,6 +88,13 @@ bool NodeLooperThread::Cancel(const std::vector<NodeAction>& actions,
     return ret;
 }
 
+void NodeLooperThread::DumpToFd(int fd) {
+    ::android::AutoMutex _l(lock_);
+    for (auto& n : nodes_) {
+        n->DumpToFd(fd);
+    }
+}
+
 bool NodeLooperThread::threadLoop() {
     ::android::AutoMutex _l(lock_);
     std::chrono::milliseconds timeout_ms = kMaxUpdatePeriod;
