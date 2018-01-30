@@ -111,7 +111,7 @@ std::unique_ptr<EmbeddedElf> ApkInspector::FindElfInApkByOffsetWithoutCache(cons
 }
 
 bool ApkInspector::FindOffsetInApkByName(const std::string& apk_path,
-                                         const std::string& elf_filename, off64_t* offset,
+                                         const std::string& elf_filename, uint64_t* offset,
                                          uint32_t* uncompressed_length) {
   if (!IsValidApkPath(apk_path)) {
     return false;
@@ -143,7 +143,7 @@ bool ApkInspector::FindOffsetInApkByName(const std::string& apk_path,
 
 std::unique_ptr<EmbeddedElf> ApkInspector::FindElfInApkByName(const std::string& apk_path,
                                                               const std::string& elf_filename) {
-  off64_t offset;
+  uint64_t offset;
   uint32_t uncompressed_length;
   if (!FindOffsetInApkByName(apk_path, elf_filename, &offset, &uncompressed_length)) {
     return nullptr;
