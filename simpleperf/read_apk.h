@@ -71,6 +71,9 @@ class ApkInspector {
   // Given an APK/ZIP/JAR file and an offset into that file, if the
   // corresponding region of the APK corresponds to an uncompressed
   // ELF file, then return pertinent info on the ELF.
+  static bool FindOffsetInApkByName(const std::string& apk_path,
+                                    const std::string& elf_filename,
+                                    off64_t* offset, uint32_t* uncompressed_length);
   static EmbeddedElf* FindElfInApkByOffset(const std::string& apk_path, uint64_t file_offset);
   static std::unique_ptr<EmbeddedElf> FindElfInApkByName(const std::string& apk_path,
                                                          const std::string& elf_filename);
