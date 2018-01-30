@@ -21,6 +21,10 @@
 #include "OfflineUnwinder.h"
 
 namespace simpleperf {
+OfflineUnwinder::OfflineUnwinder(bool strict_arch_check, bool collect_stat)
+    : strict_arch_check_(strict_arch_check), collect_stat_(collect_stat) {
+}
+
 bool OfflineUnwinder::UnwindCallChain(int, const ThreadEntry&, const RegSet&, const char*, size_t,
                      std::vector<uint64_t>*, std::vector<uint64_t>*) {
   return false;
