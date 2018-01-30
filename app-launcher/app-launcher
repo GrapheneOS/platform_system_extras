@@ -240,12 +240,12 @@ cpufreq_angler () {
 
 cpufreq_go() {
     echo "Setting Governor to performance"
-    adb shell 'echo 0 > /proc/hps/enabled'
+    $adb shell 'echo 0 > /proc/hps/enabled'
     for i in 0 1 2 3
     do
-	adb shell "echo 1 > /sys/devices/system/cpu/cpu$i/online"
-	adb shell "echo performance > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_governor"
-	adb shell "echo 1092000 > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq"
+	$adb shell "echo 1 > /sys/devices/system/cpu/cpu$i/online"
+	$adb shell "echo performance > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_governor"
+	$adb shell "echo 1092000 > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq"
     done
 }
 
