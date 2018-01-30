@@ -150,7 +150,7 @@ class HintManagerTest : public ::testing::Test, public HintManager {
     std::string json_doc_;
 };
 
-static inline void _VerifyPathValue(std::string path, std::string value) {
+static inline void _VerifyPathValue(const std::string& path, const std::string& value) {
     std::string s;
     EXPECT_TRUE(android::base::ReadFileToString(path, &s)) << strerror(errno);
     EXPECT_EQ(value, s);
