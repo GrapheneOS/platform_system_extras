@@ -155,7 +155,7 @@ bool OfflineUnwinder::UnwindCallChain(int abi, const ThreadEntry& thread, const 
         // the previous format (apk, offset).
         std::string shared_lib(bt_map.name.substr(apk_pos + 2));
         bt_map.name = bt_map.name.substr(0, apk_pos);
-        off64_t offset;
+        uint64_t offset;
         uint32_t length;
         if (ApkInspector::FindOffsetInApkByName(bt_map.name, shared_lib, &offset, &length)) {
           bt_map.offset = offset;
