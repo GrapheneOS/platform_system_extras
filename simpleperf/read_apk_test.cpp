@@ -42,7 +42,7 @@ TEST(read_apk, FindElfInApkByOffset) {
 }
 
 TEST(read_apk, FindOffsetInApkByName) {
-  off64_t offset;
+  uint64_t offset;
   uint32_t length;
   ASSERT_FALSE(ApkInspector::FindOffsetInApkByName("/dev/null", "", &offset, &length));
   ASSERT_FALSE(ApkInspector::FindOffsetInApkByName(GetTestData(APK_FILE), "", &offset, &length));
