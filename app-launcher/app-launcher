@@ -519,7 +519,7 @@ echo Found $model Device
 system_bdev_set=false
 case $model in
     # Android Go
-    aosp_gobo | full_k37_y33_gms)
+    aosp_gobo | full_k37_y33_gms | gobo | gobo_512)
 	if [ $user_experience == false ]; then
 	    cpufreq_go
         fi
@@ -568,7 +568,7 @@ setup
 #
 case $model in
     # Android Go
-    aosp_gobo | full_k37_y33_gms)
+    aosp_gobo | full_k37_y33_gms | gobo | gobo_512)
 	launch_go_apps
 	;;
     fugu)
