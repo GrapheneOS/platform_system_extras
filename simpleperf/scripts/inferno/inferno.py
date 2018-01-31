@@ -45,6 +45,7 @@ from svg_renderer import *
 
 
 def collect_data(args):
+    """ Run app_profiler.py to generate record file. """
     app_profiler_args = [sys.executable, os.path.join(scripts_path, "app_profiler.py"), "-nb"]
     if args.app:
         app_profiler_args += ["-p", args.app]
@@ -79,8 +80,13 @@ def collect_data(args):
     return returncode == 0
 
 
-def parse_samples(process, args):
-    """ read record_file, and print each sample"""
+def parse_samples(process, args, sample_filter_fn):
+    """Read samples from record file.
+        process: Process object
+        args: arguments
+        sample_filter_fn: if not None, is used to modify and filter samples.
+                          It returns false for samples should be filtered out.
+    """
 
     record_file = args.record_file
     symfs_dir = args.symfs
@@ -104,6 +110,9 @@ def parse_samples(process, args):
         process.props['ro.product.name'] = tuple[2]
     if lib.MetaInfo().get('trace_offcpu') == 'true':
         process.props['trace_offcpu'] = True
+        if args.one_flamegraph:
+            log_exit("It doesn't make sense to report with --one-flamegraph for perf.data " +
+                     "recorded with --trace-offcpu.""")
     else:
         process.props['trace_offcpu'] = False
 
@@ -114,6 +123,8 @@ def parse_samples(process, args):
             break
         symbol = lib.GetSymbolOfCurrentSample()
         callchain = lib.GetCallChainOfCurrentSample()
+        if sample_filter_fn and not sample_filter_fn(sample, symbol, callchain):
+            continue
         process.add_sample(sample, symbol, callchain)
 
     if process.pid == 0:
@@ -225,51 +236,59 @@ def collect_machine_info(process):
 def main():
     # Allow deep callchain with length >1000.
     sys.setrecursionlimit(1500)
-    parser = argparse.ArgumentParser(description='Report samples in perf.data.')
-    parser.add_argument('--symfs', help="""Set the path to find binaries with symbols and debug
-                        info.""")
-    parser.add_argument('--kallsyms', help='Set the path to find kernel symbols.')
-    parser.add_argument('--record_file', default='perf.data', help='Default is perf.data.')
-    parser.add_argument('-t', '--capture_duration', type=int, default=10,
-                        help="""Capture duration in seconds.""")
-    parser.add_argument('-p', '--app', help="""Profile an Android app, given the package name.
-                        Like -p com.example.android.myapp.""")
-    parser.add_argument('-np', '--native_program', default="surfaceflinger",
-                        help="""Profile a native program. The program should be running on the
-                        device. Like -np surfaceflinger.""")
-    parser.add_argument('-c', '--color', default='hot', choices=['hot', 'dso', 'legacy'],
-                        help="""Color theme: hot=percentage of samples, dso=callsite DSO name,
-                        legacy=brendan style""")
-    parser.add_argument('-sc', '--skip_collection', default=False, help='Skip data collection',
-                        action="store_true")
-    parser.add_argument('-nc', '--skip_recompile', action='store_true', help="""When profiling
-                        an Android app, by default we recompile java bytecode to native
-                        instructions to profile java code. It takes some time. You can skip it
-                        if the code has been compiled or you don't need to profile java code.""")
-    parser.add_argument('-f', '--sample_frequency', type=int, default=6000, help='Sample frequency')
-    parser.add_argument(
-        '-du',
-        '--dwarf_unwinding',
-        help='Perform unwinding using dwarf instead of fp.',
-        default=False,
-        action='store_true')
-    parser.add_argument('-e', '--events', help="""Sample based on event occurences instead of
-                        frequency. Format expected is "event_counts event_name".
-                        e.g: "10000 cpu-cyles". A few examples of event_name: cpu-cycles,
-                        cache-references, cache-misses, branch-instructions, branch-misses""",
-                        default="")
-    parser.add_argument('--title', help='Show a title in the report.')
-    parser.add_argument('--disable_adb_root', action='store_true', help="""Force adb to run in non
-                        root mode.""")
-    parser.add_argument('-o', '--report_path', default='report.html', help="Set report path.")
-    parser.add_argument('--embedded_flamegraph', action='store_true', help="""
-                        Generate embedded flamegraph.""")
-    parser.add_argument('--min_callchain_percentage', default=0.01, type=float, help="""
-                        Set min percentage of callchains shown in the report.
-                        It is used to limit nodes shown in the flamegraph. For example,
-                        when set to 0.01, only callchains taking >= 0.01%% of the event count of
-                        the owner thread are collected in the report.""")
-    parser.add_argument('--no_browser', action='store_true', help="Don't open report in browser.")
+    parser = argparse.ArgumentParser(description="""Report samples in perf.data. Default option
+                                                    is: "-np surfaceflinger -f 6000 -t 10".""")
+    record_group = parser.add_argument_group('Record options')
+    record_group.add_argument('-du', '--dwarf_unwinding', action='store_true', help="""Perform
+                              unwinding using dwarf instead of fp.""")
+    record_group.add_argument('-e', '--events', default="", help="""Sample based on event
+                              occurences instead of frequency. Format expected is
+                              "event_counts event_name". e.g: "10000 cpu-cyles". A few examples
+                              of event_name: cpu-cycles, cache-references, cache-misses,
+                              branch-instructions, branch-misses""")
+    record_group.add_argument('-f', '--sample_frequency', type=int, default=6000, help="""Sample
+                              frequency""")
+    record_group.add_argument('-nc', '--skip_recompile', action='store_true', help="""When
+                              profiling an Android app, by default we recompile java bytecode to
+                              native instructions to profile java code. It takes some time. You
+                              can skip it if the code has been compiled or you don't need to
+                              profile java code.""")
+    record_group.add_argument('-np', '--native_program', default="surfaceflinger", help="""Profile
+                              a native program. The program should be running on the device.
+                              Like -np surfaceflinger.""")
+    record_group.add_argument('-p', '--app', help="""Profile an Android app, given the package
+                              name. Like -p com.example.android.myapp.""")
+    record_group.add_argument('--record_file', default='perf.data', help='Default is perf.data.')
+    record_group.add_argument('-sc', '--skip_collection', action='store_true', help="""Skip data
+                              collection""")
+    record_group.add_argument('-t', '--capture_duration', type=int, default=10, help="""Capture
+                              duration in seconds.""")
+
+    report_group = parser.add_argument_group('Report options')
+    report_group.add_argument('-c', '--color', default='hot', choices=['hot', 'dso', 'legacy'],
+                              help="""Color theme: hot=percentage of samples, dso=callsite DSO
+                                      name, legacy=brendan style""")
+    report_group.add_argument('--embedded_flamegraph', action='store_true', help="""Generate
+                              embedded flamegraph.""")
+    report_group.add_argument('--kallsyms', help='Set the path to find kernel symbols.')
+    report_group.add_argument('--min_callchain_percentage', default=0.01, type=float, help="""
+                              Set min percentage of callchains shown in the report.
+                              It is used to limit nodes shown in the flamegraph. For example,
+                              when set to 0.01, only callchains taking >= 0.01%% of the event
+                              count of the owner thread are collected in the report.""")
+    report_group.add_argument('--no_browser', action='store_true', help="""Don't open report
+                              in browser.""")
+    report_group.add_argument('-o', '--report_path', default='report.html', help="""Set report
+                              path.""")
+    report_group.add_argument('--one-flamegraph', action='store_true', help="""Generate one
+                              flamegraph instead of one for each thread.""")
+    report_group.add_argument('--symfs', help="""Set the path to find binaries with symbols and
+                              debug info.""")
+    report_group.add_argument('--title', help='Show a title in the report.')
+
+    debug_group = parser.add_argument_group('Debug options')
+    debug_group.add_argument('--disable_adb_root', action='store_true', help="""Force adb to run
+                             in non root mode.""")
     args = parser.parse_args()
     process = Process("", 0)
 
@@ -288,7 +307,17 @@ def main():
     else:
         args.capture_duration = 0
 
-    parse_samples(process, args)
+    sample_filter_fn = None
+    if args.one_flamegraph:
+        def filter_fn(sample, symbol, callchain):
+            sample.pid = sample.tid = process.pid
+            return True
+        sample_filter_fn = filter_fn
+        if not args.title:
+            args.title = ''
+        args.title += '(One Flamegraph)'
+
+    parse_samples(process, args, sample_filter_fn)
     generate_threads_offsets(process)
     report_path = output_report(process, args)
     if not args.no_browser:

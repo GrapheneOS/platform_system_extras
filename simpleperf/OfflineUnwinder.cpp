@@ -22,6 +22,7 @@
 #include <backtrace/Backtrace.h>
 
 #include "environment.h"
+#include "read_apk.h"
 #include "thread_tree.h"
 
 namespace simpleperf {
@@ -97,6 +98,11 @@ static ucontext_t BuildUContextFromRegs(const RegSet& regs __attribute__((unused
   return ucontext;
 }
 
+OfflineUnwinder::OfflineUnwinder(bool strict_arch_check, bool collect_stat)
+    : strict_arch_check_(strict_arch_check), collect_stat_(collect_stat) {
+  Backtrace::SetGlobalElfCache(true);
+}
+
 bool OfflineUnwinder::UnwindCallChain(int abi, const ThreadEntry& thread, const RegSet& regs,
                                       const char* stack, size_t stack_size,
                                       std::vector<uint64_t>* ips, std::vector<uint64_t>* sps) {
@@ -142,17 +148,42 @@ bool OfflineUnwinder::UnwindCallChain(int abi, const ThreadEntry& thread, const 
     bt_map.end = map->start_addr + map->len;
     bt_map.offset = map->pgoff;
     bt_map.name = map->dso->GetDebugFilePath();
+    if (bt_map.offset == 0) {
+      size_t apk_pos = bt_map.name.find_last_of('!');
+      if (apk_pos != std::string::npos) {
+        // The unwinder does not understand the ! format, so change back to
+        // the previous format (apk, offset).
+        std::string shared_lib(bt_map.name.substr(apk_pos + 2));
+        bt_map.name = bt_map.name.substr(0, apk_pos);
+        uint64_t offset;
+        uint32_t length;
+        if (ApkInspector::FindOffsetInApkByName(bt_map.name, shared_lib, &offset, &length)) {
+          bt_map.offset = offset;
+        }
+      }
+    }
     bt_map.flags = PROT_READ | PROT_EXEC;
   }
-  std::unique_ptr<BacktraceMap> backtrace_map(BacktraceMap::Create(thread.pid, bt_maps));
 
   backtrace_stackinfo_t stack_info;
   stack_info.start = stack_addr;
   stack_info.end = stack_addr + stack_size;
   stack_info.data = reinterpret_cast<const uint8_t*>(stack);
 
+  Backtrace::ArchEnum backtrace_arch;
+  if (arch == ARCH_ARM) {
+    backtrace_arch = Backtrace::ARCH_ARM;
+  } else if (arch == ARCH_ARM64) {
+    backtrace_arch = Backtrace::ARCH_ARM64;
+  } else if (arch == ARCH_X86_32) {
+    backtrace_arch = Backtrace::ARCH_X86;
+  } else if (arch == ARCH_X86_64) {
+    backtrace_arch = Backtrace::ARCH_X86_64;
+  } else {
+    abort();
+  }
   std::unique_ptr<Backtrace> backtrace(
-      Backtrace::CreateOffline(thread.pid, thread.tid, backtrace_map.get(), stack_info, true));
+      Backtrace::CreateOffline(backtrace_arch, thread.pid, thread.tid, bt_maps, stack_info));
   ucontext_t ucontext = BuildUContextFromRegs(regs);
   if (backtrace->Unwind(0, &ucontext)) {
     for (auto it = backtrace->begin(); it != backtrace->end(); ++it) {
