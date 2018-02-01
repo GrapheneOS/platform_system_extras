@@ -161,12 +161,13 @@ class RecordCommand : public Command {
 "-m mmap_pages   Set the size of the buffer used to receiving sample data from\n"
 "                the kernel. It should be a power of 2. If not set, the max\n"
 "                possible value <= 1024 will be used.\n"
-"--no-dump-kernel-symbols  Don't dump kernel symbols in perf.data. By default\n"
-"                          kernel symbols will be dumped when needed.\n"
-"--no-dump-symbols       Don't dump symbols in perf.data. By default symbols are\n"
-"                        dumped in perf.data, to support reporting in another\n"
-"                        environment.\n"
 "--no-inherit  Don't record created child threads/processes.\n"
+"\n"
+"Dwarf unwinding options:\n"
+"--no-post-unwind   If `--call-graph dwarf` option is used, then the user's stack\n"
+"                   will be recorded in perf.data and unwound after recording.\n"
+"                   However, this takes a lot of disk space. Use this option to\n"
+"                   unwind while recording.\n"
 "--no-unwind   If `--call-graph dwarf` option is used, then the user's stack\n"
 "              will be unwound by default. Use this option to disable the\n"
 "              unwinding of the user's stack.\n"
@@ -177,11 +178,14 @@ class RecordCommand : public Command {
 "--callchain-joiner-min-matching-nodes count\n"
 "               When callchain joiner is used, set the matched nodes needed to join\n"
 "               callchains. The count should be >= 1. By default it is 1.\n"
+"\n"
+"Recording file options:\n"
+"--no-dump-kernel-symbols  Don't dump kernel symbols in perf.data. By default\n"
+"                          kernel symbols will be dumped when needed.\n"
+"--no-dump-symbols       Don't dump symbols in perf.data. By default symbols are\n"
+"                        dumped in perf.data, to support reporting in another\n"
+"                        environment.\n"
 "-o record_file_name    Set record file name, default is perf.data.\n"
-"--post-unwind  If `--call-graph dwarf` option is used, then the user's stack\n"
-"               will be unwound while recording by default. But it may lose\n"
-"               records as stacking unwinding can be time consuming. Use this\n"
-"               option to unwind the user's stack after recording.\n"
 "--exit-with-parent            Stop recording when the process starting\n"
 "                              simpleperf dies.\n"
 "--start_profiling_fd fd_no    After starting profiling, write \"STARTED\" to\n"
@@ -202,7 +206,7 @@ class RecordCommand : public Command {
         dwarf_callchain_sampling_(false),
         dump_stack_size_in_dwarf_sampling_(MAX_DUMP_STACK_SIZE),
         unwind_dwarf_callchain_(true),
-        post_unwind_(false),
+        post_unwind_(true),
         child_inherit_(true),
         duration_in_sec_(0),
         can_dump_kernel_symbols_(true),
@@ -246,9 +250,13 @@ class RecordCommand : public Command {
   bool DumpKernelAndModuleMmaps(const perf_event_attr& attr, uint64_t event_id);
   bool DumpThreadCommAndMmaps(const perf_event_attr& attr, uint64_t event_id);
   bool ProcessRecord(Record* record);
+  bool SaveRecordForPostUnwinding(Record* record);
+  bool SaveRecordAfterUnwinding(Record* record);
+  bool SaveRecordWithoutUnwinding(Record* record);
+
   void UpdateRecordForEmbeddedElfPath(Record* record);
   bool UnwindRecord(SampleRecord& r);
-  bool PostUnwind(const std::vector<std::string>& args);
+  bool PostUnwindRecords();
   bool JoinCallChains();
   bool DumpAdditionalFeatures(const std::vector<std::string>& args);
   bool DumpBuildIdFeature();
@@ -361,14 +369,12 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     // Normally do strict arch check when unwinding stack. But allow unwinding
     // 32-bit processes on 64-bit devices for system wide profiling.
     bool strict_arch_check = !system_wide_collection_;
-    bool collect_stat = WOULD_LOG(DEBUG);
-    offline_unwinder_.reset(new OfflineUnwinder(strict_arch_check, collect_stat));
+    offline_unwinder_.reset(new OfflineUnwinder(strict_arch_check, false));
   }
-  if (unwind_dwarf_callchain_ && !post_unwind_ && allow_callchain_joiner_) {
-    bool keep_original_callchains = WOULD_LOG(DEBUG);
+  if (unwind_dwarf_callchain_ && allow_callchain_joiner_) {
     callchain_joiner_.reset(new CallChainJoiner(DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE,
                                                 callchain_joiner_min_matching_nodes_,
-                                                keep_original_callchains));
+                                                false));
   }
 
   // 4. Add monitored targets.
@@ -469,24 +475,24 @@ bool RecordCommand::DoRecording(Workload* workload) {
 }
 
 bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
-  // 1. Optionally join Callchains.
+  // 1. Post unwind dwarf callchain.
+  if (unwind_dwarf_callchain_ && post_unwind_) {
+    if (!PostUnwindRecords()) {
+      return false;
+    }
+  }
+
+  // 2. Optionally join Callchains.
   if (callchain_joiner_) {
     JoinCallChains();
   }
 
-  // 2. Dump additional features, and close record file.
+  // 3. Dump additional features, and close record file.
   if (!DumpAdditionalFeatures(args)) {
     return false;
   }
   if (!record_file_writer_->Close()) {
     return false;
-  }
-
-  // 3. Post unwind dwarf callchain.
-  if (post_unwind_) {
-    if (!PostUnwind(args)) {
-      return false;
-    }
   }
 
   // 4. Show brief record result.
@@ -704,8 +710,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       event_selection_set_.AddMonitoredProcesses(pids);
-    } else if (args[i] == "--post-unwind") {
-      post_unwind_ = true;
+    } else if (args[i] == "--no-post-unwind") {
+      post_unwind_ = false;
     } else if (args[i] == "--start_profiling_fd") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -754,13 +760,17 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     unwind_dwarf_callchain_ = false;
   }
   if (post_unwind_) {
+    if (!dwarf_callchain_sampling_ || !unwind_dwarf_callchain_) {
+      post_unwind_ = false;
+    }
+  } else {
     if (!dwarf_callchain_sampling_) {
       LOG(ERROR)
-          << "--post-unwind is only used with `--call-graph dwarf` option.";
+          << "--no-post-unwind is only used with `--call-graph dwarf` option.";
       return false;
     }
     if (!unwind_dwarf_callchain_) {
-      LOG(ERROR) << "--post-unwind can't be used with `--no-unwind` option.";
+      LOG(ERROR) << "--no-post-unwind can't be used with `--no-unwind` option.";
       return false;
     }
   }
@@ -1005,26 +1015,35 @@ bool RecordCommand::DumpThreadCommAndMmaps(const perf_event_attr& attr,
 }
 
 bool RecordCommand::ProcessRecord(Record* record) {
-  if (system_wide_collection_ && record->type() == PERF_RECORD_SAMPLE) {
-    auto& r = *static_cast<SampleRecord*>(record);
-    // Omit samples get before start sampling time.
-    if (r.time_data.time < start_sampling_time_in_ns_) {
-      return true;
+  if (unwind_dwarf_callchain_) {
+    if (post_unwind_) {
+      return SaveRecordForPostUnwinding(record);
     }
+    return SaveRecordAfterUnwinding(record);
   }
-  UpdateRecordForEmbeddedElfPath(record);
+  return SaveRecordWithoutUnwinding(record);
+}
 
-  bool unwind_callchain = unwind_dwarf_callchain_ && !post_unwind_;
+bool RecordCommand::SaveRecordForPostUnwinding(Record* record) {
+  if (record->type() == PERF_RECORD_SAMPLE) {
+    static_cast<SampleRecord*>(record)->RemoveInvalidStackData();
+  }
+  if (!record_file_writer_->WriteRecord(*record)) {
+    LOG(ERROR) << "If there isn't enough space for storing profiling data, consider using "
+               << "--no-post-unwind option.";
+    return false;
+  }
+  return true;
+}
 
+bool RecordCommand::SaveRecordAfterUnwinding(Record* record) {
   if (record->type() == PERF_RECORD_SAMPLE) {
     auto& r = *static_cast<SampleRecord*>(record);
     // AdjustCallChainGeneratedByKernel() should go before UnwindRecord(). Because we don't want
     // to adjust callchains generated by dwarf unwinder.
-    if (fp_callchain_sampling_ || dwarf_callchain_sampling_) {
-      r.AdjustCallChainGeneratedByKernel();
-    }
-    if (unwind_callchain) {
-      UnwindRecord(r);
+    r.AdjustCallChainGeneratedByKernel();
+    if (!UnwindRecord(r)) {
+      return false;
     }
     // ExcludeKernelCallChain() should go after UnwindRecord() to notice the generated user call
     // chain.
@@ -1035,11 +1054,28 @@ bool RecordCommand::ProcessRecord(Record* record) {
     sample_record_count_++;
   } else if (record->type() == PERF_RECORD_LOST) {
     lost_record_count_ += static_cast<LostRecord*>(record)->lost;
-  } else if (unwind_callchain) {
+  } else {
+    UpdateRecordForEmbeddedElfPath(record);
     thread_tree_.Update(*record);
   }
-  bool result = record_file_writer_->WriteRecord(*record);
-  return result;
+  return record_file_writer_->WriteRecord(*record);
+}
+
+bool RecordCommand::SaveRecordWithoutUnwinding(Record* record) {
+  if (record->type() == PERF_RECORD_SAMPLE) {
+    auto& r = *static_cast<SampleRecord*>(record);
+    if (fp_callchain_sampling_ || dwarf_callchain_sampling_) {
+      r.AdjustCallChainGeneratedByKernel();
+    }
+    if (r.InKernel() && exclude_kernel_callchain_ && r.ExcludeKernelCallChain() == 0u) {
+      // If current record contains no user callchain, skip it.
+      return true;
+    }
+    sample_record_count_++;
+  } else if (record->type() == PERF_RECORD_LOST) {
+    lost_record_count_ += static_cast<LostRecord*>(record)->lost;
+  }
+  return record_file_writer_->WriteRecord(*record);
 }
 
 template <class RecordType>
@@ -1093,13 +1129,6 @@ bool RecordCommand::UnwindRecord(SampleRecord& r) {
                                             &ips, &sps)) {
       return false;
     }
-    if (offline_unwinder_->HasStat()) {
-      const UnwindingResult& unwinding_result = offline_unwinder_->GetUnwindingResult();
-      UnwindingResultRecord record(r.time_data.time, unwinding_result);
-      if (!record_file_writer_->WriteRecord(record)) {
-        return false;
-      }
-    }
     r.ReplaceRegAndStackWithCallChain(ips);
     if (callchain_joiner_) {
       return callchain_joiner_->AddCallChain(r.tid_data.pid, r.tid_data.tid,
@@ -1109,49 +1138,32 @@ bool RecordCommand::UnwindRecord(SampleRecord& r) {
   return true;
 }
 
-bool RecordCommand::PostUnwind(const std::vector<std::string>& args) {
-  thread_tree_.ClearThreadAndMap();
-  std::unique_ptr<RecordFileReader> reader =
-      RecordFileReader::CreateInstance(record_filename_);
-  if (reader == nullptr) {
-    return false;
-  }
-  std::string tmp_filename = record_filename_ + ".tmp";
-  record_file_writer_ = CreateRecordFile(tmp_filename);
-  if (record_file_writer_ == nullptr) {
-    return false;
-  }
-  bool result = reader->ReadDataSection(
-      [this](std::unique_ptr<Record> record) {
-        thread_tree_.Update(*record);
-        if (record->type() == PERF_RECORD_SAMPLE) {
-          if (!UnwindRecord(*static_cast<SampleRecord*>(record.get()))) {
-            return false;
-          }
-        }
-        return record_file_writer_->WriteRecord(*record);
-      },
-      false);
-  if (!result) {
-    return false;
-  }
-  if (!DumpAdditionalFeatures(args)) {
-    return false;
-  }
+bool RecordCommand::PostUnwindRecords() {
+  // 1. Move records from record_filename_ to a temporary file.
   if (!record_file_writer_->Close()) {
     return false;
   }
+  record_file_writer_.reset();
+  std::unique_ptr<TemporaryFile> tmpfile = CreateTempFileUsedInRecording();
+  if (!Workload::RunCmd({"mv", record_filename_, tmpfile->path})) {
+    return false;
+  }
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile->path);
+  if (!reader) {
+    return false;
+  }
 
-  if (unlink(record_filename_.c_str()) != 0) {
-    PLOG(ERROR) << "failed to remove " << record_filename_;
+  // 2. Read records from the temporary file, and write unwound records back to record_filename_.
+  record_file_writer_ = CreateRecordFile(record_filename_);
+  if (!record_file_writer_) {
     return false;
   }
-  if (rename(tmp_filename.c_str(), record_filename_.c_str()) != 0) {
-    PLOG(ERROR) << "failed to rename " << tmp_filename << " to "
-                << record_filename_;
-    return false;
-  }
-  return true;
+  sample_record_count_ = 0;
+  lost_record_count_ = 0;
+  auto callback = [this](std::unique_ptr<Record> record) {
+    return SaveRecordAfterUnwinding(record.get());
+  };
+  return reader->ReadDataSection(callback, false);
 }
 
 bool RecordCommand::JoinCallChains() {
@@ -1176,7 +1188,6 @@ bool RecordCommand::JoinCallChains() {
   if (!reader || !record_file_writer_) {
     return false;
   }
-  bool store_callchains = WOULD_LOG(DEBUG);
 
   auto record_callback = [&](std::unique_ptr<Record> r) {
     if (r->type() != PERF_RECORD_SAMPLE) {
@@ -1191,17 +1202,10 @@ bool RecordCommand::JoinCallChains() {
     CallChainJoiner::ChainType type;
     std::vector<uint64_t> ips;
     std::vector<uint64_t> sps;
-    do {
-      if (!callchain_joiner_->GetNextCallChain(pid, tid, type, ips, sps)) {
-        return false;
-      }
-      if (store_callchains) {
-        CallChainRecord record(pid, tid, type, sr.Timestamp(), ips, sps);
-        if (!record_file_writer_->WriteRecord(record)) {
-          return false;
-        }
-      }
-    } while (type != CallChainJoiner::JOINED_OFFLINE);
+    if (!callchain_joiner_->GetNextCallChain(pid, tid, type, ips, sps)) {
+      return false;
+    }
+    CHECK_EQ(type, CallChainJoiner::JOINED_OFFLINE);
     CHECK_EQ(pid, static_cast<pid_t>(sr.tid_data.pid));
     CHECK_EQ(tid, static_cast<pid_t>(sr.tid_data.tid));
     sr.UpdateUserCallChain(ips);
