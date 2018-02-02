@@ -64,7 +64,8 @@ RecordFileWriter::RecordFileWriter(const std::string& filename, FILE* fp)
 
 RecordFileWriter::~RecordFileWriter() {
   if (record_fp_ != nullptr) {
-    Close();
+    fclose(record_fp_);
+    unlink(filename_.c_str());
   }
 }
 
