@@ -395,6 +395,7 @@ struct SampleRecord : public Record {
   size_t ExcludeKernelCallChain();
   bool HasUserCallChain() const;
   void UpdateUserCallChain(const std::vector<uint64_t>& user_ips);
+  void RemoveInvalidStackData();
 
   uint64_t Timestamp() const override;
   uint32_t Cpu() const override;

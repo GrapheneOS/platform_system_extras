@@ -241,16 +241,16 @@ TEST(record_cmd, no_unwind_option) {
   ASSERT_FALSE(RunRecordCmd({"--no-unwind"}));
 }
 
-TEST(record_cmd, post_unwind_option) {
+TEST(record_cmd, no_post_unwind_option) {
   OMIT_TEST_ON_NON_NATIVE_ABIS();
   ASSERT_TRUE(IsDwarfCallChainSamplingSupported());
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(1, &workloads);
   std::string pid = std::to_string(workloads[0]->GetPid());
-  ASSERT_TRUE(RunRecordCmd({"-p", pid, "--call-graph", "dwarf", "--post-unwind"}));
-  ASSERT_FALSE(RunRecordCmd({"--post-unwind"}));
+  ASSERT_TRUE(RunRecordCmd({"-p", pid, "--call-graph", "dwarf", "--no-post-unwind"}));
+  ASSERT_FALSE(RunRecordCmd({"--no-post-unwind"}));
   ASSERT_FALSE(
-      RunRecordCmd({"--call-graph", "dwarf", "--no-unwind", "--post-unwind"}));
+      RunRecordCmd({"--call-graph", "dwarf", "--no-unwind", "--no-post-unwind"}));
 }
 
 TEST(record_cmd, existing_processes) {
