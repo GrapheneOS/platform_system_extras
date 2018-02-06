@@ -1342,30 +1342,7 @@ bool RecordCommand::DumpBuildIdFeature() {
 
 bool RecordCommand::DumpFileFeature() {
   std::vector<Dso*> dso_v = thread_tree_.GetAllDsos();
-  for (Dso* dso : dso_v) {
-    if (!dso->HasDumpId()) {
-      continue;
-    }
-    uint32_t dso_type = dso->type();
-    uint64_t min_vaddr = dso->MinVirtualAddress();
-
-    // Dumping all symbols in hit files takes too much space, so only dump
-    // needed symbols.
-    const std::vector<Symbol>& symbols = dso->GetSymbols();
-    std::vector<const Symbol*> dump_symbols;
-    for (const auto& sym : symbols) {
-      if (sym.HasDumpId()) {
-        dump_symbols.push_back(&sym);
-      }
-    }
-    std::sort(dump_symbols.begin(), dump_symbols.end(), Symbol::CompareByAddr);
-
-    if (!record_file_writer_->WriteFileFeature(dso->Path(), dso_type, min_vaddr,
-                                               dump_symbols)) {
-      return false;
-    }
-  }
-  return true;
+  return record_file_writer_->WriteFileFeatures(thread_tree_.GetAllDsos());
 }
 
 bool RecordCommand::DumpMetaInfoFeature() {
