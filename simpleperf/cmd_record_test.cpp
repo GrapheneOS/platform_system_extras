@@ -564,3 +564,8 @@ TEST(record_cmd, callchain_joiner_options) {
   ASSERT_TRUE(RunRecordCmd({"--no-callchain-joiner"}));
   ASSERT_TRUE(RunRecordCmd({"--callchain-joiner-min-matching-nodes", "2"}));
 }
+
+TEST(record_cmd, dashdash) {
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "--", "sleep", "1"}));
+}
