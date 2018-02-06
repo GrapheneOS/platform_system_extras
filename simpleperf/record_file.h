@@ -54,11 +54,13 @@ class RecordFileWriter {
   bool WriteFeatureString(int feature, const std::string& s);
   bool WriteCmdlineFeature(const std::vector<std::string>& cmdline);
   bool WriteBranchStackFeature();
+  bool WriteFileFeatures(const std::vector<Dso*>& files);
   bool WriteFileFeature(const std::string& file_path,
                         uint32_t file_type,
                         uint64_t min_vaddr,
                         const std::vector<const Symbol*>& symbols);
   bool WriteMetaInfoFeature(const std::unordered_map<std::string, std::string>& info_map);
+  bool WriteFeature(int feature, const std::vector<char>& data);
   bool EndWriteFeatures();
 
   bool Close();
