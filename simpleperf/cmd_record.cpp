@@ -91,7 +91,7 @@ class RecordCommand : public Command {
       : Command(
             "record", "record sampling info in perf.data",
             // clang-format off
-"Usage: simpleperf record [options] [command [command-args]]\n"
+"Usage: simpleperf record [options] [--] [command [command-args]]\n"
 "       Gather sampling information of running [command]. And -a/-p/-t option\n"
 "       can be used to change target of sampling information.\n"
 "       The default options are: -e cpu-cycles -f 4000 -o perf.data.\n"
@@ -745,6 +745,9 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       if (!SetTracepointEventsFilePath(args[i])) {
         return false;
       }
+    } else if (args[i] == "--") {
+      i++;
+      break;
     } else {
       ReportUnknownOption(args, i);
       return false;

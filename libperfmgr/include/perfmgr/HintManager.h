@@ -64,6 +64,9 @@ class HintManager {
     // Return available hints managed by HintManager
     std::vector<std::string> GetHints() const;
 
+    // Dump internal status to fd
+    void DumpToFd(int fd);
+
   protected:
     static std::vector<std::unique_ptr<Node>> ParseNodes(
         const std::string& json_doc);
