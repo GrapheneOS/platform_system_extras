@@ -88,6 +88,7 @@ class DebugUnwindCommand : public Command {
 "-i <file>  The path of record file generated with \"-g --no-unwind\".\n"
 "           Default is perf.data.\n"
 "-o <file>  The path ot write new perf.data. Default is perf.data.debug.\n"
+"--symfs <dir>  Look for files with symbols relative to this directory.\n"
 "--time time    Only unwind samples recorded at selected time.\n"
                 // clang-format on
                ),
@@ -159,6 +160,13 @@ bool DebugUnwindCommand::ParseOptions(const std::vector<std::string>& args) {
         return false;
       }
       output_filename_ = args[i];
+    } else if (args[i] == "--symfs") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (!Dso::SetSymFsDir(args[i])) {
+        return false;
+      }
     } else if (args[i] == "--time") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -339,34 +347,49 @@ bool DebugUnwindCommand::JoinCallChains() {
 }
 
 bool DebugUnwindCommand::WriteFeatureSections() {
+  // Add debug_unwind info in META_INFO section, and add symbol info in FILE section.
   const std::map<int, PerfFileFormat::SectionDesc>& features = reader_->FeatureSectionDescriptors();
-  if (!writer_->BeginWriteFeatures(features.size())) {
-    return false;
-  }
-  for (auto& pair : features) {
-    int feature = pair.first;
-    if (feature == PerfFileFormat::FEAT_META_INFO) {
-      std::unordered_map<std::string, std::string> info_map;
-      if (!reader_->ReadMetaInfoFeature(&info_map)) {
-        return false;
-      }
-      info_map["debug_unwind"] = "true";
-      info_map["debug_unwind_mem_before"] = stat_.mem_before_unwinding.ToString();
-      info_map["debug_unwind_mem_after"] = stat_.mem_after_unwinding.ToString();
-      if (!writer_->WriteMetaInfoFeature(info_map)) {
-        return false;
-      }
-    } else if (feature == PerfFileFormat::FEAT_FILE) {
-      if (!writer_->WriteFileFeatures(thread_tree_.GetAllDsos())) {
-        return false;
-      }
-    } else {
-      std::vector<char> data;
-      if (!reader_->ReadFeatureSection(feature, &data) || !writer_->WriteFeature(feature, data)) {
-        return false;
-      }
+  size_t new_feature_count = features.size();
+  for (int feature : {PerfFileFormat::FEAT_FILE, PerfFileFormat::FEAT_META_INFO}) {
+    if (features.find(feature) == features.end()) {
+      new_feature_count++;
     }
   }
+  if (!writer_->BeginWriteFeatures(new_feature_count)) {
+    return false;
+  }
+
+  auto it = features.begin();
+  // Copy all feature sections except FEAT_FILE and FEAT_META_INFO, which require special handling.
+  while (it != features.end() && it->first < PerfFileFormat::FEAT_FILE) {
+    std::vector<char> data;
+    if (!reader_->ReadFeatureSection(it->first, &data) || !writer_->WriteFeature(it->first, data)) {
+      return false;
+    }
+    ++it;
+  }
+  // Write a new file section.
+  if (it != features.end() && it->first == PerfFileFormat::FEAT_FILE) {
+    ++it;
+  }
+  if (!writer_->WriteFileFeatures(thread_tree_.GetAllDsos())) {
+    return false;
+  }
+  // Write meta_info section.
+  std::unordered_map<std::string, std::string> info_map;
+  if (it != features.end() && it->first == PerfFileFormat::FEAT_META_INFO) {
+    if (!reader_->ReadMetaInfoFeature(&info_map)) {
+      return false;
+    }
+    ++it;
+  }
+  info_map["debug_unwind"] = "true";
+  info_map["debug_unwind_mem_before"] = stat_.mem_before_unwinding.ToString();
+  info_map["debug_unwind_mem_after"] = stat_.mem_after_unwinding.ToString();
+  if (!writer_->WriteMetaInfoFeature(info_map)) {
+    return false;
+  }
+  CHECK(it == features.end());
   return writer_->EndWriteFeatures() && writer_->Close();
 }
 
@@ -388,7 +411,7 @@ void DebugUnwindCommand::PrintStat() {
   PrintIndented(1, "VmRSS: %s -> %s\n", stat_.mem_before_unwinding.vm_rss.c_str(),
                 stat_.mem_after_unwinding.vm_rss.c_str());
   callchain_joiner_.DumpStat();
-  printf("Please use unwinding_result_reporter.py to get a report in details.\n");
+  printf("Please use debug_unwind_reporter.py to get a report in details.\n");
 }
 
 void RegisterDebugUnwindCommand() {
