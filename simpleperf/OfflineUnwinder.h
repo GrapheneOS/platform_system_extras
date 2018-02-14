@@ -50,11 +50,10 @@ struct UnwindingResult {
 
 class OfflineUnwinder {
  public:
-  OfflineUnwinder(bool strict_arch_check, bool collect_stat);
+  OfflineUnwinder(bool collect_stat);
 
-  bool UnwindCallChain(int abi, const ThreadEntry& thread, const RegSet& regs,
-                       const char* stack, size_t stack_size,
-                       std::vector<uint64_t>* ips, std::vector<uint64_t>* sps);
+  bool UnwindCallChain(const ThreadEntry& thread, const RegSet& regs, const char* stack,
+                       size_t stack_size, std::vector<uint64_t>* ips, std::vector<uint64_t>* sps);
 
   bool HasStat() const {
     return collect_stat_;
@@ -65,7 +64,6 @@ class OfflineUnwinder {
   }
 
  private:
-  bool strict_arch_check_ __attribute__((unused));
   bool collect_stat_;
   UnwindingResult unwinding_result_;
 };
