@@ -507,19 +507,12 @@ TEST_F(ReportCommandTest, dwarf_callgraph) {
 }
 
 TEST_F(ReportCommandTest, report_dwarf_callgraph_of_nativelib_in_apk) {
-  // NATIVELIB_IN_APK_PERF_DATA is recorded on arm64, so can only report
-  // callgraph on arm64.
-  if (GetBuildArch() == ARCH_ARM64) {
-    Report(NATIVELIB_IN_APK_PERF_DATA, {"-g"});
-    ASSERT_NE(content.find(GetUrlInApk(APK_FILE, NATIVELIB_IN_APK)),
-              std::string::npos);
-    ASSERT_NE(content.find("Func2"), std::string::npos);
-    ASSERT_NE(content.find("Func1"), std::string::npos);
-    ASSERT_NE(content.find("GlobalFunc"), std::string::npos);
-  } else {
-    GTEST_LOG_(INFO)
-        << "This test does nothing as it is only run on arm64 devices";
-  }
+  Report(NATIVELIB_IN_APK_PERF_DATA, {"-g"});
+  ASSERT_NE(content.find(GetUrlInApk(APK_FILE, NATIVELIB_IN_APK)),
+            std::string::npos);
+  ASSERT_NE(content.find("Func2"), std::string::npos);
+  ASSERT_NE(content.find("Func1"), std::string::npos);
+  ASSERT_NE(content.find("GlobalFunc"), std::string::npos);
 }
 
 TEST_F(ReportCommandTest, exclude_kernel_callchain) {
