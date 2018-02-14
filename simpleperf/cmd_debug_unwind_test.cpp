@@ -30,7 +30,6 @@
 #include "record_file.h"
 #include "test_util.h"
 
-#if defined(__aarch64__)
 static std::unique_ptr<Command> DebugUnwindCmd() {
   return CreateCommandInstance("debug-unwind");
 }
@@ -74,11 +73,8 @@ class CaptureStdout {
   int old_stdout_;
   std::unique_ptr<TemporaryFile> tmpfile_;
 };
-#endif  // defined(__aarch64__)
 
 TEST(cmd_debug_unwind, smoke) {
-  // TODO: Remove the arch limitation once using cross-platform unwinding in the new unwinder.
-#if defined(__aarch64__)
   std::string input_data = GetTestData(PERF_DATA_NO_UNWIND);
   CaptureStdout capture;
   TemporaryFile tmp_file;
@@ -90,14 +86,9 @@ TEST(cmd_debug_unwind, smoke) {
   ASSERT_TRUE(DebugUnwindCmd()->Run({"-i", input_data, "-o", tmp_file.path, "--time",
                                      "1516379654300997"}));
   ASSERT_NE(capture.Finish().find("Unwinding sample count: 1"), std::string::npos);
-#else
-  GTEST_LOG_(INFO) << "This test does nothing on non-ARM64 devices.";
-#endif
 }
 
 TEST(cmd_debug_unwind, symfs_option) {
-  // TODO: Remove the arch limitation once using cross-platform unwinding in the new unwinder.
-#if defined(__aarch64__)
   std::string input_data = GetTestData(NATIVELIB_IN_APK_PERF_DATA);
   CaptureStdout capture;
   TemporaryFile tmp_file;
@@ -113,7 +104,4 @@ TEST(cmd_debug_unwind, symfs_option) {
   std::unordered_map<std::string, std::string> info_map;
   ASSERT_TRUE(reader->ReadMetaInfoFeature(&info_map));
   ASSERT_EQ(info_map["debug_unwind"], "true");
-#else
-  GTEST_LOG_(INFO) << "This test does nothing on non-ARM64 devices.";
-#endif
 }

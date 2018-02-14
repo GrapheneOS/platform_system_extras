@@ -366,10 +366,7 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     return false;
   }
   if (unwind_dwarf_callchain_) {
-    // Normally do strict arch check when unwinding stack. But allow unwinding
-    // 32-bit processes on 64-bit devices for system wide profiling.
-    bool strict_arch_check = !system_wide_collection_;
-    offline_unwinder_.reset(new OfflineUnwinder(strict_arch_check, false));
+    offline_unwinder_.reset(new OfflineUnwinder(false));
   }
   if (unwind_dwarf_callchain_ && allow_callchain_joiner_) {
     callchain_joiner_.reset(new CallChainJoiner(DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE,
@@ -1122,14 +1119,11 @@ bool RecordCommand::UnwindRecord(SampleRecord& r) {
       (r.GetValidStackSize() > 0)) {
     ThreadEntry* thread =
         thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-    RegSet regs = CreateRegSet(r.regs_user_data.abi,
-                               r.regs_user_data.reg_mask,
-                               r.regs_user_data.regs);
+    RegSet regs(r.regs_user_data.abi, r.regs_user_data.reg_mask, r.regs_user_data.regs);
     std::vector<uint64_t> ips;
     std::vector<uint64_t> sps;
-    if (!offline_unwinder_->UnwindCallChain(r.regs_user_data.abi, *thread, regs,
-                                            r.stack_user_data.data, r.GetValidStackSize(),
-                                            &ips, &sps)) {
+    if (!offline_unwinder_->UnwindCallChain(*thread, regs, r.stack_user_data.data,
+                                            r.GetValidStackSize(), &ips, &sps)) {
       return false;
     }
     r.ReplaceRegAndStackWithCallChain(ips);

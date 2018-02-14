@@ -16,94 +16,102 @@
 
 #include "OfflineUnwinder.h"
 
-#include <ucontext.h>
-
 #include <android-base/logging.h>
 #include <backtrace/Backtrace.h>
+#include <unwindstack/MachineArm.h>
+#include <unwindstack/MachineArm64.h>
+#include <unwindstack/MachineX86.h>
+#include <unwindstack/MachineX86_64.h>
+#include <unwindstack/Regs.h>
+#include <unwindstack/RegsArm.h>
+#include <unwindstack/RegsArm64.h>
+#include <unwindstack/RegsX86.h>
+#include <unwindstack/RegsX86_64.h>
+#include <unwindstack/UserArm.h>
+#include <unwindstack/UserArm64.h>
+#include <unwindstack/UserX86.h>
+#include <unwindstack/UserX86_64.h>
 
 #include "environment.h"
+#include "perf_regs.h"
 #include "read_apk.h"
 #include "thread_tree.h"
 
 namespace simpleperf {
 
-#define SetUContextReg(dst, perf_regno)          \
-  do {                                           \
-    uint64_t value;                              \
-    if (GetRegValue(regs, perf_regno, &value)) { \
-      (dst) = value;                             \
-    }                                            \
-  } while (0)
-
-static ucontext_t BuildUContextFromRegs(const RegSet& regs __attribute__((unused))) {
-  ucontext_t ucontext;
-  memset(&ucontext, 0, sizeof(ucontext));
-#if defined(__i386__)
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_GS], PERF_REG_X86_GS);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_FS], PERF_REG_X86_FS);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_ES], PERF_REG_X86_ES);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_DS], PERF_REG_X86_DS);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_EAX], PERF_REG_X86_AX);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_EBX], PERF_REG_X86_BX);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_ECX], PERF_REG_X86_CX);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_EDX], PERF_REG_X86_DX);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_ESI], PERF_REG_X86_SI);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_EDI], PERF_REG_X86_DI);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_EBP], PERF_REG_X86_BP);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_EIP], PERF_REG_X86_IP);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_ESP], PERF_REG_X86_SP);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_CS], PERF_REG_X86_CS);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_EFL], PERF_REG_X86_FLAGS);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_SS], PERF_REG_X86_SS);
-#elif defined(__x86_64__)
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_R8], PERF_REG_X86_R8);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_R9], PERF_REG_X86_R9);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_R10], PERF_REG_X86_R10);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_R11], PERF_REG_X86_R11);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_R12], PERF_REG_X86_R12);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_R13], PERF_REG_X86_R13);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_R14], PERF_REG_X86_R14);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_R15], PERF_REG_X86_R15);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_RDI], PERF_REG_X86_DI);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_RSI], PERF_REG_X86_SI);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_RBP], PERF_REG_X86_BP);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_RBX], PERF_REG_X86_BX);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_RDX], PERF_REG_X86_DX);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_RAX], PERF_REG_X86_AX);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_RCX], PERF_REG_X86_CX);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_RSP], PERF_REG_X86_SP);
-  SetUContextReg(ucontext.uc_mcontext.gregs[REG_RIP], PERF_REG_X86_IP);
-#elif defined(__aarch64__)
-  for (size_t i = PERF_REG_ARM64_X0; i < PERF_REG_ARM64_MAX; ++i) {
-    SetUContextReg(ucontext.uc_mcontext.regs[i], i);
+static unwindstack::Regs* GetBacktraceRegs(const RegSet& regs) {
+  switch (regs.arch) {
+    case ARCH_ARM: {
+      unwindstack::arm_user_regs arm_user_regs;
+      memset(&arm_user_regs, 0, sizeof(arm_user_regs));
+      static_assert(
+          static_cast<int>(unwindstack::ARM_REG_R0) == static_cast<int>(PERF_REG_ARM_R0), "");
+      static_assert(
+          static_cast<int>(unwindstack::ARM_REG_LAST) == static_cast<int>(PERF_REG_ARM_MAX), "");
+      for (size_t i = unwindstack::ARM_REG_R0; i < unwindstack::ARM_REG_LAST; ++i) {
+        arm_user_regs.regs[i] = static_cast<uint32_t>(regs.data[i]);
+      }
+      return unwindstack::RegsArm::Read(&arm_user_regs);
+    }
+    case ARCH_ARM64: {
+      unwindstack::arm64_user_regs arm64_user_regs;
+      memset(&arm64_user_regs, 0, sizeof(arm64_user_regs));
+      static_assert(
+          static_cast<int>(unwindstack::ARM64_REG_R0) == static_cast<int>(PERF_REG_ARM64_X0), "");
+      static_assert(
+          static_cast<int>(unwindstack::ARM64_REG_R30) == static_cast<int>(PERF_REG_ARM64_LR), "");
+      memcpy(&arm64_user_regs.regs[unwindstack::ARM64_REG_R0], &regs.data[PERF_REG_ARM64_X0],
+             sizeof(uint64_t) * (PERF_REG_ARM64_LR - PERF_REG_ARM64_X0 + 1));
+      arm64_user_regs.sp = regs.data[PERF_REG_ARM64_SP];
+      arm64_user_regs.pc = regs.data[PERF_REG_ARM64_PC];
+      return unwindstack::RegsArm64::Read(&arm64_user_regs);
+    }
+    case ARCH_X86_32: {
+      unwindstack::x86_user_regs x86_user_regs;
+      memset(&x86_user_regs, 0, sizeof(x86_user_regs));
+      x86_user_regs.eax = static_cast<uint32_t>(regs.data[PERF_REG_X86_AX]);
+      x86_user_regs.ebx = static_cast<uint32_t>(regs.data[PERF_REG_X86_BX]);
+      x86_user_regs.ecx = static_cast<uint32_t>(regs.data[PERF_REG_X86_CX]);
+      x86_user_regs.edx = static_cast<uint32_t>(regs.data[PERF_REG_X86_DX]);
+      x86_user_regs.ebp = static_cast<uint32_t>(regs.data[PERF_REG_X86_BP]);
+      x86_user_regs.edi = static_cast<uint32_t>(regs.data[PERF_REG_X86_DI]);
+      x86_user_regs.esi = static_cast<uint32_t>(regs.data[PERF_REG_X86_SI]);
+      x86_user_regs.esp = static_cast<uint32_t>(regs.data[PERF_REG_X86_SP]);
+      x86_user_regs.eip = static_cast<uint32_t>(regs.data[PERF_REG_X86_IP]);
+      return unwindstack::RegsX86::Read(&x86_user_regs);
+    }
+    case ARCH_X86_64: {
+      unwindstack::x86_64_user_regs x86_64_user_regs;
+      memset(&x86_64_user_regs, 0, sizeof(x86_64_user_regs));
+      x86_64_user_regs.rax = regs.data[PERF_REG_X86_AX];
+      x86_64_user_regs.rbx = regs.data[PERF_REG_X86_BX];
+      x86_64_user_regs.rcx = regs.data[PERF_REG_X86_CX];
+      x86_64_user_regs.rdx = regs.data[PERF_REG_X86_DX];
+      x86_64_user_regs.r8 = regs.data[PERF_REG_X86_R8];
+      x86_64_user_regs.r9 = regs.data[PERF_REG_X86_R9];
+      x86_64_user_regs.r10 = regs.data[PERF_REG_X86_R10];
+      x86_64_user_regs.r11 = regs.data[PERF_REG_X86_R11];
+      x86_64_user_regs.r12 = regs.data[PERF_REG_X86_R12];
+      x86_64_user_regs.r13 = regs.data[PERF_REG_X86_R13];
+      x86_64_user_regs.r14 = regs.data[PERF_REG_X86_R14];
+      x86_64_user_regs.r15 = regs.data[PERF_REG_X86_R15];
+      x86_64_user_regs.rdi = regs.data[PERF_REG_X86_DI];
+      x86_64_user_regs.rsi = regs.data[PERF_REG_X86_SI];
+      x86_64_user_regs.rbp = regs.data[PERF_REG_X86_BP];
+      x86_64_user_regs.rsp = regs.data[PERF_REG_X86_SP];
+      x86_64_user_regs.rip = regs.data[PERF_REG_X86_IP];
+      return unwindstack::RegsX86_64::Read(&x86_64_user_regs);
+    }
+    default:
+      return nullptr;
   }
-#elif defined(__arm__)
-  SetUContextReg(ucontext.uc_mcontext.arm_r0, PERF_REG_ARM_R0);
-  SetUContextReg(ucontext.uc_mcontext.arm_r1, PERF_REG_ARM_R1);
-  SetUContextReg(ucontext.uc_mcontext.arm_r2, PERF_REG_ARM_R2);
-  SetUContextReg(ucontext.uc_mcontext.arm_r3, PERF_REG_ARM_R3);
-  SetUContextReg(ucontext.uc_mcontext.arm_r4, PERF_REG_ARM_R4);
-  SetUContextReg(ucontext.uc_mcontext.arm_r5, PERF_REG_ARM_R5);
-  SetUContextReg(ucontext.uc_mcontext.arm_r6, PERF_REG_ARM_R6);
-  SetUContextReg(ucontext.uc_mcontext.arm_r7, PERF_REG_ARM_R7);
-  SetUContextReg(ucontext.uc_mcontext.arm_r8, PERF_REG_ARM_R8);
-  SetUContextReg(ucontext.uc_mcontext.arm_r9, PERF_REG_ARM_R9);
-  SetUContextReg(ucontext.uc_mcontext.arm_r10, PERF_REG_ARM_R10);
-  SetUContextReg(ucontext.uc_mcontext.arm_fp, PERF_REG_ARM_FP);
-  SetUContextReg(ucontext.uc_mcontext.arm_ip, PERF_REG_ARM_IP);
-  SetUContextReg(ucontext.uc_mcontext.arm_sp, PERF_REG_ARM_SP);
-  SetUContextReg(ucontext.uc_mcontext.arm_lr, PERF_REG_ARM_LR);
-  SetUContextReg(ucontext.uc_mcontext.arm_pc, PERF_REG_ARM_PC);
-#endif
-  return ucontext;
 }
 
-OfflineUnwinder::OfflineUnwinder(bool strict_arch_check, bool collect_stat)
-    : strict_arch_check_(strict_arch_check), collect_stat_(collect_stat) {
+OfflineUnwinder::OfflineUnwinder(bool collect_stat) : collect_stat_(collect_stat) {
   Backtrace::SetGlobalElfCache(true);
 }
 
-bool OfflineUnwinder::UnwindCallChain(int abi, const ThreadEntry& thread, const RegSet& regs,
+bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& regs,
                                       const char* stack, size_t stack_size,
                                       std::vector<uint64_t>* ips, std::vector<uint64_t>* sps) {
   uint64_t start_time;
@@ -111,32 +119,10 @@ bool OfflineUnwinder::UnwindCallChain(int abi, const ThreadEntry& thread, const 
     start_time = GetSystemClock();
   }
   std::vector<uint64_t> result;
-  ArchType arch = (abi != PERF_SAMPLE_REGS_ABI_32) ?
-                      ScopedCurrentArch::GetCurrentArch() :
-                      ScopedCurrentArch::GetCurrentArch32();
-  if (!IsArchTheSame(arch, GetBuildArch(), strict_arch_check_)) {
-    LOG(ERROR) << "simpleperf is built in arch " << GetArchString(GetBuildArch())
-                << ", and can't do stack unwinding for arch " << GetArchString(arch);
-    return false;
-  }
   uint64_t sp_reg_value;
-  if (!GetSpRegValue(regs, arch, &sp_reg_value)) {
+  if (!regs.GetSpRegValue(&sp_reg_value)) {
     LOG(ERROR) << "can't get sp reg value";
     return false;
-  }
-  if (arch != GetBuildArch()) {
-    uint64_t ip_reg_value;
-    if (!GetIpRegValue(regs, arch, &ip_reg_value)) {
-      LOG(ERROR) << "can't get ip reg value";
-      return false;
-    }
-    ips->push_back(ip_reg_value);
-    sps->push_back(sp_reg_value);
-    if (collect_stat_) {
-      unwinding_result_.used_time = GetSystemClock() - start_time;
-      unwinding_result_.stop_reason = UnwindingResult::DIFFERENT_ARCH;
-    }
-    return true;
   }
   uint64_t stack_addr = sp_reg_value;
 
@@ -170,43 +156,38 @@ bool OfflineUnwinder::UnwindCallChain(int abi, const ThreadEntry& thread, const 
   stack_info.end = stack_addr + stack_size;
   stack_info.data = reinterpret_cast<const uint8_t*>(stack);
 
-  Backtrace::ArchEnum backtrace_arch;
-  if (arch == ARCH_ARM) {
-    backtrace_arch = Backtrace::ARCH_ARM;
-  } else if (arch == ARCH_ARM64) {
-    backtrace_arch = Backtrace::ARCH_ARM64;
-  } else if (arch == ARCH_X86_32) {
-    backtrace_arch = Backtrace::ARCH_X86;
-  } else if (arch == ARCH_X86_64) {
-    backtrace_arch = Backtrace::ARCH_X86_64;
-  } else {
-    abort();
+  std::unique_ptr<BacktraceMap> map(BacktraceMap::CreateOffline(thread.pid, bt_maps, stack_info));
+  std::unique_ptr<unwindstack::Regs> unwind_regs(GetBacktraceRegs(regs));
+  if (!map || !unwind_regs) {
+    return false;
   }
-  std::unique_ptr<Backtrace> backtrace(
-      Backtrace::CreateOffline(backtrace_arch, thread.pid, thread.tid, bt_maps, stack_info));
-  ucontext_t ucontext = BuildUContextFromRegs(regs);
-  if (backtrace->Unwind(0, &ucontext)) {
-    for (auto it = backtrace->begin(); it != backtrace->end(); ++it) {
+  std::vector<backtrace_frame_data_t> frames;
+  BacktraceUnwindError error;
+  if (Backtrace::Unwind(unwind_regs.get(), map.get(), &frames, 0u, nullptr, &error)) {
+    for (auto& frame : frames) {
       // Unwinding in arm architecture can return 0 pc address.
-      if (it->pc == 0) {
+      if (frame.pc == 0) {
         break;
       }
-      ips->push_back(it->pc);
-      sps->push_back(it->sp);
+      ips->push_back(frame.pc);
+      sps->push_back(frame.sp);
     }
   }
+
+  uint64_t ip_reg_value;
+  if (!regs.GetIpRegValue(&ip_reg_value)) {
+    LOG(ERROR) << "can't get ip reg value";
+    return false;
+  }
   if (ips->empty()) {
-    uint64_t ip_reg_value;
-    if (!GetIpRegValue(regs, arch, &ip_reg_value)) {
-      LOG(ERROR) << "can't get ip reg value";
-      return false;
-    }
     ips->push_back(ip_reg_value);
     sps->push_back(sp_reg_value);
+  } else {
+    // Check if the unwinder returns ip reg value as the first ip address in callstack.
+    CHECK_EQ((*ips)[0], ip_reg_value);
   }
   if (collect_stat_) {
     unwinding_result_.used_time = GetSystemClock() - start_time;
-    BacktraceUnwindError error = backtrace->GetError();
     switch (error.error_code) {
       case BACKTRACE_UNWIND_ERROR_EXCEED_MAX_FRAMES_LIMIT:
         unwinding_result_.stop_reason = UnwindingResult::EXCEED_MAX_FRAMES_LIMIT;

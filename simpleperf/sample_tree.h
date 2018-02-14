@@ -72,13 +72,12 @@ class SampleTreeBuilder {
 
   void SetCallChainSampleOptions(bool accumulate_callchain,
                                  bool build_callchain,
-                                 bool use_caller_as_callchain_root,
-                                 bool strict_unwind_arch_check) {
+                                 bool use_caller_as_callchain_root) {
     accumulate_callchain_ = accumulate_callchain;
     build_callchain_ = build_callchain;
     use_caller_as_callchain_root_ = use_caller_as_callchain_root;
     if (accumulate_callchain_) {
-      offline_unwinder_.reset(new OfflineUnwinder(strict_unwind_arch_check, false));
+      offline_unwinder_.reset(new OfflineUnwinder(false));
     }
   }
 
@@ -111,14 +110,11 @@ class SampleTreeBuilder {
           (r.regs_user_data.reg_mask != 0) &&
           (r.sample_type & PERF_SAMPLE_STACK_USER) &&
           (r.GetValidStackSize() > 0)) {
-        RegSet regs = CreateRegSet(r.regs_user_data.abi,
-                                   r.regs_user_data.reg_mask,
-                                   r.regs_user_data.regs);
+        RegSet regs(r.regs_user_data.abi, r.regs_user_data.reg_mask, r.regs_user_data.regs);
         std::vector<uint64_t> user_ips;
         std::vector<uint64_t> sps;
-        if (offline_unwinder_->UnwindCallChain(r.regs_user_data.abi, *thread, regs,
-                                               r.stack_user_data.data, r.GetValidStackSize(),
-                                               &user_ips, &sps)) {
+        if (offline_unwinder_->UnwindCallChain(*thread, regs, r.stack_user_data.data,
+                                               r.GetValidStackSize(), &user_ips, &sps)) {
           ips.push_back(PERF_CONTEXT_USER);
           ips.insert(ips.end(), user_ips.begin(), user_ips.end());
         }
