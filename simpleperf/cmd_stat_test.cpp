@@ -148,6 +148,10 @@ TEST(stat_cmd, interval_option) {
   ASSERT_EQ(count, 3UL);
 }
 
+TEST(stat_cmd, interval_option_in_system_wide) {
+  TEST_IN_ROOT(ASSERT_TRUE(StatCmd()->Run({"-a", "--interval", "100", "--duration", "0.3"})));
+}
+
 TEST(stat_cmd, no_modifier_for_clock_events) {
   for (const std::string& e : {"cpu-clock", "task-clock"}) {
     for (const std::string& m : {"u", "k"}) {
