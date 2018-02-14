@@ -106,6 +106,12 @@ cc_binary {
     ],
 
     init_rc: ["perfprofd.rc"],
+
+    product_variables: {
+        pdk: {
+            enabled: false,
+        },
+    },
 }
 
 subdirs = [
