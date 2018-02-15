@@ -320,7 +320,6 @@ struct SampleTreeBuilderOptions {
   bool accumulate_callchain;
   bool build_callchain;
   bool use_caller_as_callchain_root;
-  bool strict_unwind_arch_check;
   bool trace_offcpu;
 
   std::unique_ptr<ReportCmdSampleTreeBuilder> CreateSampleTreeBuilder() {
@@ -333,7 +332,7 @@ struct SampleTreeBuilderOptions {
     builder->SetFilters(pid_filter, tid_filter, comm_filter, dso_filter, symbol_filter);
     builder->SetBranchSampleOption(use_branch_address);
     builder->SetCallChainSampleOptions(accumulate_callchain, build_callchain,
-                                       use_caller_as_callchain_root, strict_unwind_arch_check);
+                                       use_caller_as_callchain_root);
     return builder;
   }
 };
@@ -851,9 +850,6 @@ bool ReportCommand::ReadFeaturesFromRecordFile() {
 
 bool ReportCommand::ReadSampleTreeFromRecordFile() {
   sample_tree_builder_options_.use_branch_address = use_branch_address_;
-  // Normally do strict arch check when unwinding stack. But allow unwinding
-  // 32-bit processes on 64-bit devices for system wide profiling.
-  sample_tree_builder_options_.strict_unwind_arch_check = !system_wide_collection_;
   sample_tree_builder_options_.accumulate_callchain = accumulate_callchain_;
   sample_tree_builder_options_.build_callchain = print_callgraph_;
   sample_tree_builder_options_.use_caller_as_callchain_root = !callgraph_show_callee_;

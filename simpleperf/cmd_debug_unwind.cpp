@@ -94,7 +94,7 @@ class DebugUnwindCommand : public Command {
                ),
           input_filename_("perf.data"),
           output_filename_("perf.data.debug"),
-          offline_unwinder_(false, true),
+          offline_unwinder_(true),
           callchain_joiner_(DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE, 1, true),
           selected_time_(0) {
   }
@@ -238,13 +238,11 @@ bool DebugUnwindCommand::ProcessRecord(Record* record) {
     if ((r.sample_type & need_type) == need_type && r.regs_user_data.reg_mask != 0 &&
         r.GetValidStackSize() > 0) {
       ThreadEntry* thread = thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-      RegSet regs = CreateRegSet(r.regs_user_data.abi, r.regs_user_data.reg_mask,
-                                 r.regs_user_data.regs);
+      RegSet regs(r.regs_user_data.abi, r.regs_user_data.reg_mask, r.regs_user_data.regs);
       std::vector<uint64_t> ips;
       std::vector<uint64_t> sps;
-      if (!offline_unwinder_.UnwindCallChain(r.regs_user_data.abi, *thread, regs,
-                                             r.stack_user_data.data, r.GetValidStackSize(),
-                                             &ips, &sps)) {
+      if (!offline_unwinder_.UnwindCallChain(*thread, regs, r.stack_user_data.data,
+                                             r.GetValidStackSize(), &ips, &sps)) {
         return false;
       }
 
