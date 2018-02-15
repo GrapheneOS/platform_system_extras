@@ -45,6 +45,7 @@ class CaptureStdout {
   }
 
   bool Start() {
+    fflush(stdout);
     old_stdout_ = dup(STDOUT_FILENO);
     if (old_stdout_ == -1) {
       return false;
@@ -58,6 +59,7 @@ class CaptureStdout {
   }
 
   std::string Finish() {
+    fflush(stdout);
     started_ = false;
     dup2(old_stdout_, STDOUT_FILENO);
     close(old_stdout_);
