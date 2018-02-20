@@ -161,6 +161,8 @@ bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& r
   if (!map || !unwind_regs) {
     return false;
   }
+  // Disable the resolving of names, this data is not used.
+  map->SetResolveNames(false);
   std::vector<backtrace_frame_data_t> frames;
   BacktraceUnwindError error;
   if (Backtrace::Unwind(unwind_regs.get(), map.get(), &frames, 0u, nullptr, &error)) {
