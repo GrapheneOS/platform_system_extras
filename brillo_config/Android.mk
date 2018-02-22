@@ -82,7 +82,7 @@ endif
 $(LOCAL_BUILT_MODULE):
 	$(hide) mkdir -p $(dir $@)
 ifeq ($(strip $(HAS_BUILD_NUMBER)),true)
-	echo $(BRILLO_SYSTEM_VERSION).$(file <$(BUILD_NUMBER_FILE)) > $@
+	echo $(BRILLO_SYSTEM_VERSION).$(shell cat $(BUILD_NUMBER_FILE)) > $@
 else
 	echo $(BRILLO_SYSTEM_VERSION).$(BUILD_DATETIME_FROM_FILE) > $@
 endif
