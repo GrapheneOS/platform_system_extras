@@ -81,8 +81,8 @@ endif
 # your product makefile and increase it manually.
 $(LOCAL_BUILT_MODULE):
 	$(hide) mkdir -p $(dir $@)
-ifeq ($(shell echo $(BUILD_NUMBER) | grep -E '[^0-9]'),)
-	echo $(BRILLO_SYSTEM_VERSION).$(BUILD_NUMBER) > $@
+ifeq ($(strip $(HAS_BUILD_NUMBER)),true)
+	echo $(BRILLO_SYSTEM_VERSION).$(file <$(BUILD_NUMBER_FILE)) > $@
 else
 	echo $(BRILLO_SYSTEM_VERSION).$(BUILD_DATETIME_FROM_FILE) > $@
 endif
