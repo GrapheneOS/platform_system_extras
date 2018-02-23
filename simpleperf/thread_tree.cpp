@@ -109,7 +109,7 @@ void ThreadTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
   MapEntry* map =
       AllocateMap(MapEntry(start_addr, len, pgoff, time, dso, true));
   FixOverlappedMap(&kernel_maps_, map);
-  auto pair = kernel_maps_.insert(map);
+  auto pair = kernel_maps_.maps.insert(map);
   CHECK(pair.second);
 }
 
@@ -134,8 +134,9 @@ void ThreadTree::AddThreadMap(int pid, int tid, uint64_t start_addr,
   MapEntry* map =
       AllocateMap(MapEntry(start_addr, len, pgoff, time, dso, false));
   FixOverlappedMap(thread->maps, map);
-  auto pair = thread->maps->insert(map);
+  auto pair = thread->maps->maps.insert(map);
   CHECK(pair.second);
+  thread->maps->version++;
 }
 
 Dso* ThreadTree::FindUserDsoOrNew(const std::string& filename, uint64_t start_addr) {
@@ -155,7 +156,7 @@ MapEntry* ThreadTree::AllocateMap(const MapEntry& value) {
 }
 
 void ThreadTree::FixOverlappedMap(MapSet* maps, const MapEntry* map) {
-  for (auto it = maps->begin(); it != maps->end();) {
+  for (auto it = maps->maps.begin(); it != maps->maps.end();) {
     if ((*it)->start_addr >= map->get_end_addr()) {
       // No more overlapped maps.
       break;
@@ -168,17 +169,17 @@ void ThreadTree::FixOverlappedMap(MapSet* maps, const MapEntry* map) {
         MapEntry* before = AllocateMap(
             MapEntry(old->start_addr, map->start_addr - old->start_addr,
                      old->pgoff, old->time, old->dso, old->in_kernel));
-        maps->insert(before);
+        maps->maps.insert(before);
       }
       if (old->get_end_addr() > map->get_end_addr()) {
         MapEntry* after = AllocateMap(MapEntry(
             map->get_end_addr(), old->get_end_addr() - map->get_end_addr(),
             map->get_end_addr() - old->start_addr + old->pgoff, old->time,
             old->dso, old->in_kernel));
-        maps->insert(after);
+        maps->maps.insert(after);
       }
 
-      it = maps->erase(it);
+      it = maps->maps.erase(it);
     }
   }
 }
@@ -192,8 +193,8 @@ static MapEntry* FindMapByAddr(const MapSet& maps, uint64_t addr) {
   // on MapComparator.
   MapEntry find_map(addr, std::numeric_limits<uint64_t>::max(), 0,
                     std::numeric_limits<uint64_t>::max(), nullptr, false);
-  auto it = maps.upper_bound(&find_map);
-  if (it != maps.begin() && IsAddrInMap(addr, *--it)) {
+  auto it = maps.maps.upper_bound(&find_map);
+  if (it != maps.maps.begin() && IsAddrInMap(addr, *--it)) {
     return *it;
   }
   return nullptr;
@@ -273,7 +274,7 @@ void ThreadTree::ClearThreadAndMap() {
   thread_tree_.clear();
   thread_comm_storage_.clear();
   map_set_storage_.clear();
-  kernel_maps_.clear();
+  kernel_maps_.maps.clear();
   map_storage_.clear();
 }
 

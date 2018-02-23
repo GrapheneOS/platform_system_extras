@@ -18,6 +18,7 @@
 
 #include <android-base/logging.h>
 #include <backtrace/Backtrace.h>
+#include <backtrace/BacktraceMap.h>
 #include <unwindstack/MachineArm.h>
 #include <unwindstack/MachineArm64.h>
 #include <unwindstack/MachineX86.h>
@@ -126,29 +127,42 @@ bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& r
   }
   uint64_t stack_addr = sp_reg_value;
 
-  std::vector<backtrace_map_t> bt_maps(thread.maps->size());
-  size_t map_index = 0;
-  for (auto& map : *thread.maps) {
-    backtrace_map_t& bt_map = bt_maps[map_index++];
-    bt_map.start = map->start_addr;
-    bt_map.end = map->start_addr + map->len;
-    bt_map.offset = map->pgoff;
-    bt_map.name = map->dso->GetDebugFilePath();
-    if (bt_map.offset == 0) {
-      size_t apk_pos = bt_map.name.find_last_of('!');
-      if (apk_pos != std::string::npos) {
-        // The unwinder does not understand the ! format, so change back to
-        // the previous format (apk, offset).
-        std::string shared_lib(bt_map.name.substr(apk_pos + 2));
-        bt_map.name = bt_map.name.substr(0, apk_pos);
-        uint64_t offset;
-        uint32_t length;
-        if (ApkInspector::FindOffsetInApkByName(bt_map.name, shared_lib, &offset, &length)) {
-          bt_map.offset = offset;
+  // Create map only if the maps have changed since the last unwind.
+  auto map_it = cached_maps_.find(thread.pid);
+  CachedMap& cached_map = (map_it == cached_maps_.end() ? cached_maps_[thread.pid]
+                                                        : map_it->second);
+  if (cached_map.version < thread.maps->version) {
+    std::vector<backtrace_map_t> bt_maps(thread.maps->maps.size());
+    size_t map_index = 0;
+    for (auto& map : thread.maps->maps) {
+      backtrace_map_t& bt_map = bt_maps[map_index++];
+      bt_map.start = map->start_addr;
+      bt_map.end = map->start_addr + map->len;
+      bt_map.offset = map->pgoff;
+      bt_map.name = map->dso->GetDebugFilePath();
+      if (bt_map.offset == 0) {
+        size_t apk_pos = bt_map.name.find_last_of('!');
+        if (apk_pos != std::string::npos) {
+          // The unwinder does not understand the ! format, so change back to
+          // the previous format (apk, offset).
+          std::string shared_lib(bt_map.name.substr(apk_pos + 2));
+          bt_map.name = bt_map.name.substr(0, apk_pos);
+          uint64_t offset;
+          uint32_t length;
+          if (ApkInspector::FindOffsetInApkByName(bt_map.name, shared_lib, &offset, &length)) {
+            bt_map.offset = offset;
+          }
         }
       }
+      bt_map.flags = PROT_READ | PROT_EXEC;
     }
-    bt_map.flags = PROT_READ | PROT_EXEC;
+    cached_map.map.reset(BacktraceMap::CreateOffline(thread.pid, bt_maps));
+    if (!cached_map.map) {
+      return false;
+    }
+    // Disable the resolving of names, this data is not used.
+    cached_map.map->SetResolveNames(false);
+    cached_map.version = thread.maps->version;
   }
 
   backtrace_stackinfo_t stack_info;
@@ -156,16 +170,13 @@ bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& r
   stack_info.end = stack_addr + stack_size;
   stack_info.data = reinterpret_cast<const uint8_t*>(stack);
 
-  std::unique_ptr<BacktraceMap> map(BacktraceMap::CreateOffline(thread.pid, bt_maps, stack_info));
   std::unique_ptr<unwindstack::Regs> unwind_regs(GetBacktraceRegs(regs));
-  if (!map || !unwind_regs) {
+  if (!unwind_regs) {
     return false;
   }
-  // Disable the resolving of names, this data is not used.
-  map->SetResolveNames(false);
   std::vector<backtrace_frame_data_t> frames;
   BacktraceUnwindError error;
-  if (Backtrace::Unwind(unwind_regs.get(), map.get(), &frames, 0u, nullptr, &error)) {
+  if (Backtrace::UnwindOffline(unwind_regs.get(), cached_map.map.get(), stack_info, &frames, &error)) {
     for (auto& frame : frames) {
       // Unwinding in arm architecture can return 0 pc address.
       if (frame.pc == 0) {
