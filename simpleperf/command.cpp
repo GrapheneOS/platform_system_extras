@@ -152,6 +152,8 @@ bool RunSimpleperfCmd(int argc, char** argv) {
   LOG(DEBUG) << "command '" << command_name << "' "
              << (result ? "finished successfully" : "failed");
   // Quick exit to avoid cost freeing memory and closing files.
+  fflush(stdout);
+  fflush(stderr);
   android::base::quick_exit(result ? 0 : 1);
   return result;
 }
