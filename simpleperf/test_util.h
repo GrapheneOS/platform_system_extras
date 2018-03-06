@@ -19,6 +19,9 @@
 #include <string>
 #include <vector>
 
+#include <android-base/file.h>
+#include <android-base/test_utils.h>
+
 #include "read_elf.h"
 #include "workload.h"
 
@@ -56,3 +59,45 @@ bool IsInNativeAbi();
       return; \
     } \
   } while (0)
+
+class CaptureStdout {
+ public:
+  CaptureStdout() : started_(false) {}
+
+  ~CaptureStdout() {
+    if (started_) {
+      Finish();
+    }
+  }
+
+  bool Start() {
+    fflush(stdout);
+    old_stdout_ = dup(STDOUT_FILENO);
+    if (old_stdout_ == -1) {
+      return false;
+    }
+    started_ = true;
+    tmpfile_.reset(new TemporaryFile);
+    if (dup2(tmpfile_->fd, STDOUT_FILENO) == -1) {
+      return false;
+    }
+    return true;
+  }
+
+  std::string Finish() {
+    fflush(stdout);
+    started_ = false;
+    dup2(old_stdout_, STDOUT_FILENO);
+    close(old_stdout_);
+    std::string s;
+    if (!android::base::ReadFileToString(tmpfile_->path, &s)) {
+      return "";
+    }
+    return s;
+  }
+
+ private:
+  bool started_;
+  int old_stdout_;
+  std::unique_ptr<TemporaryFile> tmpfile_;
+};
