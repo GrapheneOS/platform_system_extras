@@ -137,6 +137,7 @@ bool DebugUnwindCommand::Run(const std::vector<std::string>& args) {
   if (!ParseOptions(args)) {
     return false;
   }
+  ScopedTempFiles scoped_temp_files(android::base::Dirname(output_filename_));
 
   // 2. Read input perf.data, and generate new perf.data.
   if (!UnwindRecordFile()) {
@@ -180,7 +181,6 @@ bool DebugUnwindCommand::ParseOptions(const std::vector<std::string>& args) {
       return false;
     }
   }
-  SetTempDirectoryUsedInRecording(android::base::Dirname(output_filename_));
   return true;
 }
 
@@ -299,14 +299,14 @@ bool DebugUnwindCommand::JoinCallChains() {
     return false;
   }
   writer_.reset();
-  std::unique_ptr<TemporaryFile> tmpfile = CreateTempFileUsedInRecording();
-  if (!Workload::RunCmd({"mv", output_filename_, tmpfile->path})) {
+  std::unique_ptr<TemporaryFile> tmp_file = ScopedTempFiles::CreateTempFile();
+  if (!Workload::RunCmd({"mv", output_filename_, tmp_file->path})) {
     return false;
   }
 
   // 3. Read records from the temporary file, and write records with joined call chains back
   // to record_filename_.
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile->path);
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmp_file->path);
   if (!reader) {
     return false;
   }
