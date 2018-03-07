@@ -131,7 +131,7 @@ bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& r
   auto map_it = cached_maps_.find(thread.pid);
   CachedMap& cached_map = (map_it == cached_maps_.end() ? cached_maps_[thread.pid]
                                                         : map_it->second);
-  if (cached_map.version < thread.maps->version) {
+  if (!cached_map.map || cached_map.version < thread.maps->version) {
     std::vector<backtrace_map_t> bt_maps(thread.maps->maps.size());
     size_t map_index = 0;
     for (auto& map : thread.maps->maps) {
