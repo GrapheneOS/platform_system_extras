@@ -210,7 +210,11 @@ class CounterSummaries {
       return "";
     }
     if (s.type_name == "cpu-cycles") {
-      double hz = s.count / (duration_in_sec / s.scale);
+      double running_time_in_sec;
+      if (!FindRunningTimeForSummary(s, &running_time_in_sec)) {
+        return "";
+      }
+      double hz = s.count / (running_time_in_sec / s.scale);
       return android::base::StringPrintf("%lf%cGHz", hz / 1e9, sap_mid);
     }
     if (s.type_name == "instructions" && s.count != 0) {
@@ -247,7 +251,11 @@ class CounterSummaries {
         return android::base::StringPrintf("%f%%%cmiss rate", miss_rate * 100, sap_mid);
       }
     }
-    double rate = s.count / (duration_in_sec / s.scale);
+    double running_time_in_sec;
+    if (!FindRunningTimeForSummary(s, &running_time_in_sec)) {
+      return "";
+    }
+    double rate = s.count / (running_time_in_sec / s.scale);
     if (rate > 1e9) {
       return android::base::StringPrintf("%.3lf%cG/sec", rate / 1e9, sap_mid);
     }
@@ -258,6 +266,17 @@ class CounterSummaries {
       return android::base::StringPrintf("%.3lf%cK/sec", rate / 1e3, sap_mid);
     }
     return android::base::StringPrintf("%.3lf%c/sec", rate, sap_mid);
+  }
+
+  bool FindRunningTimeForSummary(const CounterSummary& summary, double* running_time_in_sec) {
+    for (auto& s : summaries_) {
+      if ((s.type_name == "task-clock" || s.type_name == "cpu-clock") &&
+          s.IsMonitoredAtTheSameTime(summary) && s.count != 0u) {
+        *running_time_in_sec = s.count / 1e9;
+        return true;
+      }
+    }
+    return false;
   }
 
  private:
