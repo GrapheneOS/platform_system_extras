@@ -487,11 +487,11 @@ void PrepareVdsoFile() {
   std::string s(vdso_map->len, '\0');
   memcpy(&s[0], reinterpret_cast<void*>(static_cast<uintptr_t>(vdso_map->start_addr)),
          vdso_map->len);
-  std::unique_ptr<TemporaryFile> tmpfile = CreateTempFileUsedInRecording();
-  if (!android::base::WriteStringToFile(s, tmpfile->path)) {
+  std::unique_ptr<TemporaryFile> tmpfile = ScopedTempFiles::CreateTempFile();
+  if (!android::base::WriteStringToFd(s, tmpfile->release())) {
     return;
   }
-  Dso::SetVdsoFile(std::move(tmpfile), sizeof(size_t) == sizeof(uint64_t));
+  Dso::SetVdsoFile(tmpfile->path, sizeof(size_t) == sizeof(uint64_t));
 }
 
 static bool HasOpenedAppApkFile(int pid) {
@@ -689,14 +689,30 @@ void AllowMoreOpenedFiles() {
   }
 }
 
-static std::string temp_dir_used_in_recording;
-void SetTempDirectoryUsedInRecording(const std::string& tmp_dir) {
-  temp_dir_used_in_recording = tmp_dir;
+std::string ScopedTempFiles::tmp_dir_;
+std::vector<std::string> ScopedTempFiles::files_to_delete_;
+
+ScopedTempFiles::ScopedTempFiles(const std::string& tmp_dir) {
+  CHECK(tmp_dir_.empty());  // No other ScopedTempFiles.
+  tmp_dir_ = tmp_dir;
 }
 
-std::unique_ptr<TemporaryFile> CreateTempFileUsedInRecording() {
-  CHECK(!temp_dir_used_in_recording.empty());
-  return std::unique_ptr<TemporaryFile>(new TemporaryFile(temp_dir_used_in_recording));
+ScopedTempFiles::~ScopedTempFiles() {
+  tmp_dir_.clear();
+  for (auto& file : files_to_delete_) {
+    unlink(file.c_str());
+  }
+  files_to_delete_.clear();
+}
+
+std::unique_ptr<TemporaryFile> ScopedTempFiles::CreateTempFile(bool delete_in_destructor) {
+  CHECK(!tmp_dir_.empty());
+  std::unique_ptr<TemporaryFile> tmp_file(new TemporaryFile(tmp_dir_));
+  CHECK_NE(tmp_file->fd, -1);
+  if (delete_in_destructor) {
+    files_to_delete_.push_back(tmp_file->path);
+  }
+  return tmp_file;
 }
 
 bool SignalIsIgnored(int signo) {
