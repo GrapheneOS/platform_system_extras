@@ -295,7 +295,7 @@ static TracingField ParseTracingField(const std::string& s) {
     } else if (s[i] == ';') {
       value = s.substr(start, i - start);
       if (name == "field") {
-        size_t pos = value.find_first_of('[');
+        size_t pos = value.find('[');
         if (pos == std::string::npos) {
           field.name = value;
           field.elem_count = 1;
@@ -330,20 +330,20 @@ std::vector<TracingFormat> TracingFile::LoadTracingFormatsFromEventFiles()
     FormatParsingState state = FormatParsingState::READ_NAME;
     for (const auto& s : strs) {
       if (state == FormatParsingState::READ_NAME) {
-        size_t pos = s.find_first_of("name:");
+        size_t pos = s.find("name:");
         if (pos != std::string::npos) {
           format.name = android::base::Trim(s.substr(pos + strlen("name:")));
           state = FormatParsingState::READ_ID;
         }
       } else if (state == FormatParsingState::READ_ID) {
-        size_t pos = s.find_first_of("ID:");
+        size_t pos = s.find("ID:");
         if (pos != std::string::npos) {
           format.id =
               strtoull(s.substr(pos + strlen("ID:")).c_str(), nullptr, 10);
           state = FormatParsingState::READ_FIELDS;
         }
       } else if (state == FormatParsingState::READ_FIELDS) {
-        size_t pos = s.find_first_of("field:");
+        size_t pos = s.find("field:");
         if (pos != std::string::npos) {
           TracingField field = ParseTracingField(s);
           format.fields.push_back(field);
