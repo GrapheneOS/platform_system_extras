@@ -100,7 +100,7 @@ class Dso {
   static void SetBuildIds(
       const std::vector<std::pair<std::string, BuildId>>& build_ids);
   static BuildId FindExpectedBuildIdForPath(const std::string& path);
-  static void SetVdsoFile(std::unique_ptr<TemporaryFile> vdso_file, bool is_64bit);
+  static void SetVdsoFile(const std::string& vdso_file, bool is_64bit);
 
   static std::unique_ptr<Dso> CreateDso(DsoType dso_type, const std::string& dso_path,
                                         bool force_64bit = false);
@@ -153,8 +153,8 @@ class Dso {
   static std::unordered_map<std::string, BuildId> build_id_map_;
   static size_t dso_count_;
   static uint32_t g_dump_id_;
-  static std::unique_ptr<TemporaryFile> vdso_64bit_;
-  static std::unique_ptr<TemporaryFile> vdso_32bit_;
+  static std::string vdso_64bit_;
+  static std::string vdso_32bit_;
 
   Dso(DsoType type, const std::string& path, bool force_64bit);
   void Load();

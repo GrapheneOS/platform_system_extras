@@ -314,6 +314,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   if (!ParseOptions(args, &workload_args)) {
     return false;
   }
+  ScopedTempFiles scoped_temp_files(android::base::Dirname(record_filename_));
   if (!app_package_name_.empty() && !in_app_context_) {
     // Some users want to profile non debuggable apps on rooted devices. If we use run-as,
     // it will be impossible when using --app. So don't switch to app's context when we are
@@ -802,8 +803,6 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   for (; i < args.size(); ++i) {
     non_option_args->push_back(args[i]);
   }
-
-  SetTempDirectoryUsedInRecording(android::base::Dirname(record_filename_));
   return true;
 }
 
@@ -1141,11 +1140,11 @@ bool RecordCommand::PostUnwindRecords() {
     return false;
   }
   record_file_writer_.reset();
-  std::unique_ptr<TemporaryFile> tmpfile = CreateTempFileUsedInRecording();
-  if (!Workload::RunCmd({"mv", record_filename_, tmpfile->path})) {
+  std::unique_ptr<TemporaryFile> tmp_file = ScopedTempFiles::CreateTempFile();
+  if (!Workload::RunCmd({"mv", record_filename_, tmp_file->path})) {
     return false;
   }
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile->path);
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmp_file->path);
   if (!reader) {
     return false;
   }
@@ -1173,14 +1172,14 @@ bool RecordCommand::JoinCallChains() {
     return false;
   }
   record_file_writer_.reset();
-  std::unique_ptr<TemporaryFile> tmpfile = CreateTempFileUsedInRecording();
-  if (!Workload::RunCmd({"mv", record_filename_, tmpfile->path})) {
+  std::unique_ptr<TemporaryFile> tmp_file = ScopedTempFiles::CreateTempFile();
+  if (!Workload::RunCmd({"mv", record_filename_, tmp_file->path})) {
     return false;
   }
 
   // 3. Read records from the temporary file, and write record with joined call chains back
   // to record_filename_.
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile->path);
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmp_file->path);
   record_file_writer_ = CreateRecordFile(record_filename_);
   if (!reader || !record_file_writer_) {
     return false;
