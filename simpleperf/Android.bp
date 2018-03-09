@@ -46,6 +46,7 @@ cc_library_static {
     defaults: [
         "simpleperf_defaults",
     ],
+    host_supported: true,
 
     export_include_dirs: [
         ".",
