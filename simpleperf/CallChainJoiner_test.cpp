@@ -158,8 +158,11 @@ class CallChainJoinerTest : public ::testing::Test {
 #else
     std::string tmpdir = "/tmp";
 #endif
-    SetTempDirectoryUsedInRecording(tmpdir);
+    scoped_temp_files_.reset(new ScopedTempFiles(tmpdir));
   }
+
+ private:
+  std::unique_ptr<ScopedTempFiles> scoped_temp_files_;
 };
 
 TEST_F(CallChainJoinerTest, smoke) {
