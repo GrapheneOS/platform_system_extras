@@ -43,12 +43,12 @@
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
 
-#include "perf_profile.pb.h"
+#include "perfprofd_record.pb.h"
 
-#include "perfprofdcore.h"
-#include "perf_data_converter.h"
-#include "cpuconfig.h"
 #include "configreader.h"
+#include "cpuconfig.h"
+#include "perf_data_converter.h"
+#include "perfprofdcore.h"
 #include "symbolizer.h"
 
 //
@@ -60,6 +60,8 @@
 //
 
 //......................................................................
+
+using ProtoUniquePtr = std::unique_ptr<android::perfprofd::PerfprofdRecord>;
 
 //
 // Output file from 'perf record'.
@@ -416,7 +418,7 @@ unsigned collect_cpu_utilization()
   return busy_delta * 100 / total_delta;
 }
 
-static void annotate_encoded_perf_profile(wireless_android_play_playlog::AndroidPerfProfile *profile,
+static void annotate_encoded_perf_profile(android::perfprofd::PerfprofdRecord* profile,
                                           const Config& config,
                                           unsigned cpu_utilization)
 {
@@ -468,28 +470,7 @@ static void annotate_encoded_perf_profile(wireless_android_play_playlog::Android
   }
 }
 
-using ProtoUniquePtr = std::unique_ptr<wireless_android_play_playlog::AndroidPerfProfile>;
-static ProtoUniquePtr encode_to_proto(const std::string &data_file_path,
-                                      const Config& config,
-                                      unsigned cpu_utilization,
-                                      perfprofd::Symbolizer* symbolizer) {
-  //
-  // Open and read perf.data file
-  //
-  ProtoUniquePtr encodedProfile(
-      wireless_android_logging_awp::RawPerfDataToAndroidPerfProfile(data_file_path, symbolizer));
-  if (encodedProfile == nullptr) {
-    return nullptr;
-  }
-
-  // All of the info in 'encodedProfile' is derived from the perf.data file;
-  // here we tack display status, cpu utilization, system load, etc.
-  annotate_encoded_perf_profile(encodedProfile.get(), config, cpu_utilization);
-
-  return encodedProfile;
-}
-
-PROFILE_RESULT SerializeProtobuf(wireless_android_play_playlog::AndroidPerfProfile* encodedProfile,
+PROFILE_RESULT SerializeProtobuf(android::perfprofd::PerfprofdRecord* encodedProfile,
                                  const char* encoded_file_path) {
   //
   // Serialize protobuf to array
@@ -516,6 +497,26 @@ PROFILE_RESULT SerializeProtobuf(wireless_android_play_playlog::AndroidPerfProfi
   return OK_PROFILE_COLLECTION;
 }
 
+static ProtoUniquePtr encode_to_proto(const std::string &data_file_path,
+                                      const Config& config,
+                                      unsigned cpu_utilization,
+                                      perfprofd::Symbolizer* symbolizer) {
+  //
+  // Open and read perf.data file
+  //
+  ProtoUniquePtr encodedProfile(
+      android::perfprofd::RawPerfDataToAndroidPerfProfile(data_file_path, symbolizer));
+  if (encodedProfile == nullptr) {
+    return nullptr;
+  }
+
+  // All of the info in 'encodedProfile' is derived from the perf.data file;
+  // here we tack display status, cpu utilization, system load, etc.
+  annotate_encoded_perf_profile(encodedProfile.get(), config, cpu_utilization);
+
+  return encodedProfile;
+}
+
 PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
                                const char *encoded_file_path,
                                const Config& config,
@@ -530,7 +531,7 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
   //
   // Issue error if no samples
   //
-  if (encodedProfile == nullptr || encodedProfile->programs().size() == 0) {
+  if (encodedProfile == nullptr || encodedProfile->perf_data().events_size() == 0) {
     return ERR_PERF_ENCODE_FAILED;
   }
 
@@ -1008,8 +1009,7 @@ int perfprofd_main(int argc, char** argv, Config* config)
     config_reader.FillConfig(config);
   };
   int seq = 0;
-  auto handler = [&seq](wireless_android_play_playlog::AndroidPerfProfile* proto,
-                        Config* handler_config) {
+  auto handler = [&seq](android::perfprofd::PerfprofdRecord* proto, Config* handler_config) {
     if (proto == nullptr) {
       return false;
     }

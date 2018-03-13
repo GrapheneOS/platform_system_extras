@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cctype>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <regex>
@@ -43,8 +44,7 @@
 #include "perfprofdcore.h"
 #include "symbolizer.h"
 
-#include "perf_profile.pb.h"
-#include "google/protobuf/text_format.h"
+#include "perfprofd_record.pb.h"
 
 //
 // Set to argv[0] on startup
@@ -67,6 +67,16 @@ class TestLogHelper {
   std::string JoinTestLog(const char* delimiter) {
     std::unique_lock<std::mutex> ul(lock_);
     return android::base::Join(test_log_messages_, delimiter);
+  }
+  template <typename Predicate>
+  std::string JoinTestLog(const char* delimiter, Predicate pred) {
+    std::unique_lock<std::mutex> ul(lock_);
+    std::vector<std::string> tmp;
+    std::copy_if(test_log_messages_.begin(),
+                 test_log_messages_.end(),
+                 std::back_inserter(tmp),
+                 pred);
+    return android::base::Join(tmp, delimiter);
   }
 
  private:
@@ -182,7 +192,15 @@ class PerfProfdTest : public testing::Test {
                           const char* testpoint,
                           bool exactMatch = false) {
      std::string sqexp = squeezeWhite(expected, "expected");
-     std::string sqact = squeezeWhite(test_logger.JoinTestLog(" "), "actual");
+
+     // Strip out JIT errors.
+     std::regex jit_regex("E: Failed to open ELF file: [^ ]*ashmem/dalvik-jit-code-cache.*");
+     auto strip_jit = [&](const std::string& str) {
+       std::smatch jit_match;
+       return !std::regex_match(str, jit_match, jit_regex);
+     };
+     std::string sqact = squeezeWhite(test_logger.JoinTestLog(" ", strip_jit), "actual");
+
      if (exactMatch) {
        EXPECT_STREQ(sqexp.c_str(), sqact.c_str());
      } else {
@@ -341,7 +359,7 @@ static std::string encoded_file_path(const std::string& dest_dir,
 
 static void readEncodedProfile(const std::string& dest_dir,
                                const char *testpoint,
-                               wireless_android_play_playlog::AndroidPerfProfile &encodedProfile)
+                               android::perfprofd::PerfprofdRecord& encodedProfile)
 {
   struct stat statb;
   int perf_data_stat_result = stat(encoded_file_path(dest_dir, 0).c_str(), &statb);
@@ -360,6 +378,7 @@ static void readEncodedProfile(const std::string& dest_dir,
   encodedProfile.ParseFromString(encoded);
 }
 
+/*
 static std::string encodedLoadModuleToString(const wireless_android_play_playlog::LoadModule &lm)
 {
   std::stringstream ss;
@@ -372,7 +391,9 @@ static std::string encodedLoadModuleToString(const wireless_android_play_playlog
   }
   return ss.str();
 }
+*/
 
+/*
 static std::string encodedModuleSamplesToString(const wireless_android_play_playlog::LoadModuleSamples &mod)
 {
   std::stringstream ss;
@@ -391,6 +412,7 @@ static std::string encodedModuleSamplesToString(const wireless_android_play_play
   }
   return ss.str();
 }
+*/
 
 #define RAW_RESULT(x) #x
 
@@ -600,6 +622,187 @@ TEST_F(PerfProfdTest, ProfileCollectionAnnotations)
   EXPECT_FALSE(get_camera_active());
 }
 
+namespace {
+
+template<typename Iterator, typename Predicate>
+class FilteredIterator {
+ public:
+  using value_type =      typename std::iterator_traits<Iterator>::value_type;
+  using difference_type = typename std::iterator_traits<Iterator>::difference_type;
+  using reference =       typename std::iterator_traits<Iterator>::reference;
+  using pointer =         typename std::iterator_traits<Iterator>::pointer;
+
+  FilteredIterator(const Iterator& begin, const Iterator& end, const Predicate& pred)
+      : iter_(begin), end_(end), pred_(pred) {
+    filter();
+  }
+
+  reference operator*() const {
+    return *iter_;
+  }
+  pointer operator->() const {
+    return std::addressof(*iter_);
+  }
+
+  FilteredIterator& operator++() {
+    ++iter_;
+    filter();
+    return *this;
+  }
+
+  FilteredIterator end() {
+    return FilteredIterator(end_, end_, pred_);
+  }
+
+  bool operator==(const FilteredIterator& rhs) const {
+    return iter_ == rhs.iter_;
+  }
+  bool operator!=(const FilteredIterator& rhs) const {
+    return !(operator==(rhs));
+  }
+
+private:
+  void filter() {
+    while (iter_ != end_ && !pred_(*iter_)) {
+      ++iter_;
+    }
+  }
+
+  Iterator iter_;
+  Iterator end_;
+  Predicate pred_;
+};
+
+template <typename Predicate>
+using EventFilteredIterator = FilteredIterator<
+    decltype(static_cast<quipper::PerfDataProto*>(nullptr)->events().begin()),
+    Predicate>;
+
+struct CommEventPredicate {
+  bool operator()(const quipper::PerfDataProto_PerfEvent& evt) {
+    return evt.has_comm_event();
+  }
+};
+struct CommEventIterator : public EventFilteredIterator<CommEventPredicate> {
+  explicit CommEventIterator(const quipper::PerfDataProto& proto)
+      : EventFilteredIterator<CommEventPredicate>(proto.events().begin(),
+                                                  proto.events().end(),
+                                                  CommEventPredicate()) {
+  }
+};
+
+struct MmapEventPredicate {
+  bool operator()(const quipper::PerfDataProto_PerfEvent& evt) {
+    return evt.has_mmap_event();
+  }
+};
+struct MmapEventIterator : public EventFilteredIterator<MmapEventPredicate> {
+  explicit MmapEventIterator(const quipper::PerfDataProto& proto)
+      : EventFilteredIterator<MmapEventPredicate>(proto.events().begin(),
+                                                  proto.events().end(),
+                                                  MmapEventPredicate()) {
+  }
+};
+
+struct SampleEventPredicate {
+  bool operator()(const quipper::PerfDataProto_PerfEvent& evt) {
+    return evt.has_sample_event();
+  }
+};
+struct SampleEventIterator : public EventFilteredIterator<SampleEventPredicate> {
+  explicit SampleEventIterator(const quipper::PerfDataProto& proto)
+      : EventFilteredIterator<SampleEventPredicate>(proto.events().begin(),
+                                                    proto.events().end(),
+                                                    SampleEventPredicate()) {
+  }
+};
+
+struct ForkEventPredicate {
+  bool operator()(const quipper::PerfDataProto_PerfEvent& evt) {
+    return evt.has_fork_event();
+  }
+};
+struct ForkEventIterator : public EventFilteredIterator<ForkEventPredicate> {
+  explicit ForkEventIterator(const quipper::PerfDataProto& proto)
+      : EventFilteredIterator<ForkEventPredicate>(proto.events().begin(),
+                                                  proto.events().end(),
+                                                  ForkEventPredicate()) {
+  }
+};
+
+struct ExitEventPredicate {
+  bool operator()(const quipper::PerfDataProto_PerfEvent& evt) {
+    return evt.has_exit_event();
+  }
+};
+struct ExitEventIterator : public EventFilteredIterator<ExitEventPredicate> {
+  explicit ExitEventIterator(const quipper::PerfDataProto& proto)
+      : EventFilteredIterator<ExitEventPredicate>(proto.events().begin(),
+                                                  proto.events().end(),
+                                                  ExitEventPredicate()) {
+  }
+};
+
+template <typename Iterator>
+size_t CountEvents(const quipper::PerfDataProto& proto) {
+  size_t count = 0;
+  for (Iterator it(proto); it != it.end(); ++it) {
+    count++;
+  }
+  return count;
+}
+
+size_t CountCommEvents(const quipper::PerfDataProto& proto) {
+  return CountEvents<CommEventIterator>(proto);
+}
+size_t CountMmapEvents(const quipper::PerfDataProto& proto) {
+  return CountEvents<MmapEventIterator>(proto);
+}
+size_t CountSampleEvents(const quipper::PerfDataProto& proto) {
+  return CountEvents<SampleEventIterator>(proto);
+}
+size_t CountForkEvents(const quipper::PerfDataProto& proto) {
+  return CountEvents<ForkEventIterator>(proto);
+}
+size_t CountExitEvents(const quipper::PerfDataProto& proto) {
+  return CountEvents<ExitEventIterator>(proto);
+}
+
+std::string CreateStats(const quipper::PerfDataProto& proto) {
+  std::ostringstream oss;
+  oss << "Mmap events: "   << CountMmapEvents(proto) << std::endl;
+  oss << "Sample events: " << CountSampleEvents(proto) << std::endl;
+  oss << "Comm events: "   << CountCommEvents(proto) << std::endl;
+  oss << "Fork events: "   << CountForkEvents(proto) << std::endl;
+  oss << "Exit events: "   << CountExitEvents(proto) << std::endl;
+  return oss.str();
+}
+
+std::string FormatSampleEvent(const quipper::PerfDataProto_SampleEvent& sample) {
+  std::ostringstream oss;
+  if (sample.has_pid()) {
+    oss << "pid=" << sample.pid();
+  }
+  if (sample.has_tid()) {
+    oss << " tid=" << sample.tid();
+  }
+  if (sample.has_ip()) {
+      oss << " ip=" << sample.ip();
+    }
+  if (sample.has_addr()) {
+    oss << " addr=" << sample.addr();
+  }
+  if (sample.callchain_size() > 0) {
+    oss << " callchain=";
+    for (uint64_t cc : sample.callchain()) {
+      oss << "->" << cc;
+    }
+  }
+  return oss.str();
+}
+
+}
+
 TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
 {
   //
@@ -625,60 +828,127 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
   ASSERT_EQ(OK_PROFILE_COLLECTION, result) << test_logger.JoinTestLog(" ");
 
   // Read and decode the resulting perf.data.encoded file
-  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
+  android::perfprofd::PerfprofdRecord encodedProfile;
   readEncodedProfile(dest_dir,
                      "BasicRunWithCannedPerf",
                      encodedProfile);
 
-  // Expect 48 programs
-  EXPECT_EQ(48, encodedProfile.programs_size());
+  ASSERT_TRUE(encodedProfile.has_perf_data());
+  const quipper::PerfDataProto& perf_data = encodedProfile.perf_data();
 
-  // Check a couple of load modules
-  { const auto &lm0 = encodedProfile.load_modules(0);
-    std::string act_lm0 = encodedLoadModuleToString(lm0);
-    std::string sqact0 = squeezeWhite(act_lm0, "actual for lm 0");
-    const std::string expected_lm0 = RAW_RESULT(
-        name: "/data/app/com.google.android.apps.plus-1/lib/arm/libcronet.so"
-                                                );
-    std::string sqexp0 = squeezeWhite(expected_lm0, "expected_lm0");
-    EXPECT_STREQ(sqexp0.c_str(), sqact0.c_str());
-  }
-  { const auto &lm9 = encodedProfile.load_modules(9);
-    std::string act_lm9 = encodedLoadModuleToString(lm9);
-    std::string sqact9 = squeezeWhite(act_lm9, "actual for lm 9");
-    const std::string expected_lm9 = RAW_RESULT(
-        name: "/system/lib/libandroid_runtime.so" build_id: "8164ed7b3a8b8f5a220d027788922510"
-                                                );
-    std::string sqexp9 = squeezeWhite(expected_lm9, "expected_lm9");
-    EXPECT_STREQ(sqexp9.c_str(), sqact9.c_str());
+  // Expect 21108 events.
+  EXPECT_EQ(21108, perf_data.events_size()) << CreateStats(perf_data);
+
+  EXPECT_EQ(48,    CountMmapEvents(perf_data)) << CreateStats(perf_data);
+  EXPECT_EQ(19986, CountSampleEvents(perf_data)) << CreateStats(perf_data);
+  EXPECT_EQ(1033,  CountCommEvents(perf_data)) << CreateStats(perf_data);
+  EXPECT_EQ(15,    CountForkEvents(perf_data)) << CreateStats(perf_data);
+  EXPECT_EQ(26,    CountExitEvents(perf_data)) << CreateStats(perf_data);
+
+  if (HasNonfatalFailure()) {
+    FAIL();
   }
 
-  // Examine some of the samples now
-  { const auto &p1 = encodedProfile.programs(9);
-    const auto &lm1 = p1.modules(0);
-    std::string act_lm1 = encodedModuleSamplesToString(lm1);
-    std::string sqact1 = squeezeWhite(act_lm1, "actual for lm1");
-    const std::string expected_lm1 = RAW_RESULT(
-        load_module_id: 9 address_samples { address: 296100 count: 1 }
-                                                );
-    std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
-    EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
+  {
+    MmapEventIterator mmap(perf_data);
+    constexpr std::pair<const char*, uint64_t> kMmapEvents[] = {
+        std::make_pair("[kernel.kallsyms]_text", 0),
+        std::make_pair("/system/lib/libc.so", 3067412480u),
+        std::make_pair("/system/vendor/lib/libdsutils.so", 3069911040u),
+        std::make_pair("/system/lib/libc.so", 3067191296u),
+        std::make_pair("/system/lib/libc++.so", 3069210624u),
+        std::make_pair("/data/dalvik-cache/arm/system@framework@boot.oat", 1900048384u),
+        std::make_pair("/system/lib/libjavacore.so", 2957135872u),
+        std::make_pair("/system/vendor/lib/libqmi_encdec.so", 3006644224u),
+        std::make_pair("/data/dalvik-cache/arm/system@framework@wifi-service.jar@classes.dex",
+                       3010351104u),
+        std::make_pair("/system/lib/libart.so", 3024150528u),
+        std::make_pair("/system/lib/libz.so", 3056410624u),
+        std::make_pair("/system/lib/libicui18n.so", 3057610752u),
+    };
+    for (auto& pair : kMmapEvents) {
+      EXPECT_STREQ(pair.first, mmap->mmap_event().filename().c_str());
+      EXPECT_EQ(pair.second, mmap->mmap_event().start()) << pair.first;
+      ++mmap;
+    }
   }
-  { const auto &p1 = encodedProfile.programs(11);
-    const auto &lm2 = p1.modules(0);
-    std::string act_lm2 = encodedModuleSamplesToString(lm2);
-    std::string sqact2 = squeezeWhite(act_lm2, "actual for lm2");
-    const std::string expected_lm2 = RAW_RESULT(
-        load_module_id: 2
-        address_samples { address: 28030244 count: 1 }
-        address_samples { address: 29657840 count: 1 }
-                                                );
-    std::string sqexp2 = squeezeWhite(expected_lm2, "expected_lm2");
-    EXPECT_STREQ(sqexp2.c_str(), sqact2.c_str());
+
+  {
+    CommEventIterator comm(perf_data);
+    constexpr const char* kCommEvents[] = {
+        "init", "kthreadd", "ksoftirqd/0", "kworker/u:0H", "migration/0", "khelper",
+        "netns", "modem_notifier", "smd_channel_clo", "smsm_cb_wq", "rpm-smd", "kworker/u:1H",
+    };
+    for (auto str : kCommEvents) {
+      EXPECT_STREQ(str, comm->comm_event().comm().c_str());
+      ++comm;
+    }
+  }
+
+  {
+    SampleEventIterator samples(perf_data);
+    constexpr const char* kSampleEvents[] = {
+        "pid=0 tid=0 ip=3222720196",
+        "pid=0 tid=0 ip=3222910876",
+        "pid=0 tid=0 ip=3222910876",
+        "pid=0 tid=0 ip=3222910876",
+        "pid=0 tid=0 ip=3222910876",
+        "pid=0 tid=0 ip=3222910876",
+        "pid=0 tid=0 ip=3222910876",
+        "pid=3 tid=3 ip=3231975108",
+        "pid=5926 tid=5926 ip=3231964952",
+        "pid=5926 tid=5926 ip=3225342428",
+        "pid=5926 tid=5926 ip=3223841448",
+        "pid=5926 tid=5926 ip=3069807920",
+    };
+    for (auto str : kSampleEvents) {
+      EXPECT_STREQ(str, FormatSampleEvent(samples->sample_event()).c_str());
+      ++samples;
+    }
+
+    // Skip some samples.
+    for (size_t i = 0; i != 5000; ++i) {
+      ++samples;
+    }
+    constexpr const char* kSampleEvents2[] = {
+        "pid=5938 tid=5938 ip=3069630992",
+        "pid=5938 tid=5938 ip=3069626616",
+        "pid=5938 tid=5938 ip=3069626636",
+        "pid=5938 tid=5938 ip=3069637212",
+        "pid=5938 tid=5938 ip=3069637208",
+        "pid=5938 tid=5938 ip=3069637252",
+        "pid=5938 tid=5938 ip=3069346040",
+        "pid=5938 tid=5938 ip=3069637128",
+        "pid=5938 tid=5938 ip=3069626616",
+    };
+    for (auto str : kSampleEvents2) {
+      EXPECT_STREQ(str, FormatSampleEvent(samples->sample_event()).c_str());
+      ++samples;
+    }
+
+    // Skip some samples.
+    for (size_t i = 0; i != 5000; ++i) {
+      ++samples;
+    }
+    constexpr const char* kSampleEvents3[] = {
+        "pid=5938 tid=5938 ip=3069912036",
+        "pid=5938 tid=5938 ip=3069637260",
+        "pid=5938 tid=5938 ip=3069631024",
+        "pid=5938 tid=5938 ip=3069346064",
+        "pid=5938 tid=5938 ip=3069637356",
+        "pid=5938 tid=5938 ip=3069637144",
+        "pid=5938 tid=5938 ip=3069912036",
+        "pid=5938 tid=5938 ip=3069912036",
+        "pid=5938 tid=5938 ip=3069631244",
+    };
+    for (auto str : kSampleEvents3) {
+      EXPECT_STREQ(str, FormatSampleEvent(samples->sample_event()).c_str());
+      ++samples;
+    }
   }
 }
 
-TEST_F(PerfProfdTest, BasicRunWithCannedPerfWithSymbolizer)
+TEST_F(PerfProfdTest, DISABLED_BasicRunWithCannedPerfWithSymbolizer)
 {
   //
   // Verify the portion of the daemon that reads and encodes
@@ -713,59 +983,18 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerfWithSymbolizer)
   ASSERT_EQ(OK_PROFILE_COLLECTION, result);
 
   // Read and decode the resulting perf.data.encoded file
-  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
+  android::perfprofd::PerfprofdRecord encodedProfile;
   readEncodedProfile(dest_dir,
                      "BasicRunWithCannedPerf",
                      encodedProfile);
 
-  // Expect 45 programs
-  EXPECT_EQ(48, encodedProfile.programs_size());
+  ASSERT_TRUE(encodedProfile.has_perf_data());
+  const quipper::PerfDataProto& perf_data = encodedProfile.perf_data();
 
-  // Check a couple of load modules
-  { const auto &lm0 = encodedProfile.load_modules(0);
-    std::string act_lm0 = encodedLoadModuleToString(lm0);
-    std::string sqact0 = squeezeWhite(act_lm0, "actual for lm 0");
-    const std::string expected_lm0 = RAW_RESULT(
-        name: "/data/app/com.google.android.apps.plus-1/lib/arm/libcronet.so"
-        symbol: "/data/app/com.google.android.apps.plus-1/lib/arm/libcronet.so@310106"
-        symbol: "/data/app/com.google.android.apps.plus-1/lib/arm/libcronet.so@1949952"
-                                                );
-    std::string sqexp0 = squeezeWhite(expected_lm0, "expected_lm0");
-    EXPECT_STREQ(sqexp0.c_str(), sqact0.c_str());
-  }
-  { const auto &lm9 = encodedProfile.load_modules(9);
-    std::string act_lm9 = encodedLoadModuleToString(lm9);
-    std::string sqact9 = squeezeWhite(act_lm9, "actual for lm 9");
-    const std::string expected_lm9 = RAW_RESULT(
-        name: "/system/lib/libandroid_runtime.so" build_id: "8164ed7b3a8b8f5a220d027788922510"
-                                                );
-    std::string sqexp9 = squeezeWhite(expected_lm9, "expected_lm9");
-    EXPECT_STREQ(sqexp9.c_str(), sqact9.c_str());
-  }
+  // Expect 21108 events.
+  EXPECT_EQ(21108, perf_data.events_size()) << CreateStats(perf_data);
 
-  // Examine some of the samples now
-  { const auto &p1 = encodedProfile.programs(9);
-    const auto &lm1 = p1.modules(0);
-    std::string act_lm1 = encodedModuleSamplesToString(lm1);
-    std::string sqact1 = squeezeWhite(act_lm1, "actual for lm1");
-    const std::string expected_lm1 = RAW_RESULT(
-        load_module_id: 9 address_samples { address: 296100 count: 1 }
-                                                );
-    std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
-    EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
-  }
-  { const auto &p1 = encodedProfile.programs(11);
-    const auto &lm2 = p1.modules(0);
-    std::string act_lm2 = encodedModuleSamplesToString(lm2);
-    std::string sqact2 = squeezeWhite(act_lm2, "actual for lm2");
-    const std::string expected_lm2 = RAW_RESULT(
-        load_module_id: 2
-        address_samples { address: 18446744073709551615 count: 1 }
-        address_samples { address: 18446744073709551614 count: 1 }
-                                                );
-    std::string sqexp2 = squeezeWhite(expected_lm2, "expected_lm2");
-    EXPECT_STREQ(sqexp2.c_str(), sqact2.c_str());
-  }
+  // TODO: Re-add symbolization.
 }
 
 TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
@@ -790,59 +1019,57 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
   ASSERT_EQ(OK_PROFILE_COLLECTION, result);
 
   // Read and decode the resulting perf.data.encoded file
-  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
+  android::perfprofd::PerfprofdRecord encodedProfile;
   readEncodedProfile(dest_dir,
                      "BasicRunWithCannedPerf",
                      encodedProfile);
 
 
-  // Expect 3 programs 8 load modules
-  EXPECT_EQ(3, encodedProfile.programs_size());
-  EXPECT_EQ(8, encodedProfile.load_modules_size());
+  ASSERT_TRUE(encodedProfile.has_perf_data());
+  const quipper::PerfDataProto& perf_data = encodedProfile.perf_data();
 
-  // Check a couple of load modules
-  { const auto &lm0 = encodedProfile.load_modules(0);
-    std::string act_lm0 = encodedLoadModuleToString(lm0);
-    std::string sqact0 = squeezeWhite(act_lm0, "actual for lm 0");
-    const std::string expected_lm0 = RAW_RESULT(
-        name: "/system/bin/dex2oat"
-        build_id: "ee12bd1a1de39422d848f249add0afc4"
-                                                );
-    std::string sqexp0 = squeezeWhite(expected_lm0, "expected_lm0");
-    EXPECT_STREQ(sqexp0.c_str(), sqact0.c_str());
-  }
-  { const auto &lm1 = encodedProfile.load_modules(1);
-    std::string act_lm1 = encodedLoadModuleToString(lm1);
-    std::string sqact1 = squeezeWhite(act_lm1, "actual for lm 1");
-    const std::string expected_lm1 = RAW_RESULT(
-        name: "/system/bin/linker"
-        build_id: "a36715f673a4a0aa76ef290124c516cc"
-                                                );
-    std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
-    EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
-  }
+  // Expect 21108 events.
+  EXPECT_EQ(2224, perf_data.events_size()) << CreateStats(perf_data);
 
-  // Examine some of the samples now
-  { const auto &p0 = encodedProfile.programs(1);
-    const auto &lm1 = p0.modules(0);
-    std::string act_lm1 = encodedModuleSamplesToString(lm1);
-    std::string sqact1 = squeezeWhite(act_lm1, "actual for lm1");
-    const std::string expected_lm1 = RAW_RESULT(
-        load_module_id: 0
-        address_samples { address: 108552 count: 2 }
-                                                );
-    std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
-    EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
-  }
-  { const auto &p4 = encodedProfile.programs(2);
-    const auto &lm2 = p4.modules(1);
-    std::string act_lm2 = encodedModuleSamplesToString(lm2);
-    std::string sqact2 = squeezeWhite(act_lm2, "actual for lm2");
-    const std::string expected_lm2 = RAW_RESULT(
-        load_module_id: 2 address_samples { address: 403913 count: 1 } address_samples { address: 840761 count: 1 } address_samples { address: 846481 count: 1 } address_samples { address: 999053 count: 1 } address_samples { address: 1012959 count: 1 } address_samples { address: 1524309 count: 1 } address_samples { address: 1580779 count: 1 } address_samples { address: 4287986288 count: 1 }
-                                                );
-    std::string sqexp2 = squeezeWhite(expected_lm2, "expected_lm2");
-    EXPECT_STREQ(sqexp2.c_str(), sqact2.c_str());
+  {
+      SampleEventIterator samples(perf_data);
+      constexpr const char* kSampleEvents[] = {
+          "0: pid=6225 tid=6225 ip=18446743798834668032 callchain=->18446744073709551488->"
+              "18446743798834668032->18446743798834782596->18446743798834784624->"
+              "18446743798835055136->18446743798834788016->18446743798834789192->"
+              "18446743798834789512->18446743798834790216->18446743798833756776",
+          "1: pid=6225 tid=6225 ip=18446743798835685700 callchain=->18446744073709551488->"
+              "18446743798835685700->18446743798835688704->18446743798835650964->"
+              "18446743798834612104->18446743798834612276->18446743798835055528->"
+              "18446743798834788016->18446743798834789192->18446743798834789512->"
+              "18446743798834790216->18446743798833756776",
+          "2: pid=6225 tid=6225 ip=18446743798835055804 callchain=->18446744073709551488->"
+              "18446743798835055804->18446743798834788016->18446743798834789192->"
+              "18446743798834789512->18446743798834790216->18446743798833756776",
+          "3: pid=6225 tid=6225 ip=18446743798835991212 callchain=->18446744073709551488->"
+              "18446743798835991212->18446743798834491060->18446743798834675572->"
+              "18446743798834676516->18446743798834612172->18446743798834612276->"
+              "18446743798835056664->18446743798834788016->18446743798834789192->"
+              "18446743798834789512->18446743798834790216->18446743798833756776",
+          "4: pid=6225 tid=6225 ip=18446743798844881108 callchain=->18446744073709551488->"
+              "18446743798844881108->18446743798834836140->18446743798834846384->"
+              "18446743798834491100->18446743798834675572->18446743798834676516->"
+              "18446743798834612172->18446743798834612276->18446743798835056784->"
+              "18446743798834788016->18446743798834789192->18446743798834789512->"
+              "18446743798834790216->18446743798833756776",
+      };
+      size_t cmp_index = 0;
+      for (size_t index = 0; samples != samples.end(); ++samples, ++index) {
+        if (samples->sample_event().callchain_size() > 0) {
+          std::ostringstream oss;
+          oss << index << ": " << FormatSampleEvent(samples->sample_event());
+          EXPECT_STREQ(kSampleEvents[cmp_index], oss.str().c_str());
+          cmp_index++;
+          if (cmp_index == arraysize(kSampleEvents)) {
+            break;
+          }
+        }
+      }
   }
 }
 
@@ -876,12 +1103,12 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
   ASSERT_EQ(0, daemon_main_return_code);
 
   // Read and decode the resulting perf.data.encoded file
-  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
+  android::perfprofd::PerfprofdRecord encodedProfile;
   readEncodedProfile(dest_dir, "BasicRunWithLivePerf", encodedProfile);
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
-  EXPECT_LT(0, encodedProfile.programs_size());
+  EXPECT_LT(0, encodedProfile.perf_data().events_size());
 
   // Verify log contents
   const std::string expected = std::string(
@@ -930,12 +1157,12 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
   ASSERT_EQ(0, daemon_main_return_code);
 
   // Read and decode the resulting perf.data.encoded file
-  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
+  android::perfprofd::PerfprofdRecord encodedProfile;
   readEncodedProfile(dest_dir, "BasicRunWithLivePerf", encodedProfile);
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
-  EXPECT_LT(0, encodedProfile.programs_size());
+  EXPECT_LT(0, encodedProfile.perf_data().events_size());
 
   // Examine that encoded.1 file is removed while encoded.{0|2} exists.
   EXPECT_EQ(0, access(encoded_file_path(dest_dir, 0).c_str(), F_OK));
@@ -999,12 +1226,12 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
   ASSERT_EQ(0, daemon_main_return_code);
 
   // Read and decode the resulting perf.data.encoded file
-  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
+  android::perfprofd::PerfprofdRecord encodedProfile;
   readEncodedProfile(dest_dir, "CallChainRunWithLivePerf", encodedProfile);
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
-  EXPECT_LT(0, encodedProfile.programs_size());
+  EXPECT_LT(0, encodedProfile.perf_data().events_size());
 
   // Verify log contents
   const std::string expected = std::string(
@@ -1021,6 +1248,14 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
                                           );
   // check to make sure log excerpt matches
   CompareLogMessages(expandVars(expected), "CallChainRunWithLivePerf", true);
+
+  // Check that we have at least one SampleEvent with a callchain.
+  SampleEventIterator samples(encodedProfile.perf_data());
+  bool found_callchain = false;
+  while (!found_callchain && samples != samples.end()) {
+    found_callchain = samples->sample_event().callchain_size() > 0;
+  }
+  EXPECT_TRUE(found_callchain) << CreateStats(encodedProfile.perf_data());
 }
 
 int main(int argc, char **argv) {
