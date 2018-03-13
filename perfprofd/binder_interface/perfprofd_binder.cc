@@ -30,8 +30,10 @@
 #include <inttypes.h>
 #include <unistd.h>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
+#include <android-base/unique_fd.h>
 #include <android/os/DropBoxManager.h>
 #include <binder/BinderService.h>
 #include <binder/IResultReceiver.h>
@@ -43,7 +45,7 @@
 
 #include "android/os/BnPerfProfd.h"
 #include "perfprofd_config.pb.h"
-#include "perf_profile.pb.h"
+#include "perfprofd_record.pb.h"
 
 #include "config.h"
 #include "perfprofdcore.h"
@@ -129,7 +131,7 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
 
  private:
   // Handler for ProfilingLoop.
-  bool BinderHandler(wireless_android_play_playlog::AndroidPerfProfile* encodedProfile,
+  bool BinderHandler(android::perfprofd::PerfprofdRecord* encodedProfile,
                      Config* config);
   // Helper for the handler.
   HandlerFn GetBinderHandler();
@@ -148,7 +150,7 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
 };
 
 bool PerfProfdNativeService::BinderHandler(
-    wireless_android_play_playlog::AndroidPerfProfile* encodedProfile,
+    android::perfprofd::PerfprofdRecord* encodedProfile,
     Config* config) {
   CHECK(config != nullptr);
   if (static_cast<BinderConfig*>(config)->send_to_dropbox) {

@@ -51,19 +51,16 @@ cc_library_static {
         "perfprofd_defaults",
     ],
 
-    local_include_dirs: ["quipper/kernel-headers"],
-    export_include_dirs: ["."],
     static_libs: [
         "libbase",
+        "libquipper",
         "libsimpleperf_elf_read",
     ],
+    whole_static_libs: [
+        "libquipper",
+    ],
     srcs: [
-        "perf_profile.proto",
-        "quipper/perf_utils.cc",
-        "quipper/base/logging.cc",
-        "quipper/address_mapper.cc",
-        "quipper/perf_reader.cc",
-        "quipper/perf_parser.cc",
+        "perfprofd_record.proto",
         "perf_data_converter.cc",
         "configreader.cc",
         "cpuconfig.cc",
@@ -73,7 +70,15 @@ cc_library_static {
 
     proto: {
         export_proto_headers: true,
+        include_dirs: ["external/perf_data_converter/src/quipper"],
+        type: "lite",
     },
+    cflags: [
+        "-Wno-gnu-anonymous-struct",
+    ],
+
+    export_include_dirs: ["."],
+    export_static_lib_headers: ["libquipper"],
 }
 
 //
