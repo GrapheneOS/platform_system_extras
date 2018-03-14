@@ -25,7 +25,9 @@
 #include <sys/wait.h>
 
 #include <android-base/logging.h>
+#ifdef __BIONIC__
 #include <android-base/properties.h>
+#endif
 
 #include "cpuconfig.h"
 
@@ -53,7 +55,11 @@ HardwireCpuHelper::~HardwireCpuHelper()
 
 bool HardwireCpuHelper::GetMpdecisionRunning()
 {
+#ifdef __BIONIC__
   return android::base::GetProperty("init.svc.mpdecision", "") == "running";
+#else
+  return false;
+#endif
 }
 
 
@@ -87,17 +93,21 @@ void HardwireCpuHelper::OnlineCore(int i, int onoff)
 
 void HardwireCpuHelper::StopMpdecision()
 {
+#ifdef __BIONIC__
   if (!android::base::SetProperty("ctl.stop", "mpdecision")) {
     LOG(ERROR) << "setprop ctl.stop mpdecision failed";
   }
+#endif
 }
 
 void HardwireCpuHelper::RestartMpdecision()
 {
+#ifdef __BIONIC__
   // Don't try to offline the cores we previously onlined -- let
   // mpdecision figure out what to do
 
   if (!android::base::SetProperty("ctl.start", "mpdecision")) {
     LOG(ERROR) << "setprop ctl.start mpdecision failed";
   }
+#endif
 }
