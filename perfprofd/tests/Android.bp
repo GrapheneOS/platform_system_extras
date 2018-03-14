@@ -28,17 +28,29 @@ cc_test {
         "perfprofd_test_defaults",
     ],
     test_suites: ["device-tests"],
+    host_supported: true,
 
     stl: "libc++",
     static_libs: [
         "libperfprofdcore",
         "libsimpleperf_elf_read",
         "libbase",
+        "libutils",
     ],
     shared_libs: [
         "libprotobuf-cpp-lite",
         "liblog",
     ],
+    target: {
+        darwin: {
+            enabled: false,
+        },
+        host: {
+            host_ldlibs: [
+                "-lncurses",
+            ],
+        },
+    },
     srcs: [
         "perfprofd_test.cc",
     ],

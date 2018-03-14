@@ -39,9 +39,12 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/macros.h>
-#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
+
+#ifdef __BIONIC__
+#include <android-base/properties.h>
+#endif
 
 #include "perfprofd_record.pb.h"
 
@@ -233,7 +236,11 @@ static CKPROFILE_RESULT check_profiling_enabled(const Config& config)
 
 bool get_booting()
 {
+#ifdef __BIONIC__
   return android::base::GetBoolProperty("sys.boot_completed", false) != true;
+#else
+  return false;
+#endif
 }
 
 //
@@ -852,7 +859,11 @@ static void set_seed(uint32_t use_fixed_seed)
     //
     // Randomized seed
     //
+#ifdef __BIONIC__
     seed = arc4random();
+#else
+    seed = 12345678u;
+#endif
   }
   LOG(INFO) << "random seed set to " << seed;
   // Distribute the 32-bit seed into the three 16-bit array
@@ -878,8 +889,13 @@ static void CommonInit(uint32_t use_fixed_seed, const char* dest_dir) {
     cleanup_destination_dir(dest_dir);
   }
 
+#ifdef __BIONIC__
   running_in_emulator = android::base::GetBoolProperty("ro.kernel.qemu", false);
   is_debug_build = android::base::GetBoolProperty("ro.debuggable", false);
+#else
+  running_in_emulator = false;
+  is_debug_build = true;
+#endif
 }
 
 //
