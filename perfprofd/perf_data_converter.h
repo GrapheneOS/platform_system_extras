@@ -3,20 +3,20 @@
 
 #include <string>
 
+#include "perfprofd_record-fwd.h"
+
 namespace perfprofd {
 struct Symbolizer;
 }  // namespace perfprofd
 
-namespace wireless_android_play_playlog {
-class AndroidPerfProfile;
-}  // namespace wireless_android_play_playlog
+namespace android {
+namespace perfprofd {
 
-namespace wireless_android_logging_awp {
-
-wireless_android_play_playlog::AndroidPerfProfile*
+PerfprofdRecord*
 RawPerfDataToAndroidPerfProfile(const std::string &perf_file,
                                 ::perfprofd::Symbolizer* symbolizer);
 
-}  // namespace wireless_android_logging_awp
+}  // namespace perfprofd
+}  // namespace android
 
 #endif  // WIRELESS_ANDROID_LOGGING_AWP_PERF_DATA_CONVERTER_H_
