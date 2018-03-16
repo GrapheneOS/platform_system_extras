@@ -265,8 +265,8 @@ class PprofProfileGenerator(object):
             config['binary_cache_dir'] = None
         else:
             self.lib.SetSymfs(config['binary_cache_dir'])
-        if config.get('record_file'):
-            self.lib.SetRecordFile(config['record_file'])
+        if config.get('perf_data_path'):
+            self.lib.SetRecordFile(config['perf_data_path'])
         kallsyms = 'binary_cache/kallsyms'
         if os.path.isfile(kallsyms):
             self.lib.SetKallsymsFile(kallsyms)
