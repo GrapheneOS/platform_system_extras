@@ -39,16 +39,19 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/macros.h>
-#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
 
-#include "perf_profile.pb.h"
+#ifdef __BIONIC__
+#include <android-base/properties.h>
+#endif
 
-#include "perfprofdcore.h"
-#include "perf_data_converter.h"
-#include "cpuconfig.h"
+#include "perfprofd_record.pb.h"
+
 #include "configreader.h"
+#include "cpuconfig.h"
+#include "perf_data_converter.h"
+#include "perfprofdcore.h"
 #include "symbolizer.h"
 
 //
@@ -60,6 +63,8 @@
 //
 
 //......................................................................
+
+using ProtoUniquePtr = std::unique_ptr<android::perfprofd::PerfprofdRecord>;
 
 //
 // Output file from 'perf record'.
@@ -231,7 +236,11 @@ static CKPROFILE_RESULT check_profiling_enabled(const Config& config)
 
 bool get_booting()
 {
+#ifdef __BIONIC__
   return android::base::GetBoolProperty("sys.boot_completed", false) != true;
+#else
+  return false;
+#endif
 }
 
 //
@@ -416,7 +425,7 @@ unsigned collect_cpu_utilization()
   return busy_delta * 100 / total_delta;
 }
 
-static void annotate_encoded_perf_profile(wireless_android_play_playlog::AndroidPerfProfile *profile,
+static void annotate_encoded_perf_profile(android::perfprofd::PerfprofdRecord* profile,
                                           const Config& config,
                                           unsigned cpu_utilization)
 {
@@ -468,28 +477,7 @@ static void annotate_encoded_perf_profile(wireless_android_play_playlog::Android
   }
 }
 
-using ProtoUniquePtr = std::unique_ptr<wireless_android_play_playlog::AndroidPerfProfile>;
-static ProtoUniquePtr encode_to_proto(const std::string &data_file_path,
-                                      const Config& config,
-                                      unsigned cpu_utilization,
-                                      perfprofd::Symbolizer* symbolizer) {
-  //
-  // Open and read perf.data file
-  //
-  ProtoUniquePtr encodedProfile(
-      wireless_android_logging_awp::RawPerfDataToAndroidPerfProfile(data_file_path, symbolizer));
-  if (encodedProfile == nullptr) {
-    return nullptr;
-  }
-
-  // All of the info in 'encodedProfile' is derived from the perf.data file;
-  // here we tack display status, cpu utilization, system load, etc.
-  annotate_encoded_perf_profile(encodedProfile.get(), config, cpu_utilization);
-
-  return encodedProfile;
-}
-
-PROFILE_RESULT SerializeProtobuf(wireless_android_play_playlog::AndroidPerfProfile* encodedProfile,
+PROFILE_RESULT SerializeProtobuf(android::perfprofd::PerfprofdRecord* encodedProfile,
                                  const char* encoded_file_path) {
   //
   // Serialize protobuf to array
@@ -516,6 +504,26 @@ PROFILE_RESULT SerializeProtobuf(wireless_android_play_playlog::AndroidPerfProfi
   return OK_PROFILE_COLLECTION;
 }
 
+static ProtoUniquePtr encode_to_proto(const std::string &data_file_path,
+                                      const Config& config,
+                                      unsigned cpu_utilization,
+                                      perfprofd::Symbolizer* symbolizer) {
+  //
+  // Open and read perf.data file
+  //
+  ProtoUniquePtr encodedProfile(
+      android::perfprofd::RawPerfDataToAndroidPerfProfile(data_file_path, symbolizer));
+  if (encodedProfile == nullptr) {
+    return nullptr;
+  }
+
+  // All of the info in 'encodedProfile' is derived from the perf.data file;
+  // here we tack display status, cpu utilization, system load, etc.
+  annotate_encoded_perf_profile(encodedProfile.get(), config, cpu_utilization);
+
+  return encodedProfile;
+}
+
 PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
                                const char *encoded_file_path,
                                const Config& config,
@@ -530,7 +538,7 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
   //
   // Issue error if no samples
   //
-  if (encodedProfile == nullptr || encodedProfile->programs().size() == 0) {
+  if (encodedProfile == nullptr || encodedProfile->perf_data().events_size() == 0) {
     return ERR_PERF_ENCODE_FAILED;
   }
 
@@ -851,7 +859,11 @@ static void set_seed(uint32_t use_fixed_seed)
     //
     // Randomized seed
     //
+#ifdef __BIONIC__
     seed = arc4random();
+#else
+    seed = 12345678u;
+#endif
   }
   LOG(INFO) << "random seed set to " << seed;
   // Distribute the 32-bit seed into the three 16-bit array
@@ -877,8 +889,13 @@ static void CommonInit(uint32_t use_fixed_seed, const char* dest_dir) {
     cleanup_destination_dir(dest_dir);
   }
 
+#ifdef __BIONIC__
   running_in_emulator = android::base::GetBoolProperty("ro.kernel.qemu", false);
   is_debug_build = android::base::GetBoolProperty("ro.debuggable", false);
+#else
+  running_in_emulator = false;
+  is_debug_build = true;
+#endif
 }
 
 //
@@ -1008,8 +1025,7 @@ int perfprofd_main(int argc, char** argv, Config* config)
     config_reader.FillConfig(config);
   };
   int seq = 0;
-  auto handler = [&seq](wireless_android_play_playlog::AndroidPerfProfile* proto,
-                        Config* handler_config) {
+  auto handler = [&seq](android::perfprofd::PerfprofdRecord* proto, Config* handler_config) {
     if (proto == nullptr) {
       return false;
     }
