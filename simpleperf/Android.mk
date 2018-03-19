@@ -111,6 +111,7 @@ libsimpleperf_src_files_linux := \
   cmd_list.cpp \
   cmd_record.cpp \
   cmd_stat.cpp \
+  cmd_trace_sched.cpp \
   environment.cpp \
   event_fd.cpp \
   event_selection_set.cpp \
@@ -367,6 +368,7 @@ simpleperf_unit_test_src_files_linux := \
   cmd_list_test.cpp \
   cmd_record_test.cpp \
   cmd_stat_test.cpp \
+  cmd_trace_sched_test.cpp \
   environment_test.cpp \
   IOEventLoop_test.cpp \
   record_file_test.cpp \
