@@ -117,5 +117,7 @@ class ScopedTempFiles {
 };
 
 bool SignalIsIgnored(int signo);
+// Return 0 if no android version.
+int GetAndroidVersion();
 
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_

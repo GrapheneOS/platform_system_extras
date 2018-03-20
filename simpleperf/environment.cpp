@@ -728,3 +728,20 @@ bool SignalIsIgnored(int signo) {
 
   return act.sa_handler == SIG_IGN;
 }
+
+int GetAndroidVersion() {
+#if defined(__ANDROID__)
+  std::string s = android::base::GetProperty("ro.build.version.release", "");
+  if (!s.empty()) {
+    if (s[0] >= 'A' && s[0] <= 'Z') {
+      return s[0] - 'O' + 8;
+    }
+    if (isdigit(s[0])) {
+      int result;
+      sscanf(s.c_str(), "%d", &result);
+      return result;
+    }
+  }
+#endif  // defined(__ANDROID__)
+  return 0;
+}
