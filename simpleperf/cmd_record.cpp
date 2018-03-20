@@ -42,6 +42,7 @@
 #include "event_selection_set.h"
 #include "event_type.h"
 #include "IOEventLoop.h"
+#include "JITDebugReader.h"
 #include "OfflineUnwinder.h"
 #include "perf_clock.h"
 #include "read_apk.h"
@@ -253,6 +254,7 @@ class RecordCommand : public Command {
   bool SaveRecordForPostUnwinding(Record* record);
   bool SaveRecordAfterUnwinding(Record* record);
   bool SaveRecordWithoutUnwinding(Record* record);
+  bool UpdateJITDebugInfo();
 
   void UpdateRecordForEmbeddedElfPath(Record* record);
   bool UnwindRecord(SampleRecord& r);
@@ -301,6 +303,8 @@ class RecordCommand : public Command {
   bool allow_callchain_joiner_;
   size_t callchain_joiner_min_matching_nodes_;
   std::unique_ptr<CallChainJoiner> callchain_joiner_;
+
+  std::unique_ptr<JITDebugReader> jit_debug_reader_;
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
@@ -377,6 +381,7 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
 
   // 4. Add monitored targets.
   bool need_to_check_targets = false;
+  pid_t app_pid = 0;
   if (system_wide_collection_) {
     event_selection_set_.AddMonitoredThreads({-1});
   } else if (!event_selection_set_.HasMonitoredTarget()) {
@@ -396,6 +401,10 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
       std::set<pid_t> pids = WaitForAppProcesses(app_package_name_);
       event_selection_set_.AddMonitoredProcesses(pids);
       need_to_check_targets = true;
+      if (!pids.empty()) {
+        // TODO: support a JITDebugReader for each app process?
+        app_pid = *pids.begin();
+      }
     } else {
       LOG(ERROR)
           << "No threads to monitor. Try `simpleperf help record` for help";
@@ -444,6 +453,21 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   if (duration_in_sec_ != 0) {
     if (!loop->AddPeriodicEvent(SecondToTimeval(duration_in_sec_),
                                 [loop]() { return loop->ExitLoop(); })) {
+      return false;
+    }
+  }
+  // Profiling JITed/interpreted code is supported starting from Android P.
+  if (app_pid != 0 && GetAndroidVersion() >= 9) {
+    // JIT symfiles are stored in temporary files, and are deleted after recording. But if
+    // `-g --no-unwind` option is used, we want to keep symfiles to support unwinding in
+    // the debug-unwind cmd.
+    bool keep_symfiles = dwarf_callchain_sampling_ && !unwind_dwarf_callchain_;
+    jit_debug_reader_.reset(new JITDebugReader(app_pid, keep_symfiles));
+    // Update JIT info at the beginning of recording.
+    if (!UpdateJITDebugInfo()) {
+      return false;
+    }
+    if (!loop->AddPeriodicEvent(SecondToTimeval(0.1), [&]() { return UpdateJITDebugInfo(); })) {
       return false;
     }
   }
@@ -1075,6 +1099,14 @@ bool RecordCommand::SaveRecordWithoutUnwinding(Record* record) {
     lost_record_count_ += static_cast<LostRecord*>(record)->lost;
   }
   return record_file_writer_->WriteRecord(*record);
+}
+
+bool RecordCommand::UpdateJITDebugInfo() {
+  std::vector<JITSymFile> jit_symfiles;
+  std::vector<DexSymFile> dex_symfiles;
+  jit_debug_reader_->ReadUpdate(&jit_symfiles, &dex_symfiles);
+  // TODO: Handle jit/dex symfiles.
+  return true;
 }
 
 template <class RecordType>
