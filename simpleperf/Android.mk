@@ -116,6 +116,7 @@ libsimpleperf_src_files_linux := \
   event_selection_set.cpp \
   InplaceSamplerClient.cpp \
   IOEventLoop.cpp \
+  JITDebugReader.cpp \
   OfflineUnwinder.cpp \
   perf_clock.cpp \
   record_file_writer.cpp \
