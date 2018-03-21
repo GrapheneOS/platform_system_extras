@@ -81,6 +81,7 @@ extern void RegisterReportCommand();
 extern void RegisterReportSampleCommand();
 extern void RegisterStatCommand();
 extern void RegisterDebugUnwindCommand();
+extern void RegisterTraceSchedCommand();
 
 class CommandRegister {
  public:
@@ -95,6 +96,7 @@ class CommandRegister {
     RegisterRecordCommand();
     RegisterStatCommand();
     RegisterDebugUnwindCommand();
+    RegisterTraceSchedCommand();
 #endif
   }
 };
