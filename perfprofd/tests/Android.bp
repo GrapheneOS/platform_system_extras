@@ -50,6 +50,14 @@ cc_test {
                 "-lncurses",
             ],
         },
+
+        // The live tests require simpleperf.
+        android: {
+            required: [
+                "simpleperf",
+            ],
+        },
+
     },
     srcs: [
         "perfprofd_test.cc",
