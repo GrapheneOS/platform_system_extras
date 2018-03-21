@@ -60,7 +60,7 @@ using Status = ::android::binder::Status;
 
 class BinderConfig : public Config {
  public:
-  bool send_to_dropbox = true;
+  bool send_to_dropbox = false;
 
   bool is_profiling = false;
 
