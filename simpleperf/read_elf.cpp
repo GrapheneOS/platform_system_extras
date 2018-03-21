@@ -73,16 +73,17 @@ std::ostream& operator<<(std::ostream& os, const ElfStatus& status) {
   return os;
 }
 
-ElfStatus IsValidElfFile(int fd) {
+bool IsValidElfFileMagic(const char* buf, size_t buf_size) {
   static const char elf_magic[] = {0x7f, 'E', 'L', 'F'};
+  return (buf_size >= 4u && memcmp(buf, elf_magic, 4) == 0);
+}
+
+ElfStatus IsValidElfFile(int fd) {
   char buf[4];
   if (!android::base::ReadFully(fd, buf, 4)) {
     return ElfStatus::READ_FAILED;
   }
-  if (memcmp(buf, elf_magic, 4) != 0) {
-    return ElfStatus::FILE_MALFORMED;
-  }
-  return ElfStatus::NO_ERROR;
+  return IsValidElfFileMagic(buf, 4) ? ElfStatus::NO_ERROR : ElfStatus::FILE_MALFORMED;
 }
 
 ElfStatus IsValidElfPath(const std::string& filename) {
@@ -203,8 +204,8 @@ static ElfStatus OpenObjectFile(const std::string& filename, uint64_t file_offse
   return ElfStatus::NO_ERROR;
 }
 
-static ElfStatus OpenObjectFileFromString(const std::string& s, BinaryWrapper* wrapper) {
-  auto buffer = llvm::MemoryBuffer::getMemBuffer(s);
+static ElfStatus OpenObjectFileInMemory(const char* data, size_t size, BinaryWrapper* wrapper) {
+  auto buffer = llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(data, size));
   auto binary_or_err = llvm::object::createBinary(buffer->getMemBufferRef());
   if (!binary_or_err) {
     return ElfStatus::FILE_MALFORMED;
@@ -393,7 +394,8 @@ ElfStatus ParseSymbolsFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf,
     std::string decompressed_data;
     if (XzDecompress(debugdata, &decompressed_data)) {
       BinaryWrapper wrapper;
-      result = OpenObjectFileFromString(decompressed_data, &wrapper);
+      result = OpenObjectFileInMemory(decompressed_data.data(), decompressed_data.size(),
+                                      &wrapper);
       if (result == ElfStatus::NO_ERROR) {
         if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(wrapper.obj)) {
           return ParseSymbolsFromELFFile(elf, callback);
@@ -453,6 +455,45 @@ ElfStatus ParseSymbolsFromEmbeddedElfFile(const std::string& filename, uint64_t 
   return ElfStatus::FILE_MALFORMED;
 }
 
+ElfStatus ParseSymbolsFromElfFileInMemory(const char* data, size_t size,
+                                          const std::function<void(const ElfFileSymbol&)>& callback) {
+  BinaryWrapper wrapper;
+  ElfStatus result = OpenObjectFileInMemory(data, size, &wrapper);
+  if (result != ElfStatus::NO_ERROR) {
+    return result;
+  }
+  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(wrapper.obj)) {
+    return ParseSymbolsFromELFFile(elf, callback);
+  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(wrapper.obj)) {
+    return ParseSymbolsFromELFFile(elf, callback);
+  }
+  return ElfStatus::FILE_MALFORMED;
+}
+
+template <class ELFT>
+ElfStatus ParseDynamicSymbolsFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf,
+                                         const std::function<void(const ElfFileSymbol&)>& callback) {
+  auto machine = elf->getELFFile()->getHeader()->e_machine;
+  bool is_arm = (machine == llvm::ELF::EM_ARM || machine == llvm::ELF::EM_AARCH64);
+  ReadSymbolTable(elf->dynamic_symbol_begin(), elf->dynamic_symbol_end(), callback, is_arm);
+  return ElfStatus::NO_ERROR;
+}
+
+ElfStatus ParseDynamicSymbolsFromElfFile(const std::string& filename,
+                                         const std::function<void(const ElfFileSymbol&)>& callback) {
+  BinaryWrapper wrapper;
+  ElfStatus result = OpenObjectFile(filename, 0, 0, &wrapper);
+  if (result != ElfStatus::NO_ERROR) {
+    return result;
+  }
+  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(wrapper.obj)) {
+    return ParseDynamicSymbolsFromELFFile(elf, callback);
+  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(wrapper.obj)) {
+    return ParseDynamicSymbolsFromELFFile(elf, callback);
+  }
+  return ElfStatus::FILE_MALFORMED;
+}
+
 template <class ELFT>
 ElfStatus ReadMinExecutableVirtualAddress(const llvm::object::ELFFile<ELFT>* elf, uint64_t* p_vaddr) {
   bool has_vaddr = false;
@@ -466,7 +507,8 @@ ElfStatus ReadMinExecutableVirtualAddress(const llvm::object::ELFFile<ELFT>* elf
     }
   }
   if (!has_vaddr) {
-    return ElfStatus::FILE_MALFORMED;
+    // JIT symfiles don't have program headers.
+    min_addr = 0;
   }
   *p_vaddr = min_addr;
   return ElfStatus::NO_ERROR;
