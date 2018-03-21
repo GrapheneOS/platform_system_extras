@@ -41,9 +41,12 @@
 #include "config.h"
 #include "configreader.h"
 #include "perfprofdcore.h"
+#include "quipper_helper.h"
 #include "symbolizer.h"
 
 #include "perfprofd_record.pb.h"
+
+using namespace android::perfprofd::quipper;
 
 //
 // Set to argv[0] on startup
@@ -379,42 +382,6 @@ static void readEncodedProfile(const std::string& dest_dir,
   encodedProfile.ParseFromString(encoded);
 }
 
-/*
-static std::string encodedLoadModuleToString(const wireless_android_play_playlog::LoadModule &lm)
-{
-  std::stringstream ss;
-  ss << "name: \"" << lm.name() << "\"\n";
-  if (lm.build_id() != "") {
-    ss << "build_id: \"" << lm.build_id() << "\"\n";
-  }
-  for (const auto& symbol : lm.symbol()) {
-    ss << "symbol: \"" << symbol << "\"\n";
-  }
-  return ss.str();
-}
-*/
-
-/*
-static std::string encodedModuleSamplesToString(const wireless_android_play_playlog::LoadModuleSamples &mod)
-{
-  std::stringstream ss;
-
-  ss << "load_module_id: " << mod.load_module_id() << "\n";
-  for (size_t k = 0; k < mod.address_samples_size(); k++) {
-    const auto &sample = mod.address_samples(k);
-    ss << "  address_samples {\n";
-    for (size_t l = 0; l < mod.address_samples(k).address_size();
-         l++) {
-      auto address = mod.address_samples(k).address(l);
-      ss << "    address: " << address << "\n";
-    }
-    ss << "    count: " << sample.count() << "\n";
-    ss << "  }\n";
-  }
-  return ss.str();
-}
-*/
-
 #define RAW_RESULT(x) #x
 
 TEST_F(PerfProfdTest, TestUtil)
@@ -630,125 +597,6 @@ TEST_F(PerfProfdTest, ProfileCollectionAnnotations)
 }
 
 namespace {
-
-template<typename Iterator, typename Predicate>
-class FilteredIterator {
- public:
-  using value_type =      typename std::iterator_traits<Iterator>::value_type;
-  using difference_type = typename std::iterator_traits<Iterator>::difference_type;
-  using reference =       typename std::iterator_traits<Iterator>::reference;
-  using pointer =         typename std::iterator_traits<Iterator>::pointer;
-
-  FilteredIterator(const Iterator& begin, const Iterator& end, const Predicate& pred)
-      : iter_(begin), end_(end), pred_(pred) {
-    filter();
-  }
-
-  reference operator*() const {
-    return *iter_;
-  }
-  pointer operator->() const {
-    return std::addressof(*iter_);
-  }
-
-  FilteredIterator& operator++() {
-    ++iter_;
-    filter();
-    return *this;
-  }
-
-  FilteredIterator end() {
-    return FilteredIterator(end_, end_, pred_);
-  }
-
-  bool operator==(const FilteredIterator& rhs) const {
-    return iter_ == rhs.iter_;
-  }
-  bool operator!=(const FilteredIterator& rhs) const {
-    return !(operator==(rhs));
-  }
-
-private:
-  void filter() {
-    while (iter_ != end_ && !pred_(*iter_)) {
-      ++iter_;
-    }
-  }
-
-  Iterator iter_;
-  Iterator end_;
-  Predicate pred_;
-};
-
-template <typename Predicate>
-using EventFilteredIterator = FilteredIterator<
-    decltype(static_cast<quipper::PerfDataProto*>(nullptr)->events().begin()),
-    Predicate>;
-
-struct CommEventPredicate {
-  bool operator()(const quipper::PerfDataProto_PerfEvent& evt) {
-    return evt.has_comm_event();
-  }
-};
-struct CommEventIterator : public EventFilteredIterator<CommEventPredicate> {
-  explicit CommEventIterator(const quipper::PerfDataProto& proto)
-      : EventFilteredIterator<CommEventPredicate>(proto.events().begin(),
-                                                  proto.events().end(),
-                                                  CommEventPredicate()) {
-  }
-};
-
-struct MmapEventPredicate {
-  bool operator()(const quipper::PerfDataProto_PerfEvent& evt) {
-    return evt.has_mmap_event();
-  }
-};
-struct MmapEventIterator : public EventFilteredIterator<MmapEventPredicate> {
-  explicit MmapEventIterator(const quipper::PerfDataProto& proto)
-      : EventFilteredIterator<MmapEventPredicate>(proto.events().begin(),
-                                                  proto.events().end(),
-                                                  MmapEventPredicate()) {
-  }
-};
-
-struct SampleEventPredicate {
-  bool operator()(const quipper::PerfDataProto_PerfEvent& evt) {
-    return evt.has_sample_event();
-  }
-};
-struct SampleEventIterator : public EventFilteredIterator<SampleEventPredicate> {
-  explicit SampleEventIterator(const quipper::PerfDataProto& proto)
-      : EventFilteredIterator<SampleEventPredicate>(proto.events().begin(),
-                                                    proto.events().end(),
-                                                    SampleEventPredicate()) {
-  }
-};
-
-struct ForkEventPredicate {
-  bool operator()(const quipper::PerfDataProto_PerfEvent& evt) {
-    return evt.has_fork_event();
-  }
-};
-struct ForkEventIterator : public EventFilteredIterator<ForkEventPredicate> {
-  explicit ForkEventIterator(const quipper::PerfDataProto& proto)
-      : EventFilteredIterator<ForkEventPredicate>(proto.events().begin(),
-                                                  proto.events().end(),
-                                                  ForkEventPredicate()) {
-  }
-};
-
-struct ExitEventPredicate {
-  bool operator()(const quipper::PerfDataProto_PerfEvent& evt) {
-    return evt.has_exit_event();
-  }
-};
-struct ExitEventIterator : public EventFilteredIterator<ExitEventPredicate> {
-  explicit ExitEventIterator(const quipper::PerfDataProto& proto)
-      : EventFilteredIterator<ExitEventPredicate>(proto.events().begin(),
-                                                  proto.events().end(),
-                                                  ExitEventPredicate()) {
-  }
-};
 
 template <typename Iterator>
 size_t CountEvents(const quipper::PerfDataProto& proto) {
