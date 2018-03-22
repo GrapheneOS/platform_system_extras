@@ -51,6 +51,7 @@
 
 #include "config.h"
 #include "perfprofdcore.h"
+#include "perfprofd_io.h"
 
 namespace android {
 namespace perfprofd {
@@ -233,8 +234,7 @@ bool PerfProfdNativeService::BinderHandler(
   std::string data_file_path(config->destination_directory);
   data_file_path += "/perf.data";
   std::string path = android::base::StringPrintf("%s.encoded.%d", data_file_path.c_str(), seq_);
-  PROFILE_RESULT result = SerializeProtobuf(encodedProfile, path.c_str());
-  if (result != PROFILE_RESULT::OK_PROFILE_COLLECTION) {
+  if (!SerializeProtobuf(encodedProfile, path.c_str())) {
     return false;
   }
 
