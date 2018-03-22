@@ -486,6 +486,11 @@ TEST_F(ReportCommandTest, report_offcpu_time) {
   ASSERT_TRUE(found);
 }
 
+TEST_F(ReportCommandTest, report_big_trace_data) {
+  Report(PERF_DATA_WITH_BIG_TRACE_DATA);
+  ASSERT_TRUE(success);
+}
+
 #if defined(__linux__)
 #include "event_selection_set.h"
 

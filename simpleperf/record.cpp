@@ -51,6 +51,7 @@ static std::string RecordTypeToString(int record_type) {
       {SIMPLE_PERF_RECORD_EVENT_ID, "event_id"},
       {SIMPLE_PERF_RECORD_CALLCHAIN, "callchain"},
       {SIMPLE_PERF_RECORD_UNWINDING_RESULT, "unwinding_result"},
+      {SIMPLE_PERF_RECORD_TRACING_DATA, "tracing_data"},
   };
 
   auto it = record_type_names.find(record_type);
@@ -990,7 +991,7 @@ TracingDataRecord::TracingDataRecord(char* p) : Record(p) {
 }
 
 TracingDataRecord::TracingDataRecord(const std::vector<char>& tracing_data) {
-  SetTypeAndMisc(PERF_RECORD_TRACING_DATA, 0);
+  SetTypeAndMisc(SIMPLE_PERF_RECORD_TRACING_DATA, 0);
   data_size = tracing_data.size();
   SetSize(header_size() + sizeof(uint32_t) + Align(tracing_data.size(), 64));
   char* new_binary = new char[size()];
@@ -1193,6 +1194,8 @@ std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr, uint32
       return std::unique_ptr<Record>(new CallChainRecord(p));
     case SIMPLE_PERF_RECORD_UNWINDING_RESULT:
       return std::unique_ptr<Record>(new UnwindingResultRecord(p));
+    case SIMPLE_PERF_RECORD_TRACING_DATA:
+      return std::unique_ptr<Record>(new TracingDataRecord(p));
     default:
       return std::unique_ptr<Record>(new UnknownRecord(p));
   }
