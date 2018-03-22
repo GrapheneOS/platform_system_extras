@@ -50,6 +50,7 @@ enum user_record_type {
   SIMPLE_PERF_RECORD_EVENT_ID,
   SIMPLE_PERF_RECORD_CALLCHAIN,
   SIMPLE_PERF_RECORD_UNWINDING_RESULT,
+  SIMPLE_PERF_RECORD_TRACING_DATA,
 };
 
 // perf_event_header uses u16 to store record size. However, that is not

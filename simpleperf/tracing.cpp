@@ -24,6 +24,7 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
@@ -295,14 +296,23 @@ static TracingField ParseTracingField(const std::string& s) {
     } else if (s[i] == ';') {
       value = s.substr(start, i - start);
       if (name == "field") {
-        size_t pos = value.find('[');
-        if (pos == std::string::npos) {
+        // Parse value with brackets like "comm[16]", or just a field name.
+        size_t left_bracket_pos = value.find('[');
+        if (left_bracket_pos == std::string::npos) {
           field.name = value;
           field.elem_count = 1;
         } else {
-          field.name = value.substr(0, pos);
-          field.elem_count =
-              static_cast<size_t>(strtoull(&value[pos + 1], nullptr, 10));
+          field.name = value.substr(0, left_bracket_pos);
+          field.elem_count = 1;
+          size_t right_bracket_pos = value.find(']', left_bracket_pos);
+          if (right_bracket_pos != std::string::npos) {
+            size_t len = right_bracket_pos - left_bracket_pos - 1;
+            size_t elem_count;
+            // Array size may not be a number, like field:u32 rates[IEEE80211_NUM_BANDS].
+            if (android::base::ParseUint(value.substr(left_bracket_pos + 1, len), &elem_count)) {
+              field.elem_count = elem_count;
+            }
+          }
         }
       } else if (name == "offset") {
         field.offset =

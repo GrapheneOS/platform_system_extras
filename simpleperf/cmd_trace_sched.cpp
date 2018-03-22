@@ -251,7 +251,8 @@ void TraceSchedCommand::ProcessRecord(Record& record) {
       child_thread.name = parent_thread.name;
       break;
     }
-    case PERF_RECORD_TRACING_DATA: {
+    case PERF_RECORD_TRACING_DATA:
+    case SIMPLE_PERF_RECORD_TRACING_DATA: {
       const TracingDataRecord& r = *static_cast<const TracingDataRecord*>(&record);
       Tracing tracing(std::vector<char>(r.data, r.data + r.data_size));
       const EventType* event = FindEventTypeByName("sched:sched_stat_runtime");
