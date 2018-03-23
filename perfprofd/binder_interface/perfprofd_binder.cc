@@ -184,13 +184,18 @@ static Status WriteDropboxFile(android::perfprofd::PerfprofdRecord* encodedProfi
     }
   }
 
-  if (!SerializeProtobuf(encodedProfile, std::move(tmp_fd))) {
+  constexpr bool kCompress = true;  // Ignore the config here. Dropbox will always end up
+                                    // compressing the data, might as well make the temp
+                                    // file smaller and help it out.
+  using DropBoxManager = android::os::DropBoxManager;
+  constexpr int kDropboxFlags = DropBoxManager::IS_GZIPPED;
+
+  if (!SerializeProtobuf(encodedProfile, std::move(tmp_fd), kCompress)) {
     return Status::fromExceptionCode(1, "Could not serialize to temp file");
   }
 
-  using DropBoxManager = android::os::DropBoxManager;
   sp<DropBoxManager> dropbox(new DropBoxManager());
-  return dropbox->addFile(String16("perfprofd"), read_only.release(), 0);
+  return dropbox->addFile(String16("perfprofd"), read_only.release(), kDropboxFlags);
 }
 
 bool PerfProfdNativeService::BinderHandler(
@@ -227,7 +232,7 @@ bool PerfProfdNativeService::BinderHandler(
   std::string data_file_path(config->destination_directory);
   data_file_path += "/perf.data";
   std::string path = android::base::StringPrintf("%s.encoded.%d", data_file_path.c_str(), seq_);
-  if (!SerializeProtobuf(encodedProfile, path.c_str())) {
+  if (!SerializeProtobuf(encodedProfile, path.c_str(), config->compress)) {
     return false;
   }
 

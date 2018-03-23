@@ -516,7 +516,9 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
     return ERR_PERF_ENCODE_FAILED;
   }
 
-  return android::perfprofd::SerializeProtobuf(encodedProfile.get(), encoded_file_path)
+  return android::perfprofd::SerializeProtobuf(encodedProfile.get(),
+                                               encoded_file_path,
+                                               config.compress)
       ? OK_PROFILE_COLLECTION
       : ERR_WRITE_ENCODED_FILE_FAILED;
 }
@@ -1009,7 +1011,7 @@ int perfprofd_main(int argc, char** argv, Config* config)
     data_file_path += "/";
     data_file_path += PERF_OUTPUT;
     std::string path = android::base::StringPrintf("%s.encoded.%d", data_file_path.c_str(), seq);
-    if (!android::perfprofd::SerializeProtobuf(proto, path.c_str())) {
+    if (!android::perfprofd::SerializeProtobuf(proto, path.c_str(), handler_config->compress)) {
       return false;
     }
 
