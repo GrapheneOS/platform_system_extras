@@ -732,7 +732,10 @@ bool SignalIsIgnored(int signo) {
 int GetAndroidVersion() {
 #if defined(__ANDROID__)
   std::string s = android::base::GetProperty("ro.build.version.release", "");
+  // The release string can be a list of numbers (like 8.1.0), a character (like Q)
+  // or many characters (like OMR1).
   if (!s.empty()) {
+    // Each Android version has a version number: L is 5, M is 6, N is 7, O is 8, etc.
     if (s[0] >= 'A' && s[0] <= 'Z') {
       return s[0] - 'O' + 8;
     }

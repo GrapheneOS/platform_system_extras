@@ -224,7 +224,8 @@ class RecordCommand : public Command {
         trace_offcpu_(false),
         exclude_kernel_callchain_(false),
         allow_callchain_joiner_(true),
-        callchain_joiner_min_matching_nodes_(1u) {
+        callchain_joiner_min_matching_nodes_(1u),
+        last_record_timestamp_(0u) {
     // If we run `adb shell simpleperf record xxx` and stop profiling by ctrl-c, adb closes
     // sockets connecting simpleperf. After that, simpleperf will receive SIGPIPE when writing
     // to stdout/stderr, which is a problem when we use '--app' option. So ignore SIGPIPE to
@@ -305,6 +306,7 @@ class RecordCommand : public Command {
   std::unique_ptr<CallChainJoiner> callchain_joiner_;
 
   std::unique_ptr<JITDebugReader> jit_debug_reader_;
+  uint64_t last_record_timestamp_;  // used to insert Mmap2Records for JIT debug info
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
@@ -457,7 +459,8 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     }
   }
   // Profiling JITed/interpreted code is supported starting from Android P.
-  if (app_pid != 0 && GetAndroidVersion() >= 9) {
+  const int kAndroidVersionP = 9;
+  if (app_pid != 0 && GetAndroidVersion() >= kAndroidVersionP) {
     // JIT symfiles are stored in temporary files, and are deleted after recording. But if
     // `-g --no-unwind` option is used, we want to keep symfiles to support unwinding in
     // the debug-unwind cmd.
@@ -467,7 +470,13 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     if (!UpdateJITDebugInfo()) {
       return false;
     }
-    if (!loop->AddPeriodicEvent(SecondToTimeval(0.1), [&]() { return UpdateJITDebugInfo(); })) {
+    // It takes about 30us-130us on Pixel (depending on the cpu frequency) to check update when
+    // no update happens (most time spent in process_vm_preadv). We want to know the JIT debug
+    // info change as soon as possible, while not wasting too much time checking updates. So use
+    // a period of 100 ms.
+    const double kUpdateJITDebugInfoPeriodInSecond = 0.1;
+    if (!loop->AddPeriodicEvent(SecondToTimeval(kUpdateJITDebugInfoPeriodInSecond),
+                                [&]() { return UpdateJITDebugInfo(); })) {
       return false;
     }
   }
@@ -1038,6 +1047,7 @@ bool RecordCommand::DumpThreadCommAndMmaps(const perf_event_attr& attr,
 }
 
 bool RecordCommand::ProcessRecord(Record* record) {
+  last_record_timestamp_ = record->Timestamp();
   if (unwind_dwarf_callchain_) {
     if (post_unwind_) {
       return SaveRecordForPostUnwinding(record);
@@ -1105,7 +1115,23 @@ bool RecordCommand::UpdateJITDebugInfo() {
   std::vector<JITSymFile> jit_symfiles;
   std::vector<DexSymFile> dex_symfiles;
   jit_debug_reader_->ReadUpdate(&jit_symfiles, &dex_symfiles);
-  // TODO: Handle jit/dex symfiles.
+  if (jit_symfiles.empty() && dex_symfiles.empty()) {
+    return true;
+  }
+  // Process records before dumping symfiles, so new symfiles won't affect old samples.
+  if (!event_selection_set_.ReadMmapEventData()) {
+    return false;
+  }
+  EventAttrWithId attr_id = event_selection_set_.GetEventAttrWithId()[0];
+  for (auto& symfile : jit_symfiles) {
+    Mmap2Record record(*attr_id.attr, false, jit_debug_reader_->Pid(), jit_debug_reader_->Pid(),
+                       symfile.addr, symfile.len, 0, map_flags::PROT_JIT_SYMFILE_MAP,
+                       symfile.file_path, attr_id.ids[0], last_record_timestamp_);
+    if (!ProcessRecord(&record)) {
+      return false;
+    }
+  }
+  // TODO: Handle dex symfiles.
   return true;
 }
 

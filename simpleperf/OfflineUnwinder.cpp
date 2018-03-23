@@ -23,6 +23,7 @@
 #include <unwindstack/MachineArm64.h>
 #include <unwindstack/MachineX86.h>
 #include <unwindstack/MachineX86_64.h>
+#include <unwindstack/Maps.h>
 #include <unwindstack/Regs.h>
 #include <unwindstack/RegsArm.h>
 #include <unwindstack/RegsArm64.h>
@@ -37,6 +38,10 @@
 #include "perf_regs.h"
 #include "read_apk.h"
 #include "thread_tree.h"
+
+static_assert(simpleperf::map_flags::PROT_JIT_SYMFILE_MAP == PROT_JIT_SYMFILE_MAP, "");
+static_assert(simpleperf::map_flags::PROT_JIT_SYMFILE_MAP ==
+              unwindstack::MAPS_FLAGS_JIT_SYMFILE_MAP, "");
 
 namespace simpleperf {
 
@@ -154,7 +159,7 @@ bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& r
           }
         }
       }
-      bt_map.flags = PROT_READ | PROT_EXEC;
+      bt_map.flags = PROT_READ | PROT_EXEC | map->flags;
     }
     cached_map.map.reset(BacktraceMap::CreateOffline(thread.pid, bt_maps));
     if (!cached_map.map) {
