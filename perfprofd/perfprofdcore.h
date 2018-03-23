@@ -82,9 +82,6 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
                                unsigned cpu_utilization,
                                perfprofd::Symbolizer* symbolizer);
 
-PROFILE_RESULT SerializeProtobuf(android::perfprofd::PerfprofdRecord* encodedProfile,
-                                 const char* encoded_file_path);
-
 using HandlerFn = std::function<bool(android::perfprofd::PerfprofdRecord* proto,
                                      Config* config)>;
 
