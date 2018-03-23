@@ -71,6 +71,7 @@ cc_library_static {
         "configreader.cc",
         "cpuconfig.cc",
         "perfprofdcore.cc",
+        "perfprofd_io.cc",
         "symbolizer.cc"
     ],
 
