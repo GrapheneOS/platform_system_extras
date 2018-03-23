@@ -123,6 +123,11 @@ cc_binary {
             enabled: false,
         },
     },
+
+    // We're technically independent, but ensure simpleperf is there.
+    required: [
+        "simpleperf",
+    ],
 }
 
 subdirs = [

@@ -19,6 +19,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <memory>
@@ -33,6 +34,7 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
+#include <android-base/test_utils.h>
 #include <android-base/unique_fd.h>
 #include <android/os/DropBoxManager.h>
 #include <binder/BinderService.h>
@@ -149,24 +151,78 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
   int seq_ = 0;
 };
 
+static Status WriteDropboxFile(android::perfprofd::PerfprofdRecord* encodedProfile,
+                               Config* config) {
+  TemporaryFile tmp_file(config->destination_directory);
+  // Remove the temp file from the file system for security reasons.
+  tmp_file.DoNotRemove();
+  if (unlink(tmp_file.path) != 0) {
+    PLOG(WARNING) << "Could not unlink binder temp file";
+  }
+
+  {
+    // protobuf-lite doesn't have file streams.
+    struct FileCopyingOutputStream : public google::protobuf::io::CopyingOutputStream {
+      int fd;
+      explicit FileCopyingOutputStream(int fd_in) : fd(fd_in) {
+      }
+      bool Write(const void * buffer, int size) override {
+        return android::base::WriteFully(fd, buffer, size);
+      }
+    };
+    FileCopyingOutputStream fcos(tmp_file.fd);
+    google::protobuf::io::CopyingOutputStreamAdaptor cosa(&fcos);
+    bool serialized = encodedProfile->SerializeToZeroCopyStream(&cosa);
+    if (!serialized) {
+      return Status::fromExceptionCode(1, "Failed to serialize proto");
+    }
+    cosa.Flush();
+
+    // TODO: Is an fsync necessary here?
+  }
+
+  // Dropbox takes ownership of the fd, and if it is not readonly,
+  // a selinux violation will occur. Get a read-only version.
+  android::base::unique_fd read_only;
+  {
+    char fdpath[64];
+    snprintf(fdpath, arraysize(fdpath), "/proc/self/fd/%d", tmp_file.fd);
+    read_only.reset(open(fdpath, O_RDONLY | O_CLOEXEC));
+    if (read_only.get() < 0) {
+      PLOG(ERROR) << "Could not create read-only fd";
+      return Status::fromExceptionCode(1, "Could not create read-only fd");
+    }
+  }
+
+  using DropBoxManager = android::os::DropBoxManager;
+  sp<DropBoxManager> dropbox(new DropBoxManager());
+  return dropbox->addFile(String16("perfprofd"), read_only.release(), 0);
+}
+
 bool PerfProfdNativeService::BinderHandler(
     android::perfprofd::PerfprofdRecord* encodedProfile,
     Config* config) {
   CHECK(config != nullptr);
   if (static_cast<BinderConfig*>(config)->send_to_dropbox) {
     size_t size = encodedProfile->ByteSize();
-    std::unique_ptr<uint8_t[]> data(new uint8_t[size]);
-    encodedProfile->SerializeWithCachedSizesToArray(data.get());
+    Status status;
+    if (size < 1024 * 1024) {
+      // For a small size, send as a byte buffer directly.
+      std::unique_ptr<uint8_t[]> data(new uint8_t[size]);
+      encodedProfile->SerializeWithCachedSizesToArray(data.get());
 
-    using DropBoxManager = android::os::DropBoxManager;
-    sp<DropBoxManager> dropbox(new DropBoxManager());
-    Status status = dropbox->addData(String16("perfprofd"),
-                                     data.get(),
-                                     size,
-                                     0);
+      using DropBoxManager = android::os::DropBoxManager;
+      sp<DropBoxManager> dropbox(new DropBoxManager());
+      status = dropbox->addData(String16("perfprofd"),
+                                data.get(),
+                                size,
+                                0);
+    } else {
+      // For larger buffers, we need to go through the filesystem.
+      status = WriteDropboxFile(encodedProfile, config);
+    }
     if (!status.isOk()) {
-      LOG(WARNING) << "Failed dropbox submission: " << status.exceptionCode()
-                   << " " << status.exceptionMessage().c_str();
+      LOG(WARNING) << "Failed dropbox submission: " << status.toString8();
     }
     return status.isOk();
   }
