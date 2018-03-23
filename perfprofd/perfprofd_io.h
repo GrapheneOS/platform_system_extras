@@ -26,9 +26,11 @@ namespace android {
 namespace perfprofd {
 
 bool SerializeProtobuf(android::perfprofd::PerfprofdRecord* encodedProfile,
-                       const char* encoded_file_path);
+                       const char* encoded_file_path,
+                       bool compress = true);
 bool SerializeProtobuf(android::perfprofd::PerfprofdRecord* encodedProfile,
-                       android::base::unique_fd&& fd);
+                       android::base::unique_fd&& fd,
+                       bool compress = true);
 
 }  // namespace perfprofd
 }  // namespace android

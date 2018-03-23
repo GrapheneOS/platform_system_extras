@@ -36,6 +36,7 @@ cc_test {
         "libsimpleperf_elf_read",
         "libbase",
         "libutils",
+        "libz",
     ],
     shared_libs: [
         "libprotobuf-cpp-lite",
