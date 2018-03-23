@@ -37,6 +37,7 @@
 #include <android-base/test_utils.h>
 #include <android-base/thread_annotations.h>
 #include <gtest/gtest.h>
+#include <zlib.h>
 
 #include "config.h"
 #include "configreader.h"
@@ -362,7 +363,7 @@ static std::string encoded_file_path(const std::string& dest_dir,
 }
 
 static void readEncodedProfile(const std::string& dest_dir,
-                               const char *testpoint,
+                               bool compressed,
                                android::perfprofd::PerfprofdRecord& encodedProfile)
 {
   struct stat statb;
@@ -377,6 +378,54 @@ static void readEncodedProfile(const std::string& dest_dir,
   size_t items_read = fread((void*) encoded.data(), statb.st_size, 1, ifp);
   ASSERT_EQ(1, items_read);
   fclose(ifp);
+
+  // uncompress
+  if (compressed && !encoded.empty()) {
+    z_stream stream;
+    stream.zalloc = Z_NULL;
+    stream.zfree = Z_NULL;
+    stream.opaque = Z_NULL;
+
+    {
+      constexpr int kWindowBits = 15;
+      constexpr int kGzipEncoding = 16;
+      int init_result = inflateInit2(&stream, kWindowBits | kGzipEncoding);
+      if (init_result != Z_OK) {
+        LOG(ERROR) << "Could not initialize libz stream " << init_result;
+        return;
+      }
+    }
+
+    std::string buf;
+    buf.reserve(2 * encoded.size());
+    stream.avail_in = encoded.size();
+    stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(encoded.data()));
+
+    int result;
+    do {
+      uint8_t chunk[1024];
+      stream.next_out = static_cast<Bytef*>(chunk);
+      stream.avail_out = arraysize(chunk);
+
+      result = inflate(&stream, 0);
+      const size_t amount = arraysize(chunk) - stream.avail_out;
+      if (amount > 0) {
+        if (buf.capacity() - buf.size() < amount) {
+          buf.reserve(buf.capacity() + 64u * 1024u);
+          CHECK_LE(amount, buf.capacity() - buf.size());
+        }
+        size_t index = buf.size();
+        buf.resize(buf.size() + amount);
+        memcpy(reinterpret_cast<uint8_t*>(const_cast<char*>(buf.data())) + index, chunk, amount);
+      }
+    } while (result == Z_OK);
+    inflateEnd(&stream);
+    if (result != Z_STREAM_END) {
+      LOG(ERROR) << "Finished with not-Z_STREAM_END " << result;
+      return;
+    }
+    encoded = buf;
+  }
 
   // decode
   encodedProfile.ParseFromString(encoded);
@@ -658,7 +707,125 @@ std::string FormatSampleEvent(const quipper::PerfDataProto_SampleEvent& sample) 
 
 }
 
-TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
+struct BasicRunWithCannedPerf : PerfProfdTest {
+  void VerifyBasicCannedProfile(const android::perfprofd::PerfprofdRecord& encodedProfile) {
+    ASSERT_TRUE(encodedProfile.has_perf_data()) << test_logger.JoinTestLog(" ");
+    const quipper::PerfDataProto& perf_data = encodedProfile.perf_data();
+
+    // Expect 21108 events.
+    EXPECT_EQ(21108, perf_data.events_size()) << CreateStats(perf_data);
+
+    EXPECT_EQ(48,    CountMmapEvents(perf_data)) << CreateStats(perf_data);
+    EXPECT_EQ(19986, CountSampleEvents(perf_data)) << CreateStats(perf_data);
+    EXPECT_EQ(1033,  CountCommEvents(perf_data)) << CreateStats(perf_data);
+    EXPECT_EQ(15,    CountForkEvents(perf_data)) << CreateStats(perf_data);
+    EXPECT_EQ(26,    CountExitEvents(perf_data)) << CreateStats(perf_data);
+
+    if (HasNonfatalFailure()) {
+      FAIL();
+    }
+
+    {
+      MmapEventIterator mmap(perf_data);
+      constexpr std::pair<const char*, uint64_t> kMmapEvents[] = {
+          std::make_pair("[kernel.kallsyms]_text", 0),
+          std::make_pair("/system/lib/libc.so", 3067412480u),
+          std::make_pair("/system/vendor/lib/libdsutils.so", 3069911040u),
+          std::make_pair("/system/lib/libc.so", 3067191296u),
+          std::make_pair("/system/lib/libc++.so", 3069210624u),
+          std::make_pair("/data/dalvik-cache/arm/system@framework@boot.oat", 1900048384u),
+          std::make_pair("/system/lib/libjavacore.so", 2957135872u),
+          std::make_pair("/system/vendor/lib/libqmi_encdec.so", 3006644224u),
+          std::make_pair("/data/dalvik-cache/arm/system@framework@wifi-service.jar@classes.dex",
+                         3010351104u),
+                         std::make_pair("/system/lib/libart.so", 3024150528u),
+                         std::make_pair("/system/lib/libz.so", 3056410624u),
+                         std::make_pair("/system/lib/libicui18n.so", 3057610752u),
+      };
+      for (auto& pair : kMmapEvents) {
+        EXPECT_STREQ(pair.first, mmap->mmap_event().filename().c_str());
+        EXPECT_EQ(pair.second, mmap->mmap_event().start()) << pair.first;
+        ++mmap;
+      }
+    }
+
+    {
+      CommEventIterator comm(perf_data);
+      constexpr const char* kCommEvents[] = {
+          "init", "kthreadd", "ksoftirqd/0", "kworker/u:0H", "migration/0", "khelper",
+          "netns", "modem_notifier", "smd_channel_clo", "smsm_cb_wq", "rpm-smd", "kworker/u:1H",
+      };
+      for (auto str : kCommEvents) {
+        EXPECT_STREQ(str, comm->comm_event().comm().c_str());
+        ++comm;
+      }
+    }
+
+    {
+      SampleEventIterator samples(perf_data);
+      constexpr const char* kSampleEvents[] = {
+          "pid=0 tid=0 ip=3222720196",
+          "pid=0 tid=0 ip=3222910876",
+          "pid=0 tid=0 ip=3222910876",
+          "pid=0 tid=0 ip=3222910876",
+          "pid=0 tid=0 ip=3222910876",
+          "pid=0 tid=0 ip=3222910876",
+          "pid=0 tid=0 ip=3222910876",
+          "pid=3 tid=3 ip=3231975108",
+          "pid=5926 tid=5926 ip=3231964952",
+          "pid=5926 tid=5926 ip=3225342428",
+          "pid=5926 tid=5926 ip=3223841448",
+          "pid=5926 tid=5926 ip=3069807920",
+      };
+      for (auto str : kSampleEvents) {
+        EXPECT_STREQ(str, FormatSampleEvent(samples->sample_event()).c_str());
+        ++samples;
+      }
+
+      // Skip some samples.
+      for (size_t i = 0; i != 5000; ++i) {
+        ++samples;
+      }
+      constexpr const char* kSampleEvents2[] = {
+          "pid=5938 tid=5938 ip=3069630992",
+          "pid=5938 tid=5938 ip=3069626616",
+          "pid=5938 tid=5938 ip=3069626636",
+          "pid=5938 tid=5938 ip=3069637212",
+          "pid=5938 tid=5938 ip=3069637208",
+          "pid=5938 tid=5938 ip=3069637252",
+          "pid=5938 tid=5938 ip=3069346040",
+          "pid=5938 tid=5938 ip=3069637128",
+          "pid=5938 tid=5938 ip=3069626616",
+      };
+      for (auto str : kSampleEvents2) {
+        EXPECT_STREQ(str, FormatSampleEvent(samples->sample_event()).c_str());
+        ++samples;
+      }
+
+      // Skip some samples.
+      for (size_t i = 0; i != 5000; ++i) {
+        ++samples;
+      }
+      constexpr const char* kSampleEvents3[] = {
+          "pid=5938 tid=5938 ip=3069912036",
+          "pid=5938 tid=5938 ip=3069637260",
+          "pid=5938 tid=5938 ip=3069631024",
+          "pid=5938 tid=5938 ip=3069346064",
+          "pid=5938 tid=5938 ip=3069637356",
+          "pid=5938 tid=5938 ip=3069637144",
+          "pid=5938 tid=5938 ip=3069912036",
+          "pid=5938 tid=5938 ip=3069912036",
+          "pid=5938 tid=5938 ip=3069631244",
+      };
+      for (auto str : kSampleEvents3) {
+        EXPECT_STREQ(str, FormatSampleEvent(samples->sample_event()).c_str());
+        ++samples;
+      }
+    }
+  }
+};
+
+TEST_F(BasicRunWithCannedPerf, Basic)
 {
   //
   // Verify the portion of the daemon that reads and encodes
@@ -674,6 +841,10 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
   config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
   config_reader.overrideUnsignedEntry("collect_charging_state", 0);
   config_reader.overrideUnsignedEntry("collect_camera_active", 0);
+
+  // Disable compression.
+  config_reader.overrideUnsignedEntry("compress", 0);
+
   PerfProfdRunner::LoggingConfig config;
   config_reader.FillConfig(&config);
 
@@ -684,126 +855,12 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
 
   // Read and decode the resulting perf.data.encoded file
   android::perfprofd::PerfprofdRecord encodedProfile;
-  readEncodedProfile(dest_dir,
-                     "BasicRunWithCannedPerf",
-                     encodedProfile);
+  readEncodedProfile(dest_dir, false, encodedProfile);
 
-  ASSERT_TRUE(encodedProfile.has_perf_data());
-  const quipper::PerfDataProto& perf_data = encodedProfile.perf_data();
-
-  // Expect 21108 events.
-  EXPECT_EQ(21108, perf_data.events_size()) << CreateStats(perf_data);
-
-  EXPECT_EQ(48,    CountMmapEvents(perf_data)) << CreateStats(perf_data);
-  EXPECT_EQ(19986, CountSampleEvents(perf_data)) << CreateStats(perf_data);
-  EXPECT_EQ(1033,  CountCommEvents(perf_data)) << CreateStats(perf_data);
-  EXPECT_EQ(15,    CountForkEvents(perf_data)) << CreateStats(perf_data);
-  EXPECT_EQ(26,    CountExitEvents(perf_data)) << CreateStats(perf_data);
-
-  if (HasNonfatalFailure()) {
-    FAIL();
-  }
-
-  {
-    MmapEventIterator mmap(perf_data);
-    constexpr std::pair<const char*, uint64_t> kMmapEvents[] = {
-        std::make_pair("[kernel.kallsyms]_text", 0),
-        std::make_pair("/system/lib/libc.so", 3067412480u),
-        std::make_pair("/system/vendor/lib/libdsutils.so", 3069911040u),
-        std::make_pair("/system/lib/libc.so", 3067191296u),
-        std::make_pair("/system/lib/libc++.so", 3069210624u),
-        std::make_pair("/data/dalvik-cache/arm/system@framework@boot.oat", 1900048384u),
-        std::make_pair("/system/lib/libjavacore.so", 2957135872u),
-        std::make_pair("/system/vendor/lib/libqmi_encdec.so", 3006644224u),
-        std::make_pair("/data/dalvik-cache/arm/system@framework@wifi-service.jar@classes.dex",
-                       3010351104u),
-        std::make_pair("/system/lib/libart.so", 3024150528u),
-        std::make_pair("/system/lib/libz.so", 3056410624u),
-        std::make_pair("/system/lib/libicui18n.so", 3057610752u),
-    };
-    for (auto& pair : kMmapEvents) {
-      EXPECT_STREQ(pair.first, mmap->mmap_event().filename().c_str());
-      EXPECT_EQ(pair.second, mmap->mmap_event().start()) << pair.first;
-      ++mmap;
-    }
-  }
-
-  {
-    CommEventIterator comm(perf_data);
-    constexpr const char* kCommEvents[] = {
-        "init", "kthreadd", "ksoftirqd/0", "kworker/u:0H", "migration/0", "khelper",
-        "netns", "modem_notifier", "smd_channel_clo", "smsm_cb_wq", "rpm-smd", "kworker/u:1H",
-    };
-    for (auto str : kCommEvents) {
-      EXPECT_STREQ(str, comm->comm_event().comm().c_str());
-      ++comm;
-    }
-  }
-
-  {
-    SampleEventIterator samples(perf_data);
-    constexpr const char* kSampleEvents[] = {
-        "pid=0 tid=0 ip=3222720196",
-        "pid=0 tid=0 ip=3222910876",
-        "pid=0 tid=0 ip=3222910876",
-        "pid=0 tid=0 ip=3222910876",
-        "pid=0 tid=0 ip=3222910876",
-        "pid=0 tid=0 ip=3222910876",
-        "pid=0 tid=0 ip=3222910876",
-        "pid=3 tid=3 ip=3231975108",
-        "pid=5926 tid=5926 ip=3231964952",
-        "pid=5926 tid=5926 ip=3225342428",
-        "pid=5926 tid=5926 ip=3223841448",
-        "pid=5926 tid=5926 ip=3069807920",
-    };
-    for (auto str : kSampleEvents) {
-      EXPECT_STREQ(str, FormatSampleEvent(samples->sample_event()).c_str());
-      ++samples;
-    }
-
-    // Skip some samples.
-    for (size_t i = 0; i != 5000; ++i) {
-      ++samples;
-    }
-    constexpr const char* kSampleEvents2[] = {
-        "pid=5938 tid=5938 ip=3069630992",
-        "pid=5938 tid=5938 ip=3069626616",
-        "pid=5938 tid=5938 ip=3069626636",
-        "pid=5938 tid=5938 ip=3069637212",
-        "pid=5938 tid=5938 ip=3069637208",
-        "pid=5938 tid=5938 ip=3069637252",
-        "pid=5938 tid=5938 ip=3069346040",
-        "pid=5938 tid=5938 ip=3069637128",
-        "pid=5938 tid=5938 ip=3069626616",
-    };
-    for (auto str : kSampleEvents2) {
-      EXPECT_STREQ(str, FormatSampleEvent(samples->sample_event()).c_str());
-      ++samples;
-    }
-
-    // Skip some samples.
-    for (size_t i = 0; i != 5000; ++i) {
-      ++samples;
-    }
-    constexpr const char* kSampleEvents3[] = {
-        "pid=5938 tid=5938 ip=3069912036",
-        "pid=5938 tid=5938 ip=3069637260",
-        "pid=5938 tid=5938 ip=3069631024",
-        "pid=5938 tid=5938 ip=3069346064",
-        "pid=5938 tid=5938 ip=3069637356",
-        "pid=5938 tid=5938 ip=3069637144",
-        "pid=5938 tid=5938 ip=3069912036",
-        "pid=5938 tid=5938 ip=3069912036",
-        "pid=5938 tid=5938 ip=3069631244",
-    };
-    for (auto str : kSampleEvents3) {
-      EXPECT_STREQ(str, FormatSampleEvent(samples->sample_event()).c_str());
-      ++samples;
-    }
-  }
+  VerifyBasicCannedProfile(encodedProfile);
 }
 
-TEST_F(PerfProfdTest, DISABLED_BasicRunWithCannedPerfWithSymbolizer)
+TEST_F(BasicRunWithCannedPerf, Compressed)
 {
   //
   // Verify the portion of the daemon that reads and encodes
@@ -819,6 +876,45 @@ TEST_F(PerfProfdTest, DISABLED_BasicRunWithCannedPerfWithSymbolizer)
   config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
   config_reader.overrideUnsignedEntry("collect_charging_state", 0);
   config_reader.overrideUnsignedEntry("collect_camera_active", 0);
+
+  // Enable compression.
+  config_reader.overrideUnsignedEntry("compress", 1);
+
+  PerfProfdRunner::LoggingConfig config;
+  config_reader.FillConfig(&config);
+
+  // Kick off encoder and check return code
+  PROFILE_RESULT result =
+      encode_to_proto(input_perf_data, encoded_file_path(dest_dir, 0).c_str(), config, 0, nullptr);
+  ASSERT_EQ(OK_PROFILE_COLLECTION, result) << test_logger.JoinTestLog(" ");
+
+  // Read and decode the resulting perf.data.encoded file
+  android::perfprofd::PerfprofdRecord encodedProfile;
+  readEncodedProfile(dest_dir, true, encodedProfile);
+
+  VerifyBasicCannedProfile(encodedProfile);
+}
+
+TEST_F(BasicRunWithCannedPerf, DISABLED_WithSymbolizer)
+{
+  //
+  // Verify the portion of the daemon that reads and encodes
+  // perf.data files. Here we run the encoder on a canned perf.data
+  // file and verify that the resulting protobuf contains what
+  // we think it should contain.
+  //
+  std::string input_perf_data(test_dir);
+  input_perf_data += "/canned.perf.data";
+
+  // Set up config to avoid these annotations (they are tested elsewhere)
+  ConfigReader config_reader;
+  config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
+  config_reader.overrideUnsignedEntry("collect_charging_state", 0);
+  config_reader.overrideUnsignedEntry("collect_camera_active", 0);
+
+  // Disable compression.
+  config_reader.overrideUnsignedEntry("compress", 0);
+
   PerfProfdRunner::LoggingConfig config;
   config_reader.FillConfig(&config);
 
@@ -839,15 +935,9 @@ TEST_F(PerfProfdTest, DISABLED_BasicRunWithCannedPerfWithSymbolizer)
 
   // Read and decode the resulting perf.data.encoded file
   android::perfprofd::PerfprofdRecord encodedProfile;
-  readEncodedProfile(dest_dir,
-                     "BasicRunWithCannedPerf",
-                     encodedProfile);
+  readEncodedProfile(dest_dir, false, encodedProfile);
 
-  ASSERT_TRUE(encodedProfile.has_perf_data());
-  const quipper::PerfDataProto& perf_data = encodedProfile.perf_data();
-
-  // Expect 21108 events.
-  EXPECT_EQ(21108, perf_data.events_size()) << CreateStats(perf_data);
+  VerifyBasicCannedProfile(encodedProfile);
 
   // TODO: Re-add symbolization.
 }
@@ -865,6 +955,10 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
   config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
   config_reader.overrideUnsignedEntry("collect_charging_state", 0);
   config_reader.overrideUnsignedEntry("collect_camera_active", 0);
+
+  // Disable compression.
+  config_reader.overrideUnsignedEntry("compress", 0);
+
   PerfProfdRunner::LoggingConfig config;
   config_reader.FillConfig(&config);
 
@@ -875,9 +969,7 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
 
   // Read and decode the resulting perf.data.encoded file
   android::perfprofd::PerfprofdRecord encodedProfile;
-  readEncodedProfile(dest_dir,
-                     "BasicRunWithCannedPerf",
-                     encodedProfile);
+  readEncodedProfile(dest_dir, false, encodedProfile);
 
 
   ASSERT_TRUE(encodedProfile.has_perf_data());
@@ -950,6 +1042,9 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
   // Avoid the symbolizer for spurious messages.
   runner.addToConfig("use_elf_symbolizer=0");
 
+  // Disable compression.
+  runner.addToConfig("compress=0");
+
   // Create semaphore file
   runner.create_semaphore_file();
 
@@ -961,7 +1056,7 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
 
   // Read and decode the resulting perf.data.encoded file
   android::perfprofd::PerfprofdRecord encodedProfile;
-  readEncodedProfile(dest_dir, "BasicRunWithLivePerf", encodedProfile);
+  readEncodedProfile(dest_dir, false, encodedProfile);
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
@@ -1002,6 +1097,10 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
   runner.addToConfig("sample_duration=2");
   // Avoid the symbolizer for spurious messages.
   runner.addToConfig("use_elf_symbolizer=0");
+
+  // Disable compression.
+  runner.addToConfig("compress=0");
+
   runner.write_processed_file(1, 2);
 
   // Create semaphore file
@@ -1015,7 +1114,7 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
 
   // Read and decode the resulting perf.data.encoded file
   android::perfprofd::PerfprofdRecord encodedProfile;
-  readEncodedProfile(dest_dir, "BasicRunWithLivePerf", encodedProfile);
+  readEncodedProfile(dest_dir, false, encodedProfile);
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
@@ -1073,6 +1172,9 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
   // Avoid the symbolizer for spurious messages.
   runner.addToConfig("use_elf_symbolizer=0");
 
+  // Disable compression.
+  runner.addToConfig("compress=0");
+
   // Create semaphore file
   runner.create_semaphore_file();
 
@@ -1084,7 +1186,7 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
 
   // Read and decode the resulting perf.data.encoded file
   android::perfprofd::PerfprofdRecord encodedProfile;
-  readEncodedProfile(dest_dir, "CallChainRunWithLivePerf", encodedProfile);
+  readEncodedProfile(dest_dir, false, encodedProfile);
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
