@@ -18,6 +18,8 @@
 #ifndef SYSTEM_EXTRAS_PERFPROFD_PERFPROFD_IO_H_
 #define SYSTEM_EXTRAS_PERFPROFD_PERFPROFD_IO_H_
 
+#include <android-base/unique_fd.h>
+
 #include "perfprofd_record-fwd.h"
 
 namespace android {
@@ -25,6 +27,8 @@ namespace perfprofd {
 
 bool SerializeProtobuf(android::perfprofd::PerfprofdRecord* encodedProfile,
                        const char* encoded_file_path);
+bool SerializeProtobuf(android::perfprofd::PerfprofdRecord* encodedProfile,
+                       android::base::unique_fd&& fd);
 
 }  // namespace perfprofd
 }  // namespace android
