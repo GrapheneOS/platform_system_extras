@@ -34,6 +34,10 @@ constexpr char DEFAULT_EXECNAME_FOR_THREAD_MMAP[] = "//anon";
 
 namespace simpleperf {
 
+namespace map_flags {
+constexpr uint32_t PROT_JIT_SYMFILE_MAP = 0x4000;
+}  // namespace map_flags
+
 struct MapEntry {
   uint64_t start_addr;
   uint64_t len;
@@ -41,15 +45,18 @@ struct MapEntry {
   uint64_t time;  // Map creation time.
   Dso* dso;
   bool in_kernel;
+  uint32_t flags;
+
 
   MapEntry(uint64_t start_addr, uint64_t len, uint64_t pgoff, uint64_t time,
-           Dso* dso, bool in_kernel)
+           Dso* dso, bool in_kernel, uint32_t flags = 0)
       : start_addr(start_addr),
         len(len),
         pgoff(pgoff),
         time(time),
         dso(dso),
-        in_kernel(in_kernel) {}
+        in_kernel(in_kernel),
+        flags(flags) {}
   MapEntry() {}
 
   uint64_t get_end_addr() const { return start_addr + len; }
@@ -95,7 +102,8 @@ class ThreadTree {
   void AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
                     uint64_t time, const std::string& filename);
   void AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t len,
-                    uint64_t pgoff, uint64_t time, const std::string& filename);
+                    uint64_t pgoff, uint64_t time, const std::string& filename,
+                    uint32_t flags = 0);
   const MapEntry* FindMap(const ThreadEntry* thread, uint64_t ip,
                           bool in_kernel);
   // Find map for an ip address when we don't know whether it is in kernel.

@@ -128,6 +128,7 @@ class EventSelectionSet {
   bool ReadCounters(std::vector<CountersInfo>* counters);
   bool MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pages);
   bool PrepareToReadMmapEventData(const std::function<bool(Record*)>& callback);
+  bool ReadMmapEventData();
   bool FinishReadMmapEventData();
 
   // If monitored_cpus is empty, monitor all cpus.
@@ -160,7 +161,6 @@ class EventSelectionSet {
                              std::string* failed_event_type);
 
   bool MmapEventFiles(size_t mmap_pages, bool report_error);
-  bool ReadMmapEventData();
 
   bool DetectCpuHotplugEvents();
   bool HandleCpuOnlineEvent(int cpu);

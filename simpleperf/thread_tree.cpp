@@ -128,11 +128,11 @@ Dso* ThreadTree::FindKernelDsoOrNew(const std::string& filename) {
 
 void ThreadTree::AddThreadMap(int pid, int tid, uint64_t start_addr,
                               uint64_t len, uint64_t pgoff, uint64_t time,
-                              const std::string& filename) {
+                              const std::string& filename, uint32_t flags) {
   ThreadEntry* thread = FindThreadOrNew(pid, tid);
   Dso* dso = FindUserDsoOrNew(filename, start_addr);
   MapEntry* map =
-      AllocateMap(MapEntry(start_addr, len, pgoff, time, dso, false));
+      AllocateMap(MapEntry(start_addr, len, pgoff, time, dso, false, flags));
   FixOverlappedMap(thread->maps, map);
   auto pair = thread->maps->maps.insert(map);
   CHECK(pair.second);
@@ -227,7 +227,11 @@ const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip,
   Dso* dso = map->dso;
   if (!map->in_kernel) {
     // Find symbol in user space shared libraries.
-    vaddr_in_file = ip - map->start_addr + map->dso->MinVirtualAddress();
+    if (map->flags & map_flags::PROT_JIT_SYMFILE_MAP) {
+      vaddr_in_file = ip;
+    } else {
+      vaddr_in_file = ip - map->start_addr + map->dso->MinVirtualAddress();
+    }
     symbol = dso->FindSymbol(vaddr_in_file);
   } else {
     if (dso != kernel_dso_.get()) {
@@ -311,7 +315,7 @@ void ThreadTree::Update(const Record& record) {
                                  ? "[unknown]"
                                  : r.filename;
       AddThreadMap(r.data->pid, r.data->tid, r.data->addr, r.data->len,
-                   r.data->pgoff, r.sample_id.time_data.time, filename);
+                   r.data->pgoff, r.sample_id.time_data.time, filename, r.data->prot);
     }
   } else if (record.type() == PERF_RECORD_COMM) {
     const CommRecord& r = *static_cast<const CommRecord*>(&record);
