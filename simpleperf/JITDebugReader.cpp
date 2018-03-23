@@ -76,7 +76,7 @@ struct JITCodeEntry {
   }
 };
 
-// Match the format of JITCodeEntry in art/runtime/jit/debugger_itnerface.cc.
+// Match the format of JITCodeEntry in art/runtime/jit/debugger_interface.cc.
 template <typename ADDRT>
 struct __attribute__((packed)) PackedJITCodeEntry {
   ADDRT next_addr;
