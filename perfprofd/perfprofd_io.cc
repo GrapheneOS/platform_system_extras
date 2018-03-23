@@ -20,42 +20,59 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include <memory>
-
 #include <android-base/file.h>
 #include <android-base/logging.h>
-#include <android-base/unique_fd.h>
+#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 
 #include "perfprofd_record.pb.h"
 
 namespace android {
 namespace perfprofd {
 
-bool SerializeProtobuf(PerfprofdRecord* encodedProfile,
-                       const char* encoded_file_path) {
-  //
-  // Serialize protobuf to array
-  //
-  size_t size = encodedProfile->ByteSize();
-  std::unique_ptr<uint8_t[]> data(new uint8_t[size]);
-  encodedProfile->SerializeWithCachedSizesToArray(data.get());
+using android::base::unique_fd;
+using android::base::WriteFully;
 
-  //
-  // Open file and write encoded data to it
-  //
+namespace {
+
+// Protobuf's file implementation is not available in protobuf-lite. :-(
+class FileCopyingOutputStream : public ::google::protobuf::io::CopyingOutputStream {
+ public:
+  explicit FileCopyingOutputStream(android::base::unique_fd&& fd_in) : fd_(std::move(fd_in)) {
+  };
+  bool Write(const void * buffer, int size) override {
+    return WriteFully(fd_.get(), buffer, size);
+  }
+
+ private:
+  android::base::unique_fd fd_;
+};
+
+}  // namespace
+
+bool SerializeProtobuf(android::perfprofd::PerfprofdRecord* encodedProfile,
+                       android::base::unique_fd&& fd) {
+  FileCopyingOutputStream fcos(std::move(fd));
+  google::protobuf::io::CopyingOutputStreamAdaptor cosa(&fcos);
+
+  bool serialized = encodedProfile->SerializeToZeroCopyStream(&cosa);
+  if (!serialized) {
+    LOG(WARNING) << "SerializeToZeroCopyStream failed";
+    return false;
+  }
+
+  cosa.Flush();
+  return true;
+}
+
+bool SerializeProtobuf(PerfprofdRecord* encodedProfile, const char* encoded_file_path) {
   unlink(encoded_file_path);  // Attempt to unlink for a clean slate.
   constexpr int kFlags = O_CREAT | O_WRONLY | O_TRUNC | O_NOFOLLOW | O_CLOEXEC;
-  android::base::unique_fd fd(open(encoded_file_path, kFlags, 0664));
+  unique_fd fd(open(encoded_file_path, kFlags, 0664));
   if (fd.get() == -1) {
     PLOG(WARNING) << "Could not open " << encoded_file_path << " for serialization";
     return false;
   }
-  if (!android::base::WriteFully(fd.get(), data.get(), size)) {
-    PLOG(WARNING) << "Could not write to " << encoded_file_path;
-    return false;
-  }
-
-  return true;
+  return SerializeProtobuf(encodedProfile, std::move(fd));
 }
 
 }  // namespace perfprofd
