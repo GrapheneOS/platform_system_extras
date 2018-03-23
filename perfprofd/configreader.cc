@@ -127,6 +127,9 @@ void ConfigReader::addDefaultEntries()
 
   // If true, use an ELF symbolizer to on-device symbolize.
   addUnsignedEntry("use_elf_symbolizer", 1, 0, 1);
+
+  // If true, use libz to compress the output proto.
+  addUnsignedEntry("compress", 0, 0, 1);
 }
 
 void ConfigReader::addUnsignedEntry(const char *key,
@@ -325,4 +328,5 @@ void ConfigReader::FillConfig(Config* config) {
 
   config->process = -1;
   config->use_elf_symbolizer = getBoolValue("use_elf_symbolizer");
+  config->compress = getBoolValue("compress");
 }
