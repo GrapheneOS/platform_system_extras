@@ -49,6 +49,8 @@
 
 using namespace android::perfprofd::quipper;
 
+static_assert(android::base::kEnableDChecks, "Expected DCHECKs to be enabled");
+
 //
 // Set to argv[0] on startup
 //
