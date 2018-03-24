@@ -2,16 +2,9 @@
 
 cc_defaults {
     name: "perfprofd_test_defaults",
-
-    cflags: [
-        "-Wall",
-        "-Werror",
-        "-O0",
-        "-g",
-    ],
-    cppflags: [
-        "-Wno-sign-compare",
-        "-Wno-unused-parameter",
+    defaults: [
+        "perfprofd_defaults",
+        "perfprofd_debug_defaults",
     ],
 
     strip: {
@@ -32,10 +25,11 @@ cc_test {
 
     stl: "libc++",
     static_libs: [
-        "libperfprofdcore",
+        "libperfprofdcored",
         "libsimpleperf_elf_read",
         "libbase",
         "libutils",
+        "libz",
     ],
     shared_libs: [
         "libprotobuf-cpp-lite",

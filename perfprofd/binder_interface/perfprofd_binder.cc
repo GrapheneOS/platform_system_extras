@@ -34,7 +34,6 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
-#include <android-base/test_utils.h>
 #include <android-base/unique_fd.h>
 #include <android/os/DropBoxManager.h>
 #include <binder/BinderService.h>
@@ -51,6 +50,7 @@
 
 #include "config.h"
 #include "perfprofdcore.h"
+#include "perfprofd_io.h"
 
 namespace android {
 namespace perfprofd {
@@ -153,32 +153,22 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
 
 static Status WriteDropboxFile(android::perfprofd::PerfprofdRecord* encodedProfile,
                                Config* config) {
-  TemporaryFile tmp_file(config->destination_directory);
-  // Remove the temp file from the file system for security reasons.
-  tmp_file.DoNotRemove();
-  if (unlink(tmp_file.path) != 0) {
-    PLOG(WARNING) << "Could not unlink binder temp file";
-  }
-
+  android::base::unique_fd tmp_fd;
   {
-    // protobuf-lite doesn't have file streams.
-    struct FileCopyingOutputStream : public google::protobuf::io::CopyingOutputStream {
-      int fd;
-      explicit FileCopyingOutputStream(int fd_in) : fd(fd_in) {
-      }
-      bool Write(const void * buffer, int size) override {
-        return android::base::WriteFully(fd, buffer, size);
-      }
-    };
-    FileCopyingOutputStream fcos(tmp_file.fd);
-    google::protobuf::io::CopyingOutputStreamAdaptor cosa(&fcos);
-    bool serialized = encodedProfile->SerializeToZeroCopyStream(&cosa);
-    if (!serialized) {
-      return Status::fromExceptionCode(1, "Failed to serialize proto");
+    char path[PATH_MAX];
+    snprintf(path,
+             sizeof(path),
+             "%s%cdropboxtmp-XXXXXX",
+             config->destination_directory.c_str(),
+             OS_PATH_SEPARATOR);
+    tmp_fd.reset(mkstemp(path));
+    if (tmp_fd.get() == -1) {
+      PLOG(ERROR) << "Could not create temp file " << path;
+      return Status::fromExceptionCode(1, "Could not create temp file");
     }
-    cosa.Flush();
-
-    // TODO: Is an fsync necessary here?
+    if (unlink(path) != 0) {
+      PLOG(WARNING) << "Could not unlink binder temp file";
+    }
   }
 
   // Dropbox takes ownership of the fd, and if it is not readonly,
@@ -186,7 +176,7 @@ static Status WriteDropboxFile(android::perfprofd::PerfprofdRecord* encodedProfi
   android::base::unique_fd read_only;
   {
     char fdpath[64];
-    snprintf(fdpath, arraysize(fdpath), "/proc/self/fd/%d", tmp_file.fd);
+    snprintf(fdpath, arraysize(fdpath), "/proc/self/fd/%d", tmp_fd.get());
     read_only.reset(open(fdpath, O_RDONLY | O_CLOEXEC));
     if (read_only.get() < 0) {
       PLOG(ERROR) << "Could not create read-only fd";
@@ -194,9 +184,18 @@ static Status WriteDropboxFile(android::perfprofd::PerfprofdRecord* encodedProfi
     }
   }
 
+  constexpr bool kCompress = true;  // Ignore the config here. Dropbox will always end up
+                                    // compressing the data, might as well make the temp
+                                    // file smaller and help it out.
   using DropBoxManager = android::os::DropBoxManager;
+  constexpr int kDropboxFlags = DropBoxManager::IS_GZIPPED;
+
+  if (!SerializeProtobuf(encodedProfile, std::move(tmp_fd), kCompress)) {
+    return Status::fromExceptionCode(1, "Could not serialize to temp file");
+  }
+
   sp<DropBoxManager> dropbox(new DropBoxManager());
-  return dropbox->addFile(String16("perfprofd"), read_only.release(), 0);
+  return dropbox->addFile(String16("perfprofd"), read_only.release(), kDropboxFlags);
 }
 
 bool PerfProfdNativeService::BinderHandler(
@@ -233,8 +232,7 @@ bool PerfProfdNativeService::BinderHandler(
   std::string data_file_path(config->destination_directory);
   data_file_path += "/perf.data";
   std::string path = android::base::StringPrintf("%s.encoded.%d", data_file_path.c_str(), seq_);
-  PROFILE_RESULT result = SerializeProtobuf(encodedProfile, path.c_str());
-  if (result != PROFILE_RESULT::OK_PROFILE_COLLECTION) {
+  if (!SerializeProtobuf(encodedProfile, path.c_str(), config->compress)) {
     return false;
   }
 

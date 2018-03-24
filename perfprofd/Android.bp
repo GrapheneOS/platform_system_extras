@@ -41,12 +41,22 @@ cc_defaults {
     ],
 }
 
+cc_defaults {
+    name: "perfprofd_debug_defaults",
+
+    cflags: [
+        "-O0",
+        "-g",
+        "-UNDEBUG",
+    ],
+}
+
 //
 // Static library containing guts of AWP daemon.
 //
 
-cc_library_static {
-    name: "libperfprofdcore",
+cc_defaults {
+    name: "libperfprofdcore_defaults",
     defaults: [
         "perfprofd_defaults",
     ],
@@ -59,7 +69,6 @@ cc_library_static {
 
     static_libs: [
         "libbase",
-        "libquipper",
         "libsimpleperf_elf_read",
     ],
     whole_static_libs: [
@@ -71,6 +80,7 @@ cc_library_static {
         "configreader.cc",
         "cpuconfig.cc",
         "perfprofdcore.cc",
+        "perfprofd_io.cc",
         "symbolizer.cc"
     ],
 
@@ -84,8 +94,24 @@ cc_library_static {
     ],
 
     export_include_dirs: ["."],
-    export_static_lib_headers: ["libquipper"],
 }
+
+cc_library_static {
+    name: "libperfprofdcore",
+    defaults: [
+        "libperfprofdcore_defaults",
+    ],
+}
+
+// Debug version.
+cc_library_static {
+    name: "libperfprofdcored",
+    defaults: [
+        "libperfprofdcore_defaults",
+        "perfprofd_debug_defaults",
+    ],
+}
+
 
 //
 // Main daemon
