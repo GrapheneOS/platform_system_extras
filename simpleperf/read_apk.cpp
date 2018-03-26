@@ -127,7 +127,7 @@ bool ApkInspector::FindOffsetInApkByName(const std::string& apk_path,
   ZipArchiveHandle& handle = ahelper.archive_handle();
   ZipEntry zentry;
   int32_t rc = FindEntry(handle, ZipString(elf_filename.c_str()), &zentry);
-  if (rc != false) {
+  if (rc != 0) {
     LOG(ERROR) << "failed to find " << elf_filename << " in " << apk_path
         << ": " << ErrorCodeString(rc);
     return false;
