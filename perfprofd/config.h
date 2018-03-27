@@ -93,6 +93,9 @@ struct Config {
   // If true, use an ELF symbolizer to on-device symbolize.
   bool use_elf_symbolizer = true;
 
+  // If true, use libz to compress the output proto.
+  bool compress = true;
+
   // Sleep for the given number of seconds.
   virtual void Sleep(size_t seconds) = 0;
 

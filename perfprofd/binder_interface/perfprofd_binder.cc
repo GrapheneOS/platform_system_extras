@@ -19,6 +19,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <memory>
@@ -30,8 +31,10 @@
 #include <inttypes.h>
 #include <unistd.h>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
+#include <android-base/unique_fd.h>
 #include <android/os/DropBoxManager.h>
 #include <binder/BinderService.h>
 #include <binder/IResultReceiver.h>
@@ -43,10 +46,11 @@
 
 #include "android/os/BnPerfProfd.h"
 #include "perfprofd_config.pb.h"
-#include "perf_profile.pb.h"
+#include "perfprofd_record.pb.h"
 
 #include "config.h"
 #include "perfprofdcore.h"
+#include "perfprofd_io.h"
 
 namespace android {
 namespace perfprofd {
@@ -129,7 +133,7 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
 
  private:
   // Handler for ProfilingLoop.
-  bool BinderHandler(wireless_android_play_playlog::AndroidPerfProfile* encodedProfile,
+  bool BinderHandler(android::perfprofd::PerfprofdRecord* encodedProfile,
                      Config* config);
   // Helper for the handler.
   HandlerFn GetBinderHandler();
@@ -147,24 +151,77 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
   int seq_ = 0;
 };
 
+static Status WriteDropboxFile(android::perfprofd::PerfprofdRecord* encodedProfile,
+                               Config* config) {
+  android::base::unique_fd tmp_fd;
+  {
+    char path[PATH_MAX];
+    snprintf(path,
+             sizeof(path),
+             "%s%cdropboxtmp-XXXXXX",
+             config->destination_directory.c_str(),
+             OS_PATH_SEPARATOR);
+    tmp_fd.reset(mkstemp(path));
+    if (tmp_fd.get() == -1) {
+      PLOG(ERROR) << "Could not create temp file " << path;
+      return Status::fromExceptionCode(1, "Could not create temp file");
+    }
+    if (unlink(path) != 0) {
+      PLOG(WARNING) << "Could not unlink binder temp file";
+    }
+  }
+
+  // Dropbox takes ownership of the fd, and if it is not readonly,
+  // a selinux violation will occur. Get a read-only version.
+  android::base::unique_fd read_only;
+  {
+    char fdpath[64];
+    snprintf(fdpath, arraysize(fdpath), "/proc/self/fd/%d", tmp_fd.get());
+    read_only.reset(open(fdpath, O_RDONLY | O_CLOEXEC));
+    if (read_only.get() < 0) {
+      PLOG(ERROR) << "Could not create read-only fd";
+      return Status::fromExceptionCode(1, "Could not create read-only fd");
+    }
+  }
+
+  constexpr bool kCompress = true;  // Ignore the config here. Dropbox will always end up
+                                    // compressing the data, might as well make the temp
+                                    // file smaller and help it out.
+  using DropBoxManager = android::os::DropBoxManager;
+  constexpr int kDropboxFlags = DropBoxManager::IS_GZIPPED;
+
+  if (!SerializeProtobuf(encodedProfile, std::move(tmp_fd), kCompress)) {
+    return Status::fromExceptionCode(1, "Could not serialize to temp file");
+  }
+
+  sp<DropBoxManager> dropbox(new DropBoxManager());
+  return dropbox->addFile(String16("perfprofd"), read_only.release(), kDropboxFlags);
+}
+
 bool PerfProfdNativeService::BinderHandler(
-    wireless_android_play_playlog::AndroidPerfProfile* encodedProfile,
+    android::perfprofd::PerfprofdRecord* encodedProfile,
     Config* config) {
   CHECK(config != nullptr);
   if (static_cast<BinderConfig*>(config)->send_to_dropbox) {
     size_t size = encodedProfile->ByteSize();
-    std::unique_ptr<uint8_t[]> data(new uint8_t[size]);
-    encodedProfile->SerializeWithCachedSizesToArray(data.get());
+    Status status;
+    if (size < 1024 * 1024) {
+      // For a small size, send as a byte buffer directly.
+      std::unique_ptr<uint8_t[]> data(new uint8_t[size]);
+      encodedProfile->SerializeWithCachedSizesToArray(data.get());
 
-    using DropBoxManager = android::os::DropBoxManager;
-    sp<DropBoxManager> dropbox(new DropBoxManager());
-    Status status = dropbox->addData(String16("perfprofd"),
-                                     data.get(),
-                                     size,
-                                     0);
+      using DropBoxManager = android::os::DropBoxManager;
+      sp<DropBoxManager> dropbox(new DropBoxManager());
+      status = dropbox->addData(String16("perfprofd"),
+                                data.get(),
+                                size,
+                                0);
+    } else {
+      // For larger buffers, we need to go through the filesystem.
+      status = WriteDropboxFile(encodedProfile, config);
+    }
     if (!status.isOk()) {
-      LOG(WARNING) << "Failed dropbox submission: " << status.exceptionCode()
-                   << " " << status.exceptionMessage().c_str();
+      LOG(WARNING) << "Failed dropbox submission: " << status.toString8();
     }
     return status.isOk();
   }
@@ -175,8 +232,7 @@ bool PerfProfdNativeService::BinderHandler(
   std::string data_file_path(config->destination_directory);
   data_file_path += "/perf.data";
   std::string path = android::base::StringPrintf("%s.encoded.%d", data_file_path.c_str(), seq_);
-  PROFILE_RESULT result = SerializeProtobuf(encodedProfile, path.c_str());
-  if (result != PROFILE_RESULT::OK_PROFILE_COLLECTION) {
+  if (!SerializeProtobuf(encodedProfile, path.c_str(), config->compress)) {
     return false;
   }
 

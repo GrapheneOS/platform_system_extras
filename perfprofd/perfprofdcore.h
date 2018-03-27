@@ -21,11 +21,9 @@
 #include <functional>
 #include <memory>
 
-struct Config;
+#include "perfprofd_record-fwd.h"
 
-namespace wireless_android_play_playlog {
-class AndroidPerfProfile;
-}
+struct Config;
 
 namespace perfprofd {
 struct Symbolizer;
@@ -84,10 +82,7 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
                                unsigned cpu_utilization,
                                perfprofd::Symbolizer* symbolizer);
 
-PROFILE_RESULT SerializeProtobuf(wireless_android_play_playlog::AndroidPerfProfile* encodedProfile,
-                                 const char* encoded_file_path);
-
-using HandlerFn = std::function<bool(wireless_android_play_playlog::AndroidPerfProfile* proto,
+using HandlerFn = std::function<bool(android::perfprofd::PerfprofdRecord* proto,
                                      Config* config)>;
 
 void ProfilingLoop(Config& config, HandlerFn handler);

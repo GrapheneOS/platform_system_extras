@@ -41,40 +41,77 @@ cc_defaults {
     ],
 }
 
+cc_defaults {
+    name: "perfprofd_debug_defaults",
+
+    cflags: [
+        "-O0",
+        "-g",
+        "-UNDEBUG",
+    ],
+}
+
 //
 // Static library containing guts of AWP daemon.
 //
 
-cc_library_static {
-    name: "libperfprofdcore",
+cc_defaults {
+    name: "libperfprofdcore_defaults",
     defaults: [
         "perfprofd_defaults",
     ],
+    host_supported: true,
+    target: {
+        darwin: {
+            enabled: false,
+        },
+    },
 
-    local_include_dirs: ["quipper/kernel-headers"],
-    export_include_dirs: ["."],
     static_libs: [
         "libbase",
         "libsimpleperf_elf_read",
     ],
+    whole_static_libs: [
+        "libquipper",
+    ],
     srcs: [
-        "perf_profile.proto",
-        "quipper/perf_utils.cc",
-        "quipper/base/logging.cc",
-        "quipper/address_mapper.cc",
-        "quipper/perf_reader.cc",
-        "quipper/perf_parser.cc",
+        "perfprofd_record.proto",
         "perf_data_converter.cc",
         "configreader.cc",
         "cpuconfig.cc",
         "perfprofdcore.cc",
+        "perfprofd_io.cc",
         "symbolizer.cc"
     ],
 
     proto: {
         export_proto_headers: true,
+        include_dirs: ["external/perf_data_converter/src/quipper"],
+        type: "lite",
     },
+    cflags: [
+        "-Wno-gnu-anonymous-struct",
+    ],
+
+    export_include_dirs: ["."],
 }
+
+cc_library_static {
+    name: "libperfprofdcore",
+    defaults: [
+        "libperfprofdcore_defaults",
+    ],
+}
+
+// Debug version.
+cc_library_static {
+    name: "libperfprofdcored",
+    defaults: [
+        "libperfprofdcore_defaults",
+        "perfprofd_debug_defaults",
+    ],
+}
+
 
 //
 // Main daemon
@@ -112,6 +149,11 @@ cc_binary {
             enabled: false,
         },
     },
+
+    // We're technically independent, but ensure simpleperf is there.
+    required: [
+        "simpleperf",
+    ],
 }
 
 subdirs = [

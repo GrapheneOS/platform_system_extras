@@ -2,16 +2,9 @@
 
 cc_defaults {
     name: "perfprofd_test_defaults",
-
-    cflags: [
-        "-Wall",
-        "-Werror",
-        "-O0",
-        "-g",
-    ],
-    cppflags: [
-        "-Wno-sign-compare",
-        "-Wno-unused-parameter",
+    defaults: [
+        "perfprofd_defaults",
+        "perfprofd_debug_defaults",
     ],
 
     strip: {
@@ -28,17 +21,38 @@ cc_test {
         "perfprofd_test_defaults",
     ],
     test_suites: ["device-tests"],
+    host_supported: true,
 
     stl: "libc++",
     static_libs: [
-        "libperfprofdcore",
+        "libperfprofdcored",
         "libsimpleperf_elf_read",
         "libbase",
+        "libutils",
+        "libz",
     ],
     shared_libs: [
         "libprotobuf-cpp-lite",
         "liblog",
     ],
+    target: {
+        darwin: {
+            enabled: false,
+        },
+        host: {
+            host_ldlibs: [
+                "-lncurses",
+            ],
+        },
+
+        // The live tests require simpleperf.
+        android: {
+            required: [
+                "simpleperf",
+            ],
+        },
+
+    },
     srcs: [
         "perfprofd_test.cc",
     ],

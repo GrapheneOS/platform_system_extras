@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cctype>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <regex>
@@ -31,20 +32,24 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/macros.h>
-#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/test_utils.h>
 #include <android-base/thread_annotations.h>
 #include <gtest/gtest.h>
+#include <zlib.h>
 
 #include "config.h"
 #include "configreader.h"
 #include "perfprofdcore.h"
+#include "quipper_helper.h"
 #include "symbolizer.h"
 
-#include "perf_profile.pb.h"
-#include "google/protobuf/text_format.h"
+#include "perfprofd_record.pb.h"
+
+using namespace android::perfprofd::quipper;
+
+static_assert(android::base::kEnableDChecks, "Expected DCHECKs to be enabled");
 
 //
 // Set to argv[0] on startup
@@ -67,6 +72,16 @@ class TestLogHelper {
   std::string JoinTestLog(const char* delimiter) {
     std::unique_lock<std::mutex> ul(lock_);
     return android::base::Join(test_log_messages_, delimiter);
+  }
+  template <typename Predicate>
+  std::string JoinTestLog(const char* delimiter, Predicate pred) {
+    std::unique_lock<std::mutex> ul(lock_);
+    std::vector<std::string> tmp;
+    std::copy_if(test_log_messages_.begin(),
+                 test_log_messages_.end(),
+                 std::back_inserter(tmp),
+                 pred);
+    return android::base::Join(tmp, delimiter);
   }
 
  private:
@@ -144,6 +159,7 @@ static std::string replaceAll(const std::string &str,
 //
 // Replace occurrences of special variables in the string.
 //
+#ifdef __ANDROID__
 static std::string expandVars(const std::string &str) {
 #ifdef __LP64__
   return replaceAll(str, "$NATIVE_TESTS", "/data/nativetest64");
@@ -151,6 +167,7 @@ static std::string expandVars(const std::string &str) {
   return replaceAll(str, "$NATIVE_TESTS", "/data/nativetest");
 #endif
 }
+#endif
 
 class PerfProfdTest : public testing::Test {
  protected:
@@ -182,7 +199,15 @@ class PerfProfdTest : public testing::Test {
                           const char* testpoint,
                           bool exactMatch = false) {
      std::string sqexp = squeezeWhite(expected, "expected");
-     std::string sqact = squeezeWhite(test_logger.JoinTestLog(" "), "actual");
+
+     // Strip out JIT errors.
+     std::regex jit_regex("E: Failed to open ELF file: [^ ]*ashmem/dalvik-jit-code-cache.*");
+     auto strip_jit = [&](const std::string& str) {
+       std::smatch jit_match;
+       return !std::regex_match(str, jit_match, jit_regex);
+     };
+     std::string sqact = squeezeWhite(test_logger.JoinTestLog(" ", strip_jit), "actual");
+
      if (exactMatch) {
        EXPECT_STREQ(sqexp.c_str(), sqact.c_str());
      } else {
@@ -340,8 +365,8 @@ static std::string encoded_file_path(const std::string& dest_dir,
 }
 
 static void readEncodedProfile(const std::string& dest_dir,
-                               const char *testpoint,
-                               wireless_android_play_playlog::AndroidPerfProfile &encodedProfile)
+                               bool compressed,
+                               android::perfprofd::PerfprofdRecord& encodedProfile)
 {
   struct stat statb;
   int perf_data_stat_result = stat(encoded_file_path(dest_dir, 0).c_str(), &statb);
@@ -356,40 +381,56 @@ static void readEncodedProfile(const std::string& dest_dir,
   ASSERT_EQ(1, items_read);
   fclose(ifp);
 
+  // uncompress
+  if (compressed && !encoded.empty()) {
+    z_stream stream;
+    stream.zalloc = Z_NULL;
+    stream.zfree = Z_NULL;
+    stream.opaque = Z_NULL;
+
+    {
+      constexpr int kWindowBits = 15;
+      constexpr int kGzipEncoding = 16;
+      int init_result = inflateInit2(&stream, kWindowBits | kGzipEncoding);
+      if (init_result != Z_OK) {
+        LOG(ERROR) << "Could not initialize libz stream " << init_result;
+        return;
+      }
+    }
+
+    std::string buf;
+    buf.reserve(2 * encoded.size());
+    stream.avail_in = encoded.size();
+    stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(encoded.data()));
+
+    int result;
+    do {
+      uint8_t chunk[1024];
+      stream.next_out = static_cast<Bytef*>(chunk);
+      stream.avail_out = arraysize(chunk);
+
+      result = inflate(&stream, 0);
+      const size_t amount = arraysize(chunk) - stream.avail_out;
+      if (amount > 0) {
+        if (buf.capacity() - buf.size() < amount) {
+          buf.reserve(buf.capacity() + 64u * 1024u);
+          CHECK_LE(amount, buf.capacity() - buf.size());
+        }
+        size_t index = buf.size();
+        buf.resize(buf.size() + amount);
+        memcpy(reinterpret_cast<uint8_t*>(const_cast<char*>(buf.data())) + index, chunk, amount);
+      }
+    } while (result == Z_OK);
+    inflateEnd(&stream);
+    if (result != Z_STREAM_END) {
+      LOG(ERROR) << "Finished with not-Z_STREAM_END " << result;
+      return;
+    }
+    encoded = buf;
+  }
+
   // decode
   encodedProfile.ParseFromString(encoded);
-}
-
-static std::string encodedLoadModuleToString(const wireless_android_play_playlog::LoadModule &lm)
-{
-  std::stringstream ss;
-  ss << "name: \"" << lm.name() << "\"\n";
-  if (lm.build_id() != "") {
-    ss << "build_id: \"" << lm.build_id() << "\"\n";
-  }
-  for (const auto& symbol : lm.symbol()) {
-    ss << "symbol: \"" << symbol << "\"\n";
-  }
-  return ss.str();
-}
-
-static std::string encodedModuleSamplesToString(const wireless_android_play_playlog::LoadModuleSamples &mod)
-{
-  std::stringstream ss;
-
-  ss << "load_module_id: " << mod.load_module_id() << "\n";
-  for (size_t k = 0; k < mod.address_samples_size(); k++) {
-    const auto &sample = mod.address_samples(k);
-    ss << "  address_samples {\n";
-    for (size_t l = 0; l < mod.address_samples(k).address_size();
-         l++) {
-      auto address = mod.address_samples(k).address(l);
-      ss << "    address: " << address << "\n";
-    }
-    ss << "    count: " << sample.count() << "\n";
-    ss << "  }\n";
-  }
-  return ss.str();
 }
 
 #define RAW_RESULT(x) #x
@@ -527,7 +568,11 @@ TEST_F(PerfProfdTest, BadPerfRun)
   runner.addToConfig("main_loop_iterations=1");
   runner.addToConfig("use_fixed_seed=1");
   runner.addToConfig("collection_interval=100");
+#ifdef __ANDROID__
   runner.addToConfig("perf_path=/system/bin/false");
+#else
+  runner.addToConfig("perf_path=/bin/false");
+#endif
 
   // Create semaphore file
   runner.create_semaphore_file();
@@ -596,11 +641,193 @@ TEST_F(PerfProfdTest, ProfileCollectionAnnotations)
   // completed booted, will be on charger, and will not have the camera
   // active.
   EXPECT_FALSE(get_booting());
+#ifdef __ANDROID__
   EXPECT_TRUE(get_charging());
+#endif
   EXPECT_FALSE(get_camera_active());
 }
 
-TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
+namespace {
+
+template <typename Iterator>
+size_t CountEvents(const quipper::PerfDataProto& proto) {
+  size_t count = 0;
+  for (Iterator it(proto); it != it.end(); ++it) {
+    count++;
+  }
+  return count;
+}
+
+size_t CountCommEvents(const quipper::PerfDataProto& proto) {
+  return CountEvents<CommEventIterator>(proto);
+}
+size_t CountMmapEvents(const quipper::PerfDataProto& proto) {
+  return CountEvents<MmapEventIterator>(proto);
+}
+size_t CountSampleEvents(const quipper::PerfDataProto& proto) {
+  return CountEvents<SampleEventIterator>(proto);
+}
+size_t CountForkEvents(const quipper::PerfDataProto& proto) {
+  return CountEvents<ForkEventIterator>(proto);
+}
+size_t CountExitEvents(const quipper::PerfDataProto& proto) {
+  return CountEvents<ExitEventIterator>(proto);
+}
+
+std::string CreateStats(const quipper::PerfDataProto& proto) {
+  std::ostringstream oss;
+  oss << "Mmap events: "   << CountMmapEvents(proto) << std::endl;
+  oss << "Sample events: " << CountSampleEvents(proto) << std::endl;
+  oss << "Comm events: "   << CountCommEvents(proto) << std::endl;
+  oss << "Fork events: "   << CountForkEvents(proto) << std::endl;
+  oss << "Exit events: "   << CountExitEvents(proto) << std::endl;
+  return oss.str();
+}
+
+std::string FormatSampleEvent(const quipper::PerfDataProto_SampleEvent& sample) {
+  std::ostringstream oss;
+  if (sample.has_pid()) {
+    oss << "pid=" << sample.pid();
+  }
+  if (sample.has_tid()) {
+    oss << " tid=" << sample.tid();
+  }
+  if (sample.has_ip()) {
+      oss << " ip=" << sample.ip();
+    }
+  if (sample.has_addr()) {
+    oss << " addr=" << sample.addr();
+  }
+  if (sample.callchain_size() > 0) {
+    oss << " callchain=";
+    for (uint64_t cc : sample.callchain()) {
+      oss << "->" << cc;
+    }
+  }
+  return oss.str();
+}
+
+}
+
+struct BasicRunWithCannedPerf : PerfProfdTest {
+  void VerifyBasicCannedProfile(const android::perfprofd::PerfprofdRecord& encodedProfile) {
+    ASSERT_TRUE(encodedProfile.has_perf_data()) << test_logger.JoinTestLog(" ");
+    const quipper::PerfDataProto& perf_data = encodedProfile.perf_data();
+
+    // Expect 21108 events.
+    EXPECT_EQ(21108, perf_data.events_size()) << CreateStats(perf_data);
+
+    EXPECT_EQ(48,    CountMmapEvents(perf_data)) << CreateStats(perf_data);
+    EXPECT_EQ(19986, CountSampleEvents(perf_data)) << CreateStats(perf_data);
+    EXPECT_EQ(1033,  CountCommEvents(perf_data)) << CreateStats(perf_data);
+    EXPECT_EQ(15,    CountForkEvents(perf_data)) << CreateStats(perf_data);
+    EXPECT_EQ(26,    CountExitEvents(perf_data)) << CreateStats(perf_data);
+
+    if (HasNonfatalFailure()) {
+      FAIL();
+    }
+
+    {
+      MmapEventIterator mmap(perf_data);
+      constexpr std::pair<const char*, uint64_t> kMmapEvents[] = {
+          std::make_pair("[kernel.kallsyms]_text", 0),
+          std::make_pair("/system/lib/libc.so", 3067412480u),
+          std::make_pair("/system/vendor/lib/libdsutils.so", 3069911040u),
+          std::make_pair("/system/lib/libc.so", 3067191296u),
+          std::make_pair("/system/lib/libc++.so", 3069210624u),
+          std::make_pair("/data/dalvik-cache/arm/system@framework@boot.oat", 1900048384u),
+          std::make_pair("/system/lib/libjavacore.so", 2957135872u),
+          std::make_pair("/system/vendor/lib/libqmi_encdec.so", 3006644224u),
+          std::make_pair("/data/dalvik-cache/arm/system@framework@wifi-service.jar@classes.dex",
+                         3010351104u),
+                         std::make_pair("/system/lib/libart.so", 3024150528u),
+                         std::make_pair("/system/lib/libz.so", 3056410624u),
+                         std::make_pair("/system/lib/libicui18n.so", 3057610752u),
+      };
+      for (auto& pair : kMmapEvents) {
+        EXPECT_STREQ(pair.first, mmap->mmap_event().filename().c_str());
+        EXPECT_EQ(pair.second, mmap->mmap_event().start()) << pair.first;
+        ++mmap;
+      }
+    }
+
+    {
+      CommEventIterator comm(perf_data);
+      constexpr const char* kCommEvents[] = {
+          "init", "kthreadd", "ksoftirqd/0", "kworker/u:0H", "migration/0", "khelper",
+          "netns", "modem_notifier", "smd_channel_clo", "smsm_cb_wq", "rpm-smd", "kworker/u:1H",
+      };
+      for (auto str : kCommEvents) {
+        EXPECT_STREQ(str, comm->comm_event().comm().c_str());
+        ++comm;
+      }
+    }
+
+    {
+      SampleEventIterator samples(perf_data);
+      constexpr const char* kSampleEvents[] = {
+          "pid=0 tid=0 ip=3222720196",
+          "pid=0 tid=0 ip=3222910876",
+          "pid=0 tid=0 ip=3222910876",
+          "pid=0 tid=0 ip=3222910876",
+          "pid=0 tid=0 ip=3222910876",
+          "pid=0 tid=0 ip=3222910876",
+          "pid=0 tid=0 ip=3222910876",
+          "pid=3 tid=3 ip=3231975108",
+          "pid=5926 tid=5926 ip=3231964952",
+          "pid=5926 tid=5926 ip=3225342428",
+          "pid=5926 tid=5926 ip=3223841448",
+          "pid=5926 tid=5926 ip=3069807920",
+      };
+      for (auto str : kSampleEvents) {
+        EXPECT_STREQ(str, FormatSampleEvent(samples->sample_event()).c_str());
+        ++samples;
+      }
+
+      // Skip some samples.
+      for (size_t i = 0; i != 5000; ++i) {
+        ++samples;
+      }
+      constexpr const char* kSampleEvents2[] = {
+          "pid=5938 tid=5938 ip=3069630992",
+          "pid=5938 tid=5938 ip=3069626616",
+          "pid=5938 tid=5938 ip=3069626636",
+          "pid=5938 tid=5938 ip=3069637212",
+          "pid=5938 tid=5938 ip=3069637208",
+          "pid=5938 tid=5938 ip=3069637252",
+          "pid=5938 tid=5938 ip=3069346040",
+          "pid=5938 tid=5938 ip=3069637128",
+          "pid=5938 tid=5938 ip=3069626616",
+      };
+      for (auto str : kSampleEvents2) {
+        EXPECT_STREQ(str, FormatSampleEvent(samples->sample_event()).c_str());
+        ++samples;
+      }
+
+      // Skip some samples.
+      for (size_t i = 0; i != 5000; ++i) {
+        ++samples;
+      }
+      constexpr const char* kSampleEvents3[] = {
+          "pid=5938 tid=5938 ip=3069912036",
+          "pid=5938 tid=5938 ip=3069637260",
+          "pid=5938 tid=5938 ip=3069631024",
+          "pid=5938 tid=5938 ip=3069346064",
+          "pid=5938 tid=5938 ip=3069637356",
+          "pid=5938 tid=5938 ip=3069637144",
+          "pid=5938 tid=5938 ip=3069912036",
+          "pid=5938 tid=5938 ip=3069912036",
+          "pid=5938 tid=5938 ip=3069631244",
+      };
+      for (auto str : kSampleEvents3) {
+        EXPECT_STREQ(str, FormatSampleEvent(samples->sample_event()).c_str());
+        ++samples;
+      }
+    }
+  }
+};
+
+TEST_F(BasicRunWithCannedPerf, Basic)
 {
   //
   // Verify the portion of the daemon that reads and encodes
@@ -616,6 +843,10 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
   config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
   config_reader.overrideUnsignedEntry("collect_charging_state", 0);
   config_reader.overrideUnsignedEntry("collect_camera_active", 0);
+
+  // Disable compression.
+  config_reader.overrideUnsignedEntry("compress", 0);
+
   PerfProfdRunner::LoggingConfig config;
   config_reader.FillConfig(&config);
 
@@ -625,60 +856,13 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
   ASSERT_EQ(OK_PROFILE_COLLECTION, result) << test_logger.JoinTestLog(" ");
 
   // Read and decode the resulting perf.data.encoded file
-  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
-  readEncodedProfile(dest_dir,
-                     "BasicRunWithCannedPerf",
-                     encodedProfile);
+  android::perfprofd::PerfprofdRecord encodedProfile;
+  readEncodedProfile(dest_dir, false, encodedProfile);
 
-  // Expect 48 programs
-  EXPECT_EQ(48, encodedProfile.programs_size());
-
-  // Check a couple of load modules
-  { const auto &lm0 = encodedProfile.load_modules(0);
-    std::string act_lm0 = encodedLoadModuleToString(lm0);
-    std::string sqact0 = squeezeWhite(act_lm0, "actual for lm 0");
-    const std::string expected_lm0 = RAW_RESULT(
-        name: "/data/app/com.google.android.apps.plus-1/lib/arm/libcronet.so"
-                                                );
-    std::string sqexp0 = squeezeWhite(expected_lm0, "expected_lm0");
-    EXPECT_STREQ(sqexp0.c_str(), sqact0.c_str());
-  }
-  { const auto &lm9 = encodedProfile.load_modules(9);
-    std::string act_lm9 = encodedLoadModuleToString(lm9);
-    std::string sqact9 = squeezeWhite(act_lm9, "actual for lm 9");
-    const std::string expected_lm9 = RAW_RESULT(
-        name: "/system/lib/libandroid_runtime.so" build_id: "8164ed7b3a8b8f5a220d027788922510"
-                                                );
-    std::string sqexp9 = squeezeWhite(expected_lm9, "expected_lm9");
-    EXPECT_STREQ(sqexp9.c_str(), sqact9.c_str());
-  }
-
-  // Examine some of the samples now
-  { const auto &p1 = encodedProfile.programs(9);
-    const auto &lm1 = p1.modules(0);
-    std::string act_lm1 = encodedModuleSamplesToString(lm1);
-    std::string sqact1 = squeezeWhite(act_lm1, "actual for lm1");
-    const std::string expected_lm1 = RAW_RESULT(
-        load_module_id: 9 address_samples { address: 296100 count: 1 }
-                                                );
-    std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
-    EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
-  }
-  { const auto &p1 = encodedProfile.programs(11);
-    const auto &lm2 = p1.modules(0);
-    std::string act_lm2 = encodedModuleSamplesToString(lm2);
-    std::string sqact2 = squeezeWhite(act_lm2, "actual for lm2");
-    const std::string expected_lm2 = RAW_RESULT(
-        load_module_id: 2
-        address_samples { address: 28030244 count: 1 }
-        address_samples { address: 29657840 count: 1 }
-                                                );
-    std::string sqexp2 = squeezeWhite(expected_lm2, "expected_lm2");
-    EXPECT_STREQ(sqexp2.c_str(), sqact2.c_str());
-  }
+  VerifyBasicCannedProfile(encodedProfile);
 }
 
-TEST_F(PerfProfdTest, BasicRunWithCannedPerfWithSymbolizer)
+TEST_F(BasicRunWithCannedPerf, Compressed)
 {
   //
   // Verify the portion of the daemon that reads and encodes
@@ -694,6 +878,45 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerfWithSymbolizer)
   config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
   config_reader.overrideUnsignedEntry("collect_charging_state", 0);
   config_reader.overrideUnsignedEntry("collect_camera_active", 0);
+
+  // Enable compression.
+  config_reader.overrideUnsignedEntry("compress", 1);
+
+  PerfProfdRunner::LoggingConfig config;
+  config_reader.FillConfig(&config);
+
+  // Kick off encoder and check return code
+  PROFILE_RESULT result =
+      encode_to_proto(input_perf_data, encoded_file_path(dest_dir, 0).c_str(), config, 0, nullptr);
+  ASSERT_EQ(OK_PROFILE_COLLECTION, result) << test_logger.JoinTestLog(" ");
+
+  // Read and decode the resulting perf.data.encoded file
+  android::perfprofd::PerfprofdRecord encodedProfile;
+  readEncodedProfile(dest_dir, true, encodedProfile);
+
+  VerifyBasicCannedProfile(encodedProfile);
+}
+
+TEST_F(BasicRunWithCannedPerf, DISABLED_WithSymbolizer)
+{
+  //
+  // Verify the portion of the daemon that reads and encodes
+  // perf.data files. Here we run the encoder on a canned perf.data
+  // file and verify that the resulting protobuf contains what
+  // we think it should contain.
+  //
+  std::string input_perf_data(test_dir);
+  input_perf_data += "/canned.perf.data";
+
+  // Set up config to avoid these annotations (they are tested elsewhere)
+  ConfigReader config_reader;
+  config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
+  config_reader.overrideUnsignedEntry("collect_charging_state", 0);
+  config_reader.overrideUnsignedEntry("collect_camera_active", 0);
+
+  // Disable compression.
+  config_reader.overrideUnsignedEntry("compress", 0);
+
   PerfProfdRunner::LoggingConfig config;
   config_reader.FillConfig(&config);
 
@@ -713,59 +936,12 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerfWithSymbolizer)
   ASSERT_EQ(OK_PROFILE_COLLECTION, result);
 
   // Read and decode the resulting perf.data.encoded file
-  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
-  readEncodedProfile(dest_dir,
-                     "BasicRunWithCannedPerf",
-                     encodedProfile);
+  android::perfprofd::PerfprofdRecord encodedProfile;
+  readEncodedProfile(dest_dir, false, encodedProfile);
 
-  // Expect 45 programs
-  EXPECT_EQ(48, encodedProfile.programs_size());
+  VerifyBasicCannedProfile(encodedProfile);
 
-  // Check a couple of load modules
-  { const auto &lm0 = encodedProfile.load_modules(0);
-    std::string act_lm0 = encodedLoadModuleToString(lm0);
-    std::string sqact0 = squeezeWhite(act_lm0, "actual for lm 0");
-    const std::string expected_lm0 = RAW_RESULT(
-        name: "/data/app/com.google.android.apps.plus-1/lib/arm/libcronet.so"
-        symbol: "/data/app/com.google.android.apps.plus-1/lib/arm/libcronet.so@310106"
-        symbol: "/data/app/com.google.android.apps.plus-1/lib/arm/libcronet.so@1949952"
-                                                );
-    std::string sqexp0 = squeezeWhite(expected_lm0, "expected_lm0");
-    EXPECT_STREQ(sqexp0.c_str(), sqact0.c_str());
-  }
-  { const auto &lm9 = encodedProfile.load_modules(9);
-    std::string act_lm9 = encodedLoadModuleToString(lm9);
-    std::string sqact9 = squeezeWhite(act_lm9, "actual for lm 9");
-    const std::string expected_lm9 = RAW_RESULT(
-        name: "/system/lib/libandroid_runtime.so" build_id: "8164ed7b3a8b8f5a220d027788922510"
-                                                );
-    std::string sqexp9 = squeezeWhite(expected_lm9, "expected_lm9");
-    EXPECT_STREQ(sqexp9.c_str(), sqact9.c_str());
-  }
-
-  // Examine some of the samples now
-  { const auto &p1 = encodedProfile.programs(9);
-    const auto &lm1 = p1.modules(0);
-    std::string act_lm1 = encodedModuleSamplesToString(lm1);
-    std::string sqact1 = squeezeWhite(act_lm1, "actual for lm1");
-    const std::string expected_lm1 = RAW_RESULT(
-        load_module_id: 9 address_samples { address: 296100 count: 1 }
-                                                );
-    std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
-    EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
-  }
-  { const auto &p1 = encodedProfile.programs(11);
-    const auto &lm2 = p1.modules(0);
-    std::string act_lm2 = encodedModuleSamplesToString(lm2);
-    std::string sqact2 = squeezeWhite(act_lm2, "actual for lm2");
-    const std::string expected_lm2 = RAW_RESULT(
-        load_module_id: 2
-        address_samples { address: 18446744073709551615 count: 1 }
-        address_samples { address: 18446744073709551614 count: 1 }
-                                                );
-    std::string sqexp2 = squeezeWhite(expected_lm2, "expected_lm2");
-    EXPECT_STREQ(sqexp2.c_str(), sqact2.c_str());
-  }
+  // TODO: Re-add symbolization.
 }
 
 TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
@@ -781,6 +957,10 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
   config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
   config_reader.overrideUnsignedEntry("collect_charging_state", 0);
   config_reader.overrideUnsignedEntry("collect_camera_active", 0);
+
+  // Disable compression.
+  config_reader.overrideUnsignedEntry("compress", 0);
+
   PerfProfdRunner::LoggingConfig config;
   config_reader.FillConfig(&config);
 
@@ -790,61 +970,59 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
   ASSERT_EQ(OK_PROFILE_COLLECTION, result);
 
   // Read and decode the resulting perf.data.encoded file
-  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
-  readEncodedProfile(dest_dir,
-                     "BasicRunWithCannedPerf",
-                     encodedProfile);
+  android::perfprofd::PerfprofdRecord encodedProfile;
+  readEncodedProfile(dest_dir, false, encodedProfile);
 
 
-  // Expect 3 programs 8 load modules
-  EXPECT_EQ(3, encodedProfile.programs_size());
-  EXPECT_EQ(8, encodedProfile.load_modules_size());
+  ASSERT_TRUE(encodedProfile.has_perf_data());
+  const quipper::PerfDataProto& perf_data = encodedProfile.perf_data();
 
-  // Check a couple of load modules
-  { const auto &lm0 = encodedProfile.load_modules(0);
-    std::string act_lm0 = encodedLoadModuleToString(lm0);
-    std::string sqact0 = squeezeWhite(act_lm0, "actual for lm 0");
-    const std::string expected_lm0 = RAW_RESULT(
-        name: "/system/bin/dex2oat"
-        build_id: "ee12bd1a1de39422d848f249add0afc4"
-                                                );
-    std::string sqexp0 = squeezeWhite(expected_lm0, "expected_lm0");
-    EXPECT_STREQ(sqexp0.c_str(), sqact0.c_str());
-  }
-  { const auto &lm1 = encodedProfile.load_modules(1);
-    std::string act_lm1 = encodedLoadModuleToString(lm1);
-    std::string sqact1 = squeezeWhite(act_lm1, "actual for lm 1");
-    const std::string expected_lm1 = RAW_RESULT(
-        name: "/system/bin/linker"
-        build_id: "a36715f673a4a0aa76ef290124c516cc"
-                                                );
-    std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
-    EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
-  }
+  // Expect 21108 events.
+  EXPECT_EQ(2224, perf_data.events_size()) << CreateStats(perf_data);
 
-  // Examine some of the samples now
-  { const auto &p0 = encodedProfile.programs(1);
-    const auto &lm1 = p0.modules(0);
-    std::string act_lm1 = encodedModuleSamplesToString(lm1);
-    std::string sqact1 = squeezeWhite(act_lm1, "actual for lm1");
-    const std::string expected_lm1 = RAW_RESULT(
-        load_module_id: 0
-        address_samples { address: 108552 count: 2 }
-                                                );
-    std::string sqexp1 = squeezeWhite(expected_lm1, "expected_lm1");
-    EXPECT_STREQ(sqexp1.c_str(), sqact1.c_str());
-  }
-  { const auto &p4 = encodedProfile.programs(2);
-    const auto &lm2 = p4.modules(1);
-    std::string act_lm2 = encodedModuleSamplesToString(lm2);
-    std::string sqact2 = squeezeWhite(act_lm2, "actual for lm2");
-    const std::string expected_lm2 = RAW_RESULT(
-        load_module_id: 2 address_samples { address: 403913 count: 1 } address_samples { address: 840761 count: 1 } address_samples { address: 846481 count: 1 } address_samples { address: 999053 count: 1 } address_samples { address: 1012959 count: 1 } address_samples { address: 1524309 count: 1 } address_samples { address: 1580779 count: 1 } address_samples { address: 4287986288 count: 1 }
-                                                );
-    std::string sqexp2 = squeezeWhite(expected_lm2, "expected_lm2");
-    EXPECT_STREQ(sqexp2.c_str(), sqact2.c_str());
+  {
+      SampleEventIterator samples(perf_data);
+      constexpr const char* kSampleEvents[] = {
+          "0: pid=6225 tid=6225 ip=18446743798834668032 callchain=->18446744073709551488->"
+              "18446743798834668032->18446743798834782596->18446743798834784624->"
+              "18446743798835055136->18446743798834788016->18446743798834789192->"
+              "18446743798834789512->18446743798834790216->18446743798833756776",
+          "1: pid=6225 tid=6225 ip=18446743798835685700 callchain=->18446744073709551488->"
+              "18446743798835685700->18446743798835688704->18446743798835650964->"
+              "18446743798834612104->18446743798834612276->18446743798835055528->"
+              "18446743798834788016->18446743798834789192->18446743798834789512->"
+              "18446743798834790216->18446743798833756776",
+          "2: pid=6225 tid=6225 ip=18446743798835055804 callchain=->18446744073709551488->"
+              "18446743798835055804->18446743798834788016->18446743798834789192->"
+              "18446743798834789512->18446743798834790216->18446743798833756776",
+          "3: pid=6225 tid=6225 ip=18446743798835991212 callchain=->18446744073709551488->"
+              "18446743798835991212->18446743798834491060->18446743798834675572->"
+              "18446743798834676516->18446743798834612172->18446743798834612276->"
+              "18446743798835056664->18446743798834788016->18446743798834789192->"
+              "18446743798834789512->18446743798834790216->18446743798833756776",
+          "4: pid=6225 tid=6225 ip=18446743798844881108 callchain=->18446744073709551488->"
+              "18446743798844881108->18446743798834836140->18446743798834846384->"
+              "18446743798834491100->18446743798834675572->18446743798834676516->"
+              "18446743798834612172->18446743798834612276->18446743798835056784->"
+              "18446743798834788016->18446743798834789192->18446743798834789512->"
+              "18446743798834790216->18446743798833756776",
+      };
+      size_t cmp_index = 0;
+      for (size_t index = 0; samples != samples.end(); ++samples, ++index) {
+        if (samples->sample_event().callchain_size() > 0) {
+          std::ostringstream oss;
+          oss << index << ": " << FormatSampleEvent(samples->sample_event());
+          EXPECT_STREQ(kSampleEvents[cmp_index], oss.str().c_str());
+          cmp_index++;
+          if (cmp_index == arraysize(kSampleEvents)) {
+            break;
+          }
+        }
+      }
   }
 }
+
+#ifdef __ANDROID__
 
 TEST_F(PerfProfdTest, BasicRunWithLivePerf)
 {
@@ -866,6 +1044,9 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
   // Avoid the symbolizer for spurious messages.
   runner.addToConfig("use_elf_symbolizer=0");
 
+  // Disable compression.
+  runner.addToConfig("compress=0");
+
   // Create semaphore file
   runner.create_semaphore_file();
 
@@ -876,12 +1057,12 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
   ASSERT_EQ(0, daemon_main_return_code);
 
   // Read and decode the resulting perf.data.encoded file
-  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
-  readEncodedProfile(dest_dir, "BasicRunWithLivePerf", encodedProfile);
+  android::perfprofd::PerfprofdRecord encodedProfile;
+  readEncodedProfile(dest_dir, false, encodedProfile);
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
-  EXPECT_LT(0, encodedProfile.programs_size());
+  EXPECT_LT(0, encodedProfile.perf_data().events_size());
 
   // Verify log contents
   const std::string expected = std::string(
@@ -918,6 +1099,10 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
   runner.addToConfig("sample_duration=2");
   // Avoid the symbolizer for spurious messages.
   runner.addToConfig("use_elf_symbolizer=0");
+
+  // Disable compression.
+  runner.addToConfig("compress=0");
+
   runner.write_processed_file(1, 2);
 
   // Create semaphore file
@@ -930,12 +1115,12 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
   ASSERT_EQ(0, daemon_main_return_code);
 
   // Read and decode the resulting perf.data.encoded file
-  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
-  readEncodedProfile(dest_dir, "BasicRunWithLivePerf", encodedProfile);
+  android::perfprofd::PerfprofdRecord encodedProfile;
+  readEncodedProfile(dest_dir, false, encodedProfile);
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
-  EXPECT_LT(0, encodedProfile.programs_size());
+  EXPECT_LT(0, encodedProfile.perf_data().events_size());
 
   // Examine that encoded.1 file is removed while encoded.{0|2} exists.
   EXPECT_EQ(0, access(encoded_file_path(dest_dir, 0).c_str(), F_OK));
@@ -989,6 +1174,9 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
   // Avoid the symbolizer for spurious messages.
   runner.addToConfig("use_elf_symbolizer=0");
 
+  // Disable compression.
+  runner.addToConfig("compress=0");
+
   // Create semaphore file
   runner.create_semaphore_file();
 
@@ -999,12 +1187,12 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
   ASSERT_EQ(0, daemon_main_return_code);
 
   // Read and decode the resulting perf.data.encoded file
-  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
-  readEncodedProfile(dest_dir, "CallChainRunWithLivePerf", encodedProfile);
+  android::perfprofd::PerfprofdRecord encodedProfile;
+  readEncodedProfile(dest_dir, false, encodedProfile);
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
-  EXPECT_LT(0, encodedProfile.programs_size());
+  EXPECT_LT(0, encodedProfile.perf_data().events_size());
 
   // Verify log contents
   const std::string expected = std::string(
@@ -1021,7 +1209,17 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
                                           );
   // check to make sure log excerpt matches
   CompareLogMessages(expandVars(expected), "CallChainRunWithLivePerf", true);
+
+  // Check that we have at least one SampleEvent with a callchain.
+  SampleEventIterator samples(encodedProfile.perf_data());
+  bool found_callchain = false;
+  while (!found_callchain && samples != samples.end()) {
+    found_callchain = samples->sample_event().callchain_size() > 0;
+  }
+  EXPECT_TRUE(found_callchain) << CreateStats(encodedProfile.perf_data());
 }
+
+#endif
 
 int main(int argc, char **argv) {
   // Always log to cerr, so that device failures are visible.
