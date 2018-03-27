@@ -33,7 +33,6 @@ cc_defaults {
         "-Wno-nested-anon-types",
         "-Wno-gnu-statement-expression",
         "-Wno-vla-extension",
-        "-Wno-extended-offsetof",
     ],
     cppflags: [
         "-Wno-sign-compare",
