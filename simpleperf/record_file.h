@@ -55,10 +55,6 @@ class RecordFileWriter {
   bool WriteCmdlineFeature(const std::vector<std::string>& cmdline);
   bool WriteBranchStackFeature();
   bool WriteFileFeatures(const std::vector<Dso*>& files);
-  bool WriteFileFeature(const std::string& file_path,
-                        uint32_t file_type,
-                        uint64_t min_vaddr,
-                        const std::vector<const Symbol*>& symbols);
   bool WriteMetaInfoFeature(const std::unordered_map<std::string, std::string>& info_map);
   bool WriteFeature(int feature, const std::vector<char>& data);
   bool EndWriteFeatures();
@@ -76,6 +72,11 @@ class RecordFileWriter {
   bool Read(void* buf, size_t len);
   bool GetFilePos(uint64_t* file_pos);
   bool WriteStringWithLength(const std::string& s);
+  bool WriteFileFeature(const std::string& file_path,
+                        uint32_t file_type,
+                        uint64_t min_vaddr,
+                        const std::vector<const Symbol*>& symbols,
+                        const std::vector<uint64_t>* dex_file_offsets);
   bool WriteFeatureBegin(int feature);
   bool WriteFeatureEnd(int feature);
 
@@ -149,7 +150,7 @@ class RecordFileReader {
   // information.
   bool ReadFileFeature(size_t& read_pos, std::string* file_path,
                        uint32_t* file_type, uint64_t* min_vaddr,
-                       std::vector<Symbol>* symbols);
+                       std::vector<Symbol>* symbols, std::vector<uint64_t>* dex_file_offsets);
   bool ReadMetaInfoFeature(std::unordered_map<std::string, std::string>* info_map);
 
   void LoadBuildIdAndFileFeatures(ThreadTree& thread_tree);

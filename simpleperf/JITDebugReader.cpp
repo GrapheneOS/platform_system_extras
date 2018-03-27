@@ -431,14 +431,12 @@ void JITDebugReader::ReadDexSymFiles(const std::vector<CodeEntry>& dex_entries,
     // Offset of dex file in .vdex file or .apk file.
     uint64_t dex_file_offset = dex_entry.symfile_addr - it->start_addr + it->pgoff;
     DexSymFile symfile;
-    symfile.addr = dex_entry.symfile_addr;
-    symfile.len = dex_entry.symfile_size;
-    symfile.pgoff = dex_file_offset;
+    symfile.dex_file_offset = dex_file_offset;
     symfile.file_path = it->name;
     dex_symfiles->push_back(symfile);
-    LOG(VERBOSE) << "DexFile " << symfile.file_path << "+" << std::hex << dex_file_offset
-                 << " at [" << std::hex << symfile.addr << " - " << (symfile.addr + symfile.len)
-                 << "] with size " << symfile.len;
+    LOG(VERBOSE) << "DexFile " << symfile.file_path << "+" << std::hex << symfile.dex_file_offset
+                 << " in map [" << it->start_addr << " - " << (it->start_addr + it->len)
+                 << "] with size " << dex_entry.symfile_size;
   }
 }
 

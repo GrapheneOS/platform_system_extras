@@ -389,9 +389,11 @@ TEST(record_cmd, dump_kernel_symbols) {
   uint32_t file_type;
   uint64_t min_vaddr;
   std::vector<Symbol> symbols;
+  std::vector<uint64_t> dex_file_offsets;
   size_t read_pos = 0;
   bool has_kernel_symbols = false;
-  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr, &symbols)) {
+  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr, &symbols,
+                                 &dex_file_offsets)) {
     if (file_type == DSO_KERNEL && !symbols.empty()) {
       has_kernel_symbols = true;
     }

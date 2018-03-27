@@ -120,6 +120,7 @@ libsimpleperf_src_files_linux := \
   JITDebugReader.cpp \
   OfflineUnwinder.cpp \
   perf_clock.cpp \
+  read_dex_file.cpp \
   record_file_writer.cpp \
   UnixSocket.cpp \
   workload.cpp \
@@ -144,6 +145,8 @@ LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_target)
 LOCAL_MULTILIB := both
 LOCAL_PROTOC_OPTIMIZE_TYPE := lite-static
 include $(LLVM_DEVICE_BUILD_MK)
+# Remove -std=c++11 flag to compile read_dex_file.cpp.
+LOCAL_CPPFLAGS := $(filter-out $(LOCAL_CPPFLAGS),-std=c++11)
 include $(BUILD_STATIC_LIBRARY)
 
 # libsimpleperf host
@@ -165,6 +168,8 @@ LOCAL_MULTILIB := both
 LOCAL_PROTOC_OPTIMIZE_TYPE := lite-static
 LOCAL_CXX_STL := libc++_static
 include $(LLVM_HOST_BUILD_MK)
+# Remove -std=c++11 flag to compile read_dex_file.cpp.
+LOCAL_CPPFLAGS := $(filter-out $(LOCAL_CPPFLAGS),-std=c++11)
 include $(BUILD_HOST_STATIC_LIBRARY)
 
 
@@ -372,6 +377,7 @@ simpleperf_unit_test_src_files_linux := \
   cmd_trace_sched_test.cpp \
   environment_test.cpp \
   IOEventLoop_test.cpp \
+  read_dex_file_test.cpp \
   record_file_test.cpp \
   UnixSocket_test.cpp \
   workload_test.cpp \
@@ -459,6 +465,8 @@ LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_target)
 LOCAL_MULTILIB := both
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 include $(LLVM_DEVICE_BUILD_MK)
+# Remove -std=c++11 flag to compile read_dex_file.cpp.
+LOCAL_CPPFLAGS := $(filter-out $(LOCAL_CPPFLAGS),-std=c++11)
 include $(BUILD_STATIC_TEST_LIBRARY)
 
 # libsimpleperf_cts_test linux host
@@ -473,6 +481,8 @@ LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := both
 include $(LLVM_HOST_BUILD_MK)
+# Remove -std=c++11 flag to compile read_dex_file.cpp.
+LOCAL_CPPFLAGS := $(filter-out $(LOCAL_CPPFLAGS),-std=c++11)
 include $(BUILD_HOST_STATIC_TEST_LIBRARY)
 
 # simpleperf_record_test

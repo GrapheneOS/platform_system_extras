@@ -124,7 +124,9 @@ class ThreadTree {
   void ClearThreadAndMap();
 
   void AddDsoInfo(const std::string& file_path, uint32_t file_type,
-                  uint64_t min_vaddr, std::vector<Symbol>* symbols);
+                  uint64_t min_vaddr, std::vector<Symbol>* symbols,
+                  const std::vector<uint64_t>& dex_file_offsets);
+  void AddDexFileOffset(const std::string& file_path, uint64_t dex_file_offset);
 
   // Update thread tree with information provided by record.
   void Update(const Record& record);
@@ -135,7 +137,8 @@ class ThreadTree {
  private:
   ThreadEntry* CreateThread(int pid, int tid);
   Dso* FindKernelDsoOrNew(const std::string& filename);
-  Dso* FindUserDsoOrNew(const std::string& filename, uint64_t start_addr = 0);
+  Dso* FindUserDsoOrNew(const std::string& filename, uint64_t start_addr = 0,
+                        DsoType dso_type = DSO_ELF_FILE);
   MapEntry* AllocateMap(const MapEntry& value);
   void FixOverlappedMap(MapSet* maps, const MapEntry* map);
 
