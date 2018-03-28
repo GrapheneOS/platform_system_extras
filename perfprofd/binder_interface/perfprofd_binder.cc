@@ -35,7 +35,6 @@
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
-#include <android/os/DropBoxManager.h>
 #include <binder/BinderService.h>
 #include <binder/IResultReceiver.h>
 #include <binder/Status.h>
@@ -49,6 +48,7 @@
 #include "perfprofd_record.pb.h"
 
 #include "config.h"
+#include "dropbox.h"
 #include "perfprofdcore.h"
 #include "perfprofd_io.h"
 
@@ -151,79 +151,21 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
   int seq_ = 0;
 };
 
-static Status WriteDropboxFile(android::perfprofd::PerfprofdRecord* encodedProfile,
-                               Config* config) {
-  android::base::unique_fd tmp_fd;
-  {
-    char path[PATH_MAX];
-    snprintf(path,
-             sizeof(path),
-             "%s%cdropboxtmp-XXXXXX",
-             config->destination_directory.c_str(),
-             OS_PATH_SEPARATOR);
-    tmp_fd.reset(mkstemp(path));
-    if (tmp_fd.get() == -1) {
-      PLOG(ERROR) << "Could not create temp file " << path;
-      return Status::fromExceptionCode(1, "Could not create temp file");
-    }
-    if (unlink(path) != 0) {
-      PLOG(WARNING) << "Could not unlink binder temp file";
-    }
-  }
-
-  // Dropbox takes ownership of the fd, and if it is not readonly,
-  // a selinux violation will occur. Get a read-only version.
-  android::base::unique_fd read_only;
-  {
-    char fdpath[64];
-    snprintf(fdpath, arraysize(fdpath), "/proc/self/fd/%d", tmp_fd.get());
-    read_only.reset(open(fdpath, O_RDONLY | O_CLOEXEC));
-    if (read_only.get() < 0) {
-      PLOG(ERROR) << "Could not create read-only fd";
-      return Status::fromExceptionCode(1, "Could not create read-only fd");
-    }
-  }
-
-  constexpr bool kCompress = true;  // Ignore the config here. Dropbox will always end up
-                                    // compressing the data, might as well make the temp
-                                    // file smaller and help it out.
-  using DropBoxManager = android::os::DropBoxManager;
-  constexpr int kDropboxFlags = DropBoxManager::IS_GZIPPED;
-
-  if (!SerializeProtobuf(encodedProfile, std::move(tmp_fd), kCompress)) {
-    return Status::fromExceptionCode(1, "Could not serialize to temp file");
-  }
-
-  sp<DropBoxManager> dropbox(new DropBoxManager());
-  return dropbox->addFile(String16("perfprofd"), read_only.release(), kDropboxFlags);
-}
-
 bool PerfProfdNativeService::BinderHandler(
     android::perfprofd::PerfprofdRecord* encodedProfile,
     Config* config) {
   CHECK(config != nullptr);
-  if (static_cast<BinderConfig*>(config)->send_to_dropbox) {
-    size_t size = encodedProfile->ByteSize();
-    Status status;
-    if (size < 1024 * 1024) {
-      // For a small size, send as a byte buffer directly.
-      std::unique_ptr<uint8_t[]> data(new uint8_t[size]);
-      encodedProfile->SerializeWithCachedSizesToArray(data.get());
+  if (encodedProfile == nullptr) {
+    return false;
+  }
 
-      using DropBoxManager = android::os::DropBoxManager;
-      sp<DropBoxManager> dropbox(new DropBoxManager());
-      status = dropbox->addData(String16("perfprofd"),
-                                data.get(),
-                                size,
-                                0);
-    } else {
-      // For larger buffers, we need to go through the filesystem.
-      status = WriteDropboxFile(encodedProfile, config);
+  if (static_cast<BinderConfig*>(config)->send_to_dropbox) {
+    std::string error_msg;
+    if (!dropbox::SendToDropbox(encodedProfile, config->destination_directory, &error_msg)) {
+      LOG(WARNING) << "Failed dropbox submission: " << error_msg;
+      return false;
     }
-    if (!status.isOk()) {
-      LOG(WARNING) << "Failed dropbox submission: " << status.toString8();
-    }
-    return status.isOk();
+    return true;
   }
 
   if (encodedProfile == nullptr) {
