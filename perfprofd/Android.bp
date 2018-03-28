@@ -95,6 +95,7 @@ cc_defaults {
         "configreader.cc",
         "cpuconfig.cc",
         "perfprofdcore.cc",
+        "perfprofd_cmdline.cc",
         "perfprofd_io.cc",
         "symbolizer.cc"
     ],
