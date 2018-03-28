@@ -23,7 +23,7 @@ parseoptions() {
                 usage
                 ;;
             -s)
-                if [ -z $2 ]; then
+                if [ -z "$2" ]; then
                     usage
                 fi
                 adb="adb -s $2"
@@ -43,7 +43,7 @@ parseoptions() {
     done
 
     iterations=$1
-    if [ $iterations -lt 100 ]; then
+    if [ "$iterations" -lt 100 ]; then
         usage
     fi
 }
@@ -59,47 +59,47 @@ getstats () {
 
     # From Activity Manager
     echo "Launch Time (TotalTime) :"
-    fgrep TotalTime $infile | awk '{print $2}' | computestats
+    fgrep TotalTime "$infile" | awk '{print $2}' | computestats
 
     # Data from simpleperf
     echo "cpu-cycles :"
-    fgrep cpu-cycles $infile | awk '{print $1}' | sed s/,//g | computestats
+    fgrep cpu-cycles "$infile" | awk '{print $1}' | sed s/,//g | computestats
 
     # CPU util% Data from /proc/stat
     echo "cpu-util% :"
-    fgrep 'Total CPU util' $infile | awk '{print $5}' | computestatsf
+    fgrep 'Total CPU util' "$infile" | awk '{print $5}' | computestatsf
     echo "user-cpu-util% :"
-    fgrep 'User CPU util' $infile | awk '{print $5}' | computestatsf
+    fgrep 'User CPU util' "$infile" | awk '{print $5}' | computestatsf
     echo "sys-cpu-util% (incl hardirq/softirq) :"
-    fgrep 'Sys CPU util' $infile | awk '{print $5}' | computestatsf
+    fgrep 'Sys CPU util' "$infile" | awk '{print $5}' | computestatsf
 
     if [ $verbose == true ]; then
         echo "instructions : "
-        fgrep instructions $infile | awk '{print $1}' | sed s/,//g | computestats
+        fgrep instructions "$infile" | awk '{print $1}' | sed s/,//g | computestats
 
         echo "cycles per instruction : "
-        fgrep instructions $infile | awk '{print $4}' | sed s/,//g | computestatsf
+        fgrep instructions "$infile" | awk '{print $4}' | sed s/,//g | computestatsf
 
         echo "branch-misses : "
-        fgrep branch-misses $infile | awk '{print $1}' | sed s/,//g | computestats
+        fgrep branch-misses "$infile" | awk '{print $1}' | sed s/,//g | computestats
 
         echo "context-switches : "
-        fgrep context-switches $infile | awk '{print $1}' | sed s/,//g | computestats
+        fgrep context-switches "$infile" | awk '{print $1}' | sed s/,//g | computestats
 
         echo "page-faults : "
-        fgrep page-faults $infile | awk '{print $1}' | sed s/,//g | computestats
+        fgrep page-faults "$infile" | awk '{print $1}' | sed s/,//g | computestats
     fi
 
-    if [ $system_bdev_set == true ]; then
+    if [ "$system_bdev_set" == true ]; then
         # (Storage) Data from /proc we've collected
         echo "KB read for $system_block_device blkdev :"
-        fgrep KB $infile | grep system | awk '{print $5}' | computestats
+        fgrep KB "$infile" | grep system | awk '{print $5}' | computestats
 
         echo "iowait% :"
-        fgrep IOwait $infile | awk '{print $3}' | computestatsf
+        fgrep IOwait "$infile" | awk '{print $3}' | computestatsf
 
         echo "Device util% for $system_block_device blkdev :"
-        fgrep 'Device util' $infile | awk '{print $4}' | computestatsf
+        fgrep 'Device util' "$infile" | awk '{print $4}' | computestatsf
     fi
 }
 
@@ -117,7 +117,7 @@ cpufreq_volantis() {
 overnor"
         $adb shell "echo 2499000 > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_fr\
 eq"
-        i=`expr $i + 1`
+        i=$((i + 1))
     done
     # Lock the GPU frequencies
     echo -n 852000000 > /d/clock/override.gbus/rate
@@ -136,7 +136,7 @@ cpufreq_fugu() {
     do
         $adb shell "echo performance  > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_governor"
         $adb shell "echo 1833000 > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq"
-        i=`expr $i + 1`
+        i=$((i + 1))
     done
 }
 
@@ -210,7 +210,7 @@ cpufreq_angler () {
         while [ $i -lt $num_cores ]
         do
             $adb shell "echo 0 > /sys/devices/system/cpu/cpu$i/online"
-            i=`expr $i + 1`
+            i=$((i + 1))
         done
     else
         echo "Enabling All Cores"
@@ -224,7 +224,7 @@ cpufreq_angler () {
             $adb shell "echo performance > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_governor"
             # Lock frequency of little cores
             $adb shell "echo 1555200 > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq"
-            i=`expr $i + 1`
+            i=$((i + 1))
         done
     fi
     i=4
@@ -234,7 +234,7 @@ cpufreq_angler () {
         $adb shell "echo performance > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_governor"
         # Lock frequency of big cores
         $adb shell "echo 1958400 > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq"
-        i=`expr $i + 1`
+        i=$((i + 1))
     done
 }
 
@@ -291,20 +291,20 @@ get_marlin_sailfish_devnames () {
 
 get_angler_devnames () {
     # Get the underlying bdev from the "by-name" mapping
-    system_block_device=`$adb shell 'find /dev/block/platform -name by-name | xargs ls -l' | grep system | awk '{ print $10 }' `
+    system_block_device=$($adb shell 'find /dev/block/platform -name by-name | xargs ls -l' | grep system | awk '{ print $10 }')
     # extract the last component of the absolute device pathname we got above
-    system_block_device=`echo $system_block_device | awk 'BEGIN { FS ="/" } ; { print $4 }' `
+    system_block_device=$(echo "$system_block_device" | awk 'BEGIN { FS ="/" } ; { print $4 }')
     # vendor is unused right now, but get the bdev anyway in case we decide to use it
     # Get the underlying bdev from the "by-name" mapping
-    vendor_block_device=`$adb shell 'find /dev/block/platform -name by-name | xargs ls -l' | grep vendor | awk '{ print $10 }' `
+    vendor_block_device=$($adb shell 'find /dev/block/platform -name by-name | xargs ls -l' | grep vendor | awk '{ print $10 }')
     # extract the last component of the absolute device pathname we got above
-   vendor_block_device=`echo $vendor_block_device | awk 'BEGIN { FS ="/" } ; { print $4 }' `
-   system_bdev_set=true
+    vendor_block_device=$(echo "$vendor_block_device" | awk 'BEGIN { FS ="/" } ; { print $4 }')
+    system_bdev_set=true
 }
 
 get_fugu_devnames () {
-    system_block_device=`$adb shell ls -l /dev/block/by-name/system | awk '{ print $10 }' `
-    system_block_device=`echo $system_block_device | awk 'BEGIN { FS ="/" } ; { print $4 }' `
+    system_block_device=$($adb shell ls -l /dev/block/by-name/system | awk '{ print $10 }')
+    system_block_device=$(echo "$system_block_device" | awk 'BEGIN { FS ="/" } ; { print $4 }')
     system_bdev_set=true
 }
 
@@ -512,11 +512,11 @@ else
     echo "User Experience: Default Configs. No changes to cpufreq settings"
 fi
 
-model=`$adb shell getprop ro.product.name`
+model=$($adb shell getprop ro.product.name)
 # Releases are inconsistent with various trailing characters, remove them all
-model=`echo $model | sed 's/[ \t\r\n]*$//' `
+model=$(echo "$model" | sed 's/[ \t\r\n]*$//')
 
-echo Found $model Device
+echo "Found $model Device"
 
 system_bdev_set=false
 case $model in
@@ -558,7 +558,7 @@ case $model in
         get_volantis_devnames
         ;;
     *)
-        echo Unknown Device $model
+        echo "Unknown Device $model"
         exit 1
         ;;
 esac
