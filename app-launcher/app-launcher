@@ -428,12 +428,14 @@ launch_phone_apps() {
 launch_go_apps() {
     launch_app com.android.chrome com.google.android.apps.chrome.Main > $BASHPID-chrome-$model
     getstats $BASHPID-chrome-$model Chrome
-    launch_app com.google.android.gm .ConversationListActivityGmail > $BASHPID-gmail-$model
-    getstats $BASHPID-gmail-$model Gmail
-    launch_app com.google.android.videos .mobile.usecase.home.RootActivity > $BASHPID-movies-$model
-    getstats $BASHPID-movies-$model Movies
+    launch_app com.google.android.gm.lite com.google.android.gm.ConversationListActivityGmail > $BASHPID-gmailgo-$model
+    getstats $BASHPID-gmailgo-$model GmailGo
+    launch_app com.google.android.apps.youtube.mango com.google.android.apps.youtube.lite.frontend.activities.SplashActivity > $BASHPID-youtubego-$model
+    getstats $BASHPID-youtubego-$model YouTubeGo
     launch_app com.android.vending com.google.android.finsky.activities.MainActivity > $BASHPID-play-$model
     getstats $BASHPID-play-$model Play
+    launch_app com.android.settings com.android.settings.Settings > $BASHPID-settings-$model
+    getstats $BASHPID-settings-$model Settings
 }
 
 usage() {
