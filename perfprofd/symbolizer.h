@@ -25,6 +25,7 @@ namespace perfprofd {
 struct Symbolizer {
   virtual ~Symbolizer() {}
   virtual std::string Decode(const std::string& dso, uint64_t address) = 0;
+  virtual bool GetMinExecutableVAddr(const std::string& dso, uint64_t* addr) = 0;
 };
 
 std::unique_ptr<Symbolizer> CreateELFSymbolizer();

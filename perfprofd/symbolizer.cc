@@ -80,6 +80,11 @@ struct SimpleperfSymbolizer : public Symbolizer {
     dsos.emplace(dso, std::move(data));
   }
 
+  bool GetMinExecutableVAddr(const std::string& dso, uint64_t* addr) override {
+    ElfStatus status = ReadMinExecutableVirtualAddressFromElfFile(dso, BuildId(), addr);
+    return status == ElfStatus::NO_ERROR;
+  }
+
   std::unordered_map<std::string, SymbolMap> dsos;
 };
 
