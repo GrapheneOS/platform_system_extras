@@ -48,6 +48,22 @@ cc_defaults {
         "-g",
         "-UNDEBUG",
     ],
+
+    // Add sanitizers that work w/o extra libraries. This is important
+    // for atest etc to work.
+    sanitize: {
+        integer_overflow: true,
+        undefined: true,
+    },
+
+    target: {
+        // On the host add ASAN.
+        host: {
+            sanitize: {
+                address: true,
+            },
+        },
+    }
 }
 
 //
