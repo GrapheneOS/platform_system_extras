@@ -76,4 +76,7 @@ message ProfilingConfig {
 
   // Whether to send the result to dropbox.
   optional bool send_to_dropbox = 20;
+
+  // If true, use libz to compress the output proto.
+  optional bool compress = 21;
 };
