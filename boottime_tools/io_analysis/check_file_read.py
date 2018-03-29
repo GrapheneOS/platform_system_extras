@@ -428,7 +428,7 @@ class Trace:
 
 def main(argv):
   if (len(argv) < 2):
-    print "check_fule_read.py filename"
+    print "check_file_read.py filename"
     return
   filename = argv[1]
   trace = Trace()
