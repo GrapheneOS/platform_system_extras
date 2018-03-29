@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 parseoptions() {
     verbose=false
@@ -59,47 +59,47 @@ getstats () {
 
     # From Activity Manager
     echo "Launch Time (TotalTime) :"
-    fgrep TotalTime "$infile" | awk '{print $2}' | computestats
+    grep -F TotalTime "$infile" | awk '{print $2}' | computestats
 
     # Data from simpleperf
     echo "cpu-cycles :"
-    fgrep cpu-cycles "$infile" | awk '{print $1}' | sed s/,//g | computestats
+    grep -F cpu-cycles "$infile" | awk '{print $1}' | sed s/,//g | computestats
 
     # CPU util% Data from /proc/stat
     echo "cpu-util% :"
-    fgrep 'Total CPU util' "$infile" | awk '{print $5}' | computestatsf
+    grep -F 'Total CPU util' "$infile" | awk '{print $5}' | computestatsf
     echo "user-cpu-util% :"
-    fgrep 'User CPU util' "$infile" | awk '{print $5}' | computestatsf
+    grep -F 'User CPU util' "$infile" | awk '{print $5}' | computestatsf
     echo "sys-cpu-util% (incl hardirq/softirq) :"
-    fgrep 'Sys CPU util' "$infile" | awk '{print $5}' | computestatsf
+    grep -F 'Sys CPU util' "$infile" | awk '{print $5}' | computestatsf
 
     if [ $verbose == true ]; then
         echo "instructions : "
-        fgrep instructions "$infile" | awk '{print $1}' | sed s/,//g | computestats
+        grep -F instructions "$infile" | awk '{print $1}' | sed s/,//g | computestats
 
         echo "cycles per instruction : "
-        fgrep instructions "$infile" | awk '{print $4}' | sed s/,//g | computestatsf
+        grep -F instructions "$infile" | awk '{print $4}' | sed s/,//g | computestatsf
 
         echo "branch-misses : "
-        fgrep branch-misses "$infile" | awk '{print $1}' | sed s/,//g | computestats
+        grep -F branch-misses "$infile" | awk '{print $1}' | sed s/,//g | computestats
 
         echo "context-switches : "
-        fgrep context-switches "$infile" | awk '{print $1}' | sed s/,//g | computestats
+        grep -F context-switches "$infile" | awk '{print $1}' | sed s/,//g | computestats
 
         echo "page-faults : "
-        fgrep page-faults "$infile" | awk '{print $1}' | sed s/,//g | computestats
+        grep -F page-faults "$infile" | awk '{print $1}' | sed s/,//g | computestats
     fi
 
     if [ "$system_bdev_set" == true ]; then
         # (Storage) Data from /proc we've collected
         echo "KB read for $system_block_device blkdev :"
-        fgrep KB "$infile" | grep system | awk '{print $5}' | computestats
+        grep -F KB "$infile" | grep system | awk '{print $5}' | computestats
 
         echo "iowait% :"
-        fgrep IOwait "$infile" | awk '{print $3}' | computestatsf
+        grep -F IOwait "$infile" | awk '{print $3}' | computestatsf
 
         echo "Device util% for $system_block_device blkdev :"
-        fgrep 'Device util' "$infile" | awk '{print $4}' | computestatsf
+        grep -F 'Device util' "$infile" | awk '{print $4}' | computestatsf
     fi
 }
 
