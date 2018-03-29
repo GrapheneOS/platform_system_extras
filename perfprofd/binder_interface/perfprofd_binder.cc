@@ -60,8 +60,6 @@ using Status = ::android::binder::Status;
 
 class BinderConfig : public Config {
  public:
-  bool send_to_dropbox = false;
-
   bool is_profiling = false;
 
   void Sleep(size_t seconds) override {
@@ -96,8 +94,6 @@ class BinderConfig : public Config {
   BinderConfig& operator=(const BinderConfig& rhs) {
     // Copy base fields.
     *static_cast<Config*>(this) = static_cast<const Config&>(rhs);
-
-    send_to_dropbox = rhs.send_to_dropbox;
 
     return *this;
   }

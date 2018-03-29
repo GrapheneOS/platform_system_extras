@@ -50,6 +50,11 @@ cc_test {
             required: [
                 "simpleperf",
             ],
+            shared_libs: [
+                "libbinder",
+                "libservices",
+                "libutils",
+            ],
         },
 
     },
