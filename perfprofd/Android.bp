@@ -66,6 +66,41 @@ cc_defaults {
     }
 }
 
+// Static library for the record proto and its I/O.
+
+cc_library_static {
+    name: "libperfprofd_record_proto",
+    defaults: [
+        "perfprofd_defaults",
+    ],
+    host_supported: true,
+    target: {
+        darwin: {
+            enabled: false,
+        },
+    },
+
+    static_libs: [
+        "libbase",
+        "libprotobuf-cpp-lite",
+        "libquipper",
+        "libz",
+    ],
+    srcs: [
+        "perfprofd_io.cc",
+        "perfprofd_record.proto",
+    ],
+
+    proto: {
+        export_proto_headers: true,
+        include_dirs: ["external/perf_data_converter/src/quipper"],
+        type: "lite",
+    },
+
+    export_include_dirs: ["."],  // Really only the -fwd.h.
+    export_static_lib_headers: ["libquipper"],
+}
+
 //
 // Static library containing guts of AWP daemon.
 //
@@ -87,24 +122,18 @@ cc_defaults {
         "libsimpleperf_elf_read",
     ],
     whole_static_libs: [
+        "libperfprofd_record_proto",
         "libquipper",
     ],
     srcs: [
-        "perfprofd_record.proto",
         "perf_data_converter.cc",
         "configreader.cc",
         "cpuconfig.cc",
         "perfprofdcore.cc",
         "perfprofd_cmdline.cc",
-        "perfprofd_io.cc",
         "symbolizer.cc"
     ],
 
-    proto: {
-        export_proto_headers: true,
-        include_dirs: ["external/perf_data_converter/src/quipper"],
-        type: "lite",
-    },
     cflags: [
         "-Wno-gnu-anonymous-struct",
     ],
