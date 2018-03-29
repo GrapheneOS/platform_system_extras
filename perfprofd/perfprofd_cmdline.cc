@@ -36,6 +36,7 @@
 #include "perfprofd_record.pb.h"
 
 #include "configreader.h"
+#include "dropbox.h"
 #include "perfprofdcore.h"
 #include "perfprofd_io.h"
 
@@ -224,16 +225,25 @@ int perfprofd_main(int argc, char** argv, Config* config)
     if (proto == nullptr) {
       return false;
     }
-    std::string data_file_path(handler_config->destination_directory);
-    data_file_path += "/";
-    data_file_path += PERF_OUTPUT;
-    std::string path = android::base::StringPrintf("%s.encoded.%d", data_file_path.c_str(), seq);
-    if (!android::perfprofd::SerializeProtobuf(proto, path.c_str(), handler_config->compress)) {
-      return false;
-    }
-
-    if (!post_process(*handler_config, seq)) {
-      return false;
+    if (handler_config->send_to_dropbox) {
+      std::string error_msg;
+      if (!android::perfprofd::dropbox::SendToDropbox(proto,
+                                                      handler_config->destination_directory,
+                                                      &error_msg)) {
+        LOG(ERROR) << "Failed dropbox submission: " << error_msg;
+        return false;
+      }
+    } else {
+      std::string data_file_path(handler_config->destination_directory);
+      data_file_path += "/";
+      data_file_path += PERF_OUTPUT;
+      std::string path = android::base::StringPrintf("%s.encoded.%d", data_file_path.c_str(), seq);
+      if (!android::perfprofd::SerializeProtobuf(proto, path.c_str(), handler_config->compress)) {
+        return false;
+      }
+      if (!post_process(*handler_config, seq)) {
+        return false;
+      }
     }
     seq++;
     return true;

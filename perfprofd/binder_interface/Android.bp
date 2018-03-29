@@ -30,9 +30,6 @@ cc_library_static {
         "libperfprofdcore",
         "libprotobuf-cpp-lite",
     ],
-    whole_static_libs: [
-        "libperfprofd_dropbox",
-    ],
     srcs: [
         "perfprofd_binder.cc",
         ":perfprofd_aidl",
