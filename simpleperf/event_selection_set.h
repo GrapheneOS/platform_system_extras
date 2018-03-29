@@ -103,6 +103,8 @@ class EventSelectionSet {
   void SetInherit(bool enable);
   void SetClockId(int clock_id);
   bool NeedKernelSymbol() const;
+  void SetRecordNotExecutableMaps(bool record);
+  bool RecordNotExecutableMaps() const;
 
   void AddMonitoredProcesses(const std::set<pid_t>& processes) {
     processes_.insert(processes.begin(), processes.end());

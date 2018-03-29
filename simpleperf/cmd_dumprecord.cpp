@@ -235,11 +235,12 @@ bool DumpRecordCommand::DumpFeatureSection() {
       uint32_t file_type;
       uint64_t min_vaddr;
       std::vector<Symbol> symbols;
+      std::vector<uint64_t> dex_file_offsets;
       size_t read_pos = 0;
       PrintIndented(1, "file:\n");
       while (record_file_reader_->ReadFileFeature(read_pos, &file_path,
                                                   &file_type, &min_vaddr,
-                                                  &symbols)) {
+                                                  &symbols, &dex_file_offsets)) {
         PrintIndented(2, "file_path %s\n", file_path.c_str());
         PrintIndented(2, "file_type %s\n", DsoTypeToString(static_cast<DsoType>(file_type)));
         PrintIndented(2, "min_vaddr 0x%" PRIx64 "\n", min_vaddr);
@@ -247,6 +248,12 @@ bool DumpRecordCommand::DumpFeatureSection() {
         for (const auto& symbol : symbols) {
           PrintIndented(3, "%s [0x%" PRIx64 "-0x%" PRIx64 "]\n", symbol.DemangledName(),
                         symbol.addr, symbol.addr + symbol.len);
+        }
+        if (file_type == static_cast<uint32_t>(DSO_DEX_FILE)) {
+          PrintIndented(2, "dex_file_offsets:\n");
+          for (uint64_t offset : dex_file_offsets) {
+            PrintIndented(3, "0x%" PRIx64 "\n", offset);
+          }
         }
       }
     } else if (feature == FEAT_META_INFO) {

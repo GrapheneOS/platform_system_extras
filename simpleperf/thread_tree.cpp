@@ -139,12 +139,15 @@ void ThreadTree::AddThreadMap(int pid, int tid, uint64_t start_addr,
   thread->maps->version++;
 }
 
-Dso* ThreadTree::FindUserDsoOrNew(const std::string& filename, uint64_t start_addr) {
+Dso* ThreadTree::FindUserDsoOrNew(const std::string& filename, uint64_t start_addr,
+                                  DsoType dso_type) {
   auto it = user_dso_tree_.find(filename);
   if (it == user_dso_tree_.end()) {
     bool force_64bit = start_addr > UINT_MAX;
-    user_dso_tree_[filename] = Dso::CreateDso(DSO_ELF_FILE, filename, force_64bit);
-    it = user_dso_tree_.find(filename);
+    std::unique_ptr<Dso> dso = Dso::CreateDso(dso_type, filename, force_64bit);
+    auto pair = user_dso_tree_.insert(std::make_pair(filename, std::move(dso)));
+    CHECK(pair.second);
+    it = pair.first;
   }
   return it->second.get();
 }
@@ -229,6 +232,8 @@ const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip,
     // Find symbol in user space shared libraries.
     if (map->flags & map_flags::PROT_JIT_SYMFILE_MAP) {
       vaddr_in_file = ip;
+    } else if (dso->type() == DSO_DEX_FILE) {
+      vaddr_in_file = ip - map->start_addr + map->pgoff;
     } else {
       vaddr_in_file = ip - map->start_addr + map->dso->MinVirtualAddress();
     }
@@ -283,16 +288,29 @@ void ThreadTree::ClearThreadAndMap() {
 }
 
 void ThreadTree::AddDsoInfo(const std::string& file_path, uint32_t file_type,
-                            uint64_t min_vaddr, std::vector<Symbol>* symbols) {
+                            uint64_t min_vaddr, std::vector<Symbol>* symbols,
+                            const std::vector<uint64_t>& dex_file_offsets) {
   DsoType dso_type = static_cast<DsoType>(file_type);
   Dso* dso = nullptr;
   if (dso_type == DSO_KERNEL || dso_type == DSO_KERNEL_MODULE) {
     dso = FindKernelDsoOrNew(file_path);
   } else {
-    dso = FindUserDsoOrNew(file_path);
+    dso = FindUserDsoOrNew(file_path, 0, dso_type);
   }
   dso->SetMinVirtualAddress(min_vaddr);
   dso->SetSymbols(symbols);
+  if (!dex_file_offsets.empty()) {
+    CHECK_EQ(static_cast<int>(dso_type), static_cast<int>(DSO_DEX_FILE));
+    for (uint64_t offset : dex_file_offsets) {
+      static_cast<DexFileDso*>(dso)->AddDexFileOffset(offset);
+    }
+  }
+}
+
+void ThreadTree::AddDexFileOffset(const std::string& file_path, uint64_t dex_file_offset) {
+  Dso* dso = FindUserDsoOrNew(file_path, 0, DSO_DEX_FILE);
+  CHECK_EQ(static_cast<int>(dso->type()), static_cast<int>(DSO_DEX_FILE));
+  static_cast<DexFileDso*>(dso)->AddDexFileOffset(dex_file_offset);
 }
 
 void ThreadTree::Update(const Record& record) {

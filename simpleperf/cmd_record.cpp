@@ -252,6 +252,7 @@ class RecordCommand : public Command {
   bool DumpKernelAndModuleMmaps(const perf_event_attr& attr, uint64_t event_id);
   bool DumpThreadCommAndMmaps(const perf_event_attr& attr, uint64_t event_id);
   bool ProcessRecord(Record* record);
+  bool ShouldOmitRecord(Record* record);
   bool SaveRecordForPostUnwinding(Record* record);
   bool SaveRecordAfterUnwinding(Record* record);
   bool SaveRecordWithoutUnwinding(Record* record);
@@ -415,6 +416,16 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   } else {
     need_to_check_targets = true;
   }
+  // Profiling JITed/interpreted Java code is supported starting from Android P.
+  if (app_pid != 0 && GetAndroidVersion() >= kAndroidVersionP) {
+    // JIT symfiles are stored in temporary files, and are deleted after recording. But if
+    // `-g --no-unwind` option is used, we want to keep symfiles to support unwinding in
+    // the debug-unwind cmd.
+    bool keep_symfiles = dwarf_callchain_sampling_ && !unwind_dwarf_callchain_;
+    jit_debug_reader_.reset(new JITDebugReader(app_pid, keep_symfiles));
+    // To profile java code, need to dump maps containing vdex files, which are not executable.
+    event_selection_set_.SetRecordNotExecutableMaps(true);
+  }
 
   // 5. Open perf event files and create mapped buffers.
   if (!event_selection_set_.OpenEventFiles(cpus_)) {
@@ -458,14 +469,7 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
       return false;
     }
   }
-  // Profiling JITed/interpreted code is supported starting from Android P.
-  const int kAndroidVersionP = 9;
-  if (app_pid != 0 && GetAndroidVersion() >= kAndroidVersionP) {
-    // JIT symfiles are stored in temporary files, and are deleted after recording. But if
-    // `-g --no-unwind` option is used, we want to keep symfiles to support unwinding in
-    // the debug-unwind cmd.
-    bool keep_symfiles = dwarf_callchain_sampling_ && !unwind_dwarf_callchain_;
-    jit_debug_reader_.reset(new JITDebugReader(app_pid, keep_symfiles));
+  if (jit_debug_reader_) {
     // Update JIT info at the beginning of recording.
     if (!UpdateJITDebugInfo()) {
       return false;
@@ -1006,8 +1010,8 @@ bool RecordCommand::DumpThreadCommAndMmaps(const perf_event_attr& attr,
       continue;
     }
     for (const auto& map : thread_mmaps) {
-      if (map.executable == 0) {
-        continue;  // No need to dump non-executable mmap info.
+      if (map.executable == 0 && !event_selection_set_.RecordNotExecutableMaps()) {
+        continue;
       }
       MmapRecord record(attr, false, pid, pid, map.start_addr, map.len,
                         map.pgoff, map.name, event_id);
@@ -1047,6 +1051,9 @@ bool RecordCommand::DumpThreadCommAndMmaps(const perf_event_attr& attr,
 }
 
 bool RecordCommand::ProcessRecord(Record* record) {
+  if (ShouldOmitRecord(record)) {
+    return true;
+  }
   last_record_timestamp_ = record->Timestamp();
   if (unwind_dwarf_callchain_) {
     if (post_unwind_) {
@@ -1057,7 +1064,32 @@ bool RecordCommand::ProcessRecord(Record* record) {
   return SaveRecordWithoutUnwinding(record);
 }
 
+template <typename MmapRecordType>
+bool IsMappingOnlyExistInMemory(MmapRecordType* record) {
+  return !record->InKernel() && !IsRegularFile(record->filename) && record->filename != "[vdso]";
+}
+
+bool RecordCommand::ShouldOmitRecord(Record* record) {
+  if (jit_debug_reader_) {
+    // To profile jitted Java code, we need PROT_JIT_SYMFILE_MAP maps not overlapped by maps for
+    // /dev/ashmem/dalvik-jit-code-cache. To profile interpreted Java code, we record maps that
+    // are not executable. Some non-exec maps (like those for stack, heap) provide misleading map
+    // entries for unwinding, as in http://b/77236599. So it is better to remove
+    // dalvik-jit-code-cache and other maps that only exist in memory.
+    switch (record->type()) {
+      case PERF_RECORD_MMAP:
+        return IsMappingOnlyExistInMemory(static_cast<MmapRecord*>(record));
+      case PERF_RECORD_MMAP2:
+        return IsMappingOnlyExistInMemory(static_cast<Mmap2Record*>(record));
+    }
+  }
+  return false;
+}
+
 bool RecordCommand::SaveRecordForPostUnwinding(Record* record) {
+  if (ShouldOmitRecord(record)) {
+    return true;
+  }
   if (record->type() == PERF_RECORD_SAMPLE) {
     static_cast<SampleRecord*>(record)->RemoveInvalidStackData();
   }
@@ -1131,7 +1163,9 @@ bool RecordCommand::UpdateJITDebugInfo() {
       return false;
     }
   }
-  // TODO: Handle dex symfiles.
+  for (auto& symfile : dex_symfiles) {
+    thread_tree_.AddDexFileOffset(symfile.file_path, symfile.dex_file_offset);
+  }
   return true;
 }
 
@@ -1285,11 +1319,8 @@ bool RecordCommand::DumpAdditionalFeatures(
     return false;
   }
 
-  size_t feature_count = 5;
+  size_t feature_count = 6;
   if (branch_sampling_) {
-    feature_count++;
-  }
-  if (dump_symbols_) {
     feature_count++;
   }
   if (!record_file_writer_->BeginWriteFeatures(feature_count)) {
@@ -1298,7 +1329,7 @@ bool RecordCommand::DumpAdditionalFeatures(
   if (!DumpBuildIdFeature()) {
     return false;
   }
-  if (dump_symbols_ && !DumpFileFeature()) {
+  if (!DumpFileFeature()) {
     return false;
   }
   utsname uname_buf;

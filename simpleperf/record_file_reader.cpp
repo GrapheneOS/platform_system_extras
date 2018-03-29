@@ -443,7 +443,8 @@ bool RecordFileReader::ReadFileFeature(size_t& read_pos,
                                        std::string* file_path,
                                        uint32_t* file_type,
                                        uint64_t* min_vaddr,
-                                       std::vector<Symbol>* symbols) {
+                                       std::vector<Symbol>* symbols,
+                                       std::vector<uint64_t>* dex_file_offsets) {
   auto it = feature_section_descriptors_.find(FEAT_FILE);
   if (it == feature_section_descriptors_.end()) {
     return false;
@@ -484,6 +485,13 @@ bool RecordFileReader::ReadFileFeature(size_t& read_pos,
     p += name.size() + 1;
     symbols->emplace_back(name, start_vaddr, len);
   }
+  dex_file_offsets->clear();
+  if (*file_type == static_cast<uint32_t>(DSO_DEX_FILE)) {
+    uint32_t offset_count;
+    MoveFromBinaryFormat(offset_count, p);
+    dex_file_offsets->resize(offset_count);
+    MoveFromBinaryFormat(dex_file_offsets->data(), offset_count, p);
+  }
   CHECK_EQ(size, static_cast<size_t>(p - buf.data()));
   return true;
 }
@@ -518,10 +526,11 @@ void RecordFileReader::LoadBuildIdAndFileFeatures(ThreadTree& thread_tree) {
     uint32_t file_type;
     uint64_t min_vaddr;
     std::vector<Symbol> symbols;
+    std::vector<uint64_t> dex_file_offsets;
     size_t read_pos = 0;
     while (ReadFileFeature(
-        read_pos, &file_path, &file_type, &min_vaddr, &symbols)) {
-      thread_tree.AddDsoInfo(file_path, file_type, min_vaddr, &symbols);
+        read_pos, &file_path, &file_type, &min_vaddr, &symbols, &dex_file_offsets)) {
+      thread_tree.AddDsoInfo(file_path, file_type, min_vaddr, &symbols, dex_file_offsets);
     }
   }
 }

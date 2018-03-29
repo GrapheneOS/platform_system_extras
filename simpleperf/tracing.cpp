@@ -411,7 +411,7 @@ bool GetTracingData(const std::vector<const EventType*>& event_types,
   data->clear();
   std::vector<TraceType> trace_types;
   for (const auto& type : event_types) {
-    CHECK_EQ(PERF_TYPE_TRACEPOINT, type->type);
+    CHECK_EQ(static_cast<uint32_t>(PERF_TYPE_TRACEPOINT), type->type);
     size_t pos = type->name.find(':');
     TraceType trace_type;
     trace_type.system = type->name.substr(0, pos);
