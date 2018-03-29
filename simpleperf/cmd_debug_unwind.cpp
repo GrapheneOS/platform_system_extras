@@ -190,6 +190,7 @@ bool DebugUnwindCommand::UnwindRecordFile() {
   if (!reader_) {
     return false;
   }
+  reader_->LoadBuildIdAndFileFeatures(thread_tree_);
   std::string record_cmd = android::base::Join(reader_->ReadCmdlineFeature(), " ");
   if (record_cmd.find("--no-unwind") == std::string::npos ||
       (record_cmd.find("-g") == std::string::npos &&
