@@ -37,9 +37,7 @@ struct JITSymFile {
 };
 
 struct DexSymFile {
-  uint64_t addr; // The start addr of the dex file in memory.
-  uint64_t len;  // The size of the dex file in memory.
-  uint64_t pgoff;  // The file offset of the dex file in the file containing it
+  uint64_t dex_file_offset;  // The offset of the dex file in the file containing it
   std::string file_path;  // The path of file containing the dex file
 };
 

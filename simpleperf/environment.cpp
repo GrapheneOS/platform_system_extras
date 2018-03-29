@@ -737,7 +737,7 @@ int GetAndroidVersion() {
   if (!s.empty()) {
     // Each Android version has a version number: L is 5, M is 6, N is 7, O is 8, etc.
     if (s[0] >= 'A' && s[0] <= 'Z') {
-      return s[0] - 'O' + 8;
+      return s[0] - 'P' + kAndroidVersionP;
     }
     if (isdigit(s[0])) {
       int result;

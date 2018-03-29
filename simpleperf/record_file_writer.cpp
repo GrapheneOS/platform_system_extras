@@ -299,7 +299,8 @@ bool RecordFileWriter::WriteBranchStackFeature() {
 
 bool RecordFileWriter::WriteFileFeatures(const std::vector<Dso*>& files) {
   for (Dso* dso : files) {
-    if (!dso->HasDumpId()) {
+    // Always want to dump dex file offsets for DSO_DEX_FILE type.
+    if (!dso->HasDumpId() && dso->type() != DSO_DEX_FILE) {
       continue;
     }
     uint32_t dso_type = dso->type();
@@ -316,7 +317,11 @@ bool RecordFileWriter::WriteFileFeatures(const std::vector<Dso*>& files) {
     }
     std::sort(dump_symbols.begin(), dump_symbols.end(), Symbol::CompareByAddr);
 
-    if (!WriteFileFeature(dso->Path(), dso_type, min_vaddr, dump_symbols)) {
+    const std::vector<uint64_t>* dex_file_offsets = nullptr;
+    if (dso->type() == DSO_DEX_FILE) {
+      dex_file_offsets = &static_cast<DexFileDso*>(dso)->DexFileOffsets();
+    }
+    if (!WriteFileFeature(dso->Path(), dso_type, min_vaddr, dump_symbols, dex_file_offsets)) {
       return false;
     }
   }
@@ -326,11 +331,15 @@ bool RecordFileWriter::WriteFileFeatures(const std::vector<Dso*>& files) {
 bool RecordFileWriter::WriteFileFeature(const std::string& file_path,
                                         uint32_t file_type,
                                         uint64_t min_vaddr,
-                                        const std::vector<const Symbol*>& symbols) {
+                                        const std::vector<const Symbol*>& symbols,
+                                        const std::vector<uint64_t>* dex_file_offsets) {
   uint32_t size = file_path.size() + 1 + sizeof(uint32_t) * 2 +
       sizeof(uint64_t) + symbols.size() * (sizeof(uint64_t) + sizeof(uint32_t));
   for (const auto& symbol : symbols) {
     size += strlen(symbol->Name()) + 1;
+  }
+  if (dex_file_offsets != nullptr) {
+    size += sizeof(uint32_t) + sizeof(uint64_t) * dex_file_offsets->size();
   }
   std::vector<char> buf(sizeof(uint32_t) + size);
   char* p = buf.data();
@@ -345,6 +354,11 @@ bool RecordFileWriter::WriteFileFeature(const std::string& file_path,
     uint32_t len = symbol->len;
     MoveToBinaryFormat(len, p);
     MoveToBinaryFormat(symbol->Name(), strlen(symbol->Name()) + 1, p);
+  }
+  if (dex_file_offsets != nullptr) {
+    uint32_t offset_count = dex_file_offsets->size();
+    MoveToBinaryFormat(offset_count, p);
+    MoveToBinaryFormat(dex_file_offsets->data(), offset_count, p);
   }
   CHECK_EQ(buf.size(), static_cast<size_t>(p - buf.data()));
 
