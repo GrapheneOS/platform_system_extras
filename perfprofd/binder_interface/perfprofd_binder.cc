@@ -48,6 +48,7 @@
 #include "perfprofd_record.pb.h"
 
 #include "config.h"
+#include "configreader.h"
 #include "dropbox.h"
 #include "perfprofdcore.h"
 #include "perfprofd_io.h"
@@ -115,8 +116,8 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
   status_t dump(int fd, const Vector<String16> &args) override;
 
   Status startProfiling(int32_t profilingDuration,
-                                int32_t profilingInterval,
-                                int32_t iterations) override;
+                        int32_t profilingInterval,
+                        int32_t iterations) override;
   Status startProfilingProtobuf(const std::vector<uint8_t>& config_proto) override;
 
   Status stopProfiling() override;
@@ -331,7 +332,7 @@ Status PerfProfdNativeService::stopProfiling() {
 
 status_t PerfProfdNativeService::shellCommand(int in,
                                               int out,
-                                              int err,
+                                              int err_fd,
                                               Vector<String16>& args) {
   if (android::base::kEnableDChecks) {
     LOG(VERBOSE) << "Perfprofd::shellCommand";
@@ -341,23 +342,31 @@ status_t PerfProfdNativeService::shellCommand(int in,
     }
   }
 
+  auto err_str = std::fstream(base::StringPrintf("/proc/self/fd/%d", err_fd));
+
   if (args.size() >= 1) {
     if (args[0] == String16("dump")) {
       dump(out, args);
       return OK;
     } else if (args[0] == String16("startProfiling")) {
-      if (args.size() < 4) {
-        return BAD_VALUE;
+      ConfigReader reader;
+      for (size_t i = 1; i < args.size(); ++i) {
+        if (!reader.Read(String8(args[i]).string(), /* fail_on_error */ true)) {
+          err_str << base::StringPrintf("Could not parse %s", String8(args[i]).string())
+                  << std::endl;
+          return BAD_VALUE;
+        }
       }
-      // TODO: handle invalid strings.
-      int32_t duration = strtol(String8(args[1]).string(), nullptr, 0);
-      int32_t interval = strtol(String8(args[2]).string(), nullptr, 0);
-      int32_t iterations = strtol(String8(args[3]).string(), nullptr, 0);
-      Status status = startProfiling(duration, interval, iterations);
+      auto config_fn = [&](BinderConfig& config) {
+        config = BinderConfig();  // Reset to a default config.
+        reader.FillConfig(&config);
+      };
+      Status status = StartProfiling(config_fn);
       if (status.isOk()) {
         return OK;
       } else {
-        return status.serviceSpecificErrorCode();
+        err_str << status.toString8() << std::endl;
+        return UNKNOWN_ERROR;
       }
     } else if (args[0] == String16("startProfilingProto")) {
       if (args.size() < 2) {
@@ -370,20 +379,23 @@ status_t PerfProfdNativeService::shellCommand(int in,
         // TODO: Implement reading from disk?
       }
       if (fd < 0) {
+        err_str << "Bad file descriptor " << args[1] << std::endl;
         return BAD_VALUE;
       }
       binder::Status status = StartProfilingProtobufFd(fd);
       if (status.isOk()) {
         return OK;
       } else {
-        return status.serviceSpecificErrorCode();
+        err_str << status.toString8() << std::endl;
+        return UNKNOWN_ERROR;
       }
     } else if (args[0] == String16("stopProfiling")) {
       Status status = stopProfiling();
       if (status.isOk()) {
         return OK;
       } else {
-        return status.serviceSpecificErrorCode();
+        err_str << status.toString8() << std::endl;
+        return UNKNOWN_ERROR;
       }
     }
   }
