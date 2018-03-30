@@ -21,6 +21,7 @@
 
 #include "config.h"
 #include "perfprofd_binder.h"
+#include "perfprofd_cmdline.h"
 #include "perfprofdcore.h"
 
 extern int perfprofd_main(int argc, char** argv, Config* config);

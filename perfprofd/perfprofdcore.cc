@@ -29,10 +29,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <cctype>
-#include <map>
 #include <memory>
-#include <set>
 #include <sstream>
 #include <string>
 
@@ -40,7 +37,6 @@
 #include <android-base/logging.h>
 #include <android-base/macros.h>
 #include <android-base/stringprintf.h>
-#include <android-base/unique_fd.h>
 
 #ifdef __BIONIC__
 #include <android-base/properties.h>
@@ -48,7 +44,7 @@
 
 #include "perfprofd_record.pb.h"
 
-#include "configreader.h"
+#include "config.h"
 #include "cpuconfig.h"
 #include "perf_data_converter.h"
 #include "perfprofdcore.h"
@@ -97,6 +93,8 @@ typedef enum {
 
 } CKPROFILE_RESULT;
 
+static bool common_initialized = false;
+
 //
 // Are we running in the emulator? If so, stub out profile collection
 // Starts as uninitialized (-1), then set to 1 or 0 at init time.
@@ -105,14 +103,8 @@ static int running_in_emulator = -1;
 
 //
 // Is this a debug build ('userdebug' or 'eng')?
-// Starts as uninitialized (-1), then set to 1 or 0 at init time.
 //
-static int is_debug_build = -1;
-
-//
-// Path to the perf file to convert and exit? Empty value is the default, daemon mode.
-//
-static std::string perf_file_to_convert = "";
+static bool is_debug_build = false;
 
 //
 // Random number generator seed (set at startup time).
@@ -120,51 +112,9 @@ static std::string perf_file_to_convert = "";
 static unsigned short random_seed[3];
 
 //
-// SIGHUP handler. Sending SIGHUP to the daemon can be used to break it
-// out of a sleep() call so as to trigger a new collection (debugging)
-//
-static void sig_hup(int /* signum */)
-{
-  LOG(WARNING) << "SIGHUP received";
-}
-
-//
-// Parse command line args. Currently supported flags:
-// *  "-c PATH" sets the path of the config file to PATH.
-// *  "-x PATH" reads PATH as a perf data file and saves it as a file in
-//    perf_profile.proto format. ".encoded" suffix is appended to PATH to form
-//    the output file path.
-//
-static void parse_args(int argc, char** argv)
-{
-  int ac;
-
-  for (ac = 1; ac < argc; ++ac) {
-    if (!strcmp(argv[ac], "-c")) {
-      if (ac >= argc-1) {
-        LOG(ERROR) << "malformed command line: -c option requires argument)";
-        continue;
-      }
-      ConfigReader::setConfigFilePath(argv[ac+1]);
-      ++ac;
-    } else if (!strcmp(argv[ac], "-x")) {
-      if (ac >= argc-1) {
-        LOG(ERROR) << "malformed command line: -x option requires argument)";
-        continue;
-      }
-      perf_file_to_convert = argv[ac+1];
-      ++ac;
-    } else {
-      LOG(ERROR) << "malformed command line: unknown option or arg " <<  argv[ac] << ")";
-      continue;
-    }
-  }
-}
-
-//
 // Convert a CKPROFILE_RESULT to a string
 //
-const char *ckprofile_result_to_string(CKPROFILE_RESULT result)
+static const char *ckprofile_result_to_string(CKPROFILE_RESULT result)
 {
   switch (result) {
     case DO_COLLECT_PROFILE:
@@ -177,29 +127,6 @@ const char *ckprofile_result_to_string(CKPROFILE_RESULT result)
       return "missing 'perf' executable";
     case DONT_PROFILE_RUNNING_IN_EMULATOR:
       return "running in emulator";
-    default:
-      return "unknown";
-  }
-}
-
-//
-// Convert a PROFILE_RESULT to a string
-//
-const char *profile_result_to_string(PROFILE_RESULT result)
-{
-  switch(result) {
-    case OK_PROFILE_COLLECTION:
-      return "profile collection succeeded";
-    case ERR_FORK_FAILED:
-      return "fork() system call failed";
-    case ERR_PERF_RECORD_FAILED:
-      return "perf record returned bad exit status";
-    case ERR_PERF_ENCODE_FAILED:
-      return "failure encoding perf.data to protobuf";
-    case ERR_OPEN_ENCODED_FILE_FAILED:
-      return "failed to open encoded perf file";
-    case ERR_WRITE_ENCODED_FILE_FAILED:
-      return "write to encoded perf file failed";
     default:
       return "unknown";
   }
@@ -387,9 +314,9 @@ bool get_charging()
   return result;
 }
 
-bool postprocess_proc_stat_contents(const std::string &pscontents,
-                                    long unsigned *idleticks,
-                                    long unsigned *remainingticks)
+static bool postprocess_proc_stat_contents(const std::string &pscontents,
+                                           long unsigned *idleticks,
+                                           long unsigned *remainingticks)
 {
   long unsigned usertime, nicetime, systime, idletime, iowaittime;
   long unsigned irqtime, softirqtime;
@@ -663,68 +590,6 @@ static void cleanup_destination_dir(const std::string& dest_dir)
 }
 
 //
-// Post-processes after profile is collected and converted to protobuf.
-// * GMS core stores processed file sequence numbers in
-//   /data/data/com.google.android.gms/files/perfprofd_processed.txt
-// * Update /data/misc/perfprofd/perfprofd_produced.txt to remove the sequence
-//   numbers that have been processed and append the current seq number
-// Returns true if the current_seq should increment.
-//
-static bool post_process(const Config& config, int current_seq)
-{
-  const std::string& dest_dir = config.destination_directory;
-  std::string processed_file_path =
-      config.config_directory + "/" + PROCESSED_FILENAME;
-  std::string produced_file_path = dest_dir + "/" + PRODUCED_FILENAME;
-
-
-  std::set<int> processed;
-  FILE *fp = fopen(processed_file_path.c_str(), "r");
-  if (fp != NULL) {
-    int seq;
-    while(fscanf(fp, "%d\n", &seq) > 0) {
-      if (remove(android::base::StringPrintf(
-          "%s/perf.data.encoded.%d", dest_dir.c_str(),seq).c_str()) == 0) {
-        processed.insert(seq);
-      }
-    }
-    fclose(fp);
-  }
-
-  std::set<int> produced;
-  fp = fopen(produced_file_path.c_str(), "r");
-  if (fp != NULL) {
-    int seq;
-    while(fscanf(fp, "%d\n", &seq) > 0) {
-      if (processed.find(seq) == processed.end()) {
-        produced.insert(seq);
-      }
-    }
-    fclose(fp);
-  }
-
-  uint32_t maxLive = config.max_unprocessed_profiles;
-  if (produced.size() >= maxLive) {
-    return false;
-  }
-
-  produced.insert(current_seq);
-  fp = fopen(produced_file_path.c_str(), "w");
-  if (fp == NULL) {
-    PLOG(WARNING) << "Cannot write " <<  produced_file_path;
-    return false;
-  }
-  for (std::set<int>::const_iterator iter = produced.begin();
-       iter != produced.end(); ++iter) {
-    fprintf(fp, "%d\n", *iter);
-  }
-  fclose(fp);
-  chmod(produced_file_path.c_str(),
-        S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
-  return true;
-}
-
-//
 // Collect a perf profile. Steps for this operation are:
 // - kick off 'perf record'
 // - read perf.data, convert to protocol buf
@@ -852,7 +717,7 @@ static void set_seed(uint32_t use_fixed_seed)
   random_seed[2] = (random_seed[0] ^ random_seed[1]);
 }
 
-static void CommonInit(uint32_t use_fixed_seed, const char* dest_dir) {
+void CommonInit(uint32_t use_fixed_seed, const char* dest_dir) {
   // Children of init inherit an artificially low OOM score -- this is not
   // desirable for perfprofd (its OOM score should be on par with
   // other user processes).
@@ -874,27 +739,13 @@ static void CommonInit(uint32_t use_fixed_seed, const char* dest_dir) {
   running_in_emulator = false;
   is_debug_build = true;
 #endif
+
+  common_initialized = true;
 }
 
-//
-// Initialization
-//
-static void init(const Config& config)
-{
-  // TODO: Consider whether we want to clean things or just overwrite.
-  CommonInit(config.use_fixed_seed, nullptr);
-}
-
-static void init(ConfigReader &config)
-{
-  if (!config.readFile()) {
-    LOG(ERROR) << "unable to open configuration file " << config.getConfigFilePath();
-  }
-
-  CommonInit(static_cast<uint32_t>(config.getUnsignedValue("use_fixed_seed")),
-             config.getStringValue("destination_directory").c_str());
-
-  signal(SIGHUP, sig_hup);
+bool IsDebugBuild() {
+  CHECK(common_initialized);
+  return is_debug_build;
 }
 
 template <typename ConfigFn, typename UpdateFn>
@@ -952,7 +803,7 @@ static void ProfilingLoopImpl(ConfigFn config, UpdateFn update, HandlerFn handle
 }
 
 void ProfilingLoop(Config& config, HandlerFn handler) {
-  init(config);
+  CommonInit(config.use_fixed_seed, nullptr);
 
   auto config_fn = [&config]() {
     return &config;;
@@ -962,67 +813,8 @@ void ProfilingLoop(Config& config, HandlerFn handler) {
   ProfilingLoopImpl(config_fn, do_nothing, handler);
 }
 
-//
-// Main routine:
-// 1. parse cmd line args
-// 2. read config file
-// 3. loop: {
-//       sleep for a while
-//       perform a profile collection
-//    }
-//
-int perfprofd_main(int argc, char** argv, Config* config)
-{
-  ConfigReader config_reader;
-
-  LOG(INFO) << "starting Android Wide Profiling daemon";
-
-  parse_args(argc, argv);
-  init(config_reader);
-  config_reader.FillConfig(config);
-
-  if (!perf_file_to_convert.empty()) {
-    std::string encoded_path = perf_file_to_convert + ".encoded";
-    encode_to_proto(perf_file_to_convert, encoded_path.c_str(), *config, 0, nullptr);
-    return 0;
-  }
-
-  // Early exit if we're not supposed to run on this build flavor
-  if (is_debug_build != 1 && config->only_debug_build) {
-    LOG(INFO) << "early exit due to inappropriate build type";
-    return 0;
-  }
-
-  auto config_fn = [config]() {
-    return config;
-  };
-  auto reread_config = [&config_reader, config]() {
-    // Reread config file -- the uploader may have rewritten it as a result
-    // of a gservices change
-    config_reader.readFile();
-    config_reader.FillConfig(config);
-  };
-  int seq = 0;
-  auto handler = [&seq](android::perfprofd::PerfprofdRecord* proto, Config* handler_config) {
-    if (proto == nullptr) {
-      return false;
-    }
-    std::string data_file_path(handler_config->destination_directory);
-    data_file_path += "/";
-    data_file_path += PERF_OUTPUT;
-    std::string path = android::base::StringPrintf("%s.encoded.%d", data_file_path.c_str(), seq);
-    if (!android::perfprofd::SerializeProtobuf(proto, path.c_str(), handler_config->compress)) {
-      return false;
-    }
-
-    if (!post_process(*handler_config, seq)) {
-      return false;
-    }
-    seq++;
-    return true;
-  };
-  ProfilingLoopImpl(config_fn, reread_config, handler);
-
-  LOG(INFO) << "finishing Android Wide Profiling daemon";
-  return 0;
+void ProfilingLoop(std::function<Config*()> config_fn,
+                   std::function<void()> update_fn,
+                   HandlerFn handler) {
+  ProfilingLoopImpl(config_fn, update_fn, handler);
 }
