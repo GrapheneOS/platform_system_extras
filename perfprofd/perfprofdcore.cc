@@ -481,7 +481,7 @@ static PROFILE_RESULT invoke_perf(Config& config,
     }
 
     // marshall arguments
-    constexpr unsigned max_args = 14;
+    constexpr unsigned max_args = 15;
     const char *argv[max_args];
     unsigned slot = 0;
     argv[slot++] = perf_path.c_str();
@@ -510,11 +510,12 @@ static PROFILE_RESULT invoke_perf(Config& config,
       argv[slot++] = pid_str.c_str();
     }
 
-    // no need for kernel symbols
+    // no need for kernel or other symbols
     argv[slot++] = "--no-dump-kernel-symbols";
+    argv[slot++] = "--no-dump-symbols";
 
     // sleep <duration>
-    argv[slot++] = "/system/bin/sleep";
+    argv[slot++] = "--duration";
     std::string d_str = android::base::StringPrintf("%u", duration);
     argv[slot++] = d_str.c_str();
 
@@ -761,9 +762,12 @@ static void ProfilingLoopImpl(ConfigFn config, UpdateFn update, HandlerFn handle
     // run perf
     unsigned sleep_before_collect = 0;
     unsigned sleep_after_collect = 0;
-    determine_before_after(sleep_before_collect, sleep_after_collect,
+    determine_before_after(sleep_before_collect,
+                           sleep_after_collect,
                            config()->collection_interval_in_s);
-    config()->Sleep(sleep_before_collect);
+    if (sleep_before_collect > 0) {
+      config()->Sleep(sleep_before_collect);
+    }
 
     if (config()->ShouldStopProfiling()) {
       return;
@@ -797,7 +801,9 @@ static void ProfilingLoopImpl(ConfigFn config, UpdateFn update, HandlerFn handle
       return;
     }
 
-    config()->Sleep(sleep_after_collect);
+    if (sleep_after_collect > 0) {
+      config()->Sleep(sleep_after_collect);
+    }
     iterations += 1;
   }
 }
