@@ -96,6 +96,9 @@ struct Config {
   // If true, use libz to compress the output proto.
   bool compress = true;
 
+  // If true, send the proto to dropbox instead to a file.
+  bool send_to_dropbox = false;
+
   // Sleep for the given number of seconds.
   virtual void Sleep(size_t seconds) = 0;
 

@@ -410,6 +410,18 @@ bool EventSelectionSet::NeedKernelSymbol() const {
   return false;
 }
 
+void EventSelectionSet::SetRecordNotExecutableMaps(bool record) {
+  for (auto& group : groups_) {
+    for (auto& selection : group) {
+      selection.event_attr.mmap_data = record ? 1 : 0;
+    }
+  }
+}
+
+bool EventSelectionSet::RecordNotExecutableMaps() const {
+  return groups_[0][0].event_attr.mmap_data == 1;
+}
+
 static bool CheckIfCpusOnline(const std::vector<int>& cpus) {
   std::vector<int> online_cpus = GetOnlineCpus();
   for (const auto& cpu : cpus) {

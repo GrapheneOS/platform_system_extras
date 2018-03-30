@@ -120,4 +120,6 @@ bool SignalIsIgnored(int signo);
 // Return 0 if no android version.
 int GetAndroidVersion();
 
+constexpr int kAndroidVersionP = 9;
+
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_

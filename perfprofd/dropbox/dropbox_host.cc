@@ -15,21 +15,21 @@
  * limitations under the License.
  */
 
-#ifndef SYSTEM_EXTRAS_PERFPROFD_SYMBOLIZER_H_
-#define SYSTEM_EXTRAS_PERFPROFD_SYMBOLIZER_H_
+#include "dropbox.h"
 
-#include <memory>
+#include <android-base/macros.h>
 
+namespace android {
 namespace perfprofd {
+namespace dropbox {
 
-struct Symbolizer {
-  virtual ~Symbolizer() {}
-  virtual std::string Decode(const std::string& dso, uint64_t address) = 0;
-  virtual bool GetMinExecutableVAddr(const std::string& dso, uint64_t* addr) = 0;
-};
+bool SendToDropbox(android::perfprofd::PerfprofdRecord* profile,
+                   const std::string& temp_directory ATTRIBUTE_UNUSED,
+                   std::string* error_msg) {
+  *error_msg = "Dropbox not supported on host";
+  return false;
+}
 
-std::unique_ptr<Symbolizer> CreateELFSymbolizer();
-
+}  // namespace dropbox
 }  // namespace perfprofd
-
-#endif  // SYSTEM_EXTRAS_PERFPROFD_SYMBOLIZER_H_
+}  // namespace android

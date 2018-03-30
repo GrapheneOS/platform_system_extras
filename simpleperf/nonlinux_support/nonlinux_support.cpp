@@ -17,6 +17,7 @@
 // Add fake functions to build successfully on darwin.
 #include <android-base/logging.h>
 
+#include "read_dex_file.h"
 #include "environment.h"
 #include "OfflineUnwinder.h"
 
@@ -36,4 +37,9 @@ bool GetKernelBuildId(BuildId*) {
 
 bool CanRecordRawData() {
   return false;
+}
+
+bool ReadSymbolsFromDexFile(const std::string&, const std::vector<uint64_t>&,
+                            std::vector<DexFileSymbol>*) {
+  return true;
 }

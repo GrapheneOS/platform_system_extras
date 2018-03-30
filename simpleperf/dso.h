@@ -78,6 +78,7 @@ enum DsoType {
   DSO_KERNEL,
   DSO_KERNEL_MODULE,
   DSO_ELF_FILE,
+  DSO_DEX_FILE,  // For files containing dex files, like .vdex files.
 };
 
 struct KernelSymbol;
@@ -105,7 +106,7 @@ class Dso {
   static std::unique_ptr<Dso> CreateDso(DsoType dso_type, const std::string& dso_path,
                                         bool force_64bit = false);
 
-  ~Dso();
+  virtual ~Dso();
 
   DsoType type() const { return type_; }
 
@@ -132,19 +133,19 @@ class Dso {
   uint32_t CreateSymbolDumpId(const Symbol* symbol);
 
   // Return the minimum virtual address in program header.
-  uint64_t MinVirtualAddress();
-  void SetMinVirtualAddress(uint64_t min_vaddr) { min_vaddr_ = min_vaddr; }
+  virtual uint64_t MinVirtualAddress() { return 0; }
+  virtual void SetMinVirtualAddress(uint64_t) {}
 
   const Symbol* FindSymbol(uint64_t vaddr_in_dso);
 
-  const std::vector<Symbol>& GetSymbols();
+  const std::vector<Symbol>& GetSymbols() { return symbols_; }
   void SetSymbols(std::vector<Symbol>* symbols);
 
   // Create a symbol for a virtual address which can't find a corresponding
   // symbol in symbol table.
   void AddUnknownSymbol(uint64_t vaddr_in_dso, const std::string& name);
 
- private:
+ protected:
   static bool demangle_;
   static std::string symfs_dir_;
   static std::string vmlinux_;
@@ -156,15 +157,11 @@ class Dso {
   static std::string vdso_64bit_;
   static std::string vdso_32bit_;
 
-  Dso(DsoType type, const std::string& path, bool force_64bit);
-  void Load();
-  bool LoadKernel();
-  bool LoadKernelModule();
-  bool LoadElfFile();
-  bool LoadEmbeddedElfFile();
-  void FixupSymbolLength();
+  Dso(DsoType type, const std::string& path, const std::string& debug_file_path);
   BuildId GetExpectedBuildId();
-  bool CheckReadSymbolResult(ElfStatus result, const std::string& filename);
+
+  void Load();
+  virtual std::vector<Symbol> LoadSymbols() = 0;
 
   const DsoType type_;
   // path of the shared library used by the profiled program
@@ -174,7 +171,6 @@ class Dso {
   std::string debug_file_path_;
   // File name of the shared library, got by removing directories in path_.
   std::string file_name_;
-  uint64_t min_vaddr_;
   std::vector<Symbol> symbols_;
   // unknown symbols are like [libc.so+0x1234].
   std::unordered_map<uint64_t, Symbol> unknown_symbols_;
@@ -184,6 +180,27 @@ class Dso {
   // Used to assign dump_id for symbols in current dso.
   uint32_t symbol_dump_id_;
   android::base::LogSeverity symbol_warning_loglevel_;
+};
+
+class DexFileDso : public Dso {
+ public:
+  void AddDexFileOffset(uint64_t dex_file_offset) {
+    dex_file_offsets_.push_back(dex_file_offset);
+  }
+
+  const std::vector<uint64_t>& DexFileOffsets() {
+    return dex_file_offsets_;
+  }
+
+ protected:
+  DexFileDso(const std::string& path, const std::string& debug_file_path)
+      : Dso(DSO_DEX_FILE, path, debug_file_path) {}
+
+  std::vector<Symbol> LoadSymbols() override;
+
+ private:
+  std::vector<uint64_t> dex_file_offsets_;
+  friend std::unique_ptr<Dso> Dso::CreateDso(DsoType, const std::string&, bool);
 };
 
 const char* DsoTypeToString(DsoType dso_type);
