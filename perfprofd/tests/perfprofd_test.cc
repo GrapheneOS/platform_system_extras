@@ -614,7 +614,6 @@ TEST_F(PerfProfdTest, ConfigFileParsing)
   // assorted bad syntax
   runner.addToConfig("collection_interval=0");
   runner.addToConfig("collection_interval=-1");
-  runner.addToConfig("collection_interval=2");
   runner.addToConfig("nonexistent_key=something");
   runner.addToConfig("no_equals_stmt");
 
@@ -626,11 +625,10 @@ TEST_F(PerfProfdTest, ConfigFileParsing)
 
   // Verify log contents
   const std::string expected = RAW_RESULT(
-      W: line 6: specified value 0 for 'collection_interval' outside permitted range [100 4294967295] (ignored)
+      W: line 6: specified value 0 for 'collection_interval' outside permitted range [1 4294967295] (ignored)
       W: line 7: malformed unsigned value (ignored)
-      W: line 8: specified value 2 for 'collection_interval' outside permitted range [100 4294967295] (ignored)
-      W: line 9: unknown option 'nonexistent_key' ignored
-      W: line 10: line malformed (no '=' found)
+      W: line 8: unknown option 'nonexistent_key' ignored
+      W: line 9: line malformed (no '=' found)
                                           );
 
   // check to make sure log excerpt matches

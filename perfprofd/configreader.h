@@ -44,6 +44,8 @@ class ConfigReader {
   // returns true for successful read, false if conf file cannot be opened.
   bool readFile();
 
+  bool Read(const std::string& data, bool fail_on_error);
+
   // set/get path to config file
   static void setConfigFilePath(const char *path);
   static const char *getConfigFilePath();
@@ -60,7 +62,7 @@ class ConfigReader {
                         unsigned max_value);
   void addStringEntry(const char *key, const char *default_value);
   void addDefaultEntries();
-  void parseLine(const char *key, const char *value, unsigned linecount);
+  bool parseLine(const char *key, const char *value, unsigned linecount);
 
   typedef struct { unsigned minv, maxv; } values;
   std::map<std::string, values> u_info;
