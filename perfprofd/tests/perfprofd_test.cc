@@ -43,6 +43,7 @@
 #include "configreader.h"
 #include "map_utils.h"
 #include "perfprofdcore.h"
+#include "perfprofd_cmdline.h"
 #include "quipper_helper.h"
 #include "symbolizer.h"
 
