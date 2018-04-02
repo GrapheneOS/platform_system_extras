@@ -28,9 +28,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <bootloader_message/bootloader_message.h>
 #include <cutils/properties.h>
-
-#include <bootloader.h>
 #include <fs_mgr.h>
 
 #include "bootinfo.h"
