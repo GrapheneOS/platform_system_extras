@@ -17,8 +17,6 @@
 
 #include "perfprofd_binder.h"
 
-#include <chrono>
-#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -26,15 +24,12 @@
 #include <mutex>
 #include <string>
 #include <thread>
-#include <functional>
 
 #include <inttypes.h>
 #include <unistd.h>
 
-#include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
-#include <android-base/unique_fd.h>
 #include <binder/BinderService.h>
 #include <binder/IResultReceiver.h>
 #include <binder/Status.h>
@@ -49,64 +44,20 @@
 
 #include "config.h"
 #include "configreader.h"
-#include "dropbox.h"
 #include "perfprofdcore.h"
-#include "perfprofd_io.h"
+#include "perfprofd_threaded_handler.h"
 
 namespace android {
 namespace perfprofd {
 namespace binder {
 
+namespace {
+
 using Status = ::android::binder::Status;
 
-class BinderConfig : public Config {
- public:
-  bool is_profiling = false;
-
-  void Sleep(size_t seconds) override {
-    if (seconds == 0) {
-      return;
-    }
-    std::unique_lock<std::mutex> guard(mutex_);
-    using namespace std::chrono_literals;
-    cv_.wait_for(guard, seconds * 1s, [&]() { return interrupted_; });
-  }
-  bool ShouldStopProfiling() override {
-    std::unique_lock<std::mutex> guard(mutex_);
-    return interrupted_;
-  }
-
-  void ResetStopProfiling() {
-    std::unique_lock<std::mutex> guard(mutex_);
-    interrupted_ = false;
-  }
-  void StopProfiling() {
-    std::unique_lock<std::mutex> guard(mutex_);
-    interrupted_ = true;
-    cv_.notify_all();
-  }
-
-  bool IsProfilingEnabled() const override {
-    return true;
-  }
-
-  // Operator= to simplify setting the config values. This will retain the
-  // original mutex, condition-variable etc.
-  BinderConfig& operator=(const BinderConfig& rhs) {
-    // Copy base fields.
-    *static_cast<Config*>(this) = static_cast<const Config&>(rhs);
-
-    return *this;
-  }
-
- private:
-  std::mutex mutex_;
-  std::condition_variable cv_;
-  bool interrupted_ = false;
-};
-
 class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
-                               public ::android::os::BnPerfProfd {
+                               public ::android::os::BnPerfProfd,
+                               public ThreadedHandler {
  public:
   static status_t start();
   static int Main();
@@ -129,62 +80,11 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
                       uint32_t _aidl_flags = 0) override;
 
  private:
-  // Handler for ProfilingLoop.
-  bool BinderHandler(android::perfprofd::PerfprofdRecord* encodedProfile,
-                     Config* config);
-  // Helper for the handler.
-  HandlerFn GetBinderHandler();
-
   status_t shellCommand(int /*in*/, int out, int err, Vector<String16>& args);
 
-  template <typename ConfigFn> Status StartProfiling(ConfigFn fn);
   template <typename ProtoLoaderFn> Status StartProfilingProtobuf(ProtoLoaderFn fn);
   Status StartProfilingProtobufFd(int fd);
-
-  std::mutex lock_;
-
-  BinderConfig cur_config_;
-
-  int seq_ = 0;
 };
-
-bool PerfProfdNativeService::BinderHandler(
-    android::perfprofd::PerfprofdRecord* encodedProfile,
-    Config* config) {
-  CHECK(config != nullptr);
-  if (encodedProfile == nullptr) {
-    return false;
-  }
-
-  if (static_cast<BinderConfig*>(config)->send_to_dropbox) {
-    std::string error_msg;
-    if (!dropbox::SendToDropbox(encodedProfile, config->destination_directory, &error_msg)) {
-      LOG(WARNING) << "Failed dropbox submission: " << error_msg;
-      return false;
-    }
-    return true;
-  }
-
-  if (encodedProfile == nullptr) {
-    return false;
-  }
-  std::string data_file_path(config->destination_directory);
-  data_file_path += "/perf.data";
-  std::string path = android::base::StringPrintf("%s.encoded.%d", data_file_path.c_str(), seq_);
-  if (!SerializeProtobuf(encodedProfile, path.c_str(), config->compress)) {
-    return false;
-  }
-
-  seq_++;
-  return true;
-}
-
-HandlerFn PerfProfdNativeService::GetBinderHandler() {
-  return HandlerFn(std::bind(&PerfProfdNativeService::BinderHandler,
-                             this,
-                             std::placeholders::_1,
-                             std::placeholders::_2));
-}
 
 status_t PerfProfdNativeService::start() {
   IPCThreadState::self()->disableBackgroundScheduling(true);
@@ -208,14 +108,18 @@ status_t PerfProfdNativeService::dump(int fd, const Vector<String16> &args) {
 Status PerfProfdNativeService::startProfiling(int32_t profilingDuration,
                                               int32_t profilingInterval,
                                               int32_t iterations) {
-  auto config_fn = [&](BinderConfig& config) {
-    config = BinderConfig();  // Reset to a default config.
+  auto config_fn = [&](ThreadedConfig& config) {
+    config = ThreadedConfig();  // Reset to a default config.
 
     config.sample_duration_in_s = static_cast<uint32_t>(profilingDuration);
     config.collection_interval_in_s = static_cast<uint32_t>(profilingInterval);
     config.main_loop_iterations = static_cast<uint32_t>(iterations);
   };
-  return StartProfiling(config_fn);
+  std::string error_msg;
+  if (!StartProfiling(config_fn, &error_msg)) {
+    return Status::fromExceptionCode(1, error_msg.c_str());
+  }
+  return Status::ok();
 }
 Status PerfProfdNativeService::startProfilingProtobuf(const std::vector<uint8_t>& config_proto) {
   auto proto_loader_fn = [&config_proto](ProfilingConfig& proto_config) {
@@ -224,41 +128,14 @@ Status PerfProfdNativeService::startProfilingProtobuf(const std::vector<uint8_t>
   return StartProfilingProtobuf(proto_loader_fn);
 }
 
-template <typename ConfigFn>
-Status PerfProfdNativeService::StartProfiling(ConfigFn fn) {
-  std::lock_guard<std::mutex> guard(lock_);
-
-  if (cur_config_.is_profiling) {
-    // TODO: Define error code?
-    return binder::Status::fromServiceSpecificError(1);
-  }
-  cur_config_.is_profiling = true;
-  cur_config_.ResetStopProfiling();
-
-  fn(cur_config_);
-
-  HandlerFn handler = GetBinderHandler();
-  auto profile_runner = [handler](PerfProfdNativeService* service) {
-    ProfilingLoop(service->cur_config_, handler);
-
-    // This thread is done.
-    std::lock_guard<std::mutex> unset_guard(service->lock_);
-    service->cur_config_.is_profiling = false;
-  };
-  std::thread profiling_thread(profile_runner, this);
-  profiling_thread.detach();  // Let it go.
-
-  return binder::Status::ok();
-}
-
 template <typename ProtoLoaderFn>
 Status PerfProfdNativeService::StartProfilingProtobuf(ProtoLoaderFn fn) {
   ProfilingConfig proto_config;
   if (!fn(proto_config)) {
     return binder::Status::fromExceptionCode(2);
   }
-  auto config_fn = [&proto_config](BinderConfig& config) {
-    config = BinderConfig();  // Reset to a default config.
+  auto config_fn = [&proto_config](ThreadedConfig& config) {
+    config = ThreadedConfig();  // Reset to a default config.
 
     // Copy proto values.
 #define CHECK_AND_COPY_FROM_PROTO(name)      \
@@ -288,7 +165,11 @@ Status PerfProfdNativeService::StartProfilingProtobuf(ProtoLoaderFn fn) {
     CHECK_AND_COPY_FROM_PROTO(compress)
 #undef CHECK_AND_COPY_FROM_PROTO
   };
-  return StartProfiling(config_fn);
+  std::string error_msg;
+  if (!StartProfiling(config_fn, &error_msg)) {
+    return Status::fromExceptionCode(1, error_msg.c_str());
+  }
+  return Status::ok();
 }
 
 Status PerfProfdNativeService::StartProfilingProtobufFd(int fd) {
@@ -319,14 +200,10 @@ Status PerfProfdNativeService::StartProfilingProtobufFd(int fd) {
 }
 
 Status PerfProfdNativeService::stopProfiling() {
-  std::lock_guard<std::mutex> guard(lock_);
-  if (!cur_config_.is_profiling) {
-    // TODO: Define error code?
-    return Status::fromServiceSpecificError(1);
+  std::string error_msg;
+  if (!StopProfiling(&error_msg)) {
+    Status::fromExceptionCode(1, error_msg.c_str());
   }
-
-  cur_config_.StopProfiling();
-
   return Status::ok();
 }
 
@@ -357,17 +234,16 @@ status_t PerfProfdNativeService::shellCommand(int in,
           return BAD_VALUE;
         }
       }
-      auto config_fn = [&](BinderConfig& config) {
-        config = BinderConfig();  // Reset to a default config.
+      auto config_fn = [&](ThreadedConfig& config) {
+        config = ThreadedConfig();  // Reset to a default config.
         reader.FillConfig(&config);
       };
-      Status status = StartProfiling(config_fn);
-      if (status.isOk()) {
-        return OK;
-      } else {
-        err_str << status.toString8() << std::endl;
+      std::string error_msg;
+      if (!StartProfiling(config_fn, &error_msg)) {
+        err_str << error_msg << std::endl;
         return UNKNOWN_ERROR;
       }
+      return OK;
     } else if (args[0] == String16("startProfilingProto")) {
       if (args.size() < 2) {
         return BAD_VALUE;
@@ -434,6 +310,8 @@ status_t PerfProfdNativeService::onTransact(uint32_t _aidl_code,
       return BBinder::onTransact(_aidl_code, _aidl_data, _aidl_reply, _aidl_flags);
   }
 }
+
+}  // namespace
 
 int Main() {
   android::status_t ret;
