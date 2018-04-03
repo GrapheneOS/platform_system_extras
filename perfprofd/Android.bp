@@ -38,6 +38,12 @@ cc_defaults {
         "-Wno-sign-compare",
         "-Wno-unused-parameter",
     ],
+
+    target: {
+        darwin: {
+            enabled: false,
+        },
+    },
 }
 
 cc_defaults {
@@ -74,11 +80,6 @@ cc_library_static {
         "perfprofd_defaults",
     ],
     host_supported: true,
-    target: {
-        darwin: {
-            enabled: false,
-        },
-    },
 
     static_libs: [
         "libbase",
@@ -111,11 +112,6 @@ cc_defaults {
         "perfprofd_defaults",
     ],
     host_supported: true,
-    target: {
-        darwin: {
-            enabled: false,
-        },
-    },
 
     static_libs: [
         "libbase",

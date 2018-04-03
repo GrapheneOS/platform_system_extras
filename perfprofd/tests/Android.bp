@@ -34,9 +34,6 @@ cc_test {
         "liblog",
     ],
     target: {
-        darwin: {
-            enabled: false,
-        },
         host: {
             host_ldlibs: [
                 "-lncurses",
