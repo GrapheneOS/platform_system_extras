@@ -43,9 +43,6 @@ cc_library_static {
                 "libservices",
             ],
         },
-        darwin: {
-            enabled: false,
-        },
         host: {
             srcs: [
                 "dropbox_host.cc",
