@@ -491,10 +491,17 @@ static PROFILE_RESULT invoke_perf(Config& config,
     argv[slot++] = "-o";
     argv[slot++] = data_file_path.c_str();
 
-    // -c N
-    argv[slot++] = "-c";
-    std::string p_str = android::base::StringPrintf("%u", sampling_period);
-    argv[slot++] = p_str.c_str();
+    // -c/f N
+    std::string p_str;
+    if (config.sampling_frequency > 0) {
+      argv[slot++] = "-f";
+      p_str = android::base::StringPrintf("%u", sampling_period);
+      argv[slot++] = p_str.c_str();
+    } else if (config.sampling_period > 0) {
+      argv[slot++] = "-c";
+      p_str = android::base::StringPrintf("%u", sampling_period);
+      argv[slot++] = p_str.c_str();
+    }
 
     // -g if desired
     if (stack_profile_opt)
