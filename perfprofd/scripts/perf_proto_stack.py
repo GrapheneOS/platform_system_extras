@@ -210,7 +210,10 @@ def run_unwind_symbols(filename, offset_hex):
         return None
 
     if (path, offset_hex) in unwind_symbols_cache:
-        return [(unwind_symbols_cache[(path, offset_hex)], filename)]
+        pair = unwind_symbols_cache[(path, offset_hex)]
+        if pair is None:
+            return None
+        return [(pair[0], pair[1], filename)]
 
     try:
         res = subprocess.check_output(['unwind_symbols', path, offset_hex])
@@ -219,30 +222,56 @@ def run_unwind_symbols(filename, offset_hex):
             if line.startswith('<0x'):
                 parts = line.split(' ', 1)
                 if len(parts) == 2:
+                    # Get offset, too.
+                    offset = 0
+                    plus_index = parts[0].find('>+')
+                    if plus_index > 0:
+                        offset_str = parts[0][plus_index + 2:-1]
+                        try:
+                            offset = int(offset_str)
+                        except ValueError:
+                            logging.warn('error parsing offset from %s', parts[0])
+
                     # TODO C++ demangling necessary.
-                    logging.debug('unwind_symbols: %s %s -> %s', filename, offset_hex, parts[1])
+                    logging.debug('unwind_symbols: %s %s -> %s +%d', filename, offset_hex, parts[1],
+                        offset)
                     sym = intern(parts[1])
-                    unwind_symbols_cache[(path, offset_hex)] = sym
-                    return [(sym, filename)]
+                    unwind_symbols_cache[(path, offset_hex)] = (sym, offset)
+                    return [(sym, offset, filename)]
     except subprocess.CalledProcessError:
         logging.warn('Failed running unwind_symbols for %s', filename)
         unwind_symbols_cache[(path, offset_hex)] = None
         return None
 
+
 def decode_with_symbol_lib(name, addr_rel_hex):
     info = SymbolInformation(name, addr_rel_hex)
     # As-is, only info[0] (inner-most inlined function) is recognized.
     (source_symbol, source_location, object_symbol_with_offset) = info[0]
+
+    def parse_symbol_lib_output(s):
+        i = s.rfind('+')
+        if i > 0:
+            try:
+                off = int(s[i+1:])
+                return (s[0:i], off)
+            except ValueError:
+                pass
+        return (s, 0)
+
     ret = []
+
     if object_symbol_with_offset is not None:
-        ret.append((intern(object_symbol_with_offset), name))
+        pair = parse_symbol_lib_output(object_symbol_with_offset)
+        ret.append((intern(pair[0]), pair[1], name))
     if source_symbol is not None:
         iterinfo = iter(info)
         next(iterinfo)
         for (sym_inlined, loc_inlined, _) in iterinfo:
             # TODO: Figure out what's going on here:
             if sym_inlined is not None:
-                ret.insert(0, (intern(sym_inlined), name))
+                pair = parse_symbol_lib_output(sym_inlined)
+                ret.insert(0, (intern(pair[0]), pair[1], name))
     if len(ret) > 0:
         return ret
     return None
@@ -265,8 +294,8 @@ def decode_addr(addr, mmap_state, device_symbols):
         # If it looks large enough, assume it's from
         # the kernel.
         if addr > 18000000000000000000:
-            return [("[kernel]", "[kernel]")]
-        return [("%d (no mapped segment)" % addr, None)]
+            return [("[kernel]", 0, "[kernel]")]
+        return [("%d (no mapped segment)" % addr, 0, None)]
     name = map[3]
     logging.debug('%d is %s (%d +%d)', addr, name, map[0], map[1])
 
@@ -282,19 +311,20 @@ def decode_addr(addr, mmap_state, device_symbols):
         offset = offset + map[2]
         symbol = device_symbols[name].find(offset)
         if symbol is None:
-            return [("%s +%d (missing on-device symbol)" % (name, offset), name)]
+            return [("%s (missing on-device symbol)" % (name), offset, name)]
         else:
-            return [(symbol, name)]
+            # TODO: Should we change the format?
+            return [(symbol, 0, name)]
     offset = offset + find_vaddr(vaddr, name)
     if (name, offset) in skip_dso:
         # We already failed, skip symbol finding.
-        return [("%s +%d" % (name, offset), name)]
+        return [(name, offset, name)]
     else:
         addr_rel_hex = intern("%x" % offset)
         ret = decode_with_symbol_lib(name, addr_rel_hex)
         if ret is not None and len(ret) != 0:
             # Addr2line may report oatexec+xyz. Let unwind_symbols take care of that.
-            if len(ret) != 1 or not ret[0][0].startswith("oatexec+"):
+            if len(ret) != 1 or ret[0][0] != 'oatexec':
                 logging.debug('Got result from symbol module: %s', str(ret))
                 return ret
         # Try unwind_symbols
@@ -304,7 +334,7 @@ def decode_addr(addr, mmap_state, device_symbols):
         logging.warn("Failed to find symbol for %s +%d (%d)", name, offset, addr)
         # Remember the fail.
         skip_dso.add((name, offset))
-        return [("%s +%d" % (name, offset), name)]
+        return [(name, offset, name)]
 
 
 def print_sample(sample, tid_name_map):
@@ -322,7 +352,7 @@ def print_sample(sample, tid_name_map):
         tid_name = "unknown (%d)" % (sample[1])
     print " %s - %s:" % (pid_name, tid_name)
     for sym in sample[2]:
-        print "   %s (%s)" % (sym[0], sym[1])
+        print "   %s +%d (%s)" % (sym[0], sym[1], sym[2])
 
 def print_samples(samples, tid_name_map):
     for sample in samples:
@@ -352,11 +382,12 @@ def symbolize_events(perf_data, device_symbols, tid_name_map, printSamples = Fal
             else:
                 # Handle kernel symbols specially.
                 if sample_ev.pid == 0:
-                    samples.append((0, sample_ev.tid, [("[kernel]", "[kernel]")]))
+                    samples.append((0, sample_ev.tid, [("[kernel]", 0, "[kernel]")]))
                 elif sample_ev.pid in tid_name_map:
-                    samples.append((sample_ev.pid, sample_ev.tid, [(tid_name_map[sample_ev.pid], None)]))
+                    samples.append((sample_ev.pid, sample_ev.tid, [(tid_name_map[sample_ev.pid], 0,
+                        None)]))
                 else:
-                    samples.append((sample_ev.pid, sample_ev.tid, [("[unknown]", None)]))
+                    samples.append((sample_ev.pid, sample_ev.tid, [("[unknown]", 0, None)]))
             if new_sample is not None:
                 samples.append(new_sample)
                 if printSamples:
@@ -468,7 +499,7 @@ def run(args):
     if args.print_sym_histogram is not None:
         print_histogram(samples, lambda x: x[2][0][0], lambda x: x, 100)
     if args.print_dso_histogram is not None:
-        print_histogram(samples, lambda x: x[2][0][1], lambda x: x, 25)
+        print_histogram(samples, lambda x: x[2][0][2], lambda x: x, 25)
 
     if args.json_out is not None:
         json_file = open(args.json_out[0], 'w')
