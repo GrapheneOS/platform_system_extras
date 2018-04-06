@@ -27,10 +27,12 @@ import json
 import logging
 logging.basicConfig(format = "%(message)s")
 
+from multiprocessing.dummy import Pool as ThreadPool
 import os.path
-import subprocess
-
 from sorted_collection import SortedCollection
+import subprocess
+from threading import Timer
+
 
 # Generate with:
 #  aprotoc -I=external/perf_data_converter/src/quipper \
@@ -390,23 +392,54 @@ def get_name(pid):
         return "[kernel]"
     return "[unknown]"
 
-parser = argparse.ArgumentParser(description='Process a perfprofd record.')
+def create_cmd(args, f):
+    ret = ['python', '-u', 'system/extras/perfprofd/scripts/perf_proto_stack.py']
+    if args.syms is not None:
+        ret.extend(['--syms', args.syms[0]])
+    if args.print_samples is not None:
+        ret.append('--print-samples')
+    if args.skip_kernel_syms is not None:
+        ret.append('--skip-kernel-syms')
+    if args.print_pid_histogram is not None:
+        ret.append('--print-pid-histogram')
+    if args.print_sym_histogram is not None:
+        ret.append('--print-sym-histogram')
+    if args.print_dso_histogram is not None:
+        ret.append('--print-dso-histogram')
+    ret.extend(['--json-out', '%s.json' % (f)])
+    ret.append(f)
+    return ret
 
-parser.add_argument('file', help='proto file to parse', metavar='file', nargs=1)
-parser.add_argument('--syms', help='directory for symbols', nargs=1)
-parser.add_argument('--json-out', help='output file for JSON', nargs=1)
-parser.add_argument('--print-samples', help='print samples', action='store_const', const=True)
-parser.add_argument('--skip-kernel-syms', help='skip kernel symbols at the top of stack',
-    action='store_const', const=True)
-parser.add_argument('--print-pid-histogram', help='print a top-25 histogram of processes',
-    action='store_const', const=True)
-parser.add_argument('--print-sym-histogram', help='print a top-100 histogram of symbols',
-    action='store_const', const=True)
-parser.add_argument('--print-dso-histogram', help='print a top-25 histogram of maps',
-    action='store_const', const=True)
+def run_cmd(x):
+    args = x[0]
+    f = x[1]
+    cmd = create_cmd(args,f)
+    logging.warn('Running on %s', f)
+    success = False
+    logging.debug('%r', cmd)
+    err_out = open('%s.err' % (f), 'w')
+    kill = lambda process: process.kill()
+    p = subprocess.Popen(cmd, stderr=err_out)
+    kill_timer = Timer(3600, kill, [p])
+    try:
+        kill_timer.start()
+        stdout, stderr = p.communicate()
+        success = True
+    finally:
+        kill_timer.cancel()
+    logging.warn('Ended %s', f)
+    err_out.close()
+    return '%s: %r' % (f, success)
 
-args = parser.parse_args()
-if args is not None:
+def parallel_runner(args):
+    pool = ThreadPool(args.parallel)
+    map_args = map(lambda f: (args, f), args.file)
+    result = pool.map(run_cmd, map_args)
+    pool.close()
+    pool.join()
+    print result
+
+def run(args):
     if args.syms is not None:
         symbol.SYMBOLS_DIR = args.syms[0]
     print_symbols = args.print_samples is not None
@@ -439,5 +472,30 @@ if args is not None:
 
     if args.json_out is not None:
         json_file = open(args.json_out[0], 'w')
-        json.dump(samples, json_file)
+        json_data = { 'samples': samples, 'names': tid_name_map }
+        json.dump(json_data, json_file)
         json_file.close()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Process a perfprofd record.')
+
+    parser.add_argument('file', help='proto file to parse', metavar='file', nargs='+')
+    parser.add_argument('--syms', help='directory for symbols', nargs=1)
+    parser.add_argument('--json-out', help='output file for JSON', nargs=1)
+    parser.add_argument('--print-samples', help='print samples', action='store_const', const=True)
+    parser.add_argument('--skip-kernel-syms', help='skip kernel symbols at the top of stack',
+        action='store_const', const=True)
+    parser.add_argument('--print-pid-histogram', help='print a top-25 histogram of processes',
+        action='store_const', const=True)
+    parser.add_argument('--print-sym-histogram', help='print a top-100 histogram of symbols',
+        action='store_const', const=True)
+    parser.add_argument('--print-dso-histogram', help='print a top-25 histogram of maps',
+        action='store_const', const=True)
+    parser.add_argument('--parallel', help='run parallel jobs', type=int)
+
+    args = parser.parse_args()
+    if args is not None:
+        if args.parallel is not None:
+            parallel_runner(args)
+        else:
+            run(args)
