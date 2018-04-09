@@ -1394,26 +1394,13 @@ bool RecordCommand::DumpBuildIdFeature() {
         continue;
       }
       build_id_records.push_back(BuildIdRecord(true, UINT_MAX, build_id, path));
-    } else {
+    } else if (dso->type() == DSO_ELF_FILE) {
       if (dso->Path() == DEFAULT_EXECNAME_FOR_THREAD_MMAP) {
         continue;
       }
-      auto tuple = SplitUrlInApk(dso->Path());
-      if (std::get<0>(tuple)) {
-        ElfStatus result = GetBuildIdFromApkFile(std::get<1>(tuple),
-                                                 std::get<2>(tuple), &build_id);
-        if (result != ElfStatus::NO_ERROR) {
-          LOG(DEBUG) << "can't read build_id from file " << dso->Path() << ": "
-                     << result;
-          continue;
-        }
-      } else {
-        ElfStatus result = GetBuildIdFromElfFile(dso->Path(), &build_id);
-        if (result != ElfStatus::NO_ERROR) {
-          LOG(DEBUG) << "can't read build_id from file " << dso->Path() << ": "
-                     << result;
-          continue;
-        }
+      if (!GetBuildIdFromDsoPath(dso->Path(), &build_id)) {
+        LOG(DEBUG) << "Can't read build_id from file " << dso->Path();
+        continue;
       }
       build_id_records.push_back(
           BuildIdRecord(false, UINT_MAX, build_id, dso->Path()));

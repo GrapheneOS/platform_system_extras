@@ -44,6 +44,7 @@ import tempfile
 import time
 import unittest
 
+from app_profiler import NativeLibDownloader
 from simpleperf_report_lib import ReportLib
 from utils import *
 
@@ -137,10 +138,22 @@ class TestExampleBase(TestBase):
         cls.adb.check_run(args)
         cls.adb_root = adb_root
         cls.compiled = False
+        cls.has_perf_data_for_report = False
 
     def setUp(self):
         if self.id().find('TraceOffCpu') != -1 and not is_trace_offcpu_supported():
             self.skipTest('trace-offcpu is not supported on device')
+        cls = self.__class__
+        if not cls.has_perf_data_for_report:
+            cls.has_perf_data_for_report = True
+            self.run_app_profiler()
+            shutil.copy('perf.data', 'perf.data_for_report')
+            remove('binary_cache_for_report')
+            shutil.copytree('binary_cache', 'binary_cache_for_report')
+        else:
+            shutil.copy('perf.data_for_report', 'perf.data')
+            remove('binary_cache')
+            shutil.copytree('binary_cache_for_report', 'binary_cache')
 
     @classmethod
     def tearDownClass(cls):
@@ -153,6 +166,10 @@ class TestExampleBase(TestBase):
         remove("perf.data")
         remove("report.txt")
         remove("pprof.profile")
+        if cls.has_perf_data_for_report:
+            cls.has_perf_data_for_report = False
+            remove('perf.data_for_report')
+            remove('binary_cache_for_report')
 
     def run(self, result=None):
         self.__class__.test_result = result
@@ -160,7 +177,7 @@ class TestExampleBase(TestBase):
 
     def run_app_profiler(self, record_arg = "-g -f 1000 --duration 3 -e cpu-cycles:u",
                          build_binary_cache=True, skip_compile=False, start_activity=True,
-                         native_lib_dir=None, profile_from_launch=False, add_arch=False):
+                         profile_from_launch=False, add_arch=False):
         args = ["app_profiler.py", "--app", self.package_name, "--apk", self.apk_path,
                 "-r", record_arg, "-o", "perf.data"]
         if not build_binary_cache:
@@ -169,8 +186,7 @@ class TestExampleBase(TestBase):
             args.append("-nc")
         if start_activity:
             args += ["-a", self.activity_name]
-        if native_lib_dir:
-            args += ["-lib", native_lib_dir]
+        args += ["-lib", self.example_path, '--download_libs']
         if profile_from_launch:
             args.append("--profile_from_launch")
         if add_arch:
@@ -264,7 +280,6 @@ class TestExampleBase(TestBase):
 
     def common_test_report(self):
         self.run_cmd(["report.py", "-h"])
-        self.run_app_profiler(build_binary_cache=False)
         self.run_cmd(["report.py"])
         self.run_cmd(["report.py", "-i", "perf.data"])
         self.run_cmd(["report.py", "-g"])
@@ -272,20 +287,14 @@ class TestExampleBase(TestBase):
 
     def common_test_annotate(self):
         self.run_cmd(["annotate.py", "-h"])
-        self.run_app_profiler()
         remove("annotated_files")
         self.run_cmd(["annotate.py", "-s", self.example_path])
         self.check_exist(dir="annotated_files")
 
     def common_test_report_sample(self, check_strings):
         self.run_cmd(["report_sample.py", "-h"])
-        remove("binary_cache")
-        self.run_app_profiler(build_binary_cache=False)
         self.run_cmd(["report_sample.py"])
         output = self.run_cmd(["report_sample.py", "perf.data"], return_output=True)
-        self.check_strings_in_content(output, check_strings)
-        self.run_app_profiler(record_arg="-g -f 1000 --duration 3 -e cpu-cycles:u --no-dump-symbols")
-        output = self.run_cmd(["report_sample.py", "--symfs", "binary_cache"], return_output=True)
         self.check_strings_in_content(output, check_strings)
 
     def common_test_pprof_proto_generator(self, check_strings_with_lines,
@@ -294,7 +303,6 @@ class TestExampleBase(TestBase):
             log_info('Skip test for pprof_proto_generator because google.protobuf is missing')
             return
         self.run_cmd(["pprof_proto_generator.py", "-h"])
-        self.run_app_profiler()
         self.run_cmd(["pprof_proto_generator.py"])
         remove("pprof.profile")
         self.run_cmd(["pprof_proto_generator.py", "-i", "perf.data", "-o", "pprof.profile"])
@@ -325,13 +333,12 @@ class TestExampleBase(TestBase):
 
     def common_test_report_html(self):
         self.run_cmd(['report_html.py', '-h'])
-        self.run_app_profiler(record_arg='-g -f 1000 --duration 3 -e task-clock:u')
         self.run_cmd(['report_html.py'])
         self.run_cmd(['report_html.py', '--add_source_code', '--source_dirs', 'testdata'])
         self.run_cmd(['report_html.py', '--add_disassembly'])
         # Test with multiple perf.data.
         shutil.move('perf.data', 'perf2.data')
-        self.run_app_profiler()
+        self.run_app_profiler(record_arg='-g -f 1000 --duration 3 -e task-clock:u')
         self.run_cmd(['report_html.py', '-i', 'perf.data', 'perf2.data'])
         remove('perf2.data')
 
@@ -505,8 +512,6 @@ class TestExampleWithNative(TestExampleBase):
 
     def test_app_profiler(self):
         self.common_test_app_profiler()
-        remove("binary_cache")
-        self.run_app_profiler(native_lib_dir=self.example_path)
 
     def test_app_profiler_profile_from_launch(self):
         self.run_app_profiler(profile_from_launch=True, add_arch=True, build_binary_cache=False)
@@ -564,8 +569,6 @@ class TestExampleWithNativeRoot(TestExampleBase):
 
     def test_app_profiler(self):
         self.common_test_app_profiler()
-        remove("binary_cache")
-        self.run_app_profiler(native_lib_dir=self.example_path)
 
 
 class TestExampleWithNativeTraceOffCpu(TestExampleBase):
@@ -1018,6 +1021,85 @@ class TestTools(unittest.TestCase):
             self.assertTrue(disassemble_code)
             for item in dso_info['expected_items']:
                 self.assertTrue(item in disassemble_code)
+
+    def test_readelf(self):
+        test_map = {
+           '/simpleperf_runtest_two_functions_arm64': {
+               'arch': 'arm64',
+               'build_id': '0xe8ecb3916d989dbdc068345c30f0c24300000000',
+               'sections': ['.interp', '.note.android.ident', '.note.gnu.build-id', '.dynsym',
+                            '.dynstr', '.gnu.hash', '.gnu.version', '.gnu.version_r', '.rela.dyn',
+                            '.rela.plt', '.plt', '.text', '.rodata', '.eh_frame', '.eh_frame_hdr',
+                            '.preinit_array', '.init_array', '.fini_array', '.dynamic', '.got',
+                            '.got.plt', '.data', '.bss', '.comment', '.debug_str', '.debug_loc',
+                            '.debug_abbrev', '.debug_info', '.debug_ranges', '.debug_macinfo',
+                            '.debug_pubnames', '.debug_pubtypes', '.debug_line',
+                            '.note.gnu.gold-version', '.symtab', '.strtab', '.shstrtab'],
+           },
+           '/simpleperf_runtest_two_functions_arm': {
+               'arch': 'arm',
+               'build_id': '0x718f5b36c4148ee1bd3f51af89ed2be600000000',
+           },
+           '/simpleperf_runtest_two_functions_x86_64': {
+               'arch': 'x86_64',
+           },
+           '/simpleperf_runtest_two_functions_x86': {
+               'arch': 'x86',
+           }
+        }
+        readelf = ReadElf(None)
+        for dso_path in test_map:
+            dso_info = test_map[dso_path]
+            path = 'testdata' + dso_path 
+            self.assertEqual(dso_info['arch'], readelf.get_arch(path))
+            if 'build_id' in dso_info:
+                self.assertEqual(dso_info['build_id'], readelf.get_build_id(path))
+            if 'sections' in dso_info:
+                self.assertEqual(dso_info['sections'], readelf.get_sections(path))
+        self.assertEqual(readelf.get_arch('not_exist_file'), 'unknown')
+        self.assertEqual(readelf.get_build_id('not_exist_file'), '')
+        self.assertEqual(readelf.get_sections('not_exist_file'), [])
+
+
+class TestNativeLibDownloader(unittest.TestCase):
+    def test_smoke(self):
+        self.adb = AdbHelper()
+        # Sync all native libs on device.
+        self.adb.run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
+        downloader = NativeLibDownloader(None, 'arm64', self.adb)
+        downloader.collect_native_libs_on_host(
+            os.path.join('testdata', 'SimpleperfExampleWithNative'))
+        self.assertEqual(len(downloader.host_build_id_map), 6)
+        for entry in downloader.host_build_id_map.values():
+            self.assertEqual(entry.score, 3)
+        downloader.collect_native_libs_on_device()
+        self.assertEqual(len(downloader.device_build_id_map), 0)
+
+        lib_list = downloader.host_build_id_map.items()
+        for sync_count in [4, 3, 5]:
+            build_id_map = {}
+            for i in range(sync_count):
+                build_id_map[lib_list[i][0]] = lib_list[i][1]
+            print('sync_count %d, build_id_map %s' % (sync_count, build_id_map))
+            downloader.host_build_id_map = build_id_map
+            downloader.sync_natives_libs_on_device()
+            downloader.collect_native_libs_on_device()
+            self.assertEqual(len(downloader.device_build_id_map), sync_count)
+            for i in range(len(lib_list)):
+                build_id = lib_list[i][0]
+                name = lib_list[i][1].name
+                if i < sync_count:
+                    self.assertTrue(build_id in downloader.device_build_id_map)
+                    self.assertEqual(name, downloader.device_build_id_map[build_id])
+                    print('path = %s' % (downloader.dir_on_device + name))
+                    self.assertTrue(self._is_lib_on_device(downloader.dir_on_device + name))
+                else:
+                    self.assertTrue(build_id not in downloader.device_build_id_map)
+                    self.assertFalse(self._is_lib_on_device(downloader.dir_on_device + name))
+        self.adb.run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
+
+    def _is_lib_on_device(self, path):
+        return self.adb.run(['shell', 'ls', path])
 
 
 def main():
