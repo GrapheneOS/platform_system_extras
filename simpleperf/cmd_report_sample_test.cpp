@@ -52,6 +52,8 @@ TEST(cmd_report_sample, protobuf_option) {
       {"--dump-protobuf-report", tmpfile.path, "-o", tmpfile2.path}));
   std::string data;
   ASSERT_TRUE(android::base::ReadFileToString(tmpfile2.path, &data));
+  ASSERT_NE(data.find("magic: SIMPLEPERF"), std::string::npos);
+  ASSERT_NE(data.find("version: 1"), std::string::npos);
   ASSERT_NE(data.find("file:"), std::string::npos);
 }
 
