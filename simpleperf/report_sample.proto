@@ -79,6 +79,7 @@ message Thread {
 
 message MetaInfo {
   repeated string event_type = 1;
+  optional string app_package_name = 2;
 }
 
 message Record {

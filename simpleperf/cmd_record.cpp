@@ -1444,6 +1444,9 @@ bool RecordCommand::DumpMetaInfoFeature() {
                                   android::base::GetProperty("ro.product.model", "").c_str(),
                                   android::base::GetProperty("ro.product.name", "").c_str());
   info_map["android_version"] = android::base::GetProperty("ro.build.version.release", "");
+  if (!app_package_name_.empty()) {
+    info_map["app_package_name"] = app_package_name_;
+  }
 #endif
   info_map["clockid"] = clockid_;
   info_map["timestamp"] = std::to_string(time(nullptr));
