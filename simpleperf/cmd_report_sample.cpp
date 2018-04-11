@@ -121,6 +121,7 @@ class ReportSampleCommand : public Command {
   bool trace_offcpu_;
   std::unique_ptr<ScopedEventTypes> scoped_event_types_;
   std::vector<std::string> event_types_;
+  std::unordered_map<std::string, std::string> meta_info_;
 };
 
 bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
@@ -359,6 +360,10 @@ bool ReportSampleCommand::DumpProtobufReport(const std::string& filename) {
       for (int i = 0; i < meta_info.event_type_size(); ++i) {
         FprintIndented(report_fp_, 1, "event_type: %s\n", meta_info.event_type(i).c_str());
       }
+      if (meta_info.has_app_package_name()) {
+        FprintIndented(report_fp_, 0, "app_package_name: %s\n",
+                       meta_info.app_package_name().c_str());
+      }
     } else {
       LOG(ERROR) << "unexpected record type ";
       return false;
@@ -386,16 +391,15 @@ bool ReportSampleCommand::OpenRecordFile() {
   }
   record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
   if (record_file_reader_->HasFeature(PerfFileFormat::FEAT_META_INFO)) {
-    std::unordered_map<std::string, std::string> meta_info;
-    if (!record_file_reader_->ReadMetaInfoFeature(&meta_info)) {
+    if (!record_file_reader_->ReadMetaInfoFeature(&meta_info_)) {
       return false;
     }
-    auto it = meta_info.find("event_type_info");
-    if (it != meta_info.end()) {
+    auto it = meta_info_.find("event_type_info");
+    if (it != meta_info_.end()) {
       scoped_event_types_.reset(new ScopedEventTypes(it->second));
     }
-    it = meta_info.find("trace_offcpu");
-    if (it != meta_info.end()) {
+    it = meta_info_.find("trace_offcpu");
+    if (it != meta_info_.end()) {
       trace_offcpu_ = it->second == "true";
     }
   }
@@ -406,11 +410,16 @@ bool ReportSampleCommand::OpenRecordFile() {
 }
 
 bool ReportSampleCommand::PrintMetaInfo() {
+  auto it = meta_info_.find("app_package_name");
+  std::string app_package_name = it != meta_info_.end() ? it->second : "";
   if (use_protobuf_) {
     proto::Record proto_record;
     proto::MetaInfo* meta_info = proto_record.mutable_meta_info();
     for (auto& event_type : event_types_) {
       *(meta_info->add_event_type()) = event_type;
+    }
+    if (!app_package_name.empty()) {
+      meta_info->set_app_package_name(app_package_name);
     }
     return WriteRecordInProtobuf(proto_record);
   }
@@ -418,6 +427,9 @@ bool ReportSampleCommand::PrintMetaInfo() {
   FprintIndented(report_fp_, 1, "trace_offcpu: %s\n", trace_offcpu_ ? "true" : "false");
   for (auto& event_type : event_types_) {
     FprintIndented(report_fp_, 1, "event_type: %s\n", event_type.c_str());
+  }
+  if (!app_package_name.empty()) {
+    FprintIndented(report_fp_, 1, "app_package_name: %s\n", app_package_name.c_str());
   }
   return true;
 }
