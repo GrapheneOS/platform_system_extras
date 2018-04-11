@@ -21,6 +21,7 @@
 #   mmma system/core/libunwindstack
 
 import argparse
+from datetime import datetime
 import itertools
 import json
 
@@ -450,6 +451,7 @@ def run_cmd(x):
     logging.debug('%r', cmd)
     err_out = open('%s.err' % (f), 'w')
     kill = lambda process: process.kill()
+    start = datetime.now()
     p = subprocess.Popen(cmd, stderr=err_out)
     kill_timer = Timer(3600, kill, [p])
     try:
@@ -458,8 +460,9 @@ def run_cmd(x):
         success = True
     finally:
         kill_timer.cancel()
-    logging.warn('Ended %s', f)
     err_out.close()
+    end = datetime.now()
+    logging.warn('Ended %s (%s)', f, str(end-start))
     return '%s: %r' % (f, success)
 
 def parallel_runner(args):
