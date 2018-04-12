@@ -14,7 +14,6 @@
 // limitations under the License.
 //
 
-#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -524,7 +523,6 @@ static std::string getprocname(pid_t pid) {
     std::string filename = android::base::StringPrintf("/proc/%d/cmdline", pid);
 
     std::string procname;
-
     if (!android::base::ReadFileToString(filename, &procname)) {
         // The process went away before we could read its process name.
         procname = "<unknown>";
