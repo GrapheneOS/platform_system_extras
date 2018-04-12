@@ -374,7 +374,7 @@ TEST_F(ReportCommandTest, check_build_id) {
         }
         exit(0);
       },
-      testing::ExitedWithCode(0), "Build id mismatch");
+      testing::ExitedWithCode(0), "failed to read symbols from /elf_for_build_id_check");
 }
 
 TEST_F(ReportCommandTest, no_show_ip_option) {
@@ -415,7 +415,7 @@ TEST_F(ReportCommandTest, read_elf_file_warning) {
         }
         exit(0);
       },
-      testing::ExitedWithCode(0), "elf: Read failed");
+      testing::ExitedWithCode(0), "failed to read symbols from /elf: File not found");
 }
 
 TEST_F(ReportCommandTest, report_data_generated_by_linux_perf) {
