@@ -22,6 +22,7 @@ from __future__ import print_function
 import logging
 import os
 import os.path
+import re
 import shutil
 import subprocess
 import sys
@@ -369,21 +370,6 @@ def find_real_dso_path(dso_path_in_record_file, binary_cache_path):
         return dso_path_in_record_file
     return None
 
-def get_arch_of_dso_path(readelf_path, dso_path):
-    try:
-        output = subprocess.check_output([readelf_path, '-h', dso_path])
-        if output.find('AArch64') != -1:
-            return 'arm64'
-        if output.find('ARM') != -1:
-            return 'arm'
-        if output.find('X86-64') != -1:
-            return 'x86_64'
-        if output.find('80386') != -1:
-            return 'x86'
-    except subprocess.CalledProcessError:
-        pass
-    return 'unknown'
-
 
 class Addr2Nearestline(object):
     """ Use addr2line to convert (dso_path, func_addr, addr) to (source_file, line) pairs.
@@ -433,9 +419,7 @@ class Addr2Nearestline(object):
         self.addr2line_path = find_tool_path('addr2line', ndk_path)
         if not self.addr2line_path:
             log_exit("Can't find addr2line. Please set ndk path by --ndk-path option.")
-        self.readelf_path = find_tool_path('readelf', ndk_path)
-        if not self.readelf_path:
-            log_exit("Can't find readelf. Please set ndk path by --ndk-path option.")
+        self.readelf = ReadElf(ndk_path)
         self.dso_map = {}  # map from dso_path to Dso.
         self.binary_cache_path = binary_cache_path
         # Saving file names for each addr takes a lot of memory. So we store file ids in Addr,
@@ -472,14 +456,10 @@ class Addr2Nearestline(object):
                                 range(-addr_step * 5, -addr_step * 128 - 1, -addr_step))
 
     def _check_debug_line_section(self, real_path):
-        try:
-            output = subprocess.check_output([self.readelf_path, '-S', real_path])
-            return output.find('.debug_line') != -1
-        except subprocess.CalledProcessError:
-            return False
+        return '.debug_line' in self.readelf.get_sections(real_path)
 
     def _get_addr_step(self, real_path):
-        arch = get_arch_of_dso_path(self.readelf_path, real_path)
+        arch = self.readelf.get_arch(real_path)
         if arch == 'arm64':
             return 4
         if arch == 'arm':
@@ -579,9 +559,7 @@ class Objdump(object):
     def __init__(self, ndk_path, binary_cache_path):
         self.ndk_path = ndk_path
         self.binary_cache_path = binary_cache_path
-        self.readelf_path = find_tool_path('readelf', ndk_path)
-        if not self.readelf_path:
-            log_exit("Can't find readelf. Please set ndk path by --ndk_path option.")
+        self.readelf = ReadElf(ndk_path)
         self.objdump_paths = {}
 
     def disassemble_code(self, dso_path, start_addr, addr_len):
@@ -594,7 +572,7 @@ class Objdump(object):
             return None
 
         # 2. Get path of objdump.
-        arch = get_arch_of_dso_path(self.readelf_path, real_path)
+        arch = self.readelf.get_arch(real_path)
         objdump_path = self.objdump_paths.get(arch)
         if not objdump_path:
             objdump_path = find_tool_path('objdump', self.ndk_path, arch)
@@ -626,6 +604,65 @@ class Objdump(object):
                 addr = 0
             result.append((line, addr))
         return result
+
+
+class ReadElf(object):
+    """ A wrapper of readelf. """
+    def __init__(self, ndk_path):
+        self.readelf_path = find_tool_path('readelf', ndk_path)
+        if not self.readelf_path:
+            log_exit("Can't find readelf. Please set ndk path by --ndk_path option.")
+
+    def get_arch(self, elf_file_path):
+        """ Get arch of an elf file. """
+        try:
+            output = subprocess.check_output([self.readelf_path, '-h', elf_file_path])
+            if output.find('AArch64') != -1:
+                return 'arm64'
+            if output.find('ARM') != -1:
+                return 'arm'
+            if output.find('X86-64') != -1:
+                return 'x86_64'
+            if output.find('80386') != -1:
+                return 'x86'
+        except subprocess.CalledProcessError:
+            pass
+        return 'unknown'
+
+    def get_build_id(self, elf_file_path):
+        """ Get build id of an elf file. """
+        try:
+            output = subprocess.check_output([self.readelf_path, '-n', elf_file_path])
+            output = bytes_to_str(output)
+            result = re.search(r'Build ID:\s*(\S+)', output)
+            if result:
+                build_id = result.group(1)
+                if len(build_id) < 40:
+                    build_id += '0' * (40 - len(build_id))
+                else:
+                    build_id = build_id[:40]
+                build_id = '0x' + build_id
+                return build_id
+        except subprocess.CalledProcessError:
+            pass
+        return ""
+
+    def get_sections(self, elf_file_path):
+        """ Get sections of an elf file. """
+        section_names = []
+        try:
+            output = subprocess.check_output([self.readelf_path, '-SW', elf_file_path])
+            output = bytes_to_str(output)
+            for line in output.split('\n'):
+                # Parse line like:" [ 1] .note.android.ident NOTE  0000000000400190 ...".
+                result = re.search(r'^\s+\[\s*\d+\]\s(.+?)\s', line)
+                if result:
+                    section_name = result.group(1).strip()
+                    if section_name:
+                        section_names.append(section_name)
+        except subprocess.CalledProcessError:
+            pass
+        return section_names
 
 
 logging.getLogger().setLevel(logging.DEBUG)

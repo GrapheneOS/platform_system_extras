@@ -25,12 +25,98 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/strings.h>
 
 #include "environment.h"
 #include "read_apk.h"
 #include "read_dex_file.h"
 #include "read_elf.h"
 #include "utils.h"
+
+namespace simpleperf_dso_impl {
+
+void DebugElfFileFinder::Reset() {
+  vdso_64bit_.clear();
+  vdso_32bit_.clear();
+  symfs_dir_.clear();
+  build_id_to_file_map_.clear();
+}
+
+bool DebugElfFileFinder::SetSymFsDir(const std::string& symfs_dir) {
+  std::string dirname = symfs_dir;
+  if (!dirname.empty()) {
+    if (dirname.back() != '/') {
+      dirname.push_back('/');
+    }
+    if (!IsDir(symfs_dir)) {
+      LOG(ERROR) << "Invalid symfs_dir '" << symfs_dir << "'";
+      return false;
+    }
+  }
+  symfs_dir_ = dirname;
+  build_id_to_file_map_.clear();
+  std::string build_id_list_file = symfs_dir_ + "build_id_list";
+  std::string build_id_list;
+  if (android::base::ReadFileToString(build_id_list_file, &build_id_list)) {
+    for (auto& line : android::base::Split(build_id_list, "\n")) {
+      std::vector<std::string> items = android::base::Split(line, "=");
+      if (items.size() == 2u) {
+        build_id_to_file_map_[items[0]] = items[1];
+      }
+    }
+  }
+  return true;
+}
+
+void DebugElfFileFinder::SetVdsoFile(const std::string& vdso_file, bool is_64bit) {
+  if (is_64bit) {
+    vdso_64bit_ = vdso_file;
+  } else {
+    vdso_32bit_ = vdso_file;
+  }
+}
+
+std::string DebugElfFileFinder::FindDebugFile(const std::string& dso_path, bool force_64bit,
+                                              BuildId& build_id) {
+  if (dso_path == "[vdso]") {
+    if (force_64bit && !vdso_64bit_.empty()) {
+      return vdso_64bit_;
+    } else if (!force_64bit && !vdso_32bit_.empty()) {
+      return vdso_32bit_;
+    }
+  } else if (!symfs_dir_.empty()) {
+    if (!build_id.IsEmpty() || GetBuildIdFromDsoPath(dso_path, &build_id)) {
+      std::string result;
+      auto check_path = [&](const std::string& path) {
+        BuildId debug_build_id;
+        if (GetBuildIdFromDsoPath(path, &debug_build_id) && debug_build_id == build_id) {
+          result = path;
+          return true;
+        }
+        return false;
+      };
+
+      // 1. Try build_id_to_file_map.
+      auto it = build_id_to_file_map_.find(build_id.ToString());
+      if (it != build_id_to_file_map_.end()) {
+        if (check_path(symfs_dir_ + it->second)) {
+          return result;
+        }
+      }
+      // 2. Try concatenating symfs_dir and dso_path.
+      if (check_path(symfs_dir_ + dso_path)) {
+        return result;
+      }
+      // 3. Try concatenating /usr/lib/debug and dso_path.
+      // Linux host can store debug shared libraries in /usr/lib/debug.
+      if (check_path("/usr/lib/debug" + dso_path)) {
+        return result;
+      }
+    }
+  }
+  return dso_path;
+}
+}  // namespace simpleperf_dso_imp
 
 static OneTimeFreeAllocator symbol_name_allocator;
 
@@ -55,15 +141,13 @@ const char* Symbol::DemangledName() const {
 }
 
 bool Dso::demangle_ = true;
-std::string Dso::symfs_dir_;
 std::string Dso::vmlinux_;
 std::string Dso::kallsyms_;
 bool Dso::read_kernel_symbols_from_proc_;
 std::unordered_map<std::string, BuildId> Dso::build_id_map_;
 size_t Dso::dso_count_;
 uint32_t Dso::g_dump_id_;
-std::string Dso::vdso_64bit_;
-std::string Dso::vdso_32bit_;
+simpleperf_dso_impl::DebugElfFileFinder Dso::debug_elf_file_finder_;
 
 void Dso::SetDemangle(bool demangle) { demangle_ = demangle; }
 
@@ -96,18 +180,7 @@ std::string Dso::Demangle(const std::string& name) {
 }
 
 bool Dso::SetSymFsDir(const std::string& symfs_dir) {
-  std::string dirname = symfs_dir;
-  if (!dirname.empty()) {
-    if (dirname.back() != '/') {
-      dirname.push_back('/');
-    }
-    if (!IsDir(symfs_dir)) {
-      LOG(ERROR) << "Invalid symfs_dir '" << symfs_dir << "'";
-      return false;
-    }
-  }
-  symfs_dir_ = dirname;
-  return true;
+  return debug_elf_file_finder_.SetSymFsDir(symfs_dir);
 }
 
 void Dso::SetVmlinux(const std::string& vmlinux) { vmlinux_ = vmlinux; }
@@ -124,11 +197,7 @@ void Dso::SetBuildIds(
 }
 
 void Dso::SetVdsoFile(const std::string& vdso_file, bool is_64bit) {
-  if (is_64bit) {
-    vdso_64bit_ = vdso_file;
-  } else {
-    vdso_32bit_ = vdso_file;
-  }
+  debug_elf_file_finder_.SetVdsoFile(vdso_file, is_64bit);
 }
 
 BuildId Dso::FindExpectedBuildIdForPath(const std::string& path) {
@@ -165,12 +234,12 @@ Dso::~Dso() {
     // Clean up global variables when no longer used.
     symbol_name_allocator.Clear();
     demangle_ = true;
-    symfs_dir_.clear();
     vmlinux_.clear();
     kallsyms_.clear();
     read_kernel_symbols_from_proc_ = false;
     build_id_map_.clear();
     g_dump_id_ = 0;
+    debug_elf_file_finder_.Reset();
   }
 }
 
@@ -402,41 +471,18 @@ class KernelModuleDso : public Dso {
 
 std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_path,
                                     bool force_64bit) {
-  auto find_debug_file = [&]() {
-    // Check if file matching path_ exists in symfs directory before using it as
-    // debug_file_path_.
-    if (!symfs_dir_.empty()) {
-      std::string path_in_symfs = symfs_dir_ + dso_path;
-      std::tuple<bool, std::string, std::string> tuple = SplitUrlInApk(path_in_symfs);
-      std::string file_path = std::get<0>(tuple) ? std::get<1>(tuple) : path_in_symfs;
-      if (IsRegularFile(file_path)) {
-        return path_in_symfs;
-      }
-    } else if (dso_path == "[vdso]") {
-      if (force_64bit && !vdso_64bit_.empty()) {
-        return vdso_64bit_;
-      } else if (!force_64bit && !vdso_32bit_.empty()) {
-        return vdso_32bit_;
-      }
-    } else if (dso_type == DSO_ELF_FILE) {
-      // Linux host can store debug shared libraries in /usr/lib/debug.
-      std::string path = "/usr/lib/debug" + dso_path;
-      if (IsRegularFile(path)) {
-        return path;
-      }
-    }
-    return dso_path;
-  };
-
   switch (dso_type) {
-    case DSO_ELF_FILE:
-      return std::unique_ptr<Dso>(new ElfDso(dso_path, find_debug_file()));
+    case DSO_ELF_FILE: {
+      BuildId build_id = FindExpectedBuildIdForPath(dso_path);
+      return std::unique_ptr<Dso>(new ElfDso(dso_path,
+          debug_elf_file_finder_.FindDebugFile(dso_path, force_64bit, build_id)));
+    }
     case DSO_KERNEL:
       return std::unique_ptr<Dso>(new KernelDso(dso_path, dso_path));
     case DSO_KERNEL_MODULE:
-      return std::unique_ptr<Dso>(new KernelModuleDso(dso_path, find_debug_file()));
+      return std::unique_ptr<Dso>(new KernelModuleDso(dso_path, dso_path));
     case DSO_DEX_FILE:
-      return std::unique_ptr<Dso>(new DexFileDso(dso_path, find_debug_file()));
+      return std::unique_ptr<Dso>(new DexFileDso(dso_path, dso_path));
     default:
       LOG(FATAL) << "Unexpected dso_type " << static_cast<int>(dso_type);
   }
@@ -473,4 +519,15 @@ const char* DsoTypeToString(DsoType dso_type) {
     default:
       return "unknown";
   }
+}
+
+bool GetBuildIdFromDsoPath(const std::string& dso_path, BuildId* build_id) {
+  auto tuple = SplitUrlInApk(dso_path);
+  ElfStatus result;
+  if (std::get<0>(tuple)) {
+    result = GetBuildIdFromApkFile(std::get<1>(tuple), std::get<2>(tuple), build_id);
+  } else {
+    result = GetBuildIdFromElfFile(dso_path, build_id);
+  }
+  return result == ElfStatus::NO_ERROR;
 }
