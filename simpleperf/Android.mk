@@ -362,6 +362,7 @@ simpleperf_unit_test_src_files := \
   cmd_report_test.cpp \
   cmd_report_sample_test.cpp \
   command_test.cpp \
+  dso_test.cpp \
   gtest_main.cpp \
   read_apk_test.cpp \
   read_elf_test.cpp \
