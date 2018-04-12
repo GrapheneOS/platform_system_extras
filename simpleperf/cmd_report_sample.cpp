@@ -78,6 +78,8 @@ class ReportSampleCommand : public Command {
 "--protobuf  Use protobuf format in report_sample.proto to output samples.\n"
 "            Need to set a report_file_name when using this option.\n"
 "--show-callchain  Print callchain samples.\n"
+"--remove-unknown-kernel-symbols  Remove kernel callchains when kernel symbols\n"
+"                                 are not available in perf.data.\n"
             // clang-format on
             ),
         record_filename_("perf.data"),
@@ -87,7 +89,9 @@ class ReportSampleCommand : public Command {
         coded_os_(nullptr),
         sample_count_(0),
         lost_count_(0),
-        trace_offcpu_(false) {}
+        trace_offcpu_(false),
+        remove_unknown_kernel_symbols_(false),
+        kernel_symbols_available_(false) {}
 
   bool Run(const std::vector<std::string>& args) override;
 
@@ -97,14 +101,17 @@ class ReportSampleCommand : public Command {
   bool OpenRecordFile();
   bool PrintMetaInfo();
   bool ProcessRecord(std::unique_ptr<Record> record);
-  bool PrintSampleRecordInProtobuf(const SampleRecord& record);
+  bool ProcessSampleRecord(const SampleRecord& r);
+  bool PrintSampleRecordInProtobuf(const SampleRecord& record, const std::vector<uint64_t>& ips,
+                                   size_t kernel_ip_count);
   bool GetCallEntry(const ThreadEntry* thread, bool in_kernel, uint64_t ip, bool omit_unknown_dso,
                     uint64_t* pvaddr_in_file, Dso** pdso, const Symbol** psymbol);
   bool WriteRecordInProtobuf(proto::Record& proto_record);
   bool PrintLostSituationInProtobuf();
   bool PrintFileInfoInProtobuf();
   bool PrintThreadInfoInProtobuf();
-  bool PrintSampleRecord(const SampleRecord& record);
+  bool PrintSampleRecord(const SampleRecord& record, const std::vector<uint64_t>& ips,
+                         size_t kernel_ip_count);
   void PrintLostSituation();
 
   std::string record_filename_;
@@ -122,6 +129,8 @@ class ReportSampleCommand : public Command {
   std::unique_ptr<ScopedEventTypes> scoped_event_types_;
   std::vector<std::string> event_types_;
   std::unordered_map<std::string, std::string> meta_info_;
+  bool remove_unknown_kernel_symbols_;
+  bool kernel_symbols_available_;
 };
 
 bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
@@ -238,6 +247,8 @@ bool ReportSampleCommand::ParseOptions(const std::vector<std::string>& args) {
       use_protobuf_ = true;
     } else if (args[i] == "--show-callchain") {
       show_callchain_ = true;
+    } else if (args[i] == "--remove-unknown-kernel-symbols") {
+      remove_unknown_kernel_symbols_ = true;
     } else {
       ReportUnknownOption(args, i);
       return false;
@@ -402,6 +413,10 @@ bool ReportSampleCommand::OpenRecordFile() {
     if (it != meta_info_.end()) {
       trace_offcpu_ = it->second == "true";
     }
+    it = meta_info_.find("kernel_symbols_available");
+    if (it != meta_info_.end()) {
+      kernel_symbols_available_ = it->second == "true";
+    }
   }
   for (EventAttrWithId& attr : record_file_reader_->AttrSection()) {
     event_types_.push_back(GetEventNameByAttr(*attr.attr));
@@ -437,21 +452,78 @@ bool ReportSampleCommand::PrintMetaInfo() {
 bool ReportSampleCommand::ProcessRecord(std::unique_ptr<Record> record) {
   thread_tree_.Update(*record);
   if (record->type() == PERF_RECORD_SAMPLE) {
-    sample_count_++;
-    auto& r = *static_cast<const SampleRecord*>(record.get());
-    if (use_protobuf_) {
-      return PrintSampleRecordInProtobuf(r);
-    } else {
-      return PrintSampleRecord(r);
-    }
-  } else if (record->type() == PERF_RECORD_LOST) {
+    return ProcessSampleRecord(*static_cast<SampleRecord*>(record.get()));
+  }
+  if (record->type() == PERF_RECORD_LOST) {
     lost_count_ += static_cast<const LostRecord*>(record.get())->lost;
   }
   return true;
 }
 
+static void GetCallChainOfSampleRecord(const SampleRecord& r, std::vector<uint64_t>* ips,
+                                       size_t* kernel_ip_count) {
+  ips->clear();
+  bool in_kernel = r.InKernel();
+  ips->push_back(r.ip_data.ip);
+  *kernel_ip_count = in_kernel ? 1 : 0;
+  if ((r.sample_type & PERF_SAMPLE_CALLCHAIN) == 0) {
+    return;
+  }
+  bool first_ip = true;
+  for (uint64_t i = 0; i < r.callchain_data.ip_nr; ++i) {
+    uint64_t ip = r.callchain_data.ips[i];
+    if (ip >= PERF_CONTEXT_MAX) {
+      switch (ip) {
+        case PERF_CONTEXT_KERNEL:
+          CHECK(in_kernel) << "User space callchain followed by kernel callchain.";
+          break;
+        case PERF_CONTEXT_USER:
+          in_kernel = false;
+          break;
+        default:
+          LOG(DEBUG) << "Unexpected perf_context in callchain: " << std::hex << ip << std::dec;
+      }
+    } else {
+      if (first_ip) {
+        first_ip = false;
+        // Remove duplication with sample ip.
+        if (ip == r.ip_data.ip) {
+          continue;
+        }
+      }
+      ips->push_back(ip);
+      if (in_kernel) {
+        ++*kernel_ip_count;
+      }
+    }
+  }
+}
 
-bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
+bool ReportSampleCommand::ProcessSampleRecord(const SampleRecord& r) {
+  std::vector<uint64_t> ips;
+  size_t kernel_ip_count;
+  GetCallChainOfSampleRecord(r, &ips, &kernel_ip_count);
+  if (kernel_ip_count > 0u && remove_unknown_kernel_symbols_ && !kernel_symbols_available_) {
+    ips.erase(ips.begin(), ips.begin() + kernel_ip_count);
+    kernel_ip_count = 0;
+  }
+  if (ips.empty()) {
+    return true;
+  }
+  if (!show_callchain_) {
+    ips.resize(1);
+    kernel_ip_count = std::min(kernel_ip_count, static_cast<size_t>(1u));
+  }
+  sample_count_++;
+  if (use_protobuf_) {
+    return PrintSampleRecordInProtobuf(r, ips, kernel_ip_count);
+  }
+  return PrintSampleRecord(r, ips, kernel_ip_count);
+}
+
+bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r,
+                                                      const std::vector<uint64_t>& ips,
+                                                      size_t kernel_ip_count) {
   struct Node {
     Dso* dso;
     const Symbol* symbol;
@@ -466,46 +538,17 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r) {
   sample->set_thread_id(r.tid_data.tid);
   sample->set_event_type_id(record_file_reader_->GetAttrIndexOfRecord(&r));
 
-  bool in_kernel = r.InKernel();
   const ThreadEntry* thread =
       thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-  bool ret = GetCallEntry(thread, in_kernel, r.ip_data.ip, false, &node.vaddr_in_file,
-                          &node.dso, &node.symbol);
-  CHECK(ret);
-  nodes.push_back(node);
-  if (show_callchain_ && (r.sample_type & PERF_SAMPLE_CALLCHAIN)) {
-    bool first_ip = true;
-    for (uint64_t i = 0; i < r.callchain_data.ip_nr; ++i) {
-      uint64_t ip = r.callchain_data.ips[i];
-      if (ip >= PERF_CONTEXT_MAX) {
-        switch (ip) {
-          case PERF_CONTEXT_KERNEL:
-            in_kernel = true;
-            break;
-          case PERF_CONTEXT_USER:
-            in_kernel = false;
-            break;
-          default:
-            LOG(DEBUG) << "Unexpected perf_context in callchain: " << std::hex
-                       << ip << std::dec;
-        }
-      } else {
-        if (first_ip) {
-          first_ip = false;
-          // Remove duplication with sample ip.
-          if (ip == r.ip_data.ip) {
-            continue;
-          }
-        }
-        if (!GetCallEntry(thread, in_kernel, ip, true, &node.vaddr_in_file, &node.dso,
-                          &node.symbol)) {
-          break;
-        }
-        nodes.push_back(node);
-      }
+  for (size_t i = 0; i < ips.size(); ++i) {
+    bool in_kernel = i < kernel_ip_count;
+    bool omit_unknown_dso = i > 0u;
+    if (!GetCallEntry(thread, in_kernel, ips[i], omit_unknown_dso, &node.vaddr_in_file,
+                     &node.dso, &node.symbol)) {
+      break;
     }
+    nodes.push_back(node);
   }
-
   for (const Node& node : nodes) {
     proto::Sample_CallChainEntry* callchain = sample->add_callchain();
     uint32_t file_id;
@@ -630,7 +673,9 @@ bool ReportSampleCommand::PrintThreadInfoInProtobuf() {
   return true;
 }
 
-bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r) {
+bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r,
+                                            const std::vector<uint64_t>& ips,
+                                            size_t kernel_ip_count) {
   uint64_t vaddr_in_file;
   Dso* dso;
   const Symbol* symbol;
@@ -643,48 +688,25 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r) {
   FprintIndented(report_fp_, 1, "thread_id: %d\n", r.tid_data.tid);
   const char* thread_name = thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid)->comm;
   FprintIndented(report_fp_, 1, "thread_name: %s\n", thread_name);
-  bool in_kernel = r.InKernel();
+  bool in_kernel = kernel_ip_count > 0u;
   const ThreadEntry* thread =
       thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-  bool ret = GetCallEntry(thread, in_kernel, r.ip_data.ip, false, &vaddr_in_file, &dso, &symbol);
+  bool ret = GetCallEntry(thread, in_kernel, ips[0], false, &vaddr_in_file, &dso, &symbol);
   CHECK(ret);
   FprintIndented(report_fp_, 1, "vaddr_in_file: %" PRIx64 "\n", vaddr_in_file);
   FprintIndented(report_fp_, 1, "file: %s\n", dso->Path().c_str());
   FprintIndented(report_fp_, 1, "symbol: %s\n", symbol->DemangledName());
 
-  if (show_callchain_ && (r.sample_type & PERF_SAMPLE_CALLCHAIN)) {
+  if (ips.size() > 1u) {
     FprintIndented(report_fp_, 1, "callchain:\n");
-    bool first_ip = true;
-    for (uint64_t i = 0; i < r.callchain_data.ip_nr; ++i) {
-      uint64_t ip = r.callchain_data.ips[i];
-      if (ip >= PERF_CONTEXT_MAX) {
-        switch (ip) {
-          case PERF_CONTEXT_KERNEL:
-            in_kernel = true;
-            break;
-          case PERF_CONTEXT_USER:
-            in_kernel = false;
-            break;
-          default:
-            LOG(DEBUG) << "Unexpected perf_context in callchain: " << std::hex
-                       << ip;
-        }
-      } else {
-        if (first_ip) {
-          first_ip = false;
-          // Remove duplication with sample ip.
-          if (ip == r.ip_data.ip) {
-            continue;
-          }
-        }
-        if (!GetCallEntry(thread, in_kernel, ip, true, &vaddr_in_file, &dso, &symbol)) {
-          break;
-        }
-        FprintIndented(report_fp_, 2, "vaddr_in_file: %" PRIx64 "\n",
-                       vaddr_in_file);
-        FprintIndented(report_fp_, 2, "file: %s\n", dso->Path().c_str());
-        FprintIndented(report_fp_, 2, "symbol: %s\n", symbol->DemangledName());
+    for (size_t i = 1u; i < ips.size(); ++i) {
+      in_kernel = i < kernel_ip_count;
+      if (!GetCallEntry(thread, in_kernel, ips[i], true, &vaddr_in_file, &dso, &symbol)) {
+        break;
       }
+      FprintIndented(report_fp_, 2, "vaddr_in_file: %" PRIx64 "\n", vaddr_in_file);
+      FprintIndented(report_fp_, 2, "file: %s\n", dso->Path().c_str());
+      FprintIndented(report_fp_, 2, "symbol: %s\n", symbol->DemangledName());
     }
   }
   return true;

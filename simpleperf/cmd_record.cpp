@@ -265,7 +265,7 @@ class RecordCommand : public Command {
   bool DumpAdditionalFeatures(const std::vector<std::string>& args);
   bool DumpBuildIdFeature();
   bool DumpFileFeature();
-  bool DumpMetaInfoFeature();
+  bool DumpMetaInfoFeature(bool kernel_symbols_available);
   void CollectHitFileInfo(const SampleRecord& r);
 
   std::unique_ptr<SampleSpeed> sample_speed_;
@@ -1306,8 +1306,10 @@ bool RecordCommand::DumpAdditionalFeatures(
     const std::vector<std::string>& args) {
   // Read data section of perf.data to collect hit file information.
   thread_tree_.ClearThreadAndMap();
+  bool kernel_symbols_available = false;
   if (CheckKernelSymbolAddresses()) {
     Dso::ReadKernelSymbolsFromProc();
+    kernel_symbols_available = true;
   }
   auto callback = [&](const Record* r) {
     thread_tree_.Update(*r);
@@ -1359,7 +1361,7 @@ bool RecordCommand::DumpAdditionalFeatures(
       !record_file_writer_->WriteBranchStackFeature()) {
     return false;
   }
-  if (!DumpMetaInfoFeature()) {
+  if (!DumpMetaInfoFeature(kernel_symbols_available)) {
     return false;
   }
 
@@ -1430,7 +1432,7 @@ bool RecordCommand::DumpFileFeature() {
   return record_file_writer_->WriteFileFeatures(thread_tree_.GetAllDsos());
 }
 
-bool RecordCommand::DumpMetaInfoFeature() {
+bool RecordCommand::DumpMetaInfoFeature(bool kernel_symbols_available) {
   std::unordered_map<std::string, std::string> info_map;
   info_map["simpleperf_version"] = GetSimpleperfVersion();
   info_map["system_wide_collection"] = system_wide_collection_ ? "true" : "false";
@@ -1450,6 +1452,7 @@ bool RecordCommand::DumpMetaInfoFeature() {
 #endif
   info_map["clockid"] = clockid_;
   info_map["timestamp"] = std::to_string(time(nullptr));
+  info_map["kernel_symbols_available"] = kernel_symbols_available ? "true" : "false";
   return record_file_writer_->WriteMetaInfoFeature(info_map);
 }
 

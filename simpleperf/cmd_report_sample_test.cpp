@@ -101,3 +101,36 @@ TEST(cmd_report_sample, app_package_name_in_meta_info) {
   GetProtobufReport(PERF_DATA_WITH_APP_PACKAGE_NAME, &data);
   ASSERT_NE(data.find("app_package_name: com.google.sample.tunnel"), std::string::npos);
 }
+
+TEST(cmd_report_sample, remove_unknown_kernel_symbols) {
+  std::string data;
+  // Test --remove-unknown-kernel-symbols on perf.data with kernel_symbols_available=false.
+  GetProtobufReport(PERF_DATA_WITH_KERNEL_SYMBOLS_AVAILABLE_FALSE, &data,
+                    {"--show-callchain"});
+  ASSERT_NE(data.find("time: 1368182962424044"), std::string::npos);
+  ASSERT_NE(data.find("path: [kernel.kallsyms]"), std::string::npos);
+  ASSERT_NE(data.find("path: /system/lib64/libc.so"), std::string::npos);
+  GetProtobufReport(PERF_DATA_WITH_KERNEL_SYMBOLS_AVAILABLE_FALSE, &data,
+                    {"--show-callchain", "--remove-unknown-kernel-symbols"});
+  // The sample dumped at time 1368182962424044 shouldn't be removed. Because it has user space
+  // callchains.
+  ASSERT_NE(data.find("time: 1368182962424044"), std::string::npos);
+  // Kernel callchains shouldn't be removed.
+  ASSERT_EQ(data.find("path: [kernel.kallsyms]"), std::string::npos);
+  // User space callchains still exist.
+  ASSERT_NE(data.find("path: /system/lib64/libc.so"), std::string::npos);
+
+  // Test --remove-unknown-kernel-symbols on perf.data with kernel_symbols_available=true.
+  GetProtobufReport(PERF_DATA_WITH_KERNEL_SYMBOLS_AVAILABLE_TRUE, &data,
+                    {"--show-callchain"});
+  ASSERT_NE(data.find("time: 1368297633794862"), std::string::npos);
+  ASSERT_NE(data.find("path: [kernel.kallsyms]"), std::string::npos);
+  ASSERT_NE(data.find("symbol: binder_ioctl_write_read"), std::string::npos);
+  ASSERT_NE(data.find("path: /system/lib64/libc.so"), std::string::npos);
+  GetProtobufReport(PERF_DATA_WITH_KERNEL_SYMBOLS_AVAILABLE_FALSE, &data,
+                    {"--show-callchain", "--remove-unknown-kernel-symbols"});
+  ASSERT_NE(data.find("time: 1368297633794862"), std::string::npos);
+  ASSERT_NE(data.find("path: [kernel.kallsyms]"), std::string::npos);
+  ASSERT_NE(data.find("symbol: binder_ioctl_write_read"), std::string::npos);
+  ASSERT_NE(data.find("path: /system/lib64/libc.so"), std::string::npos);
+}
