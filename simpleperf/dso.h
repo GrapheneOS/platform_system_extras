@@ -28,6 +28,27 @@
 #include "build_id.h"
 #include "read_elf.h"
 
+
+namespace simpleperf_dso_impl {
+
+// Find elf files with symbol table and debug information.
+class DebugElfFileFinder {
+ public:
+  void Reset();
+  bool SetSymFsDir(const std::string& symfs_dir);
+  void SetVdsoFile(const std::string& vdso_file, bool is_64bit);
+  std::string FindDebugFile(const std::string& dso_path, bool force_64bit,
+                            BuildId& build_id);
+
+ private:
+  std::string vdso_64bit_;
+  std::string vdso_32bit_;
+  std::string symfs_dir_;
+  std::unordered_map<std::string, std::string> build_id_to_file_map_;
+};
+
+}  // namespace simpleperf_dso_impl
+
 struct Symbol {
   uint64_t addr;
   // TODO: make len uint32_t.
@@ -147,15 +168,13 @@ class Dso {
 
  protected:
   static bool demangle_;
-  static std::string symfs_dir_;
   static std::string vmlinux_;
   static std::string kallsyms_;
   static bool read_kernel_symbols_from_proc_;
   static std::unordered_map<std::string, BuildId> build_id_map_;
   static size_t dso_count_;
   static uint32_t g_dump_id_;
-  static std::string vdso_64bit_;
-  static std::string vdso_32bit_;
+  static simpleperf_dso_impl::DebugElfFileFinder debug_elf_file_finder_;
 
   Dso(DsoType type, const std::string& path, const std::string& debug_file_path);
   BuildId GetExpectedBuildId();
@@ -204,5 +223,6 @@ class DexFileDso : public Dso {
 };
 
 const char* DsoTypeToString(DsoType dso_type);
+bool GetBuildIdFromDsoPath(const std::string& dso_path, BuildId* build_id);
 
 #endif  // SIMPLE_PERF_DSO_H_

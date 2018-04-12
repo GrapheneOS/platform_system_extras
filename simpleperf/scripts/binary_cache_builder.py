@@ -36,7 +36,7 @@ from utils import *
 class BinaryCacheBuilder(object):
     """Collect all binaries needed by perf.data in binary_cache."""
     def __init__(self, config):
-        config_names = ['perf_data_path', 'symfs_dirs']
+        config_names = ['perf_data_path', 'symfs_dirs', 'ndk_path']
         for name in config_names:
             if name not in config:
                 log_exit('config for "%s" is missing' % name)
@@ -49,9 +49,7 @@ class BinaryCacheBuilder(object):
             if not os.path.isdir(symfs_dir):
                 log_exit("symfs_dir '%s' is not a directory" % symfs_dir)
         self.adb = AdbHelper(enable_switch_to_root=not config['disable_adb_root'])
-        self.readelf_path = find_tool_path('readelf')
-        if not self.readelf_path and self.symfs_dirs:
-            log_warning("Debug shared libraries on host are not used because can't find readelf.")
+        self.readelf = ReadElf(config.get('ndk_path'))
         self.binary_cache_dir = 'binary_cache'
         if not os.path.isdir(self.binary_cache_dir):
             os.makedirs(self.binary_cache_dir)
@@ -180,27 +178,12 @@ class BinaryCacheBuilder(object):
 
     def _read_build_id(self, file):
         """read build id of a binary on host."""
-        if not self.readelf_path:
-            return ""
-        output = subprocess.check_output([self.readelf_path, '-n', file])
-        output = bytes_to_str(output)
-        result = re.search(r'Build ID:\s*(\S+)', output)
-        if result:
-            build_id = result.group(1)
-            if len(build_id) < 40:
-                build_id += '0' * (40 - len(build_id))
-            build_id = '0x' + build_id
-            return build_id
-        return ""
+        return self.readelf.get_build_id(file)
 
 
     def _file_has_symbol_table(self, file):
         """Test if an elf file has symbol table section."""
-        if not self.readelf_path:
-            return False
-        output = subprocess.check_output([self.readelf_path, '-S', file])
-        output = bytes_to_str(output)
-        return '.symtab' in output
+        return '.symtab' in self.readelf.get_sections(file)
 
 
     def _pull_file_from_device(self, device_path, host_path):
@@ -236,11 +219,13 @@ def main():
                         action='append')
     parser.add_argument('--disable_adb_root', action='store_true', help=
 """Force adb to run in non root mode.""")
+    parser.add_argument('--ndk_path', nargs=1, help='Find tools in the ndk path.')
     args = parser.parse_args()
     config = {}
     config['perf_data_path'] = args.perf_data_path
     config['symfs_dirs'] = flatten_arg_list(args.native_lib_dir)
     config['disable_adb_root'] = args.disable_adb_root
+    config['ndk_path'] = None if not args.ndk_path else args.ndk_path[0]
 
     builder = BinaryCacheBuilder(config)
     builder.build_binary_cache()
