@@ -632,7 +632,11 @@ bool RunInAppContext(const std::string& app_package_name, const std::string& cmd
 
   IOEventLoop loop;
   bool need_to_kill_child = false;
-  if (!loop.AddSignalEvents({SIGINT, SIGTERM, SIGHUP},
+  std::vector<int> stop_signals = {SIGINT, SIGTERM};
+  if (!SignalIsIgnored(SIGHUP)) {
+    stop_signals.push_back(SIGHUP);
+  }
+  if (!loop.AddSignalEvents(stop_signals,
                             [&]() { need_to_kill_child = true; return loop.ExitLoop(); })) {
     return false;
   }
