@@ -454,6 +454,16 @@ class TestExamplePureJava(TestExampleBase):
     def test_report_html(self):
         self.common_test_report_html()
 
+    def test_run_simpleperf_without_usb_connection(self):
+        self.adb.check_run(['shell', 'am', 'start', '-n', self.package_name + '/.MainActivity'])
+        self.run_cmd(['run_simpleperf_without_usb_connection.py', 'start', '-p',
+                      self.package_name])
+        self.adb.check_run(['kill-server'])
+        time.sleep(3)
+        self.run_cmd(['run_simpleperf_without_usb_connection.py', 'stop'])
+        self.check_exist(file="perf.data")
+        self.run_cmd(["report.py", "-g", "-o", "report.txt"])
+
 
 class TestExamplePureJavaRoot(TestExampleBase):
     @classmethod
@@ -1050,7 +1060,7 @@ class TestTools(unittest.TestCase):
         readelf = ReadElf(None)
         for dso_path in test_map:
             dso_info = test_map[dso_path]
-            path = 'testdata' + dso_path 
+            path = 'testdata' + dso_path
             self.assertEqual(dso_info['arch'], readelf.get_arch(path))
             if 'build_id' in dso_info:
                 self.assertEqual(dso_info['build_id'], readelf.get_build_id(path))
