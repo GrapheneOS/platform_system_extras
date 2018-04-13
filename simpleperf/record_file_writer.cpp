@@ -317,10 +317,7 @@ bool RecordFileWriter::WriteFileFeatures(const std::vector<Dso*>& files) {
     }
     std::sort(dump_symbols.begin(), dump_symbols.end(), Symbol::CompareByAddr);
 
-    const std::vector<uint64_t>* dex_file_offsets = nullptr;
-    if (dso->type() == DSO_DEX_FILE) {
-      dex_file_offsets = &static_cast<DexFileDso*>(dso)->DexFileOffsets();
-    }
+    const std::vector<uint64_t>* dex_file_offsets = dso->DexFileOffsets();
     if (!WriteFileFeature(dso->Path(), dso_type, min_vaddr, dump_symbols, dex_file_offsets)) {
       return false;
     }
