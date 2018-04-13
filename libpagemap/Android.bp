@@ -39,7 +39,7 @@ cc_binary {
 cc_binary {
     name: "procmem",
     defaults: ["system-extras-cflags-defaults"],
-    srcs: ["procmem.c"],
+    srcs: ["procmem.cpp"],
     shared_libs: ["libpagemap"],
 }
 
