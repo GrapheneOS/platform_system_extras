@@ -938,7 +938,7 @@ bool RecordCommand::DumpKernelSymbol() {
 bool RecordCommand::DumpTracingData() {
   std::vector<const EventType*> tracepoint_event_types =
       event_selection_set_.GetTracepointEvents();
-  if (tracepoint_event_types.empty() || !CanRecordRawData()) {
+  if (tracepoint_event_types.empty() || !CanRecordRawData() || in_app_context_) {
     return true;  // No need to dump tracing data, or can't do it.
   }
   std::vector<char> tracing_data;
