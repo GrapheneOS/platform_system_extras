@@ -416,6 +416,7 @@ struct SampleRecord : public Record {
   }
 
   void AdjustCallChainGeneratedByKernel();
+  std::vector<uint64_t> GetCallChain(size_t* kernel_ip_count) const;
 
  protected:
   void DumpData(size_t indent) const override;

@@ -134,3 +134,12 @@ TEST(cmd_report_sample, remove_unknown_kernel_symbols) {
   ASSERT_NE(data.find("symbol: binder_ioctl_write_read"), std::string::npos);
   ASSERT_NE(data.find("path: /system/lib64/libc.so"), std::string::npos);
 }
+
+TEST(cmd_report_sample, show_art_frames_option) {
+  std::string data;
+  GetProtobufReport(PERF_DATA_WITH_INTERPRETER_FRAMES, &data, {"--show-callchain"});
+  ASSERT_EQ(data.find("artMterpAsmInstructionStart"), std::string::npos);
+  GetProtobufReport(PERF_DATA_WITH_INTERPRETER_FRAMES, &data,
+                    {"--show-callchain", "--show-art-frames"});
+  ASSERT_NE(data.find("artMterpAsmInstructionStart"), std::string::npos);
+}

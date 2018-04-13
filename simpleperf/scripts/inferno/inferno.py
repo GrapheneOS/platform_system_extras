@@ -101,6 +101,8 @@ def parse_samples(process, args, sample_filter_fn):
         lib.SetRecordFile(record_file)
     if kallsyms_file:
         lib.SetKallsymsFile(kallsyms_file)
+    if args.show_art_frames:
+        lib.ShowArtFrames(True)
     process.cmd = lib.GetRecordCmd()
     product_props = lib.MetaInfo().get("product_props")
     if product_props:
@@ -285,6 +287,8 @@ def main():
     report_group.add_argument('--symfs', help="""Set the path to find binaries with symbols and
                               debug info.""")
     report_group.add_argument('--title', help='Show a title in the report.')
+    report_group.add_argument('--show_art_frames', action='store_true',
+                              help='Show frames of internal methods in the ART Java interpreter.')
 
     debug_group = parser.add_argument_group('Debug options')
     debug_group.add_argument('--disable_adb_root', action='store_true', help="""Force adb to run
