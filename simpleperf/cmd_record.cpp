@@ -265,7 +265,7 @@ class RecordCommand : public Command {
   bool DumpAdditionalFeatures(const std::vector<std::string>& args);
   bool DumpBuildIdFeature();
   bool DumpFileFeature();
-  bool DumpMetaInfoFeature();
+  bool DumpMetaInfoFeature(bool kernel_symbols_available);
   void CollectHitFileInfo(const SampleRecord& r);
 
   std::unique_ptr<SampleSpeed> sample_speed_;
@@ -1306,8 +1306,10 @@ bool RecordCommand::DumpAdditionalFeatures(
     const std::vector<std::string>& args) {
   // Read data section of perf.data to collect hit file information.
   thread_tree_.ClearThreadAndMap();
+  bool kernel_symbols_available = false;
   if (CheckKernelSymbolAddresses()) {
     Dso::ReadKernelSymbolsFromProc();
+    kernel_symbols_available = true;
   }
   auto callback = [&](const Record* r) {
     thread_tree_.Update(*r);
@@ -1359,7 +1361,7 @@ bool RecordCommand::DumpAdditionalFeatures(
       !record_file_writer_->WriteBranchStackFeature()) {
     return false;
   }
-  if (!DumpMetaInfoFeature()) {
+  if (!DumpMetaInfoFeature(kernel_symbols_available)) {
     return false;
   }
 
@@ -1394,26 +1396,13 @@ bool RecordCommand::DumpBuildIdFeature() {
         continue;
       }
       build_id_records.push_back(BuildIdRecord(true, UINT_MAX, build_id, path));
-    } else {
+    } else if (dso->type() == DSO_ELF_FILE) {
       if (dso->Path() == DEFAULT_EXECNAME_FOR_THREAD_MMAP) {
         continue;
       }
-      auto tuple = SplitUrlInApk(dso->Path());
-      if (std::get<0>(tuple)) {
-        ElfStatus result = GetBuildIdFromApkFile(std::get<1>(tuple),
-                                                 std::get<2>(tuple), &build_id);
-        if (result != ElfStatus::NO_ERROR) {
-          LOG(DEBUG) << "can't read build_id from file " << dso->Path() << ": "
-                     << result;
-          continue;
-        }
-      } else {
-        ElfStatus result = GetBuildIdFromElfFile(dso->Path(), &build_id);
-        if (result != ElfStatus::NO_ERROR) {
-          LOG(DEBUG) << "can't read build_id from file " << dso->Path() << ": "
-                     << result;
-          continue;
-        }
+      if (!GetBuildIdFromDsoPath(dso->Path(), &build_id)) {
+        LOG(DEBUG) << "Can't read build_id from file " << dso->Path();
+        continue;
       }
       build_id_records.push_back(
           BuildIdRecord(false, UINT_MAX, build_id, dso->Path()));
@@ -1430,7 +1419,7 @@ bool RecordCommand::DumpFileFeature() {
   return record_file_writer_->WriteFileFeatures(thread_tree_.GetAllDsos());
 }
 
-bool RecordCommand::DumpMetaInfoFeature() {
+bool RecordCommand::DumpMetaInfoFeature(bool kernel_symbols_available) {
   std::unordered_map<std::string, std::string> info_map;
   info_map["simpleperf_version"] = GetSimpleperfVersion();
   info_map["system_wide_collection"] = system_wide_collection_ ? "true" : "false";
@@ -1444,9 +1433,13 @@ bool RecordCommand::DumpMetaInfoFeature() {
                                   android::base::GetProperty("ro.product.model", "").c_str(),
                                   android::base::GetProperty("ro.product.name", "").c_str());
   info_map["android_version"] = android::base::GetProperty("ro.build.version.release", "");
+  if (!app_package_name_.empty()) {
+    info_map["app_package_name"] = app_package_name_;
+  }
 #endif
   info_map["clockid"] = clockid_;
   info_map["timestamp"] = std::to_string(time(nullptr));
+  info_map["kernel_symbols_available"] = kernel_symbols_available ? "true" : "false";
   return record_file_writer_->WriteMetaInfoFeature(info_map);
 }
 

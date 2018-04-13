@@ -35,6 +35,119 @@ from binary_cache_builder import BinaryCacheBuilder
 from simpleperf_report_lib import *
 from utils import *
 
+NATIVE_LIBS_DIR_ON_DEVICE = '/data/local/tmp/native_libs/'
+
+class HostElfEntry(object):
+    """ Represent a native lib on host in NativeLibDownloader. """
+    def __init__(self, path, name, score):
+        self.path = path
+        self.name = name
+        self.score = score
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        return '[path: %s, name %s, score %s]' % (self.path, self.name, self.score)
+
+
+class NativeLibDownloader(object):
+    """ Download native libs on device.
+
+    1. Collect info of all native libs in the native_lib_dir on host.
+    2. Check the available native libs in /data/local/tmp/native_libs on device.
+    3. Sync native libs on device.
+    """
+    def __init__(self, ndk_path, device_arch, adb):
+        self.adb = adb
+        self.readelf = ReadElf(ndk_path)
+        self.need_archs = self._get_need_archs(device_arch)
+        self.host_build_id_map = {}  # Map from build_id to HostElfEntry.
+        self.device_build_id_map = {}  # Map from build_id to relative_path on device.
+        self.name_count_map = {}  # Used to give a unique name for each library.
+        self.dir_on_device = NATIVE_LIBS_DIR_ON_DEVICE
+        self.build_id_list_file = 'build_id_list'
+
+    def _get_need_archs(self, device_arch):
+        """ Return the archs of binaries needed on device. """
+        if device_arch == 'arm64':
+            return ['arm', 'arm64']
+        if device_arch == 'arm':
+            return ['arm']
+        if device_arch == 'x86_64':
+            return ['x86', 'x86_64']
+        if device_arch == 'x86':
+            return ['x86']
+        return []
+
+    def collect_native_libs_on_host(self, native_lib_dir):
+        self.host_build_id_map.clear()
+        for root, _, files in os.walk(native_lib_dir):
+            for name in files:
+                if not name.endswith('.so'):
+                    continue
+                self.add_native_lib_on_host(os.path.join(root, name), name)
+
+    def add_native_lib_on_host(self, path, name):
+        build_id = self.readelf.get_build_id(path)
+        if not build_id:
+            return
+        arch = self.readelf.get_arch(path)
+        if arch not in self.need_archs:
+            return
+        sections = self.readelf.get_sections(path)
+        score = 0
+        if '.debug_info' in sections:
+            score = 3
+        elif '.gnu_debugdata' in sections:
+            score = 2
+        elif '.symtab' in sections:
+            score = 1
+        entry = self.host_build_id_map.get(build_id)
+        if entry:
+            if entry.score < score:
+                entry.path = path
+                entry.score = score
+        else:
+            repeat_count = self.name_count_map.get(name, 0)
+            self.name_count_map[name] = repeat_count + 1
+            unique_name = name if repeat_count == 0 else name + '_' + str(repeat_count)
+            self.host_build_id_map[build_id] = HostElfEntry(path, unique_name, score)
+
+    def collect_native_libs_on_device(self):
+        self.device_build_id_map.clear()
+        self.adb.check_run(['shell', 'mkdir', '-p', self.dir_on_device])
+        if os.path.exists(self.build_id_list_file):
+            os.remove(self.build_id_list_file)
+        self.adb.run(['pull', self.dir_on_device + self.build_id_list_file])
+        if os.path.exists(self.build_id_list_file):
+            with open(self.build_id_list_file) as fh:
+                for line in fh.readlines():
+                    line = line.strip()
+                    items = line.split('=')
+                    if len(items) == 2:
+                        self.device_build_id_map[items[0]] = items[1]
+
+    def sync_natives_libs_on_device(self):
+        # Push missing native libs on device.
+        for build_id in self.host_build_id_map:
+            if build_id not in self.device_build_id_map:
+                entry = self.host_build_id_map[build_id]
+                self.adb.check_run(['push', entry.path, self.dir_on_device + entry.name])
+        # Remove native libs not exist on host.
+        for build_id in self.device_build_id_map:
+            if build_id not in self.host_build_id_map:
+                name = self.device_build_id_map[build_id]
+                self.adb.run(['shell', 'rm', self.dir_on_device + name])
+        # Push new build_id_list on device.
+        with open(self.build_id_list_file, 'w') as fh:
+            for build_id in self.host_build_id_map:
+                fh.write('%s=%s\n' % (build_id, self.host_build_id_map[build_id].name))
+        self.adb.check_run(['push', self.build_id_list_file,
+                            self.dir_on_device + self.build_id_list_file])
+        os.remove(self.build_id_list_file)
+
+
 class AppProfiler(object):
     """Used to manage the process of profiling an android app.
 
@@ -53,14 +166,14 @@ class AppProfiler(object):
         self.app_arch = self.config['app_arch']
         self.app_program = self.config['app_package_name'] or self.config['native_program']
         self.app_pid = None
-        self.has_symfs_on_device = False
         self.record_subproc = None
 
 
     def check_config(self, config):
         config_names = ['app_package_name', 'native_program', 'cmd', 'native_lib_dir',
                         'apk_file_path', 'recompile_app', 'launch_activity', 'launch_inst_test',
-                        'record_options', 'perf_data_path', 'profile_from_launch', 'app_arch']
+                        'record_options', 'perf_data_path', 'profile_from_launch', 'app_arch',
+                        'ndk_path']
         for name in config_names:
             if name not in config:
                 log_exit('config [%s] is missing' % name)
@@ -78,6 +191,8 @@ class AppProfiler(object):
         native_lib_dir = config.get('native_lib_dir')
         if native_lib_dir and not os.path.isdir(native_lib_dir):
             log_exit('[native_lib_dir] "%s" is not a dir' % native_lib_dir)
+        if config.get('download_libs') and not native_lib_dir:
+            log_exit('-lib option should be set to download libraries on device.')
         apk_file_path = config.get('apk_file_path')
         if apk_file_path and not os.path.isfile(apk_file_path):
             log_exit('[apk_file_path] "%s" is not a file' % apk_file_path)
@@ -106,13 +221,14 @@ class AppProfiler(object):
 
     def prepare_profiling(self):
         self._get_device_environment()
+        if self.config.get('download_libs'):
+            self._download_native_libs()
         self._enable_profiling()
         self._recompile_app()
         self._restart_app()
         self._get_app_environment()
         if not self.config['profile_from_launch']:
             self._download_simpleperf()
-            self._download_native_libs()
 
 
     def _get_device_environment(self):
@@ -122,6 +238,12 @@ class AppProfiler(object):
             log_warning("app_profiler.py is not tested prior Android N, please switch to use cmdline interface.")
         self.device_arch = self.adb.get_device_arch()
 
+
+    def _download_native_libs(self):
+        downloader = NativeLibDownloader(self.config['ndk_path'], self.device_arch, self.adb)
+        downloader.collect_native_libs_on_host(self.config['native_lib_dir'])
+        downloader.collect_native_libs_on_device()
+        downloader.sync_natives_libs_on_device()
 
     def _enable_profiling(self):
         self.adb.set_property('security.perf_harden', '0')
@@ -265,59 +387,6 @@ class AppProfiler(object):
         self.adb.check_run(['shell', 'chmod', 'a+x', '/data/local/tmp/simpleperf'])
 
 
-    def _download_native_libs(self):
-        if not self.config['native_lib_dir'] or not self.config['app_package_name']:
-            return
-        filename_dict = dict()
-        for root, _, files in os.walk(self.config['native_lib_dir']):
-            for file in files:
-                if not file.endswith('.so'):
-                    continue
-                path = os.path.join(root, file)
-                old_path = filename_dict.get(file)
-                log_info('app_arch = %s' % self.app_arch)
-                if self._is_lib_better(path, old_path):
-                    log_info('%s is better than %s' % (path, old_path))
-                    filename_dict[file] = path
-                else:
-                    log_info('%s is worse than %s' % (path, old_path))
-        maps = self.run_in_app_dir(['cat', '/proc/%d/maps' % self.app_pid], log_output=False)
-        searched_lib = dict()
-        for item in maps.split():
-            if item.endswith('.so') and searched_lib.get(item) is None:
-                searched_lib[item] = True
-                # Use '/' as path separator as item comes from android environment.
-                filename = item[item.rfind('/') + 1:]
-                dirname = '/data/local/tmp/native_libs' + item[:item.rfind('/')]
-                path = filename_dict.get(filename)
-                if path is None:
-                    continue
-                self.adb.check_run(['shell', 'mkdir', '-p', dirname])
-                self.adb.check_run(['push', path, dirname])
-                self.has_symfs_on_device = True
-
-
-    def _is_lib_better(self, new_path, old_path):
-        """ Return true if new_path is more likely to be used on device. """
-        if old_path is None:
-            return True
-        if self.app_arch == 'arm':
-            result1 = 'armeabi-v7a/' in new_path
-            result2 = 'armeabi-v7a' in old_path
-            if result1 != result2:
-                return result1
-        arch_dir = self.app_arch + '/'
-        result1 = arch_dir in new_path
-        result2 = arch_dir in old_path
-        if result1 != result2:
-            return result1
-        result1 = 'obj/' in new_path
-        result2 = 'obj/' in old_path
-        if result1 != result2:
-            return result1
-        return False
-
-
     def start_and_wait_profiling(self):
         if self.record_subproc is None:
             self.start_profiling()
@@ -348,8 +417,8 @@ class AppProfiler(object):
             args += ['-p', str(self.app_pid)]
         elif self.config['cmd']:
             args.append(self.config['cmd'])
-        if self.has_symfs_on_device:
-            args += ['--symfs', '/data/local/tmp/native_libs']
+        if self.adb.run(['shell', 'ls', NATIVE_LIBS_DIR_ON_DEVICE]):
+            args += ['--symfs', NATIVE_LIBS_DIR_ON_DEVICE]
         adb_args = [self.adb.adb_path, 'shell'] + args
         log_debug('run adb cmd: %s' % adb_args)
         self.record_subproc = subprocess.Popen(adb_args)
@@ -410,6 +479,8 @@ Like -np surfaceflinger.""")
 """Run a cmd and profile it. Like -cmd "pm -l".""")
     parser.add_argument('-lib', '--native_lib_dir', help=
 """Path to find debug version of native shared libraries used in the app.""")
+    parser.add_argument('--download_libs', action='store_true', help= """Download native
+libraries in native_lib_dir on device.""")
     parser.add_argument('-nc', '--skip_recompile', action='store_true', help=
 """When profiling an Android app, by default we recompile java bytecode to native instructions
 to profile java code. It takes some time. You can skip it if the code has been compiled or you
@@ -443,12 +514,14 @@ But with --profile_from_launch option, we change the order as below: kill the ap
 already running, download simpleperf on device, start simpleperf record, and start the app.""")
     parser.add_argument('--disable_adb_root', action='store_true', help=
 """Force adb to run in non root mode.""")
+    parser.add_argument('--ndk_path', nargs=1, help='Find tools in the ndk path.')
     args = parser.parse_args()
     config = {}
     config['app_package_name'] = args.app
     config['native_program'] = args.native_program
     config['cmd'] = args.cmd
     config['native_lib_dir'] = args.native_lib_dir
+    config['download_libs'] = args.download_libs
     config['recompile_app'] = args.app and not args.skip_recompile
     config['apk_file_path'] = args.apk
 
@@ -461,6 +534,7 @@ already running, download simpleperf on device, start simpleperf record, and sta
     config['collect_binaries'] = not args.skip_collect_binaries
     config['profile_from_launch'] = args.profile_from_launch
     config['disable_adb_root'] = args.disable_adb_root
+    config['ndk_path'] = None if not args.ndk_path else args.ndk_path[0]
 
     profiler = AppProfiler(config)
     profiler.profile()

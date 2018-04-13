@@ -4,7 +4,7 @@ apply from: 'profiling.gradle'
 
 android {
     compileSdkVersion 25
-    buildToolsVersion "25.0.2"
+    buildToolsVersion '27.0.3'
     defaultConfig {
         applicationId "com.example.simpleperf.simpleperfexamplepurejava"
         minSdkVersion 15
