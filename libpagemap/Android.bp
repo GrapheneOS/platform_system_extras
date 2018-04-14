@@ -32,7 +32,7 @@ cc_library {
 cc_binary {
     name: "librank",
     defaults: ["system-extras-cflags-defaults"],
-    srcs: ["librank.c"],
+    srcs: ["librank.cpp"],
     shared_libs: ["libpagemap"],
 }
 
