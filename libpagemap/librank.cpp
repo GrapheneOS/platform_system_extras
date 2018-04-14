@@ -256,15 +256,13 @@ int main(int argc, char *argv[]) {
             break;
         case 'c':
             required_flags = 0;
-            flags_mask = KPF_SWAPBACKED;
+            flags_mask = (1 << KPF_SWAPBACKED);
             break;
         case 'C':
-            required_flags = KPF_SWAPBACKED;
-            flags_mask = KPF_SWAPBACKED;
+            required_flags = flags_mask = (1 << KPF_SWAPBACKED);
             break;
         case 'k':
-            required_flags = KPF_KSM;
-            flags_mask = KPF_KSM;
+            required_flags = flags_mask = (1 << KPF_KSM);
             break;
         case 'h':
             usage(argv[0]);
