@@ -299,18 +299,14 @@ void ThreadTree::AddDsoInfo(const std::string& file_path, uint32_t file_type,
   }
   dso->SetMinVirtualAddress(min_vaddr);
   dso->SetSymbols(symbols);
-  if (!dex_file_offsets.empty()) {
-    CHECK_EQ(static_cast<int>(dso_type), static_cast<int>(DSO_DEX_FILE));
-    for (uint64_t offset : dex_file_offsets) {
-      static_cast<DexFileDso*>(dso)->AddDexFileOffset(offset);
-    }
+  for (uint64_t offset : dex_file_offsets) {
+    dso->AddDexFileOffset(offset);
   }
 }
 
 void ThreadTree::AddDexFileOffset(const std::string& file_path, uint64_t dex_file_offset) {
   Dso* dso = FindUserDsoOrNew(file_path, 0, DSO_DEX_FILE);
-  CHECK_EQ(static_cast<int>(dso->type()), static_cast<int>(DSO_DEX_FILE));
-  static_cast<DexFileDso*>(dso)->AddDexFileOffset(dex_file_offset);
+  dso->AddDexFileOffset(dex_file_offset);
 }
 
 void ThreadTree::Update(const Record& record) {

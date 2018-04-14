@@ -127,7 +127,7 @@ TEST(cmd_report_sample, remove_unknown_kernel_symbols) {
   ASSERT_NE(data.find("path: [kernel.kallsyms]"), std::string::npos);
   ASSERT_NE(data.find("symbol: binder_ioctl_write_read"), std::string::npos);
   ASSERT_NE(data.find("path: /system/lib64/libc.so"), std::string::npos);
-  GetProtobufReport(PERF_DATA_WITH_KERNEL_SYMBOLS_AVAILABLE_FALSE, &data,
+  GetProtobufReport(PERF_DATA_WITH_KERNEL_SYMBOLS_AVAILABLE_TRUE, &data,
                     {"--show-callchain", "--remove-unknown-kernel-symbols"});
   ASSERT_NE(data.find("time: 1368297633794862"), std::string::npos);
   ASSERT_NE(data.find("path: [kernel.kallsyms]"), std::string::npos);

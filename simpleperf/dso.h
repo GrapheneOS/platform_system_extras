@@ -156,6 +156,8 @@ class Dso {
   // Return the minimum virtual address in program header.
   virtual uint64_t MinVirtualAddress() { return 0; }
   virtual void SetMinVirtualAddress(uint64_t) {}
+  virtual void AddDexFileOffset(uint64_t) {}
+  virtual const std::vector<uint64_t>* DexFileOffsets() { return nullptr; }
 
   const Symbol* FindSymbol(uint64_t vaddr_in_dso);
 
@@ -182,7 +184,7 @@ class Dso {
   void Load();
   virtual std::vector<Symbol> LoadSymbols() = 0;
 
-  const DsoType type_;
+  DsoType type_;
   // path of the shared library used by the profiled program
   const std::string path_;
   // path of the shared library having symbol table and debug information
@@ -199,27 +201,6 @@ class Dso {
   // Used to assign dump_id for symbols in current dso.
   uint32_t symbol_dump_id_;
   android::base::LogSeverity symbol_warning_loglevel_;
-};
-
-class DexFileDso : public Dso {
- public:
-  void AddDexFileOffset(uint64_t dex_file_offset) {
-    dex_file_offsets_.push_back(dex_file_offset);
-  }
-
-  const std::vector<uint64_t>& DexFileOffsets() {
-    return dex_file_offsets_;
-  }
-
- protected:
-  DexFileDso(const std::string& path, const std::string& debug_file_path)
-      : Dso(DSO_DEX_FILE, path, debug_file_path) {}
-
-  std::vector<Symbol> LoadSymbols() override;
-
- private:
-  std::vector<uint64_t> dex_file_offsets_;
-  friend std::unique_ptr<Dso> Dso::CreateDso(DsoType, const std::string&, bool);
 };
 
 const char* DsoTypeToString(DsoType dso_type);
