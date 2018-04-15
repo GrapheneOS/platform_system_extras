@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <memory>
 #include <vector>
 
 #include <android-base/file.h>
@@ -326,6 +327,40 @@ static void SortAndFixSymbols(std::vector<Symbol>& symbols) {
   }
 }
 
+class DexFileDso : public Dso {
+ public:
+  DexFileDso(const std::string& path, const std::string& debug_file_path)
+      : Dso(DSO_DEX_FILE, path, debug_file_path) {}
+
+  void AddDexFileOffset(uint64_t dex_file_offset) override {
+    dex_file_offsets_.push_back(dex_file_offset);
+  }
+
+  const std::vector<uint64_t>* DexFileOffsets() override {
+    return &dex_file_offsets_;
+  }
+
+  std::vector<Symbol> LoadSymbols() override {
+    std::vector<Symbol> symbols;
+    std::vector<DexFileSymbol> dex_file_symbols;
+    if (!ReadSymbolsFromDexFile(debug_file_path_, dex_file_offsets_, &dex_file_symbols)) {
+      android::base::LogSeverity level = symbols_.empty() ? android::base::WARNING
+                                                          : android::base::DEBUG;
+      LOG(level) << "Failed to read symbols from " << debug_file_path_;
+      return symbols;
+    }
+    LOG(VERBOSE) << "Read symbols from " << debug_file_path_ << " successfully";
+    for (auto& symbol : dex_file_symbols) {
+      symbols.emplace_back(symbol.name, symbol.offset, symbol.len);
+    }
+    SortAndFixSymbols(symbols);
+    return symbols;
+  }
+
+ private:
+  std::vector<uint64_t> dex_file_offsets_;
+};
+
 class ElfDso : public Dso {
  public:
   ElfDso(const std::string& path, const std::string& debug_file_path)
@@ -356,8 +391,28 @@ class ElfDso : public Dso {
     min_vaddr_ = min_vaddr;
   }
 
+  void AddDexFileOffset(uint64_t dex_file_offset) override {
+    if (type_ == DSO_ELF_FILE) {
+      // When simpleperf does unwinding while recording, it processes mmap records before reading
+      // dex file linked list (via JITDebugReader). To process mmap records, it creates Dso
+      // objects of type ELF_FILE. Then after reading dex file linked list, it realizes some
+      // ELF_FILE Dso objects should actually be DEX_FILE, because they have dex file offsets.
+      // So here converts ELF_FILE Dso into DEX_FILE Dso.
+      type_ = DSO_DEX_FILE;
+      dex_file_dso_.reset(new DexFileDso(path_, path_));
+    }
+    dex_file_dso_->AddDexFileOffset(dex_file_offset);
+  }
+
+  const std::vector<uint64_t>* DexFileOffsets() override {
+    return dex_file_dso_ ? dex_file_dso_->DexFileOffsets() : nullptr;
+  }
+
  protected:
   std::vector<Symbol> LoadSymbols() override {
+    if (dex_file_dso_) {
+      return dex_file_dso_->LoadSymbols();
+    }
     std::vector<Symbol> symbols;
     BuildId build_id = GetExpectedBuildId();
     auto symbol_callback = [&](const ElfFileSymbol& symbol) {
@@ -381,6 +436,7 @@ class ElfDso : public Dso {
 
  private:
   uint64_t min_vaddr_;
+  std::unique_ptr<DexFileDso> dex_file_dso_;
 };
 
 class KernelDso : public Dso {
@@ -487,23 +543,6 @@ std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_pat
       LOG(FATAL) << "Unexpected dso_type " << static_cast<int>(dso_type);
   }
   return nullptr;
-}
-
-std::vector<Symbol> DexFileDso::LoadSymbols() {
-  std::vector<Symbol> symbols;
-  std::vector<DexFileSymbol> dex_file_symbols;
-  if (!ReadSymbolsFromDexFile(debug_file_path_, dex_file_offsets_, &dex_file_symbols)) {
-    android::base::LogSeverity level = symbols_.empty() ? android::base::WARNING
-                                                        : android::base::DEBUG;
-    LOG(level) << "Failed to read symbols from " << debug_file_path_;
-    return symbols;
-  }
-  LOG(VERBOSE) << "Read symbols from " << debug_file_path_ << " successfully";
-  for (auto& symbol : dex_file_symbols) {
-    symbols.emplace_back(symbol.name, symbol.offset, symbol.len);
-  }
-  SortAndFixSymbols(symbols);
-  return symbols;
 }
 
 const char* DsoTypeToString(DsoType dso_type) {

@@ -65,3 +65,23 @@ TEST(DebugElfFileFinder, use_vdso) {
   ASSERT_EQ(finder.FindDebugFile("[vdso]", false, build_id), fake_vdso32);
   ASSERT_EQ(finder.FindDebugFile("[vdso]", true, build_id), fake_vdso64);
 }
+
+TEST(dso, dex_file_dso) {
+#if defined(__linux__)
+  for (DsoType dso_type : {DSO_DEX_FILE, DSO_ELF_FILE}) {
+    std::unique_ptr<Dso> dso = Dso::CreateDso(dso_type, GetTestData("base.vdex"));
+    ASSERT_TRUE(dso);
+    dso->AddDexFileOffset(0x28);
+    ASSERT_EQ(DSO_DEX_FILE, dso->type());
+    const Symbol* symbol = dso->FindSymbol(0x6c77e);
+    ASSERT_NE(symbol, nullptr);
+    ASSERT_EQ(symbol->addr, static_cast<uint64_t>(0x6c77e));
+    ASSERT_EQ(symbol->len, static_cast<uint64_t>(0x16));
+    ASSERT_STREQ(symbol->DemangledName(),
+                 "com.example.simpleperf.simpleperfexamplewithnative.MixActivity$1.run");
+    ASSERT_EQ(0u, dso->MinVirtualAddress());
+  }
+#else
+  GTEST_LOG_(INFO) << "This test only runs on linux because of libdexfile";
+#endif  // defined(__linux__)
+}
