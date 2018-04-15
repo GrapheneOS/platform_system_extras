@@ -91,7 +91,9 @@ void ConfigReader::addDefaultEntries()
   addStringEntry("perf_path", config.perf_path.c_str());
 
   // Desired sampling period (passed to perf -c option).
-  addUnsignedEntry("sampling_period", config.sampling_period, 1, UINT32_MAX);
+  addUnsignedEntry("sampling_period", config.sampling_period, 0, UINT32_MAX);
+  // Desired sampling frequency (passed to perf -f option).
+  addUnsignedEntry("sampling_frequency", config.sampling_frequency, 0, UINT32_MAX);
 
   // Length of time to collect samples (number of seconds for 'perf
   // record -a' run).
