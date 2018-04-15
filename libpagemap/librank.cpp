@@ -14,11 +14,8 @@
  * limitations under the License.
  */
 
-#include <assert.h>
-#include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
@@ -34,14 +31,13 @@ struct process_info {
 };
 
 struct mapping_info {
-    struct process_info *proc;
+    process_info* proc;
     pm_memusage_t usage;
 };
 
 struct library_info {
-    struct library_info *next;
-    char *name;
-    struct mapping_info **mappings;
+    char* name;
+    mapping_info** mappings;
     size_t mappings_count;
     size_t mappings_size;
     pm_memusage_t total_usage;
@@ -52,7 +48,7 @@ static int getprocname(pid_t pid, char *buf, size_t len);
 static int numcmp(long long a, long long b);
 static int licmp(const void *a, const void *b);
 
-char *library_name_blacklist[] = { "[heap]", "[stack]", "", NULL };
+static const char* library_name_blacklist[] = { "[heap]", "[stack]", "", NULL };
 
 #define declare_sort(field) \
     static int sort_by_ ## field (const void *a, const void *b)
@@ -68,16 +64,13 @@ declare_sort(swap);
 
 static int order;
 
-struct library_info **libraries;
+library_info** libraries;
 size_t libraries_count;
 size_t libraries_size;
 
-struct library_info *get_library(const char *name, bool all) {
-    size_t i;
-    struct library_info *library;
-
+library_info* get_library(const char *name, bool all) {
     if (!all) {
-        for (i = 0; library_name_blacklist[i]; i++)
+        for (size_t i = 0; library_name_blacklist[i]; i++)
             if (!strcmp(name, library_name_blacklist[i]))
                 return NULL;
     } else {
@@ -86,13 +79,15 @@ struct library_info *get_library(const char *name, bool all) {
         }
     }
 
-    for (i = 0; i < libraries_count; i++) {
+    for (size_t i = 0; i < libraries_count; i++) {
         if (!strcmp(libraries[i]->name, name))
             return libraries[i];
     }
 
     if (libraries_size && libraries_count >= libraries_size) {
-        libraries = realloc(libraries, 2 * libraries_size * sizeof(struct library_info *));
+        libraries =
+            reinterpret_cast<library_info**>(realloc(libraries,
+                                                     2 * libraries_size * sizeof(library_info*)));
         if (!libraries) {
             fprintf(stderr, "Couldn't resize libraries array: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
@@ -100,18 +95,17 @@ struct library_info *get_library(const char *name, bool all) {
         libraries_size = 2 * libraries_size;
     }
 
-    library = calloc(1, sizeof(*library));
+    library_info* library = reinterpret_cast<library_info*>(calloc(1, sizeof(*library)));
     if (!library) {
         fprintf(stderr, "Couldn't allocate space for library struct: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
-    library->name = malloc(strlen(name) + 1);
+    library->name = strdup(name);
     if (!library->name) {
         fprintf(stderr, "Couldn't allocate space for library name: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
-    strcpy(library->name, name);
-    library->mappings = malloc(INIT_MAPPINGS * sizeof(struct mapping_info *));
+    library->mappings = reinterpret_cast<mapping_info**>(malloc(INIT_MAPPINGS * sizeof(mapping_info*)));
     if (!library->mappings) {
         fprintf(stderr, "Couldn't allocate space for library mappings array: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
@@ -124,8 +118,8 @@ struct library_info *get_library(const char *name, bool all) {
     return library;
 }
 
-struct mapping_info *get_mapping(struct library_info *library, struct process_info *proc) {
-    struct mapping_info *mapping;
+mapping_info* get_mapping(library_info* library, process_info* proc) {
+    mapping_info* mapping;
     size_t i;
 
     for (i = 0; i < library->mappings_count; i++) {
@@ -134,8 +128,9 @@ struct mapping_info *get_mapping(struct library_info *library, struct process_in
     }
 
     if (library->mappings_size && library->mappings_count >= library->mappings_size) {
-        library->mappings = realloc(library->mappings,
-            2 * library->mappings_size * sizeof(struct mapping_info*));
+        library->mappings =
+            reinterpret_cast<mapping_info**>(realloc(library->mappings,
+                                                    2 * library->mappings_size * sizeof(mapping_info*)));
         if (!library->mappings) {
             fprintf(stderr, "Couldn't resize mappings array: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
@@ -143,7 +138,7 @@ struct mapping_info *get_mapping(struct library_info *library, struct process_in
         library->mappings_size = 2 * library->mappings_size;
     }
 
-    mapping = calloc(1, sizeof(*mapping));
+    mapping = reinterpret_cast<mapping_info*>(calloc(1, sizeof(*mapping)));
     if (!mapping) {
         fprintf(stderr, "Couldn't allocate space for mapping struct: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
@@ -156,10 +151,8 @@ struct mapping_info *get_mapping(struct library_info *library, struct process_in
     return mapping;
 }
 
-struct process_info *get_process(pid_t pid) {
-    struct process_info *process;
-
-    process = calloc(1, sizeof(*process));
+process_info* get_process(pid_t pid) {
+    process_info* process = reinterpret_cast<process_info*>(calloc(1, sizeof(*process)));
     if (!process) {
         fprintf(stderr, "Couldn't allocate space for process struct: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
@@ -210,9 +203,9 @@ int main(int argc, char *argv[]) {
     size_t num_maps;
     pm_memusage_t map_usage;
 
-    struct library_info *li;
-    struct mapping_info *mi;
-    struct process_info *pi;
+    library_info* li;
+    mapping_info* mi;
+    process_info* pi;
 
     size_t i, j;
     int error;
@@ -236,7 +229,7 @@ int main(int argc, char *argv[]) {
 
     while (1) {
         int c;
-        const struct option longopts[] = {
+        const option longopts[] = {
             {"all", 0, 0, 'a'},
             {"cached", 0, 0, 'c'},
             {"nocached", 0, 0, 'C'},
@@ -263,15 +256,13 @@ int main(int argc, char *argv[]) {
             break;
         case 'c':
             required_flags = 0;
-            flags_mask = KPF_SWAPBACKED;
+            flags_mask = (1 << KPF_SWAPBACKED);
             break;
         case 'C':
-            required_flags = KPF_SWAPBACKED;
-            flags_mask = KPF_SWAPBACKED;
+            required_flags = flags_mask = (1 << KPF_SWAPBACKED);
             break;
         case 'k':
-            required_flags = KPF_KSM;
-            flags_mask = KPF_KSM;
+            required_flags = flags_mask = (1 << KPF_KSM);
             break;
         case 'h':
             usage(argv[0]);
@@ -313,7 +304,7 @@ int main(int argc, char *argv[]) {
     argc -= optind;
     argv += optind;
 
-    libraries = malloc(INIT_LIBRARIES * sizeof(struct library_info *));
+    libraries = reinterpret_cast<library_info**>(malloc(INIT_LIBRARIES * sizeof(library_info*)));
     libraries_count = 0; libraries_size = INIT_LIBRARIES;
     pm_memusage_zero(&map_usage);
 
@@ -469,16 +460,16 @@ static int numcmp(long long a, long long b) {
 
 static int licmp(const void *a, const void *b) {
     return order * numcmp(
-        (*((struct library_info**)a))->total_usage.pss,
-        (*((struct library_info**)b))->total_usage.pss
+        (*((library_info**)a))->total_usage.pss,
+        (*((library_info**)b))->total_usage.pss
     );
 }
 
 #define create_sort(field, compfn) \
     static int sort_by_ ## field (const void *a, const void *b) { \
         return order * compfn( \
-            (*((struct mapping_info**)a))->usage.field, \
-            (*((struct mapping_info**)b))->usage.field \
+            (*((mapping_info**)a))->usage.field, \
+            (*((mapping_info**)b))->usage.field \
         ); \
     }
 

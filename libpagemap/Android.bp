@@ -29,6 +29,27 @@ cc_library {
     export_include_dirs: ["include"],
 }
 
+cc_binary {
+    name: "librank",
+    defaults: ["system-extras-cflags-defaults"],
+    srcs: ["librank.cpp"],
+    shared_libs: ["libpagemap"],
+}
+
+cc_binary {
+    name: "procmem",
+    defaults: ["system-extras-cflags-defaults"],
+    srcs: ["procmem.cpp"],
+    shared_libs: ["libpagemap"],
+}
+
+cc_binary {
+    name: "procrank",
+    defaults: ["system-extras-cflags-defaults"],
+    srcs: ["procrank.cpp"],
+    shared_libs: ["libpagemap", "libbase"],
+}
+
 cc_test {
     name: "pagemap_test",
     defaults: ["system-extras-cflags-defaults"],

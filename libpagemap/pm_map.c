@@ -109,8 +109,7 @@ int pm_map_workingset(pm_map_t *map, pm_memusage_t *ws_out) {
                                 &flags);
         if (error) goto out;
 
-        if (!(flags & KPF_REFERENCED))
-            continue;
+        if (!(flags & (1 << KPF_REFERENCED))) continue;
 
         error = pm_kernel_count(map->proc->ker, PM_PAGEMAP_PFN(pagemap[i]),
                                 &count);

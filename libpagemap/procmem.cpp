@@ -206,17 +206,19 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "error getting flags for frame.\n");
                 }
 
-                if ((ws != WS_ONLY) || (flags & KPF_REFERENCED)) {
+                if ((ws != WS_ONLY) || (flags & (1 << KPF_REFERENCED))) {
                     if (count > 1) {
-                        if (flags & KPF_DIRTY)
+                        if (flags & (1 << KPF_DIRTY)) {
                             mi->shared_dirty++;
-                        else
+                        } else {
                             mi->shared_clean++;
+                        }
                     } else {
-                        if (flags & KPF_DIRTY)
+                        if (flags & (1 << KPF_DIRTY)) {
                             mi->private_dirty++;
-                        else
+                        } else {
                             mi->private_clean++;
+                        }
                     }
                 }
             }

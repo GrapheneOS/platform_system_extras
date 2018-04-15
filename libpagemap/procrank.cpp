@@ -14,7 +14,6 @@
 // limitations under the License.
 //
 
-#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -223,9 +222,9 @@ int main(int argc, char *argv[]) {
         if (!strcmp(argv[arg], "-u")) { compfn = &sort_by_uss; continue; }
         if (!strcmp(argv[arg], "-s")) { compfn = &sort_by_swap; continue; }
         if (!strcmp(argv[arg], "-o")) { compfn = &sort_by_oomadj; oomadj = true; continue; }
-        if (!strcmp(argv[arg], "-c")) { required_flags = 0; flags_mask = KPF_SWAPBACKED; continue; }
-        if (!strcmp(argv[arg], "-C")) { required_flags = flags_mask = KPF_SWAPBACKED; continue; }
-        if (!strcmp(argv[arg], "-k")) { required_flags = flags_mask = KPF_KSM; continue; }
+        if (!strcmp(argv[arg], "-c")) { required_flags = 0; flags_mask = (1 << KPF_SWAPBACKED); continue; }
+        if (!strcmp(argv[arg], "-C")) { required_flags = flags_mask = (1 << KPF_SWAPBACKED); continue; }
+        if (!strcmp(argv[arg], "-k")) { required_flags = flags_mask = (1 << KPF_KSM); continue; }
         if (!strcmp(argv[arg], "-w")) { ws = WS_ONLY; continue; }
         if (!strcmp(argv[arg], "-W")) { ws = WS_RESET; continue; }
         if (!strcmp(argv[arg], "-R")) { order *= -1; continue; }
@@ -524,7 +523,6 @@ static std::string getprocname(pid_t pid) {
     std::string filename = android::base::StringPrintf("/proc/%d/cmdline", pid);
 
     std::string procname;
-
     if (!android::base::ReadFileToString(filename, &procname)) {
         // The process went away before we could read its process name.
         procname = "<unknown>";
