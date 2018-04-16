@@ -131,4 +131,6 @@ static const std::string PERF_DATA_WITH_KERNEL_SYMBOLS_AVAILABLE_TRUE = "perf_wi
 
 static const std::string PERF_DATA_WITH_KERNEL_SYMBOLS_AVAILABLE_FALSE = "perf_with_kernel_symbols_available_false.data";
 
+static const std::string PERF_DATA_WITH_INTERPRETER_FRAMES = "perf_with_interpreter_frames.data";
+
 #endif  // SIMPLE_PERF_GET_TEST_DATA_H_

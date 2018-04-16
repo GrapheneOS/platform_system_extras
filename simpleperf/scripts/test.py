@@ -80,7 +80,7 @@ def build_testdata():
         not from_script_testdata_path):
         return
     copy_testdata_list = ['perf_with_symbols.data', 'perf_with_trace_offcpu.data',
-                          'perf_with_tracepoint_event.data']
+                          'perf_with_tracepoint_event.data', 'perf_with_interpreter_frames.data']
     copy_demo_list = ['SimpleperfExamplePureJava', 'SimpleperfExampleWithNative',
                       'SimpleperfExampleOfKotlin']
 
@@ -894,6 +894,28 @@ class TestReportLib(unittest.TestCase):
             self.assertEqual(self.report_lib.GetEventOfCurrentSample().name, 'cpu-cycles')
         sleep_percentage = float(sleep_function_period) / total_period
         self.assertGreater(sleep_percentage, 0.30)
+
+    def test_show_art_frames(self):
+        def has_art_frame(report_lib):
+            report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_interpreter_frames.data'))
+            result = False
+            while report_lib.GetNextSample():
+                callchain = report_lib.GetCallChainOfCurrentSample()
+                for i in range(callchain.nr):
+                    if callchain.entries[i].symbol.symbol_name == 'artMterpAsmInstructionStart':
+                        result = True
+                        break
+            report_lib.Close()
+            return result
+
+        report_lib = ReportLib()
+        self.assertFalse(has_art_frame(report_lib))
+        report_lib = ReportLib()
+        report_lib.ShowArtFrames(False)
+        self.assertFalse(has_art_frame(report_lib))
+        report_lib = ReportLib()
+        report_lib.ShowArtFrames(True)
+        self.assertTrue(has_art_frame(report_lib))
 
 
 class TestRunSimpleperfOnDevice(TestBase):

@@ -553,12 +553,14 @@ class RecordData(object):
         self.source_files = SourceFileSet()
         self.gen_addr_hit_map_in_record_info = False
 
-    def load_record_file(self, record_file):
+    def load_record_file(self, record_file, show_art_frames):
         lib = ReportLib()
         lib.SetRecordFile(record_file)
         # If not showing ip for unknown symbols, the percent of the unknown symbol may be
         # accumulated to very big, and ranks first in the sample table.
         lib.ShowIpForUnknownSymbol()
+        if show_art_frames:
+            lib.ShowArtFrames()
         if self.binary_cache_path:
             lib.SetSymfs(self.binary_cache_path)
         self.meta_info = lib.MetaInfo()
@@ -843,12 +845,15 @@ class ReportGenerator(object):
         self.hw.close()
 
 
-def gen_flamegraph(record_file):
+def gen_flamegraph(record_file, show_art_frames):
     fd, flamegraph_path = tempfile.mkstemp()
     os.close(fd)
     inferno_script_path = os.path.join(get_script_dir(), 'inferno', 'inferno.py')
-    subprocess.check_call([sys.executable, inferno_script_path, '-sc', '-o', flamegraph_path,
-                           '--record_file', record_file, '--embedded_flamegraph', '--no_browser'])
+    args = [sys.executable, inferno_script_path, '-sc', '-o', flamegraph_path,
+            '--record_file', record_file, '--embedded_flamegraph', '--no_browser']
+    if show_art_frames:
+        args.append('--show_art_frames')
+    subprocess.check_call(args)
     with open(flamegraph_path, 'r') as fh:
         data = fh.read()
     remove(flamegraph_path)
@@ -875,6 +880,8 @@ def main():
     parser.add_argument('--add_disassembly', action='store_true', help='Add disassembled code.')
     parser.add_argument('--ndk_path', nargs=1, help='Find tools in the ndk path.')
     parser.add_argument('--no_browser', action='store_true', help="Don't open report in browser.")
+    parser.add_argument('--show_art_frames', action='store_true',
+                        help='Show frames of internal methods in the ART Java interpreter.')
     args = parser.parse_args()
 
     # 1. Process args.
@@ -895,7 +902,7 @@ def main():
     # 2. Produce record data.
     record_data = RecordData(binary_cache_path, ndk_path, build_addr_hit_map)
     for record_file in args.record_file:
-        record_data.load_record_file(record_file)
+        record_data.load_record_file(record_file, args.show_art_frames)
     record_data.limit_percents(args.min_func_percent, args.min_callchain_percent)
     if args.add_source_code:
         record_data.add_source_code(args.source_dirs)
@@ -910,7 +917,7 @@ def main():
     # TODO: support multiple perf.data in flamegraph.
     if len(args.record_file) > 1:
         log_warning('flamegraph will only be shown for %s' % args.record_file[0])
-    flamegraph = gen_flamegraph(args.record_file[0])
+    flamegraph = gen_flamegraph(args.record_file[0], args.show_art_frames)
     report_generator.write_flamegraph(flamegraph)
     report_generator.finish()
 

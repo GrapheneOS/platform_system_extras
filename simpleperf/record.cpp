@@ -861,6 +861,45 @@ void SampleRecord::AdjustCallChainGeneratedByKernel() {
   }
 }
 
+std::vector<uint64_t> SampleRecord::GetCallChain(size_t* kernel_ip_count) const {
+  std::vector<uint64_t> ips;
+  bool in_kernel = InKernel();
+  ips.push_back(ip_data.ip);
+  *kernel_ip_count = in_kernel ? 1 : 0;
+  if ((sample_type & PERF_SAMPLE_CALLCHAIN) == 0) {
+    return ips;
+  }
+  bool first_ip = true;
+  for (uint64_t i = 0; i < callchain_data.ip_nr; ++i) {
+    uint64_t ip = callchain_data.ips[i];
+    if (ip >= PERF_CONTEXT_MAX) {
+      switch (ip) {
+        case PERF_CONTEXT_KERNEL:
+          CHECK(in_kernel) << "User space callchain followed by kernel callchain.";
+          break;
+        case PERF_CONTEXT_USER:
+          in_kernel = false;
+          break;
+        default:
+          LOG(DEBUG) << "Unexpected perf_context in callchain: " << std::hex << ip << std::dec;
+      }
+    } else {
+      if (first_ip) {
+        first_ip = false;
+        // Remove duplication with sample ip.
+        if (ip == ip_data.ip) {
+          continue;
+        }
+      }
+      ips.push_back(ip);
+      if (in_kernel) {
+        ++*kernel_ip_count;
+      }
+    }
+  }
+  return ips;
+}
+
 BuildIdRecord::BuildIdRecord(char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
