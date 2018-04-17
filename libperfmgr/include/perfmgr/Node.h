@@ -42,8 +42,8 @@ namespace perfmgr {
 // value. For each value, there may be multiple requests because different
 // powerhints may request the same value, and the requests may have different
 // expiration times. All of the in-progress powerhints for a given value are
-// collected in a RequestGroup. Node class is not thread safe so it need protection
-// from caller e.g. NodeLooperThread.
+// collected in a RequestGroup. Node class is not thread safe so it needs
+// protection from caller e.g. NodeLooperThread.
 class Node {
   public:
     Node(std::string name, std::string node_path,
