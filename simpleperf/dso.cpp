@@ -525,6 +525,16 @@ class KernelModuleDso : public Dso {
   }
 };
 
+class UnknownDso : public Dso {
+ public:
+  UnknownDso(const std::string& path) : Dso(DSO_UNKNOWN_FILE, path, path) {}
+
+ protected:
+  std::vector<Symbol> LoadSymbols() override {
+    return std::vector<Symbol>();
+  }
+};
+
 std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_path,
                                     bool force_64bit) {
   switch (dso_type) {
@@ -539,6 +549,8 @@ std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_pat
       return std::unique_ptr<Dso>(new KernelModuleDso(dso_path, dso_path));
     case DSO_DEX_FILE:
       return std::unique_ptr<Dso>(new DexFileDso(dso_path, dso_path));
+    case DSO_UNKNOWN_FILE:
+      return std::unique_ptr<Dso>(new UnknownDso(dso_path));
     default:
       LOG(FATAL) << "Unexpected dso_type " << static_cast<int>(dso_type);
   }

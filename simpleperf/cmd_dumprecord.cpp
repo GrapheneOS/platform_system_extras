@@ -166,9 +166,10 @@ bool DumpRecordCommand::DumpDataSection() {
   record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree);
 
   auto get_symbol_function = [&](uint32_t pid, uint32_t tid, uint64_t ip, std::string& dso_name,
-                                 std::string& symbol_name, uint64_t& vaddr_in_file) {
+                                 std::string& symbol_name, uint64_t& vaddr_in_file,
+                                 bool in_kernel) {
     ThreadEntry* thread = thread_tree.FindThreadOrNew(pid, tid);
-    const MapEntry* map = thread_tree.FindMap(thread, ip);
+    const MapEntry* map = thread_tree.FindMap(thread, ip, in_kernel);
     Dso* dso;
     const Symbol* symbol = thread_tree.FindSymbol(map, ip, &vaddr_in_file, &dso);
     dso_name = dso->Path();
@@ -180,14 +181,21 @@ bool DumpRecordCommand::DumpDataSection() {
     thread_tree.Update(*r);
     if (r->type() == PERF_RECORD_SAMPLE) {
       SampleRecord& sr = *static_cast<SampleRecord*>(r.get());
+      bool in_kernel = sr.InKernel();
       if (sr.sample_type & PERF_SAMPLE_CALLCHAIN) {
         PrintIndented(1, "callchain:\n");
         for (size_t i = 0; i < sr.callchain_data.ip_nr; ++i) {
+          if (sr.callchain_data.ips[i] >= PERF_CONTEXT_MAX) {
+            if (sr.callchain_data.ips[i] == PERF_CONTEXT_USER) {
+              in_kernel = true;
+            }
+            continue;
+          }
           std::string dso_name;
           std::string symbol_name;
           uint64_t vaddr_in_file;
           get_symbol_function(sr.tid_data.pid, sr.tid_data.tid, sr.callchain_data.ips[i],
-                              dso_name, symbol_name, vaddr_in_file);
+                              dso_name, symbol_name, vaddr_in_file, in_kernel);
           PrintIndented(2, "%s (%s[+%" PRIx64 "])\n", symbol_name.c_str(), dso_name.c_str(),
                         vaddr_in_file);
         }
@@ -199,7 +207,8 @@ bool DumpRecordCommand::DumpDataSection() {
         std::string dso_name;
         std::string symbol_name;
         uint64_t vaddr_in_file;
-        get_symbol_function(cr.pid, cr.tid, cr.ips[i], dso_name, symbol_name, vaddr_in_file);
+        get_symbol_function(cr.pid, cr.tid, cr.ips[i], dso_name, symbol_name, vaddr_in_file,
+                            false);
         PrintIndented(2, "%s (%s[+%" PRIx64 "])\n", symbol_name.c_str(), dso_name.c_str(),
                       vaddr_in_file);
       }
