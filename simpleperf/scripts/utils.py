@@ -418,7 +418,7 @@ class Addr2Nearestline(object):
     def __init__(self, ndk_path, binary_cache_path):
         self.addr2line_path = find_tool_path('addr2line', ndk_path)
         if not self.addr2line_path:
-            log_exit("Can't find addr2line. Please set ndk path by --ndk-path option.")
+            log_exit("Can't find addr2line. Please set ndk path with --ndk-path option.")
         self.readelf = ReadElf(ndk_path)
         self.dso_map = {}  # map from dso_path to Dso.
         self.binary_cache_path = binary_cache_path
@@ -573,11 +573,13 @@ class Objdump(object):
 
         # 2. Get path of objdump.
         arch = self.readelf.get_arch(real_path)
+        if arch == 'unknown':
+            return None
         objdump_path = self.objdump_paths.get(arch)
         if not objdump_path:
             objdump_path = find_tool_path('objdump', self.ndk_path, arch)
             if not objdump_path:
-                log_exit("Can't find objdump. Please set ndk path by --ndk_path option.")
+                log_exit("Can't find objdump. Please set ndk path with --ndk_path option.")
             self.objdump_paths[arch] = objdump_path
 
         # 3. Run objdump.
@@ -611,7 +613,7 @@ class ReadElf(object):
     def __init__(self, ndk_path):
         self.readelf_path = find_tool_path('readelf', ndk_path)
         if not self.readelf_path:
-            log_exit("Can't find readelf. Please set ndk path by --ndk_path option.")
+            log_exit("Can't find readelf. Please set ndk path with --ndk_path option.")
 
     def get_arch(self, elf_file_path):
         """ Get arch of an elf file. """
@@ -664,5 +666,19 @@ class ReadElf(object):
             pass
         return section_names
 
+def extant_dir(arg):
+    """ArgumentParser type that only accepts extant directories.
+
+    Args:
+        arg: The string argument given on the command line.
+    Returns: The argument as a realpath.
+    Raises:
+        argparse.ArgumentTypeError: The given path isn't a directory.
+    """
+    path = os.path.realpath(arg)
+    if not os.path.isdir(path):
+        import argparse
+        raise argparse.ArgumentTypeError('{} is not a directory.'.format(path))
+    return path
 
 logging.getLogger().setLevel(logging.DEBUG)

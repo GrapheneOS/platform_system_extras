@@ -1,8 +1,9 @@
 [MESSAGES CONTROL]
 # C0111 = Missing docstring
 # W0403 = Relative imports
-disable=C0111,W0403
+disable=C0111,W0403,design
 
 [BASIC]
 function-rgx=[a-z_][a-z0-9_]{2,50}$
 method-rgx=[a-z_][a-z0-9_]{2,50}$
+variable-rgx=[a-z_][a-z0-9_]{0,30}$

@@ -55,14 +55,12 @@ class SourceLine(object):
 class Addr2Line(object):
     """collect information of how to map [dso_name,vaddr] to [source_file:line].
     """
-    def __init__(self, addr2line_path, symfs_dir=None):
+    def __init__(self, ndk_path, symfs_dir=None):
         self.dso_dict = dict()
-        if addr2line_path and is_executable_available(addr2line_path):
-            self.addr2line_path = addr2line_path
-        else:
-            self.addr2line_path = find_tool_path('addr2line')
-            if not self.addr2line_path:
-                log_exit("Can't find addr2line.")
+        self.addr2line_path = find_tool_path('addr2line', ndk_path)
+        if self.addr2line_path is None:
+            log_exit("Can't find addr2line. Please set ndk path with --ndk-path option.")
+        self.readelf = ReadElf(ndk_path)
         self.symfs_dir = symfs_dir
 
 
@@ -92,6 +90,8 @@ class Addr2Line(object):
         if dso_path is None:
             log_warning("can't find dso '%s'" % dso_name)
             dso.clear()
+            return
+        if '.debug_line' not in self.readelf.get_sections(dso_path):
             return
         addrs = sorted(dso.keys())
         addr_str = []
@@ -186,7 +186,7 @@ class Addr2Line(object):
         dso = self.dso_dict.get(dso_name)
         if dso is None:
             return []
-        item = dso.get(addr, [])
+        item = dso.get(addr) or []
         source_lines = []
         for source in item:
             source_lines.append(SourceLine(self.file_list[source.file],
@@ -273,7 +273,7 @@ class SourceFileAnnotator(object):
     def __init__(self, config):
         # check config variables
         config_names = ['perf_data_list', 'source_dirs', 'comm_filters',
-                        'pid_filters', 'tid_filters', 'dso_filters', 'addr2line_path']
+                        'pid_filters', 'tid_filters', 'dso_filters', 'ndk_path']
         for name in config_names:
             if name not in config:
                 log_exit('config [%s] is missing' % name)
@@ -311,7 +311,7 @@ class SourceFileAnnotator(object):
             shutil.rmtree(output_dir)
         os.makedirs(output_dir)
 
-        self.addr2line = Addr2Line(self.config['addr2line_path'], symfs_dir)
+        self.addr2line = Addr2Line(self.config['ndk_path'], symfs_dir)
 
 
     def annotate(self):
@@ -652,8 +652,7 @@ generate annotated source files in annotated_files directory.""")
 """Use samples only in threads with selected thread ids.""")
     parser.add_argument('--dso', nargs='+', action='append', help=
 """Use samples only in selected binaries.""")
-    parser.add_argument('--addr2line', help=
-"""Set the path of addr2line.""")
+    parser.add_argument('--ndk_path', type=extant_dir, help='Set the path of a ndk release.')
 
     args = parser.parse_args()
     config = {}
@@ -665,7 +664,7 @@ generate annotated source files in annotated_files directory.""")
     config['pid_filters'] = flatten_arg_list(args.pid)
     config['tid_filters'] = flatten_arg_list(args.tid)
     config['dso_filters'] = flatten_arg_list(args.dso)
-    config['addr2line_path'] = args.addr2line
+    config['ndk_path'] = args.ndk_path
 
     annotator = SourceFileAnnotator(config)
     annotator.annotate()
