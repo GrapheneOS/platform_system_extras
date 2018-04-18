@@ -88,7 +88,7 @@ class ThreadTree {
         show_mark_for_unknown_symbol_(false),
         unknown_symbol_("unknown", 0,
                         std::numeric_limits<unsigned long long>::max()) {
-    unknown_dso_ = Dso::CreateDso(DSO_ELF_FILE, "unknown");
+    unknown_dso_ = Dso::CreateDso(DSO_UNKNOWN_FILE, "unknown");
     unknown_map_ = MapEntry(0, std::numeric_limits<unsigned long long>::max(),
                             0, 0, unknown_dso_.get(), false);
     kernel_dso_ = Dso::CreateDso(DSO_KERNEL, DEFAULT_KERNEL_MMAP_NAME);

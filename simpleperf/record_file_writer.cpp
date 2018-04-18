@@ -169,7 +169,7 @@ bool RecordFileWriter::WriteData(const void* buf, size_t len) {
 }
 
 bool RecordFileWriter::Write(const void* buf, size_t len) {
-  if (fwrite(buf, len, 1, record_fp_) != 1) {
+  if (len != 0u && fwrite(buf, len, 1, record_fp_) != 1) {
     PLOG(ERROR) << "failed to write to record file '" << filename_ << "'";
     return false;
   }

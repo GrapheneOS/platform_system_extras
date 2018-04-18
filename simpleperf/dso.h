@@ -100,6 +100,7 @@ enum DsoType {
   DSO_KERNEL_MODULE,
   DSO_ELF_FILE,
   DSO_DEX_FILE,  // For files containing dex files, like .vdex files.
+  DSO_UNKNOWN_FILE,
 };
 
 struct KernelSymbol;

@@ -280,7 +280,7 @@ void DebugUnwindCommand::CollectHitFileInfo(const SampleRecord& r,
   for (auto ip : ips) {
     const MapEntry* map = thread_tree_.FindMap(thread, ip, false);
     Dso* dso = map->dso;
-    if (!dso->HasDumpId()) {
+    if (!dso->HasDumpId() && dso->type() != DSO_UNKNOWN_FILE) {
       dso->CreateDumpId();
     }
     const Symbol* symbol = thread_tree_.FindSymbol(map, ip, nullptr, &dso);
