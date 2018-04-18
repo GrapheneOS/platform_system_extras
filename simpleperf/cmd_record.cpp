@@ -1456,7 +1456,7 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
       dso->CreateSymbolDumpId(symbol);
     }
   }
-  if (!dso->HasDumpId()) {
+  if (!dso->HasDumpId() && dso->type() != DSO_UNKNOWN_FILE) {
     dso->CreateDumpId();
   }
   if (r.sample_type & PERF_SAMPLE_CALLCHAIN) {
@@ -1492,7 +1492,7 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
             dso->CreateSymbolDumpId(symbol);
           }
         }
-        if (!dso->HasDumpId()) {
+        if (!dso->HasDumpId() && dso->type() != DSO_UNKNOWN_FILE) {
           dso->CreateDumpId();
         }
       }
