@@ -79,7 +79,7 @@ def main():
     start_parser.add_argument('-r', '--record_options',
                               default='-e task-clock:u -g',
                               help="""Set options for `simpleperf record` command.
-                                      Default is '-e task-clock:u -g --no-post-unwind.""")
+                                      Default is '-e task-clock:u -g'.""")
     start_parser.add_argument('-p', '--app', help="""Profile an Android app, given the package
                               name. Like -p com.example.android.myapp.""")
     start_parser.set_defaults(func=start_recording)
