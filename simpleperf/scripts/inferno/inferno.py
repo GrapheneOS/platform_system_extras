@@ -53,8 +53,8 @@ def collect_data(args):
         app_profiler_args += ["-np", args.native_program]
     else:
         log_exit("Please set profiling target with -p or -np option.")
-    if args.skip_recompile:
-        app_profiler_args.append("-nc")
+    if args.compile_java_code:
+        app_profiler_args.append("--compile_java_code")
     if args.disable_adb_root:
         app_profiler_args.append("--disable_adb_root")
     record_arg_str = ""
@@ -250,11 +250,11 @@ def main():
                               branch-instructions, branch-misses""")
     record_group.add_argument('-f', '--sample_frequency', type=int, default=6000, help="""Sample
                               frequency""")
-    record_group.add_argument('-nc', '--skip_recompile', action='store_true', help="""When
-                              profiling an Android app, by default we recompile java bytecode to
-                              native instructions to profile java code. It takes some time. You
-                              can skip it if the code has been compiled or you don't need to
-                              profile java code.""")
+    record_group.add_argument('--compile_java_code', action='store_true',
+                              help="""On Android N and Android O, we need to compile Java code
+                                      into native instructions to profile Java code. Android O
+                                      also needs wrap.sh in the apk to use the native
+                                      instructions.""")
     record_group.add_argument('-np', '--native_program', default="surfaceflinger", help="""Profile
                               a native program. The program should be running on the device.
                               Like -np surfaceflinger.""")
