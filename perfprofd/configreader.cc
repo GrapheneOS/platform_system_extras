@@ -142,6 +142,10 @@ void ConfigReader::addDefaultEntries()
 
   // If true, send the proto to dropbox instead of to a file.
   addUnsignedEntry("dropbox", config.send_to_dropbox ? 1 : 0, 0, 1);
+
+  // The pid of the process to profile. May be negative, in which case
+  // the whole system will be profiled.
+  addUnsignedEntry("process", static_cast<uint32_t>(-1), 0, UINT32_MAX);
 }
 
 void ConfigReader::addUnsignedEntry(const char *key,
@@ -352,7 +356,7 @@ void ConfigReader::FillConfig(Config* config) {
   config->collect_booting = getBoolValue("collect_booting");
   config->collect_camera_active = getBoolValue("collect_camera_active");
 
-  config->process = -1;
+  config->process = static_cast<int32_t>(getUnsignedValue("process"));
   config->use_elf_symbolizer = getBoolValue("use_elf_symbolizer");
   config->compress = getBoolValue("compress");
   config->send_to_dropbox = getBoolValue("dropbox");
