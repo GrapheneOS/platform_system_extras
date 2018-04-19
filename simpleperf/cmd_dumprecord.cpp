@@ -187,7 +187,7 @@ bool DumpRecordCommand::DumpDataSection() {
         for (size_t i = 0; i < sr.callchain_data.ip_nr; ++i) {
           if (sr.callchain_data.ips[i] >= PERF_CONTEXT_MAX) {
             if (sr.callchain_data.ips[i] == PERF_CONTEXT_USER) {
-              in_kernel = true;
+              in_kernel = false;
             }
             continue;
           }
