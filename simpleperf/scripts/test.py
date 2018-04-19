@@ -1076,20 +1076,20 @@ class TestNativeLibDownloader(unittest.TestCase):
         # Sync all native libs on device.
         self.adb.run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
         downloader = NativeLibDownloader(None, 'arm64', self.adb)
-        downloader.collect_native_libs_on_host(
-            os.path.join('testdata', 'SimpleperfExampleWithNative'))
-        self.assertEqual(len(downloader.host_build_id_map), 6)
+        downloader.collect_native_libs_on_host(os.path.join(
+            'testdata', 'SimpleperfExampleWithNative', 'app', 'build', 'intermediates', 'cmake',
+            'profiling'))
+        self.assertEqual(len(downloader.host_build_id_map), 2)
         for entry in downloader.host_build_id_map.values():
             self.assertEqual(entry.score, 3)
         downloader.collect_native_libs_on_device()
         self.assertEqual(len(downloader.device_build_id_map), 0)
 
         lib_list = downloader.host_build_id_map.items()
-        for sync_count in [4, 3, 5]:
+        for sync_count in [0, 1, 2]:
             build_id_map = {}
             for i in range(sync_count):
                 build_id_map[lib_list[i][0]] = lib_list[i][1]
-            print('sync_count %d, build_id_map %s' % (sync_count, build_id_map))
             downloader.host_build_id_map = build_id_map
             downloader.sync_natives_libs_on_device()
             downloader.collect_native_libs_on_device()
@@ -1100,7 +1100,6 @@ class TestNativeLibDownloader(unittest.TestCase):
                 if i < sync_count:
                     self.assertTrue(build_id in downloader.device_build_id_map)
                     self.assertEqual(name, downloader.device_build_id_map[build_id])
-                    print('path = %s' % (downloader.dir_on_device + name))
                     self.assertTrue(self._is_lib_on_device(downloader.dir_on_device + name))
                 else:
                     self.assertTrue(build_id not in downloader.device_build_id_map)
