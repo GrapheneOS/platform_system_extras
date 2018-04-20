@@ -146,11 +146,17 @@ TEST(stat_cmd, interval_option) {
     pos += subs.size();
     ++count ;
   }
-  ASSERT_EQ(count, 3UL);
+  ASSERT_EQ(count, 2UL);
 }
 
 TEST(stat_cmd, interval_option_in_system_wide) {
   TEST_IN_ROOT(ASSERT_TRUE(StatCmd()->Run({"-a", "--interval", "100", "--duration", "0.3"})));
+}
+
+TEST(stat_cmd, interval_only_values_option) {
+  ASSERT_TRUE(StatCmd()->Run({"--interval", "500", "--interval-only-values", "sleep", "2"}));
+  TEST_IN_ROOT(ASSERT_TRUE(StatCmd()->Run({"-a", "--interval", "100", "--interval-only-values",
+                                           "--duration", "0.3"})));
 }
 
 TEST(stat_cmd, no_modifier_for_clock_events) {
