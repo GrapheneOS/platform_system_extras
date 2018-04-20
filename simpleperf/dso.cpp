@@ -60,8 +60,7 @@ bool DebugElfFileFinder::SetSymFsDir(const std::string& symfs_dir) {
   std::string build_id_list;
   if (android::base::ReadFileToString(build_id_list_file, &build_id_list)) {
     for (auto& line : android::base::Split(build_id_list, "\n")) {
-      std::string s = android::base::Trim(line);
-      std::vector<std::string> items = android::base::Split(s, "=");
+      std::vector<std::string> items = android::base::Split(line, "=");
       if (items.size() == 2u) {
         build_id_to_file_map_[items[0]] = items[1];
       }
