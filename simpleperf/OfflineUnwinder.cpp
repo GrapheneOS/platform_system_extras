@@ -181,10 +181,18 @@ bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& r
   }
   std::vector<backtrace_frame_data_t> frames;
   BacktraceUnwindError error;
-  if (Backtrace::UnwindOffline(unwind_regs.get(), cached_map.map.get(), stack_info, &frames, &error)) {
+  if (Backtrace::UnwindOffline(unwind_regs.get(), cached_map.map.get(), stack_info, &frames,
+                               &error)) {
     for (auto& frame : frames) {
       // Unwinding in arm architecture can return 0 pc address.
-      if (frame.pc == 0) {
+
+      // If frame.map.start == 0, this frame doesn't hit any map, it could be:
+      // 1. In an executable map not backed by a file. Note that RecordCommand::ShouldOmitRecord()
+      //    may omit maps only exist memory.
+      // 2. An incorrectly unwound frame. Like caused by invalid stack data, as in
+      //    SampleRecord::GetValidStackSize().
+      // We want to remove this frame and callchains following it in either case.
+      if (frame.pc == 0 || frame.map.start == 0) {
         break;
       }
       ips->push_back(frame.pc);
