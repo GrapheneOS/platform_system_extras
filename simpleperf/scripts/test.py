@@ -1104,6 +1104,13 @@ class TestNativeLibDownloader(unittest.TestCase):
                 else:
                     self.assertTrue(build_id not in downloader.device_build_id_map)
                     self.assertFalse(self._is_lib_on_device(downloader.dir_on_device + name))
+            if sync_count == 1:
+                self.adb.run(['pull', '/data/local/tmp/native_libs/build_id_list',
+                              'build_id_list'])
+                with open('build_id_list', 'rb') as fh:
+                    self.assertEqual(fh.read(), '{}={}\n'.format(lib_list[0][0],
+                                                                 lib_list[0][1].name))
+                remove('build_id_list')
         self.adb.run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
 
     def _is_lib_on_device(self, path):
