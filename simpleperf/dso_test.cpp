@@ -35,7 +35,7 @@ TEST(DebugElfFileFinder, use_build_id_list) {
   ASSERT_TRUE(android::base::WriteStringToFile(data, tmpfile.path));
   BuildId build_id(ELF_FILE_BUILD_ID);
   std::string build_id_list = android::base::StringPrintf(
-      "%s=%s\r\n", build_id.ToString().c_str(), android::base::Basename(tmpfile.path).c_str());
+      "%s=%s\n", build_id.ToString().c_str(), android::base::Basename(tmpfile.path).c_str());
   std::string build_id_list_file = std::string(tmpdir.path) + "/build_id_list";
   ASSERT_TRUE(android::base::WriteStringToFile(build_id_list, build_id_list_file));
 
