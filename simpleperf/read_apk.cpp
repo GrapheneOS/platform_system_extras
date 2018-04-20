@@ -100,8 +100,7 @@ std::unique_ptr<EmbeddedElf> ApkInspector::FindElfInApkByOffsetWithoutCache(cons
   memcpy(&entry_name[0], zname.name, zname.name_length);
   ElfStatus result = IsValidElfFile(fhelper.fd());
   if (result != ElfStatus::NO_ERROR) {
-    LOG(ERROR) << "problems reading ELF from " << apk_path << " entry '"
-               << entry_name << "': " << result;
+    // Omit files that are not ELF files.
     return nullptr;
   }
 

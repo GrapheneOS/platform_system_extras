@@ -454,13 +454,10 @@ class PprofProfileGenerator(object):
         if not self.config.get('binary_cache_dir'):
             log_info("Can't generate line information because binary_cache is missing.")
             return
-        if not self.config['addr2line_path'] or not is_executable_available(
-            self.config['addr2line_path']):
-            if not find_tool_path('addr2line'):
-                log_info("Can't generate line information because can't find addr2line.")
-                return
-
-        addr2line = Addr2Line(self.config['addr2line_path'], self.config['binary_cache_dir'])
+        if not find_tool_path('addr2line', self.config['ndk_path']):
+            log_info("Can't generate line information because can't find addr2line.")
+            return
+        addr2line = Addr2Line(self.config['ndk_path'], self.config['binary_cache_dir'])
 
         # 2. Put all needed addresses to it.
         for location in self.location_list:
@@ -569,8 +566,7 @@ def main():
 """Use samples only in threads with selected thread ids.""")
     parser.add_argument('--dso', nargs='+', action='append', help=
 """Use samples only in selected binaries.""")
-    parser.add_argument('--addr2line', help=
-"""Set the path of addr2line.""")
+    parser.add_argument('--ndk_path', type=extant_dir, help='Set the path of a ndk release.')
 
     args = parser.parse_args()
     if args.show:
@@ -587,7 +583,7 @@ def main():
     config['pid_filters'] = flatten_arg_list(args.pid)
     config['tid_filters'] = flatten_arg_list(args.tid)
     config['dso_filters'] = flatten_arg_list(args.dso)
-    config['addr2line_path'] = args.addr2line
+    config['ndk_path'] = args.ndk_path
     generator = PprofProfileGenerator(config)
     profile = generator.gen()
     store_pprof_profile(config['output_file'], profile)

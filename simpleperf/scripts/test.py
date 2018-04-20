@@ -173,24 +173,18 @@ class TestExampleBase(TestBase):
 
     def run(self, result=None):
         self.__class__.test_result = result
-        super(TestBase, self).run(result)
+        super(TestExampleBase, self).run(result)
 
-    def run_app_profiler(self, record_arg = "-g -f 1000 --duration 3 -e cpu-cycles:u",
-                         build_binary_cache=True, skip_compile=False, start_activity=True,
-                         profile_from_launch=False, add_arch=False):
-        args = ["app_profiler.py", "--app", self.package_name, "--apk", self.apk_path,
-                "-r", record_arg, "-o", "perf.data"]
+    def run_app_profiler(self, record_arg = "-g --duration 10", build_binary_cache=True,
+                         skip_compile=False, start_activity=True):
+        args = ['app_profiler.py', '--app', self.package_name, '-r', record_arg, '-o', 'perf.data']
         if not build_binary_cache:
             args.append("-nb")
-        if skip_compile or self.__class__.compiled:
-            args.append("-nc")
+        if not (skip_compile or self.__class__.compiled):
+            args.append('--compile_java_code')
         if start_activity:
             args += ["-a", self.activity_name]
-        args += ["-lib", self.example_path, '--download_libs']
-        if profile_from_launch:
-            args.append("--profile_from_launch")
-        if add_arch:
-            args += ["--arch", self.abi]
+        args += ["-lib", self.example_path]
         if not self.adb_root:
             args.append("--disable_adb_root")
         self.run_cmd(args)
@@ -325,10 +319,10 @@ class TestExampleBase(TestBase):
         append_args = [] if self.adb_root else ["--disable_adb_root"]
         self.run_cmd([inferno_script, "-p", self.package_name, "-t", "3"] + append_args)
         self.check_exist(file="perf.data")
-        self.run_cmd([inferno_script, "-p", self.package_name, "-f", "1000", "-du", "-t", "1",
-                      "-nc"] + append_args)
+        self.run_cmd([inferno_script, "-p", self.package_name, "-f", "1000", "-du", "-t", "1"] +
+                     append_args)
         self.run_cmd([inferno_script, "-p", self.package_name, "-e", "100000 cpu-cycles",
-                      "-t", "1", "-nc"] + append_args)
+                      "-t", "1"] + append_args)
         self.run_cmd([inferno_script, "-sc"])
 
     def common_test_report_html(self):
@@ -354,7 +348,7 @@ class TestExamplePureJava(TestExampleBase):
         self.common_test_app_profiler()
 
     def test_app_profiler_profile_from_launch(self):
-        self.run_app_profiler(profile_from_launch=True, add_arch=True, build_binary_cache=False)
+        self.run_app_profiler(start_activity=True, build_binary_cache=False)
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
         self.check_strings_in_file("report.txt",
             ["com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()",
@@ -376,7 +370,7 @@ class TestExamplePureJava(TestExampleBase):
         self.adb.check_run(['shell', 'am', 'start', '-n', self.package_name + '/.MainActivity'])
         time.sleep(1)
         args = [sys.executable, "app_profiler.py", "--app", self.package_name,
-                "-r", "--duration 10000", "-nc", "--disable_adb_root"]
+                "-r", "--duration 10000", "--disable_adb_root"]
         subproc = subprocess.Popen(args)
         time.sleep(3)
 
@@ -389,7 +383,7 @@ class TestExamplePureJava(TestExampleBase):
         self.adb.check_run(['shell', 'am', 'start', '-n', self.package_name + '/.MainActivity'])
         time.sleep(1)
         subproc = subprocess.Popen([sys.executable, 'app_profiler.py', '--app', self.package_name,
-                                    '-r', '--duration 10000', '-nc', '--disable_adb_root'])
+                                    '-r', '--duration 10000', '--disable_adb_root'])
         time.sleep(3)
         self.adb.check_run(['shell', 'am', 'force-stop', self.package_name])
         subproc.wait()
@@ -485,7 +479,7 @@ class TestExamplePureJavaTraceOffCpu(TestExampleBase):
                     ".SleepActivity")
 
     def test_smoke(self):
-        self.run_app_profiler(record_arg="-g -f 1000 --duration 3 -e cpu-cycles:u --trace-offcpu")
+        self.run_app_profiler(record_arg="-g -f 1000 --duration 10 -e cpu-cycles:u --trace-offcpu")
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
         self.check_strings_in_file("report.txt",
             ["com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.run()",
@@ -524,7 +518,7 @@ class TestExampleWithNative(TestExampleBase):
         self.common_test_app_profiler()
 
     def test_app_profiler_profile_from_launch(self):
-        self.run_app_profiler(profile_from_launch=True, add_arch=True, build_binary_cache=False)
+        self.run_app_profiler(start_activity=True, build_binary_cache=False)
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
         self.check_strings_in_file("report.txt",
             ["BusyLoopThread",
@@ -589,7 +583,7 @@ class TestExampleWithNativeTraceOffCpu(TestExampleBase):
                     ".SleepActivity")
 
     def test_smoke(self):
-        self.run_app_profiler(record_arg="-g -f 1000 --duration 3 -e cpu-cycles:u --trace-offcpu")
+        self.run_app_profiler(record_arg="-g -f 1000 --duration 10 -e cpu-cycles:u --trace-offcpu")
         self.run_cmd(["report.py", "-g", "--comms", "SleepThread", "-o", "report.txt"])
         self.check_strings_in_file("report.txt",
             ["SleepThread(void*)",
@@ -681,7 +675,7 @@ class TestExampleOfKotlin(TestExampleBase):
         self.common_test_app_profiler()
 
     def test_app_profiler_profile_from_launch(self):
-        self.run_app_profiler(profile_from_launch=True, add_arch=True, build_binary_cache=False)
+        self.run_app_profiler(start_activity=True, build_binary_cache=False)
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
         self.check_strings_in_file("report.txt",
             ["com.example.simpleperf.simpleperfexampleofkotlin.MainActivity$createBusyThread$1.run()",
@@ -750,7 +744,7 @@ class TestExampleOfKotlinTraceOffCpu(TestExampleBase):
                     ".SleepActivity")
 
     def test_smoke(self):
-        self.run_app_profiler(record_arg="-g -f 1000 --duration 3 -e cpu-cycles:u --trace-offcpu")
+        self.run_app_profiler(record_arg="-g -f 1000 --duration 10 -e cpu-cycles:u --trace-offcpu")
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
         self.check_strings_in_file("report.txt",
             ["void com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.run()",
@@ -779,31 +773,14 @@ class TestExampleOfKotlinTraceOffCpu(TestExampleBase):
               20)])
 
 
-class TestProfilingNativeProgram(TestExampleBase):
-    def test_smoke(self):
-        if not AdbHelper().switch_to_root():
-            log_info('skip TestProfilingNativeProgram on non-rooted devices.')
-            return
-        remove("perf.data")
-        self.run_cmd(["app_profiler.py", "-np", "surfaceflinger",
-                      "-r", "-g -f 1000 --duration 3 -e cpu-cycles:u"])
-        self.run_cmd(["report.py", "-g", "-o", "report.txt"])
-
-
-class TestProfilingCmd(TestExampleBase):
+class TestProfilingCmd(TestBase):
     def test_smoke(self):
         remove("perf.data")
         self.run_cmd(["app_profiler.py", "-cmd", "pm -l", "--disable_adb_root"])
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
 
-    def test_set_arch(self):
-        arch = AdbHelper().get_device_arch()
-        remove("perf.data")
-        self.run_cmd(["app_profiler.py", "-cmd", "pm -l", "--arch", arch])
-        self.run_cmd(["report.py", "-g", "-o", "report.txt"])
 
-
-class TestProfilingNativeProgram(TestExampleBase):
+class TestProfilingNativeProgram(TestBase):
     def test_smoke(self):
         adb = AdbHelper()
         if adb.switch_to_root():
@@ -1099,20 +1076,20 @@ class TestNativeLibDownloader(unittest.TestCase):
         # Sync all native libs on device.
         self.adb.run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
         downloader = NativeLibDownloader(None, 'arm64', self.adb)
-        downloader.collect_native_libs_on_host(
-            os.path.join('testdata', 'SimpleperfExampleWithNative'))
-        self.assertEqual(len(downloader.host_build_id_map), 6)
+        downloader.collect_native_libs_on_host(os.path.join(
+            'testdata', 'SimpleperfExampleWithNative', 'app', 'build', 'intermediates', 'cmake',
+            'profiling'))
+        self.assertEqual(len(downloader.host_build_id_map), 2)
         for entry in downloader.host_build_id_map.values():
             self.assertEqual(entry.score, 3)
         downloader.collect_native_libs_on_device()
         self.assertEqual(len(downloader.device_build_id_map), 0)
 
         lib_list = downloader.host_build_id_map.items()
-        for sync_count in [4, 3, 5]:
+        for sync_count in [0, 1, 2]:
             build_id_map = {}
             for i in range(sync_count):
                 build_id_map[lib_list[i][0]] = lib_list[i][1]
-            print('sync_count %d, build_id_map %s' % (sync_count, build_id_map))
             downloader.host_build_id_map = build_id_map
             downloader.sync_natives_libs_on_device()
             downloader.collect_native_libs_on_device()
@@ -1123,11 +1100,17 @@ class TestNativeLibDownloader(unittest.TestCase):
                 if i < sync_count:
                     self.assertTrue(build_id in downloader.device_build_id_map)
                     self.assertEqual(name, downloader.device_build_id_map[build_id])
-                    print('path = %s' % (downloader.dir_on_device + name))
                     self.assertTrue(self._is_lib_on_device(downloader.dir_on_device + name))
                 else:
                     self.assertTrue(build_id not in downloader.device_build_id_map)
                     self.assertFalse(self._is_lib_on_device(downloader.dir_on_device + name))
+            if sync_count == 1:
+                self.adb.run(['pull', '/data/local/tmp/native_libs/build_id_list',
+                              'build_id_list'])
+                with open('build_id_list', 'rb') as fh:
+                    self.assertEqual(fh.read(), '{}={}\n'.format(lib_list[0][0],
+                                                                 lib_list[0][1].name))
+                remove('build_id_list')
         self.adb.run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
 
     def _is_lib_on_device(self, path):

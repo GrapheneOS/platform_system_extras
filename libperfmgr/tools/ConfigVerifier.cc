@@ -79,7 +79,7 @@ static void printUsage(const char* exec_name) {
         usage +
         " is a command-line tool to verify Nodes in Json config are writable.\n"
         "Usages:\n"
-        "    [su system]" +
+        "    [su system] " +
         exec_name +
         " [options]\n"
         "\n"

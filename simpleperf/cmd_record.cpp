@@ -165,10 +165,10 @@ class RecordCommand : public Command {
 "--no-inherit  Don't record created child threads/processes.\n"
 "\n"
 "Dwarf unwinding options:\n"
-"--no-post-unwind   If `--call-graph dwarf` option is used, then the user's stack\n"
-"                   will be recorded in perf.data and unwound after recording.\n"
-"                   However, this takes a lot of disk space. Use this option to\n"
-"                   unwind while recording.\n"
+"--post-unwind=(yes|no) If `--call-graph dwarf` option is used, then the user's\n"
+"                       stack will be recorded in perf.data and unwound while\n"
+"                       recording by default. Use --post-unwind=yes to switch\n"
+"                       to unwind after recording.\n"
 "--no-unwind   If `--call-graph dwarf` option is used, then the user's stack\n"
 "              will be unwound by default. Use this option to disable the\n"
 "              unwinding of the user's stack.\n"
@@ -207,7 +207,7 @@ class RecordCommand : public Command {
         dwarf_callchain_sampling_(false),
         dump_stack_size_in_dwarf_sampling_(MAX_DUMP_STACK_SIZE),
         unwind_dwarf_callchain_(true),
-        post_unwind_(true),
+        post_unwind_(false),
         child_inherit_(true),
         duration_in_sec_(0),
         can_dump_kernel_symbols_(true),
@@ -745,8 +745,15 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       event_selection_set_.AddMonitoredProcesses(pids);
-    } else if (args[i] == "--no-post-unwind") {
-      post_unwind_ = false;
+    } else if (android::base::StartsWith(args[i], "--post-unwind")) {
+      if (args[i] == "--post-unwind" || args[i] == "--post-unwind=yes") {
+        post_unwind_ = true;
+      } else if (args[i] == "--post-unwind=no") {
+        post_unwind_ = false;
+      } else {
+        LOG(ERROR) << "unexpected option " << args[i];
+        return false;
+      }
     } else if (args[i] == "--start_profiling_fd") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -800,16 +807,6 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   if (post_unwind_) {
     if (!dwarf_callchain_sampling_ || !unwind_dwarf_callchain_) {
       post_unwind_ = false;
-    }
-  } else {
-    if (!dwarf_callchain_sampling_) {
-      LOG(ERROR)
-          << "--no-post-unwind is only used with `--call-graph dwarf` option.";
-      return false;
-    }
-    if (!unwind_dwarf_callchain_) {
-      LOG(ERROR) << "--no-post-unwind can't be used with `--no-unwind` option.";
-      return false;
     }
   }
 
@@ -938,7 +935,7 @@ bool RecordCommand::DumpKernelSymbol() {
 bool RecordCommand::DumpTracingData() {
   std::vector<const EventType*> tracepoint_event_types =
       event_selection_set_.GetTracepointEvents();
-  if (tracepoint_event_types.empty() || !CanRecordRawData()) {
+  if (tracepoint_event_types.empty() || !CanRecordRawData() || in_app_context_) {
     return true;  // No need to dump tracing data, or can't do it.
   }
   std::vector<char> tracing_data;
@@ -1456,7 +1453,7 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
       dso->CreateSymbolDumpId(symbol);
     }
   }
-  if (!dso->HasDumpId()) {
+  if (!dso->HasDumpId() && dso->type() != DSO_UNKNOWN_FILE) {
     dso->CreateDumpId();
   }
   if (r.sample_type & PERF_SAMPLE_CALLCHAIN) {
@@ -1492,7 +1489,7 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
             dso->CreateSymbolDumpId(symbol);
           }
         }
-        if (!dso->HasDumpId()) {
+        if (!dso->HasDumpId() && dso->type() != DSO_UNKNOWN_FILE) {
           dso->CreateDumpId();
         }
       }
