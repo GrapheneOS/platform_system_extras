@@ -82,11 +82,12 @@ std::vector<std::string> HintManager::GetHints() const {
 }
 
 void HintManager::DumpToFd(int fd) {
-    std::string header("========== Begin perfmgr nodes ==========\n"
-                       "Node Name\t"
-                       "Node Path\t"
-                       "Current Index\t"
-                       "Current Value\n");
+    std::string header(
+        "========== Begin perfmgr nodes ==========\n"
+        "Node Name\t"
+        "Node Path\t"
+        "Current Index\t"
+        "Current Value\n");
     if (!android::base::WriteStringToFd(header, fd)) {
         LOG(ERROR) << "Failed to dump fd: " << fd;
     }
@@ -158,7 +159,7 @@ std::vector<std::unique_ptr<Node>> HintManager::ParseNodes(
             LOG(ERROR) << "Duplicate Node[" << i << "]'s Name";
             nodes_parsed.clear();
             return nodes_parsed;
-        };
+        }
 
         std::string path = nodes[i]["Path"].asString();
         LOG(VERBOSE) << "Node[" << i << "]'s Path: " << path;
@@ -284,27 +285,18 @@ std::map<std::string, std::vector<NodeAction>> HintManager::ParseActions(
         }
         node_index = nodes_index[node_name];
 
-        Json::UInt64 value_index = 0;
-        if (actions[i]["ValueIndex"].empty() ||
-            !actions[i]["ValueIndex"].isUInt64()) {
-            LOG(ERROR) << "Failed to read Action" << i << "'s ValueIndex";
-            actions_parsed.clear();
-            return actions_parsed;
-        } else {
-            value_index = actions[i]["ValueIndex"].asUInt64();
-        }
-        std::size_t max_value_index = nodes[node_index]->GetValues().size() - 1;
-        if (value_index > max_value_index) {
-            LOG(ERROR) << "Failed to read Action" << i << "'s Duration";
-            LOG(ERROR) << "Action[" << i
-                       << "]'s ValueIndex out of bound, value index: "
-                       << value_index << ", max: " << max_value_index;
+        std::string value_name = actions[i]["Value"].asString();
+        LOG(VERBOSE) << "Action[" << i << "]'s Value: " << value_name;
+        std::size_t value_index = 0;
+
+        if (!nodes[node_index]->GetValueIndex(value_name, &value_index)) {
+            LOG(ERROR) << "Failed to read Action" << i << "'s Value";
+            LOG(ERROR) << "Action[" << i << "]'s Value " << value_name
+                       << " is not defined in Node[" << node_name;
             actions_parsed.clear();
             return actions_parsed;
         }
         LOG(VERBOSE) << "Action[" << i << "]'s ValueIndex: " << value_index;
-        LOG(VERBOSE) << "Action[" << i << "]'s Node Value: "
-                     << nodes[node_index]->GetValues()[value_index];
 
         Json::UInt64 duration = 0;
         if (actions[i]["Duration"].empty() ||
@@ -319,8 +311,7 @@ std::map<std::string, std::vector<NodeAction>> HintManager::ParseActions(
 
         if (actions_parsed.find(hint_type) == actions_parsed.end()) {
             actions_parsed[hint_type] = std::vector<NodeAction>{
-                {node_index, static_cast<std::size_t>(value_index),
-                 std::chrono::milliseconds(duration)}};
+                {node_index, value_index, std::chrono::milliseconds(duration)}};
         } else {
             for (const auto& action : actions_parsed[hint_type]) {
                 if (action.node_index == node_index) {
@@ -332,8 +323,7 @@ std::map<std::string, std::vector<NodeAction>> HintManager::ParseActions(
                 }
             }
             actions_parsed[hint_type].emplace_back(
-                node_index, static_cast<std::size_t>(value_index),
-                std::chrono::milliseconds(duration));
+                node_index, value_index, std::chrono::milliseconds(duration));
         }
 
         ++total_parsed;

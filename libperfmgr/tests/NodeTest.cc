@@ -33,7 +33,8 @@ using namespace std::chrono_literals;
 constexpr double kTIMING_TOLERANCE_MS = std::chrono::milliseconds(25).count();
 constexpr auto kSLEEP_TOLERANCE_MS = 2ms;
 
-static inline void _VerifyPathValue(const std::string& path, const std::string& value) {
+static inline void _VerifyPathValue(const std::string& path,
+                                    const std::string& value) {
     std::string s;
     EXPECT_TRUE(android::base::ReadFileToString(path, &s)) << strerror(errno);
     EXPECT_EQ(value, s);
@@ -63,8 +64,8 @@ TEST(NodeTest, DumpToFdTest) {
     TemporaryFile dumptf;
     t.DumpToFd(dumptf.fd);
     fsync(dumptf.fd);
-    std::string buf(android::base::StringPrintf("test_dump\t%s\t1\tvalue1\n",
-                                                tf.path));
+    std::string buf(
+        android::base::StringPrintf("test_dump\t%s\t1\tvalue1\n", tf.path));
     _VerifyPathValue(dumptf.path, buf);
 }
 
