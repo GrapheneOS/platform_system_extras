@@ -49,6 +49,12 @@ static std::vector<std::string> default_measured_event_types{
     "task-clock",   "context-switches",        "page-faults",
 };
 
+struct CounterSum {
+  uint64_t value = 0;
+  uint64_t time_enabled = 0;
+  uint64_t time_running = 0;
+};
+
 struct CounterSummary {
   std::string type_name;
   std::string modifier;
@@ -307,7 +313,10 @@ class StatCommand : public Command {
 "                        floating point number.\n"
 "--interval time_in_ms   Print stat for every time_in_ms milliseconds.\n"
 "                        Here time_in_ms may be any positive floating point\n"
-"                        number.\n"
+"                        number. Simpleperf prints total values from the\n"
+"                        starting point. But this can be changed by\n"
+"                        --interval-only-values.\n"
+"--interval-only-values  Print numbers of events happened in each interval.\n"
 "-e event1[:modifier1],event2[:modifier2],...\n"
 "                 Select the event list to count. Use `simpleperf list` to find\n"
 "                 all possible event names. Modifiers can be added to define\n"
@@ -335,6 +344,7 @@ class StatCommand : public Command {
         child_inherit_(true),
         duration_in_sec_(0),
         interval_in_ms_(0),
+        interval_only_values_(false),
         event_selection_set_(true),
         csv_(false),
         in_app_context_(false) {
@@ -358,6 +368,8 @@ class StatCommand : public Command {
   bool child_inherit_;
   double duration_in_sec_;
   double interval_in_ms_;
+  bool interval_only_values_;
+  std::vector<CounterSum> last_sum_values_;
   std::vector<int> cpus_;
   EventSelectionSet event_selection_set_;
   std::string output_filename_;
@@ -493,8 +505,10 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   }
 
   // 6. Read and print counters.
-
-  return print_counters();
+  if (interval_in_ms_ == 0) {
+    return print_counters();
+  }
+  return true;
 }
 
 bool StatCommand::ParseOptions(const std::vector<std::string>& args,
@@ -534,6 +548,8 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
         LOG(ERROR) << "Invalid interval: " << args[i].c_str();
         return false;
       }
+    } else if (args[i] == "--interval-only-values") {
+      interval_only_values_ = true;
     } else if (args[i] == "-e") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -666,22 +682,32 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters,
   }
 
   CounterSummaries summaries(csv_);
-  for (auto& counters_info : counters) {
-    uint64_t value_sum = 0;
-    uint64_t time_enabled_sum = 0;
-    uint64_t time_running_sum = 0;
+  for (size_t i = 0; i < counters.size(); ++i) {
+    const CountersInfo& counters_info = counters[i];
+    CounterSum sum;
     for (auto& counter_info : counters_info.counters) {
-      value_sum += counter_info.counter.value;
-      time_enabled_sum += counter_info.counter.time_enabled;
-      time_running_sum += counter_info.counter.time_running;
+      sum.value += counter_info.counter.value;
+      sum.time_enabled += counter_info.counter.time_enabled;
+      sum.time_running += counter_info.counter.time_running;
     }
+    if (interval_only_values_) {
+      if (last_sum_values_.size() < counters.size()) {
+        last_sum_values_.resize(counters.size());
+      }
+      CounterSum tmp = sum;
+      sum.value -= last_sum_values_[i].value;
+      sum.time_enabled -= last_sum_values_[i].time_enabled;
+      sum.time_running -= last_sum_values_[i].time_running;
+      last_sum_values_[i] = tmp;
+    }
+
     double scale = 1.0;
-    if (time_running_sum < time_enabled_sum && time_running_sum != 0) {
-      scale = static_cast<double>(time_enabled_sum) / time_running_sum;
+    if (sum.time_running < sum.time_enabled && sum.time_running != 0) {
+      scale = static_cast<double>(sum.time_enabled) / sum.time_running;
     }
     summaries.AddSummary(
         CounterSummary(counters_info.event_name, counters_info.event_modifier,
-                       counters_info.group_id, value_sum, scale, false, csv_));
+                       counters_info.group_id, sum.value, scale, false, csv_));
   }
   summaries.AutoGenerateSummaries();
   summaries.GenerateComments(duration_in_sec);
