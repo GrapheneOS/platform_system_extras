@@ -69,6 +69,9 @@ message File {
 
   // symbol table of the file.
   repeated string symbol = 3;
+
+  // mangled symbol table of the file.
+  repeated string mangled_symbol = 4;
 }
 
 message Thread {
