@@ -8,7 +8,7 @@ Usage:
 mkuserimg.sh [-s] SRC_DIR OUTPUT_FILE EXT_VARIANT MOUNT_POINT SIZE [-j <journal_size>]
              [-T TIMESTAMP] [-C FS_CONFIG] [-D PRODUCT_OUT] [-B BLOCK_LIST_FILE]
              [-d BASE_ALLOC_FILE_IN ] [-A BASE_ALLOC_FILE_OUT ] [-L LABEL]
-             [-i INODES ] [-e ERASE_BLOCK_SIZE] [-o FLASH_BLOCK_SIZE]
+             [-i INODES ] [-M RSV_PCT] [-e ERASE_BLOCK_SIZE] [-o FLASH_BLOCK_SIZE]
              [-U MKE2FS_UUID] [-S MKE2FS_HASH_SEED] [-c] [FILE_CONTEXTS]
 EOT
 }
@@ -91,6 +91,11 @@ fi
 
 if [[ "$1" == "-i" ]]; then
   MKE2FS_OPTS+=" -N $2"
+  shift; shift
+fi
+
+if [[ "$1" == "-M" ]]; then
+  MKE2FS_OPTS+=" -m $2"
   shift; shift
 fi
 
