@@ -143,3 +143,12 @@ TEST(cmd_report_sample, show_art_frames_option) {
                     {"--show-callchain", "--show-art-frames"});
   ASSERT_NE(data.find("artMterpAsmInstructionStart"), std::string::npos);
 }
+
+TEST(cmd_report_sample, show_symbols_before_and_after_demangle) {
+  std::string data;
+  GetProtobufReport(PERF_DATA_WITH_INTERPRETER_FRAMES, &data, {"--show-callchain"});
+  ASSERT_NE(data.find("symbol: android::hardware::IPCThreadState::talkWithDriver(bool)"),
+            std::string::npos);
+  ASSERT_NE(data.find("mangled_symbol: _ZN7android8hardware14IPCThreadState14talkWithDriverEb"),
+            std::string::npos);
+}
