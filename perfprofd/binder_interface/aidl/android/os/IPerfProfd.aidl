@@ -21,8 +21,11 @@ interface IPerfProfd {
     /**
      * Start continuous profiling with the given parameters.
      */
-    void startProfiling(int profilingDuration, int profilingInterval,
-            int iterations);
+    void startProfiling(int collectionInterval, int iterations,
+            int process, int samplingPeriod, int samplingFrequency,
+            int sampleDuration, boolean stackProfile,
+            boolean useElfSymbolizer, boolean sendToDropbox);
+
     /**
      * Start profiling with the parameters in the given protobuf.
      */
