@@ -169,11 +169,7 @@ bool DebugUnwindCommand::ParseOptions(const std::vector<std::string>& args) {
         return false;
       }
     } else if (args[i] == "--time") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      if (!android::base::ParseUint(args[i].c_str(), &selected_time_)) {
-        LOG(ERROR) << "Invalid option for " << args[i-1] << ": " << args[i];
+      if (!GetUintOption(args, &i, &selected_time_)) {
         return false;
       }
     } else {

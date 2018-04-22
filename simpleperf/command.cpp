@@ -22,6 +22,8 @@
 #include <vector>
 
 #include <android-base/logging.h>
+#include <android-base/parsedouble.h>
+#include <android-base/parseint.h>
 #include <android-base/quick_exit.h>
 
 #include "utils.h"
@@ -33,6 +35,18 @@ bool Command::NextArgumentOrError(const std::vector<std::string>& args, size_t* 
     return false;
   }
   ++*pi;
+  return true;
+}
+
+bool Command::GetDoubleOption(const std::vector<std::string>& args, size_t* pi, double* value,
+                              double min, double max) {
+  if (!NextArgumentOrError(args, pi)) {
+    return false;
+  }
+  if (!android::base::ParseDouble(args[*pi].c_str(), value, min, max)) {
+    LOG(ERROR) << "Invalid argument for option " << args[*pi - 1] << ": " << args[*pi];
+    return false;
+  }
   return true;
 }
 

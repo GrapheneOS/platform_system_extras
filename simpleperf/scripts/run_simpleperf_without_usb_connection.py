@@ -45,6 +45,8 @@ def start_recording(args):
     shell_cmd = 'cd /data/local/tmp && nohup ./simpleperf record ' + args.record_options
     if args.app:
         shell_cmd += ' --app ' + args.app
+    if args.size_limit:
+        shell_cmd += ' --size-limit ' + args.size_limit
     shell_cmd += ' >/data/local/tmp/simpleperf_output 2>&1'
     print('shell_cmd: %s' % shell_cmd)
     subproc = subprocess.Popen([adb.adb_path, 'shell', shell_cmd])
@@ -67,8 +69,8 @@ def stop_recording(args):
         print('Waiting for simpleperf process to finish...')
         while adb.run(['shell', 'pidof', 'simpleperf']):
             time.sleep(1)
-    adb.check_run(['pull', '/data/local/tmp/perf.data', args.perf_data_path])
     adb.run(['shell', 'cat', '/data/local/tmp/simpleperf_output'])
+    adb.check_run(['pull', '/data/local/tmp/perf.data', args.perf_data_path])
     print('The recording data has been collected in %s.' % args.perf_data_path)
 
 def main():
@@ -79,9 +81,12 @@ def main():
     start_parser.add_argument('-r', '--record_options',
                               default='-e task-clock:u -g',
                               help="""Set options for `simpleperf record` command.
-                                      Default is '-e task-clock:u -g'.""")
+                                      Default is `-e task-clock:u -g`.""")
     start_parser.add_argument('-p', '--app', help="""Profile an Android app, given the package
-                              name. Like -p com.example.android.myapp.""")
+                              name. Like `-p com.example.android.myapp`.""")
+    start_parser.add_argument('--size_limit', type=str,
+                              help="""Stop profiling when recording data reaches
+                                      [size_limit][K|M|G] bytes. Like `--size_limit 1M`.""")
     start_parser.set_defaults(func=start_recording)
     stop_parser = subparsers.add_parser('stop', help='Stop recording.')
     stop_parser.add_argument('-o', '--perf_data_path', default='perf.data', help="""The path to
