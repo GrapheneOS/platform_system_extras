@@ -451,7 +451,7 @@ class TestExamplePureJava(TestExampleBase):
     def test_run_simpleperf_without_usb_connection(self):
         self.adb.check_run(['shell', 'am', 'start', '-n', self.package_name + '/.MainActivity'])
         self.run_cmd(['run_simpleperf_without_usb_connection.py', 'start', '-p',
-                      self.package_name])
+                      self.package_name, '--size_limit', '1M'])
         self.adb.check_run(['kill-server'])
         time.sleep(3)
         self.run_cmd(['run_simpleperf_without_usb_connection.py', 'stop'])

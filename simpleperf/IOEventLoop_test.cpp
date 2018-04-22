@@ -215,3 +215,8 @@ TEST(IOEventLoop, disable_enable_event) {
   close(fd[0]);
   close(fd[1]);
 }
+
+TEST(IOEventLoop, exit_before_loop) {
+  IOEventLoop loop;
+  ASSERT_TRUE(loop.ExitLoop());
+}
