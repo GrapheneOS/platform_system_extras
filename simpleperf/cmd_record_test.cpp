@@ -570,3 +570,17 @@ TEST(record_cmd, dashdash) {
   TemporaryFile tmpfile;
   ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "--", "sleep", "1"}));
 }
+
+TEST(record_cmd, size_limit_option) {
+  std::vector<std::unique_ptr<Workload>> workloads;
+  CreateProcesses(1, &workloads);
+  std::string pid = std::to_string(workloads[0]->GetPid());
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "-p", pid, "--size-limit", "1k", "--duration",
+                                "1"}));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader);
+  ASSERT_GT(reader->FileHeader().data.size, 1000u);
+  ASSERT_LT(reader->FileHeader().data.size, 2000u);
+  ASSERT_FALSE(RunRecordCmd({"--size-limit", "0"}));
+}

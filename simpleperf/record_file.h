@@ -47,6 +47,7 @@ class RecordFileWriter {
   bool WriteAttrSection(const std::vector<EventAttrWithId>& attr_ids);
   bool WriteRecord(const Record& record);
 
+  uint64_t GetDataSectionSize() const { return data_section_size_; }
   bool ReadDataSection(const std::function<void(const Record*)>& callback);
 
   bool BeginWriteFeatures(size_t feature_count);

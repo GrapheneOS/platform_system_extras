@@ -37,7 +37,8 @@ struct IOEvent {
   }
 };
 
-IOEventLoop::IOEventLoop() : ebase_(nullptr), has_error_(false), use_precise_timer_(false) {}
+IOEventLoop::IOEventLoop()
+    : ebase_(nullptr), has_error_(false), use_precise_timer_(false), in_loop_(false) {}
 
 IOEventLoop::~IOEventLoop() {
   events_.clear();
@@ -163,8 +164,10 @@ IOEventRef IOEventLoop::AddEvent(int fd_or_sig, short events, timeval* timeout,
 }
 
 bool IOEventLoop::RunLoop() {
+  in_loop_ = true;
   if (event_base_dispatch(ebase_) == -1) {
     LOG(ERROR) << "event_base_dispatch() failed";
+    in_loop_ = false;
     return false;
   }
   if (has_error_) {
@@ -174,9 +177,12 @@ bool IOEventLoop::RunLoop() {
 }
 
 bool IOEventLoop::ExitLoop() {
-  if (event_base_loopbreak(ebase_) == -1) {
-    LOG(ERROR) << "event_base_loopbreak() failed";
-    return false;
+  if (in_loop_) {
+    if (event_base_loopbreak(ebase_) == -1) {
+      LOG(ERROR) << "event_base_loopbreak() failed";
+      return false;
+    }
+    in_loop_ = false;
   }
   return true;
 }

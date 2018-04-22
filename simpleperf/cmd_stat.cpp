@@ -28,7 +28,6 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
-#include <android-base/parsedouble.h>
 #include <android-base/strings.h>
 
 #include "command.h"
@@ -531,21 +530,11 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
     } else if (args[i] == "--csv") {
       csv_ = true;
     } else if (args[i] == "--duration") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      if (!android::base::ParseDouble(args[i].c_str(), &duration_in_sec_,
-                                      1e-9)) {
-        LOG(ERROR) << "Invalid duration: " << args[i].c_str();
+      if (!GetDoubleOption(args, &i, &duration_in_sec_, 1e-9)) {
         return false;
       }
     } else if (args[i] == "--interval") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      if (!android::base::ParseDouble(args[i].c_str(), &interval_in_ms_,
-                                      1e-9)) {
-        LOG(ERROR) << "Invalid interval: " << args[i].c_str();
+      if (!GetDoubleOption(args, &i, &interval_in_ms_, 1e-9)) {
         return false;
       }
     } else if (args[i] == "--interval-only-values") {
