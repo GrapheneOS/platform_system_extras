@@ -61,19 +61,19 @@ constexpr auto kSLEEP_TOLERANCE_MS = 50ms;
 //         {
 //             "PowerHint": "INTERACTION",
 //             "Node": "CPUCluster1MinFreq",
-//             "ValueIndex": 1,
+//             "Value": "1134000",
 //             "Duration": 800
 //         },
 //         {
 //             "PowerHint": "LAUNCH",
 //             "Node": "CPUCluster0MinFreq",
-//             "ValueIndex": 1,
+//             "Value": "1134000",
 //             "Duration": 500
 //         },
 //         {
 //             "PowerHint": "LAUNCH",
 //             "Node": "CPUCluster1MinFreq",
-//             "ValueIndex": 0,
+//             "Value": "1512000",
 //             "Duration": 2000
 //         }
 //     ]
@@ -86,10 +86,12 @@ constexpr char kJSON_RAW[] =
     "\"Path\":\"/sys/devices/system/cpu/cpu4/cpufreq/"
     "scaling_min_freq\",\"Values\":[\"1512000\",\"1134000\",\"384000\"],"
     "\"HoldFd\":true}],\"Actions\":[{\"PowerHint\":\"INTERACTION\",\"Node\":"
-    "\"CPUCluster1MinFreq\",\"ValueIndex\":1,\"Duration\":800},{\"PowerHint\":"
-    "\"LAUNCH\",\"Node\":\"CPUCluster0MinFreq\",\"ValueIndex\":1,\"Duration\":"
+    "\"CPUCluster1MinFreq\",\"Value\":\"1134000\",\"Duration\":800},{"
+    "\"PowerHint\":"
+    "\"LAUNCH\",\"Node\":\"CPUCluster0MinFreq\",\"Value\":\"1134000\","
+    "\"Duration\":"
     "500},{\"PowerHint\":\"LAUNCH\",\"Node\":\"CPUCluster1MinFreq\","
-    "\"ValueIndex\":0,\"Duration\":2000}]}";
+    "\"Value\":\"1512000\",\"Duration\":2000}]}";
 
 class HintManagerTest : public ::testing::Test, public HintManager {
   protected:
@@ -150,7 +152,8 @@ class HintManagerTest : public ::testing::Test, public HintManager {
     std::string json_doc_;
 };
 
-static inline void _VerifyPathValue(const std::string& path, const std::string& value) {
+static inline void _VerifyPathValue(const std::string& path,
+                                    const std::string& value) {
     std::string s;
     EXPECT_TRUE(android::base::ReadFileToString(path, &s)) << strerror(errno);
     EXPECT_EQ(value, s);
