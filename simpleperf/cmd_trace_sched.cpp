@@ -21,7 +21,6 @@
 #include <vector>
 
 #include <android-base/logging.h>
-#include <android-base/parsedouble.h>
 #include <android-base/stringprintf.h>
 #include <android-base/test_utils.h>
 
@@ -140,27 +139,15 @@ bool TraceSchedCommand::ParseOptions(const std::vector<std::string>& args) {
   size_t i;
   for (i = 0; i < args.size(); ++i) {
     if (args[i] == "--duration") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      if (!android::base::ParseDouble(args[i].c_str(), &duration_in_sec_, 1e-9)) {
-        LOG(ERROR) << "Invalid duration for " << args[i-1];
+      if (!GetDoubleOption(args, &i, &duration_in_sec_, 1e-9)) {
         return false;
       }
     } else if (args[i] == "--check-spinloop") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      if (!android::base::ParseDouble(args[i].c_str(), &spinloop_check_period_in_sec_, 1e-9)) {
-        LOG(ERROR) << "Invalid check period for " << args[i-1];
+      if (!GetDoubleOption(args, &i, &spinloop_check_period_in_sec_, 1e-9)) {
         return false;
       }
     } else if (args[i] == "--spin-rate") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      if (!android::base::ParseDouble(args[i].c_str(), &spinloop_check_rate_, 1e-9, 1.0)) {
-        LOG(ERROR) << "Invalid spin rate for " << args[i-1];
+      if (!GetDoubleOption(args, &i, &spinloop_check_rate_, 1e-9, 1.0)) {
         return false;
       }
     } else if (args[i] == "--show-threads") {

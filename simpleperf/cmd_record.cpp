@@ -28,7 +28,6 @@
 
 #include <android-base/logging.h>
 #include <android-base/file.h>
-#include <android-base/parsedouble.h>
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
 #include <android-base/test_utils.h>
@@ -189,6 +188,8 @@ class RecordCommand : public Command {
 "-o record_file_name    Set record file name, default is perf.data.\n"
 "--exit-with-parent            Stop recording when the process starting\n"
 "                              simpleperf dies.\n"
+"--size-limit SIZE[K|M|G]      Stop recording after SIZE bytes of records.\n"
+"                              Default is unlimited.\n"
 "--start_profiling_fd fd_no    After starting profiling, write \"STARTED\" to\n"
 "                              <fd_no>, then close <fd_no>.\n"
 "--symfs <dir>    Look for files with symbols relative to this directory.\n"
@@ -300,6 +301,7 @@ class RecordCommand : public Command {
   bool in_app_context_;
   bool trace_offcpu_;
   bool exclude_kernel_callchain_;
+  uint64_t size_limit_in_bytes_ = 0;
 
   // For CallChainJoiner
   bool allow_callchain_joiner_;
@@ -565,13 +567,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     } else if (args[i] == "-b") {
       branch_sampling_ = branch_sampling_type_map["any"];
     } else if (args[i] == "-c" || args[i] == "-f") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      char* endptr;
-      uint64_t value = strtoull(args[i].c_str(), &endptr, 0);
-      if (*endptr != '\0' || value == 0) {
-        LOG(ERROR) << "Invalid option for " << args[i-1] << ": '" << args[i] << "'";
+      uint64_t value;
+      if (!GetUintOption(args, &i, &value, 1)) {
         return false;
       }
       if (args[i-1] == "-c") {
@@ -596,11 +593,9 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         fp_callchain_sampling_ = false;
         dwarf_callchain_sampling_ = true;
         if (strs.size() > 1) {
-          char* endptr;
-          uint64_t size = strtoull(strs[1].c_str(), &endptr, 0);
-          if (*endptr != '\0' || size > UINT_MAX) {
-            LOG(ERROR) << "invalid dump stack size in --call-graph option: "
-                       << strs[1];
+          uint64_t size;
+          if (!android::base::ParseUint(strs[1], &size)) {
+            LOG(ERROR) << "invalid dump stack size in --call-graph option: " << strs[1];
             return false;
           }
           if ((size & 7) != 0) {
@@ -642,12 +637,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       }
       cpus_ = GetCpusFromString(args[i]);
     } else if (args[i] == "--duration") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      if (!android::base::ParseDouble(args[i].c_str(), &duration_in_sec_,
-                                      1e-9)) {
-        LOG(ERROR) << "Invalid duration: " << args[i].c_str();
+      if (!GetDoubleOption(args, &i, &duration_in_sec_, 1e-9)) {
         return false;
       }
     } else if (args[i] == "-e") {
@@ -702,12 +692,11 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         branch_sampling_ |= it->second;
       }
     } else if (args[i] == "-m") {
-      if (!NextArgumentOrError(args, &i)) {
+      uint64_t pages;
+      if (!GetUintOption(args, &i, &pages)) {
         return false;
       }
-      char* endptr;
-      uint64_t pages = strtoull(args[i].c_str(), &endptr, 0);
-      if (*endptr != '\0' || !IsPowerOfTwo(pages)) {
+      if (!IsPowerOfTwo(pages)) {
         LOG(ERROR) << "Invalid mmap_pages: '" << args[i] << "'";
         return false;
       }
@@ -723,12 +712,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     } else if (args[i] == "--no-callchain-joiner") {
       allow_callchain_joiner_ = false;
     } else if (args[i] == "--callchain-joiner-min-matching-nodes") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      if (!android::base::ParseUint(args[i].c_str(), &callchain_joiner_min_matching_nodes_) ||
-          callchain_joiner_min_matching_nodes_ < 1u) {
-        LOG(ERROR) << "unexpected argument for " << args[i - 1] << " option";
+      if (!GetUintOption(args, &i, &callchain_joiner_min_matching_nodes_, 1)) {
         return false;
       }
     } else if (args[i] == "-o") {
@@ -754,12 +738,13 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         LOG(ERROR) << "unexpected option " << args[i];
         return false;
       }
-    } else if (args[i] == "--start_profiling_fd") {
-      if (!NextArgumentOrError(args, &i)) {
+    } else if (args[i] == "--size-limit") {
+      if (!GetUintOption(args, &i, &size_limit_in_bytes_, 1, std::numeric_limits<uint64_t>::max(),
+                         true)) {
         return false;
       }
-      if (!android::base::ParseInt(args[i].c_str(), &start_profiling_fd_, 0)) {
-        LOG(ERROR) << "Invalid start_profiling_fd: " << args[i];
+    } else if (args[i] == "--start_profiling_fd") {
+      if (!GetUintOption(args, &i, &start_profiling_fd_)) {
         return false;
       }
     } else if (args[i] == "--symfs") {
@@ -1050,6 +1035,11 @@ bool RecordCommand::DumpThreadCommAndMmaps(const perf_event_attr& attr,
 bool RecordCommand::ProcessRecord(Record* record) {
   if (ShouldOmitRecord(record)) {
     return true;
+  }
+  if (size_limit_in_bytes_ > 0u) {
+    if (size_limit_in_bytes_ < record_file_writer_->GetDataSectionSize()) {
+      return event_selection_set_.GetIOEventLoop()->ExitLoop();
+    }
   }
   last_record_timestamp_ = record->Timestamp();
   if (unwind_dwarf_callchain_) {
