@@ -85,6 +85,7 @@ class IOEventLoop {
   std::vector<std::unique_ptr<IOEvent>> events_;
   bool has_error_;
   bool use_precise_timer_;
+  bool in_loop_;
 };
 
 #endif  // SIMPLE_PERF_IOEVENT_LOOP_H_
