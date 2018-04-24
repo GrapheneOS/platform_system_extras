@@ -386,7 +386,6 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
 
   // 4. Add monitored targets.
   bool need_to_check_targets = false;
-  pid_t app_pid = 0;
   if (system_wide_collection_) {
     event_selection_set_.AddMonitoredThreads({-1});
   } else if (!event_selection_set_.HasMonitoredTarget()) {
@@ -406,10 +405,6 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
       std::set<pid_t> pids = WaitForAppProcesses(app_package_name_);
       event_selection_set_.AddMonitoredProcesses(pids);
       need_to_check_targets = true;
-      if (!pids.empty()) {
-        // TODO: support a JITDebugReader for each app process?
-        app_pid = *pids.begin();
-      }
     } else {
       LOG(ERROR)
           << "No threads to monitor. Try `simpleperf help record` for help";
@@ -419,7 +414,16 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     need_to_check_targets = true;
   }
   // Profiling JITed/interpreted Java code is supported starting from Android P.
-  if (app_pid != 0 && GetAndroidVersion() >= kAndroidVersionP) {
+  if (!system_wide_collection_ && !app_package_name_.empty() &&
+      GetAndroidVersion() >= kAndroidVersionP) {
+    pid_t app_pid = 0;
+    // TODO: support a JITDebugReader for each app process?
+    if (!event_selection_set_.GetMonitoredProcesses().empty()) {
+      app_pid = *event_selection_set_.GetMonitoredProcesses().begin();
+    } else if (!event_selection_set_.GetMonitoredThreads().empty()) {
+      app_pid = *event_selection_set_.GetMonitoredThreads().begin();
+    }
+    CHECK_NE(app_pid, 0);
     // JIT symfiles are stored in temporary files, and are deleted after recording. But if
     // `-g --no-unwind` option is used, we want to keep symfiles to support unwinding in
     // the debug-unwind cmd.
