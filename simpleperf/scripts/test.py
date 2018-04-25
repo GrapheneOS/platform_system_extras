@@ -139,6 +139,10 @@ class TestExampleBase(TestBase):
         cls.adb_root = adb_root
         cls.compiled = False
         cls.has_perf_data_for_report = False
+        android_version = cls.adb.get_android_version()
+        # On Android >= P (version 9), we can profile JITed and interpreted Java code.
+        # So only compile Java code on Android <= O (version 8).
+        cls.use_compiled_java_code = android_version <= 8
 
     def setUp(self):
         if self.id().find('TraceOffCpu') != -1 and not is_trace_offcpu_supported():
@@ -175,13 +179,14 @@ class TestExampleBase(TestBase):
         self.__class__.test_result = result
         super(TestExampleBase, self).run(result)
 
-    def run_app_profiler(self, record_arg = "-g --duration 10", build_binary_cache=True,
-                         skip_compile=False, start_activity=True):
+    def run_app_profiler(self, record_arg="-g --duration 10", build_binary_cache=True,
+                         start_activity=True):
         args = ['app_profiler.py', '--app', self.package_name, '-r', record_arg, '-o', 'perf.data']
         if not build_binary_cache:
             args.append("-nb")
-        if not (skip_compile or self.__class__.compiled):
+        if self.use_compiled_java_code and not self.__class__.compiled:
             args.append('--compile_java_code')
+            self.__class__.compiled = True
         if start_activity:
             args += ["-a", self.activity_name]
         args += ["-lib", self.example_path]
@@ -191,8 +196,6 @@ class TestExampleBase(TestBase):
         self.check_exist(file="perf.data")
         if build_binary_cache:
             self.check_exist(dir="binary_cache")
-        if not skip_compile:
-            self.__class__.compiled = True
 
     def check_exist(self, file=None, dir=None):
         if file:
@@ -269,7 +272,7 @@ class TestExampleBase(TestBase):
         self.check_exist(dir="binary_cache")
         remove("binary_cache")
         self.run_app_profiler(build_binary_cache=True)
-        self.run_app_profiler(skip_compile=True)
+        self.run_app_profiler()
         self.run_app_profiler(start_activity=False)
 
     def common_test_report(self):
@@ -360,7 +363,7 @@ class TestExamplePureJava(TestExampleBase):
                             self.package_name + '/.MultiProcessActivity'])
         # Wait until both MultiProcessActivity and MultiProcessService set up.
         time.sleep(3)
-        self.run_app_profiler(skip_compile=True, start_activity=False)
+        self.run_app_profiler(start_activity=False)
         self.run_cmd(["report.py", "-o", "report.txt"])
         self.check_strings_in_file("report.txt", ["BusyService", "BusyThread"])
 
@@ -397,8 +400,22 @@ class TestExamplePureJava(TestExampleBase):
             ["com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()",
              "__start_thread"])
 
+    def test_profile_with_process_id(self):
+        self.adb.check_run(['shell', 'am', 'start', '-n', self.package_name + '/.MainActivity'])
+        time.sleep(1)
+        pid = self.adb.check_run_and_return_output(['shell', 'pidof',
+                'com.example.simpleperf.simpleperfexamplepurejava']).strip()
+        self.run_app_profiler(start_activity=False, record_arg='-g --duration 10 -p ' + pid)
+        self.run_cmd(["report.py", "-g", "-o", "report.txt"])
+        self.check_strings_in_file("report.txt",
+            ["com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()",
+             "__start_thread"])
+
     def test_annotate(self):
         self.common_test_annotate()
+        if not self.use_compiled_java_code:
+            # Currently annotating Java code is only supported when the Java code is compiled.
+            return
         self.check_file_under_dir("annotated_files", "MainActivity.java")
         summary_file = os.path.join("annotated_files", "summary")
         self.check_annotation_summary(summary_file,
@@ -413,10 +430,13 @@ class TestExamplePureJava(TestExampleBase):
              "__start_thread"])
 
     def test_pprof_proto_generator(self):
+        check_strings_with_lines = []
+        if self.use_compiled_java_code:
+            check_strings_with_lines = [
+                "com/example/simpleperf/simpleperfexamplepurejava/MainActivity.java",
+                "run"]
         self.common_test_pprof_proto_generator(
-            check_strings_with_lines=
-                ["com/example/simpleperf/simpleperfexamplepurejava/MainActivity.java",
-                 "run"],
+            check_strings_with_lines=check_strings_with_lines,
             check_strings_without_lines=
                 ["com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run()"])
 
@@ -482,28 +502,29 @@ class TestExamplePureJavaTraceOffCpu(TestExampleBase):
         self.run_app_profiler(record_arg="-g -f 1000 --duration 10 -e cpu-cycles:u --trace-offcpu")
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
         self.check_strings_in_file("report.txt",
-            ["com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.run()",
-             "long com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.RunFunction()",
-             "long com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.SleepFunction(long)"
+            ["com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.run",
+             "com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.RunFunction",
+             "com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.SleepFunction"
              ])
         remove("annotated_files")
         self.run_cmd(["annotate.py", "-s", self.example_path])
         self.check_exist(dir="annotated_files")
-        self.check_file_under_dir("annotated_files", "SleepActivity.java")
-        summary_file = os.path.join("annotated_files", "summary")
-        self.check_annotation_summary(summary_file,
-            [("SleepActivity.java", 80, 20),
-             ("run", 80, 0),
-             ("RunFunction", 20, 20),
-             ("SleepFunction", 20, 0),
-             ("line 24", 20, 0),
-             ("line 32", 20, 0)])
+        if self.use_compiled_java_code:
+            self.check_file_under_dir("annotated_files", "SleepActivity.java")
+            summary_file = os.path.join("annotated_files", "summary")
+            self.check_annotation_summary(summary_file,
+               [("SleepActivity.java", 80, 20),
+                ("run", 80, 0),
+                ("RunFunction", 20, 20),
+                ("SleepFunction", 20, 0),
+                ("line 24", 20, 0),
+                ("line 32", 20, 0)])
         self.run_cmd([inferno_script, "-sc"])
         self.check_inferno_report_html(
-            [('com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.run() ', 80),
-             ('com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.RunFunction()',
+            [('com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.run', 80),
+             ('com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.RunFunction',
               20),
-             ('com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.SleepFunction(long)',
+             ('com.example.simpleperf.simpleperfexamplepurejava.SleepActivity$1.SleepFunction',
               20)])
 
 
@@ -625,14 +646,19 @@ class TestExampleWithNativeJniCall(TestExampleBase):
         self.run_cmd(["annotate.py", "-s", self.example_path, "--comm", "BusyThread"])
         self.check_exist(dir="annotated_files")
         self.check_file_under_dir("annotated_files", "native-lib.cpp")
-        self.check_file_under_dir("annotated_files", "MixActivity.java")
         summary_file = os.path.join("annotated_files", "summary")
         self.check_annotation_summary(summary_file,
-            [("MixActivity.java", 80, 0),
-             ("run", 80, 0),
-             ("line 26", 20, 0),
-             ("native-lib.cpp", 5, 0),
+            [("native-lib.cpp", 5, 0),
              ("line 40", 5, 0)])
+        if self.use_compiled_java_code:
+            self.check_file_under_dir("annotated_files", "MixActivity.java")
+            self.check_annotation_summary(summary_file,
+                [("MixActivity.java", 80, 0),
+                 ("run", 80, 0),
+                 ("line 26", 20, 0),
+                 ("native-lib.cpp", 5, 0),
+                 ("line 40", 5, 0)])
+
         self.run_cmd([inferno_script, "-sc"])
 
 
@@ -689,6 +715,8 @@ class TestExampleOfKotlin(TestExampleBase):
              "__start_thread"])
 
     def test_annotate(self):
+        if not self.use_compiled_java_code:
+            return
         self.common_test_annotate()
         self.check_file_under_dir("annotated_files", "MainActivity.kt")
         summary_file = os.path.join("annotated_files", "summary")
@@ -705,10 +733,13 @@ class TestExampleOfKotlin(TestExampleBase):
              "__start_thread"])
 
     def test_pprof_proto_generator(self):
+        check_strings_with_lines = []
+        if self.use_compiled_java_code:
+            check_strings_with_lines = [
+                "com/example/simpleperf/simpleperfexampleofkotlin/MainActivity.kt",
+                "run"]
         self.common_test_pprof_proto_generator(
-            check_strings_with_lines=
-                ["com/example/simpleperf/simpleperfexampleofkotlin/MainActivity.kt",
-                 "run"],
+            check_strings_with_lines=check_strings_with_lines,
             check_strings_without_lines=
                 ["com.example.simpleperf.simpleperfexampleofkotlin.MainActivity$createBusyThread$1.run()"])
 
@@ -747,29 +778,31 @@ class TestExampleOfKotlinTraceOffCpu(TestExampleBase):
         self.run_app_profiler(record_arg="-g -f 1000 --duration 10 -e cpu-cycles:u --trace-offcpu")
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
         self.check_strings_in_file("report.txt",
-            ["void com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.run()",
-             "long com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.RunFunction()",
-             "long com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.SleepFunction(long)"
+            ["com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.run",
+             "com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.RunFunction",
+             "com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.SleepFunction"
              ])
-        remove("annotated_files")
-        self.run_cmd(["annotate.py", "-s", self.example_path])
-        self.check_exist(dir="annotated_files")
-        self.check_file_under_dir("annotated_files", "SleepActivity.kt")
-        summary_file = os.path.join("annotated_files", "summary")
-        self.check_annotation_summary(summary_file,
-            [("SleepActivity.kt", 80, 20),
-             ("run", 80, 0),
-             ("RunFunction", 20, 20),
-             ("SleepFunction", 20, 0),
-             ("line 24", 20, 0),
-             ("line 32", 20, 0)])
+        if self.use_compiled_java_code:
+            remove("annotated_files")
+            self.run_cmd(["annotate.py", "-s", self.example_path])
+            self.check_exist(dir="annotated_files")
+            self.check_file_under_dir("annotated_files", "SleepActivity.kt")
+            summary_file = os.path.join("annotated_files", "summary")
+            self.check_annotation_summary(summary_file,
+                [("SleepActivity.kt", 80, 20),
+                 ("run", 80, 0),
+                 ("RunFunction", 20, 20),
+                 ("SleepFunction", 20, 0),
+                 ("line 24", 20, 0),
+                 ("line 32", 20, 0)])
+
         self.run_cmd([inferno_script, "-sc"])
         self.check_inferno_report_html(
-            [('void com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.run()',
+            [('com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.run',
               80),
-             ('long com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.RunFunction()',
+             ('com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.RunFunction',
               20),
-             ('long com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.SleepFunction(long)',
+             ('com.example.simpleperf.simpleperfexampleofkotlin.SleepActivity$createRunSleepThread$1.SleepFunction',
               20)])
 
 
