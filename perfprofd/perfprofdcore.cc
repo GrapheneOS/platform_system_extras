@@ -36,6 +36,7 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/macros.h>
+#include <android-base/scopeguard.h>
 #include <android-base/stringprintf.h>
 
 #ifdef __BIONIC__
@@ -649,6 +650,9 @@ static ProtoUniquePtr collect_profile(Config& config)
   uint32_t max_duration = config.hardwire_cpus_max_duration_in_s;
   bool take_action = (hardwire && duration <= max_duration);
   HardwireCpuHelper helper(take_action);
+
+  auto scope_guard = android::base::make_scope_guard(
+      [&data_file_path]() { unlink(data_file_path.c_str()); });
 
   //
   // Invoke perf
