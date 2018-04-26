@@ -456,7 +456,6 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
 //
 static PROFILE_RESULT invoke_perf(Config& config,
                                   const std::string &perf_path,
-                                  unsigned sampling_period,
                                   const char *stack_profile_opt,
                                   unsigned duration,
                                   const std::string &data_file_path,
@@ -495,11 +494,11 @@ static PROFILE_RESULT invoke_perf(Config& config,
     std::string p_str;
     if (config.sampling_frequency > 0) {
       argv[slot++] = "-f";
-      p_str = android::base::StringPrintf("%u", sampling_period);
+      p_str = android::base::StringPrintf("%u", config.sampling_frequency);
       argv[slot++] = p_str.c_str();
     } else if (config.sampling_period > 0) {
       argv[slot++] = "-c";
-      p_str = android::base::StringPrintf("%u", sampling_period);
+      p_str = android::base::StringPrintf("%u", config.sampling_period);
       argv[slot++] = p_str.c_str();
     }
 
@@ -657,11 +656,9 @@ static ProtoUniquePtr collect_profile(Config& config)
   const char *stack_profile_opt =
       (config.stack_profile ? "-g" : nullptr);
   const std::string& perf_path = config.perf_path;
-  uint32_t period = config.sampling_period;
 
   PROFILE_RESULT ret = invoke_perf(config,
                                    perf_path.c_str(),
-                                   period,
                                    stack_profile_opt,
                                    duration,
                                    data_file_path,
