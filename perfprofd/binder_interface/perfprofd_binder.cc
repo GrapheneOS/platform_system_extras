@@ -337,7 +337,8 @@ status_t PerfProfdNativeService::onTransact(uint32_t _aidl_code,
     }
 
     default:
-      return BBinder::onTransact(_aidl_code, _aidl_data, _aidl_reply, _aidl_flags);
+      return ::android::os::BnPerfProfd::onTransact(
+          _aidl_code, _aidl_data, _aidl_reply, _aidl_flags);
   }
 }
 
