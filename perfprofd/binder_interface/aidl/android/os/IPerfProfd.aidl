@@ -27,6 +27,13 @@ interface IPerfProfd {
             boolean useElfSymbolizer, boolean sendToDropbox);
 
     /**
+     * Start continuous profiling with the given encoded parameters.
+     * Parameters should be encoded in the ConfigReader syntax,
+     * separated by colons.
+     */
+    void startProfilingString(String config);
+
+    /**
      * Start profiling with the parameters in the given protobuf.
      */
     void startProfilingProtobuf(in byte[] config_proto);
