@@ -90,7 +90,7 @@ int hash_blocks(const EVP_MD *md,
     return 0;
 }
 
-int hash_chunk(void *priv, const void *data, int len)
+int hash_chunk(void *priv, const void *data, size_t len)
 {
     struct sparse_hash_ctx *ctx = (struct sparse_hash_ctx *)priv;
     assert(len % ctx->block_size == 0);
@@ -101,7 +101,7 @@ int hash_chunk(void *priv, const void *data, int len)
                     ctx->salt, ctx->salt_size, ctx->block_size);
         ctx->hashes += s;
     } else {
-        for (size_t i = 0; i < (size_t)len; i += ctx->block_size) {
+        for (size_t i = 0; i < len; i += ctx->block_size) {
             memcpy(ctx->hashes, ctx->zero_block_hash, ctx->hash_size);
             ctx->hashes += ctx->hash_size;
         }
