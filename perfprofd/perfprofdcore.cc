@@ -481,7 +481,7 @@ static PROFILE_RESULT invoke_perf(Config& config,
     }
 
     // marshall arguments
-    constexpr unsigned max_args = 15;
+    constexpr unsigned max_args = 17;
     const char *argv[max_args];
     unsigned slot = 0;
     argv[slot++] = perf_path.c_str();
@@ -504,8 +504,11 @@ static PROFILE_RESULT invoke_perf(Config& config,
     }
 
     // -g if desired
-    if (stack_profile_opt)
+    if (stack_profile_opt) {
       argv[slot++] = stack_profile_opt;
+      argv[slot++] = "-m";
+      argv[slot++] = "8192";
+    }
 
     std::string pid_str;
     if (config.process < 0) {
