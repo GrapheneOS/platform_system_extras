@@ -30,6 +30,7 @@
 
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <binder/BinderService.h>
 #include <binder/IResultReceiver.h>
 #include <binder/Status.h>
@@ -75,6 +76,7 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
                         bool stackProfile,
                         bool useElfSymbolizer,
                         bool sendToDropbox) override;
+  Status startProfilingString(const String16& config) override;
   Status startProfilingProtobuf(const std::vector<uint8_t>& config_proto) override;
 
   Status stopProfiling() override;
@@ -146,6 +148,26 @@ Status PerfProfdNativeService::startProfiling(int32_t collectionInterval,
     config.send_to_dropbox = sendToDropbox;
   };
   std::string error_msg;
+  if (!StartProfiling(config_fn, &error_msg)) {
+    return Status::fromExceptionCode(1, error_msg.c_str());
+  }
+  return Status::ok();
+}
+Status PerfProfdNativeService::startProfilingString(const String16& config) {
+  ConfigReader reader;
+  std::string error_msg;
+  // Split configuration along colon.
+  std::vector<std::string> args = base::Split(String8(config).string(), ":");
+  for (auto& arg : args) {
+    if (!reader.Read(arg, /* fail_on_error */ true)) {
+      error_msg = base::StringPrintf("Could not parse %s", arg.c_str());
+      return Status::fromExceptionCode(1, error_msg.c_str());
+    }
+  }
+  auto config_fn = [&](ThreadedConfig& config) {
+    config = ThreadedConfig();  // Reset to a default config.
+    reader.FillConfig(&config);
+  };
   if (!StartProfiling(config_fn, &error_msg)) {
     return Status::fromExceptionCode(1, error_msg.c_str());
   }
