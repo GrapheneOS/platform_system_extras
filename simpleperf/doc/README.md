@@ -171,8 +171,8 @@ change.
 
 For the release build type, Android studio sets android::debuggable="false" in AndroidManifest.xml,
 disables JNI checks and optimizes C/C++ code. However, security restrictions mean that only apps
-with android::debuggable set to true can be profiled. So simpleperf can only profile release build
-in either of below two situations:
+with android::debuggable set to true can be profiled. So simpleperf can only profile a release
+build under these two circumstances:
 If you are on a rooted device, you can profile any app.
 
 If you are on Android >= O, we can use [wrap.sh](#https://developer.android.com/ndk/guides/wrap-script.html)
@@ -184,7 +184,7 @@ Step 1: Add android::debuggable="true" in AndroidManifest.xml to enable profilin
 ```
 
 Step 2: Add wrap.sh in lib/`arch` directories. wrap.sh runs the app without passing any debug flags
-to ART, so the app runs as a release app. wrap.sh can be done by adding below scripts in
+to ART, so the app runs as a release app. wrap.sh can be done by adding the script below in
 app/build.gradle.
 ```
 android {
@@ -226,7 +226,7 @@ be the path of your Android Studio project.
 4. If you want to profile Java code:
 
 On Android >= P, simpleperf supports profiling Java code, no matter whether it is executed by
-interpreter, or JITed, or compiled into native instructions. So you don't need to do anything.
+the interpreter, or JITed, or compiled into native instructions. So you don't need to do anything.
 
 On Android O, simpleperf supports profiling Java code which is compiled into native instructions,
 and it also needs wrap.sh to use the compiled Java code. To compile Java code, we can pass
@@ -998,8 +998,8 @@ $ python run_simpleperf_on_device.py record
 # Start the app manually or using the `am` command.
 ```
 
-To make it convenient to use, app_profiler.py supports using -a option to start an Activity after
-starting recording.
+To make it convenient to use, app_profiler.py supports using the -a option to start an Activity
+after recording has started.
 
 ```sh
 $ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .MainActivity
@@ -1032,7 +1032,7 @@ report_html.py to generate annotated source code and disassembly.
 By default, app_profiler.py builds the binary_cache directory after recording. But we can also
 build binary_cache for existing profiling data files using binary_cache_builder.py. It is useful
 when you record profiling data using `simpleperf record` directly, to do system wide profiling or
-record without USB cable connected.
+record without the USB cable connected.
 
 binary_cache_builder.py can either pull binaries from an Android device, or find binaries in
 directories on the host (via -lib).
