@@ -70,7 +70,7 @@ void ConfigReader::addDefaultEntries()
   // set to 100, then over time we want to see a perf profile
   // collected every 100 seconds). The actual time within the interval
   // for the collection is chosen randomly.
-  addUnsignedEntry("collection_interval", config.collection_interval_in_s, 1, UINT32_MAX);
+  addUnsignedEntry("collection_interval", config.collection_interval_in_s, 0, UINT32_MAX);
 
   // Use the specified fixed seed for random number generation (unit
   // testing)
@@ -337,6 +337,7 @@ void ConfigReader::FillConfig(Config* config) {
   config->perf_path = getStringValue("perf_path");
 
   config->sampling_period = getUnsignedValue("sampling_period");
+  config->sampling_frequency = getUnsignedValue("sampling_frequency");
 
   config->sample_duration_in_s = getUnsignedValue("sample_duration");
 
