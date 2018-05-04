@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2005 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -6,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/signal.h>
 #include <unistd.h>
 
 struct mapinfo {
@@ -58,16 +74,16 @@ static int parse_header(const char* line, const mapinfo* prev, mapinfo** mi) {
     }
 
     if (line[name_pos]) {
-        strlcpy(name, line + name_pos, sizeof(name));
+        strncpy(name, line + name_pos, sizeof(name));
     } else {
         if (prev && start == prev->end && is_library(prev->name)) {
             // anonymous mappings immediately adjacent to shared libraries
             // usually correspond to the library BSS segment, so we use the
             // library's own name
-            strlcpy(name, prev->name, sizeof(name));
+            strncpy(name, prev->name, sizeof(name));
             is_bss = 1;
         } else {
-            strlcpy(name, "[anon]", sizeof(name));
+            strncpy(name, "[anon]", sizeof(name));
         }
     }
 
@@ -82,7 +98,7 @@ static int parse_header(const char* line, const mapinfo* prev, mapinfo** mi) {
     info->end = end;
     info->is_bss = is_bss;
     info->count = 1;
-    strlcpy(info->name, name, name_size);
+    strncpy(info->name, name, name_size);
 
     *mi = info;
     return 0;
@@ -170,19 +186,18 @@ static void enqueue_map(mapinfo **head, mapinfo *map, int sort_by_address, int c
     }
 }
 
-static mapinfo *load_maps(int pid, int sort_by_address, int coalesce_by_name)
-{
-    char fn[128];
+static mapinfo *load_maps_from_file(const char* filename,
+                                    int sort_by_address,
+                                    int coalesce_by_name) {
     FILE *fp;
     char line[1024];
     mapinfo *head = NULL;
     mapinfo *current = NULL;
     int len;
 
-    snprintf(fn, sizeof(fn), "/proc/%d/smaps", pid);
-    fp = fopen(fn, "r");
+    fp = fopen(filename, "r");
     if (fp == 0) {
-        if (!quiet) fprintf(stderr, "cannot open /proc/%d/smaps: %s\n", pid, strerror(errno));
+        if (!quiet) fprintf(stderr, "cannot open %s: %s\n", filename, strerror(errno));
         return NULL;
     }
 
@@ -211,7 +226,7 @@ static mapinfo *load_maps(int pid, int sort_by_address, int coalesce_by_name)
     fclose(fp);
 
     if (!head) {
-        if (!quiet) fprintf(stderr, "could not read /proc/%d/smaps\n", pid);
+        if (!quiet) fprintf(stderr, "could not read %s\n", filename);
         return NULL;
     }
 
@@ -262,12 +277,12 @@ static void print_mi(mapinfo *mi, bool total)
     }
 }
 
-static int show_map(int pid)
+static int show_map(char* filename)
 {
     mapinfo total;
     memset(&total, 0, sizeof(total));
 
-    mapinfo *milist = load_maps(pid, addresses, !verbose && !addresses);
+    mapinfo *milist = load_maps_from_file(filename, addresses, !verbose && !addresses);
     if (milist == NULL) {
         return quiet ? 0 : 1;
     }
@@ -311,56 +326,63 @@ out:
     return 0;
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     int usage = 1;
     int result = 0;
-    int pid;
-    char *arg;
-    char *argend;
+    char *filename = NULL;
+    char temp_filename[128] = {};
+    bool file_mode = false;
 
     signal(SIGPIPE, SIG_IGN);
-    for (argc--, argv++; argc > 0; argc--, argv++) {
-        arg = argv[0];
+    for (int i = 1; i < argc; ++i) {
+        char* arg = argv[i];
         if (!strcmp(arg,"-v")) {
             verbose = true;
-            continue;
-        }
-        if (!strcmp(arg,"-t")) {
+        } else if (!strcmp(arg,"-t")) {
             terse = true;
-            continue;
-        }
-        if (!strcmp(arg,"-a")) {
+        } else if (!strcmp(arg,"-a")) {
             addresses = true;
-            continue;
-        }
-        if (!strcmp(arg,"-q")) {
+        } else if (!strcmp(arg,"-q")) {
             quiet = true;
-            continue;
-        }
-        if (argc != 1) {
-            fprintf(stderr, "too many arguments\n");
-            break;
-        }
-        pid = strtol(arg, &argend, 10);
-        if (*arg && !*argend) {
-            usage = 0;
-            if (show_map(pid)) {
-                result = 1;
+        } else if (!strcmp(arg,"-f")) {
+            file_mode = true;
+        } else {
+            if (i + 1 != argc) {
+                fprintf(stderr, "too many arguments\n");
+                break;
             }
+            if (file_mode) {
+                filename = arg;
+                usage = 0;
+            } else {
+                char *argend;
+                int pid = strtol(arg, &argend, 10);
+                if (*arg && !*argend) {
+                    usage = 0;
+                    snprintf(temp_filename, sizeof(temp_filename), "/proc/%d/smaps", pid);
+                    filename = temp_filename;
+                }
+            }
+
+            if (filename != nullptr) {
+                if (show_map(filename)) {
+                    result = 1;
+                }
+                break;
+            }
+            fprintf(stderr, "unrecognized argument: %s\n", arg);
             break;
         }
-        fprintf(stderr, "unrecognized argument: %s\n", arg);
-        break;
     }
 
     if (usage) {
         fprintf(stderr,
-                "showmap [-t] [-v] [-c] [-q] <pid>\n"
+                "showmap [-t] [-v] [-c] [-q] [-f] <pid|file>\n"
                 "        -t = terse (show only items with private pages)\n"
                 "        -v = verbose (don't coalesce maps with the same name)\n"
                 "        -a = addresses (show virtual memory map)\n"
                 "        -q = quiet (don't show error if map could not be read)\n"
+                "        -f = read from input file instead of pid\n"
                 );
         result = 1;
     }
