@@ -194,11 +194,11 @@ bool MkdirWithParents(const std::string& path) {
   return true;
 }
 
-static void* xz_alloc(void*, size_t size) {
+static void* xz_alloc(ISzAllocPtr, size_t size) {
   return malloc(size);
 }
 
-static void xz_free(void*, void* address) {
+static void xz_free(ISzAllocPtr, void* address) {
   free(address);
 }
 
@@ -221,7 +221,7 @@ bool XzDecompress(const std::string& compressed_data, std::string* decompressed_
     size_t dst_remaining = dst.size() - dst_offset;
     int res = XzUnpacker_Code(&state, reinterpret_cast<Byte*>(&dst[dst_offset]), &dst_remaining,
                               reinterpret_cast<const Byte*>(&compressed_data[src_offset]),
-                              &src_remaining, CODER_FINISH_ANY, &status);
+                              &src_remaining, true, CODER_FINISH_ANY, &status);
     if (res != SZ_OK) {
       LOG(ERROR) << "LZMA decompression failed with error " << res;
       XzUnpacker_Free(&state);
