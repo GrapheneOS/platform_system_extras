@@ -12,5 +12,3 @@ cc_defaults {
         "-Wno-unused-const-variable",
     ],
 }
-
-subdirs = ["*"]
