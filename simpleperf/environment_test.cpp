@@ -37,7 +37,7 @@ TEST(environment, PrepareVdsoFile) {
     return;
   }
   TemporaryDir tmpdir;
-  SetTempDirectoryUsedInRecording(tmpdir.path);
+  ScopedTempFiles scoped_temp_files(tmpdir.path);
   PrepareVdsoFile();
   std::unique_ptr<Dso> dso = Dso::CreateDso(DSO_ELF_FILE, "[vdso]",
                                             sizeof(size_t) == sizeof(uint64_t));
