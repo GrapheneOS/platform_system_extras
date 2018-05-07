@@ -3,8 +3,6 @@ syntax = "proto2";
 
 option java_package = "android.perfprofd";
 
-option optimize_for = LITE_RUNTIME;
-
 package android.perfprofd;
 
 // The configuration for a profiling session.
