@@ -33,13 +33,24 @@ cc_library_static {
     srcs: [
         "perfprofd_binder.cc",
         ":perfprofd_aidl",
-        "perfprofd_config.proto",
+        ":perfprofd_config_proto",
     ],
+
+    proto: {
+        type: "lite",
+    },
 }
 
 filegroup {
     name: "perfprofd_aidl",
     srcs: [
         "aidl/android/os/IPerfProfd.aidl",
+    ],
+}
+
+filegroup {
+    name: "perfprofd_config_proto",
+    srcs: [
+        "perfprofd_config.proto",
     ],
 }
