@@ -86,6 +86,7 @@ static int parse_header(const char* line, const mapinfo* prev, mapinfo** mi) {
             strncpy(name, "[anon]", sizeof(name));
         }
     }
+    name[sizeof(name) - 1] = '\0';  // Assure we're null-terminated.
 
     const int name_size = strlen(name) + 1;
     struct mapinfo* info = reinterpret_cast<mapinfo*>(calloc(1, sizeof(mapinfo) + name_size));
@@ -98,7 +99,7 @@ static int parse_header(const char* line, const mapinfo* prev, mapinfo** mi) {
     info->end = end;
     info->is_bss = is_bss;
     info->count = 1;
-    strncpy(info->name, name, name_size);
+    memcpy(info->name, name, name_size);
 
     *mi = info;
     return 0;
