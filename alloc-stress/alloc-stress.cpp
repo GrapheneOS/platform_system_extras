@@ -124,6 +124,9 @@ pid_t createProcess(Pipe pipe, const char *exName,
         ssize_t exPathLen = readlink("/proc/self/exe", exPath, sizeof(exPath));
         bool isExPathAvailable =
             exPathLen != -1 && exPathLen < static_cast<ssize_t>(sizeof(exPath));
+        if (isExPathAvailable) {
+          exPath[exPathLen] = '\0';
+        }
         execl(isExPathAvailable ? exPath : exName, exName, "--worker", arg, readFdStr, writeFdStr,
             use_memcg ? "1" : "0", nullptr);
         ASSERT_TRUE(0);
