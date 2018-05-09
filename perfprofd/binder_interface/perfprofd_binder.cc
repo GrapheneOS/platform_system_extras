@@ -201,6 +201,7 @@ Status PerfProfdNativeService::StartProfilingProtobuf(ProtoLoaderFn fn) {
     CHECK_AND_COPY_FROM_PROTO(config_directory)
     CHECK_AND_COPY_FROM_PROTO(perf_path)
     CHECK_AND_COPY_FROM_PROTO(sampling_period)
+    CHECK_AND_COPY_FROM_PROTO(sampling_frequency)
     CHECK_AND_COPY_FROM_PROTO(sample_duration_in_s)
     CHECK_AND_COPY_FROM_PROTO(only_debug_build)
     CHECK_AND_COPY_FROM_PROTO(hardwire_cpus)
