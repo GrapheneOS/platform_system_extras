@@ -1,0 +1,85 @@
+cc_binary_host {
+    name: "generate_verity_key",
+    srcs: ["generate_verity_key.c"],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+
+    shared_libs: [
+        "libcrypto_utils",
+        "libcrypto",
+    ],
+}
+
+java_library_host {
+    name: "VeritySigner",
+    srcs: [
+        "VeritySigner.java",
+        "Utils.java",
+    ],
+    manifest: "VeritySigner.mf",
+
+    static_libs: ["bouncycastle"],
+}
+
+java_library_host {
+    name: "BootSignature",
+    srcs: [
+        "BootSignature.java",
+        "VeritySigner.java",
+        "Utils.java",
+    ],
+    manifest: "BootSignature.mf",
+
+    static_libs: ["bouncycastle"],
+}
+
+cc_binary_host {
+    name: "verity_verifier",
+    srcs: ["verity_verifier.cpp"],
+
+    target: {
+        darwin: {
+            enabled: false,
+        },
+    },
+
+    sanitize: {
+        misc_undefined: ["integer"],
+    },
+    static_libs: [
+        "libfec",
+        "libfec_rs",
+        "libcrypto_utils",
+        "libcrypto",
+        "libext4_utils",
+        "libsparse",
+        "libsquashfs_utils",
+        "libbase",
+        "libz",
+    ],
+
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+}
+
+cc_binary_host {
+    name: "build_verity_tree",
+    srcs: ["build_verity_tree.cpp"],
+
+    static_libs: [
+        "libsparse",
+        "libz",
+    ],
+    shared_libs: [
+        "libcrypto",
+        "libbase",
+    ],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+}
