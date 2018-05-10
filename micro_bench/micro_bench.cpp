@@ -315,7 +315,7 @@ static void inline printColdSummary(
     size_t size = (cmd_data).args[0];                                         \
     size_t incr = getAlignmentIncrement(size, (cmd_data).dst_align);          \
     size_t num_buffers = (cmd_data).cold_data_size / incr;                    \
-    size_t buffer_size = num_buffers * incr;                                  \
+    size_t buffer_size __attribute__((__unused__)) = num_buffers * incr;      \
     uint8_t *buffer = getColdBuffer(num_buffers, incr, (cmd_data).dst_align, (cmd_data).dst_or_mask); \
     if (!buffer)                                                              \
         return -1;                                                            \
@@ -400,7 +400,6 @@ int benchmarkMemset(const char *name, const command_data_t &cmd_data, void_func_
 int benchmarkMemsetCold(const char *name, const command_data_t &cmd_data, void_func_t func) {
     memset_func_t memset_func = reinterpret_cast<memset_func_t>(func);
     COLD_ONE_BUF(name, cmd_data, ;, memset_func(buf, l, size));
-    (void)buffer_size;
 
     return 0;
 }
@@ -431,8 +430,8 @@ int benchmarkMemmoveBackwards(const char *name, const command_data_t &cmd_data, 
     memcpy_func_t memmove_func = reinterpret_cast<memcpy_func_t>(func);
 
     size_t size = cmd_data.args[0];
-    size_t alloc_size = size * 2 + 3 * cmd_data.dst_align; // should alloc_size be used?
-    uint8_t* src = allocateAlignedMemory(size, cmd_data.src_align, cmd_data.src_or_mask);
+    size_t alloc_size = size * 2 + 3 * cmd_data.dst_align;
+    uint8_t* src = allocateAlignedMemory(alloc_size, cmd_data.src_align, cmd_data.src_or_mask);
     if (!src)
         return -1;
     // Force memmove to do a backwards copy by getting a pointer into the source buffer.
