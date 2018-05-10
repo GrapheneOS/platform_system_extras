@@ -5,7 +5,6 @@ cc_defaults {
     cflags: [
         "-Wall",
         "-Werror",
-        "-Wno-error=unused-variable",
     ],
 
     compile_multilib: "both",
