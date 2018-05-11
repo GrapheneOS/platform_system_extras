@@ -80,8 +80,7 @@ void ConfigReader::addDefaultEntries()
   // loop.  Value of zero indicates that we should loop forever.
   addUnsignedEntry("main_loop_iterations", config.main_loop_iterations, 0, UINT32_MAX);
 
-  // Destination directory (where to write profiles). This location
-  // chosen since it is accessible to the uploader service.
+  // Destination directory (where to write profiles).
   addStringEntry("destination_directory", config.destination_directory.c_str());
 
   // Config directory (where to read configs).
