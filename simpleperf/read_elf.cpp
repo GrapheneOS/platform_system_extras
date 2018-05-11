@@ -143,12 +143,17 @@ ElfStatus GetBuildIdFromNoteFile(const std::string& filename, BuildId* build_id)
 
 template <class ELFT>
 ElfStatus GetBuildIdFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf, BuildId* build_id) {
+  llvm::StringRef data = elf->getData();
+  const char* binary_start = data.data();
+  const char* binary_end = data.data() + data.size();
   for (auto it = elf->section_begin(); it != elf->section_end(); ++it) {
     const llvm::object::ELFSectionRef& section_ref = *it;
     if (section_ref.getType() == llvm::ELF::SHT_NOTE) {
-      llvm::StringRef data;
       if (it->getContents(data)) {
         return ElfStatus::READ_FAILED;
+      }
+      if (data.data() < binary_start || data.data() + data.size() > binary_end) {
+        return ElfStatus::NO_BUILD_ID;
       }
       if (GetBuildIdFromNoteSection(data.data(), data.size(), build_id)) {
         return ElfStatus::NO_ERROR;
@@ -521,8 +526,17 @@ ElfStatus ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename
   if (result != ElfStatus::NO_ERROR) {
     return result;
   }
+  return ReadMinExecutableVirtualAddressFromEmbeddedElfFile(filename, 0, 0, expected_build_id,
+                                                            min_vaddr);
+}
+
+ElfStatus ReadMinExecutableVirtualAddressFromEmbeddedElfFile(const std::string& filename,
+                                                             uint64_t file_offset,
+                                                             uint32_t file_size,
+                                                             const BuildId& expected_build_id,
+                                                             uint64_t* min_vaddr) {
   BinaryWrapper wrapper;
-  result = OpenObjectFile(filename, 0, 0, &wrapper);
+  ElfStatus result = OpenObjectFile(filename, file_offset, file_size, &wrapper);
   if (result != ElfStatus::NO_ERROR) {
     return result;
   }
@@ -530,14 +544,12 @@ ElfStatus ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename
   if (result != ElfStatus::NO_ERROR) {
     return result;
   }
-
   if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(wrapper.obj)) {
     return ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr);
   } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(wrapper.obj)) {
     return ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr);
-  } else {
-    return ElfStatus::FILE_MALFORMED;
   }
+  return ElfStatus::FILE_MALFORMED;
 }
 
 ElfStatus ReadSectionFromElfFile(const std::string& filename, const std::string& section_name,
