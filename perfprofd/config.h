@@ -42,8 +42,7 @@ struct Config {
   // the whole system will be profiled.
   int32_t process = -1;
 
-  // Destination directory (where to write profiles). This location
-  // chosen since it is accessible to the uploader service.
+  // Destination directory (where to write profiles).
   std::string destination_directory = "/data/misc/perfprofd";
   // Config directory (where to read configs).
   std::string config_directory = "/data/data/com.google.android.gms/files";
