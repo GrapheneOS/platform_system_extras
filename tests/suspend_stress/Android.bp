@@ -1,0 +1,13 @@
+cc_binary {
+    name: "suspend_stress",
+    srcs: ["suspend_stress.cpp"],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    static_executable: true,
+    static_libs: [
+        "libc",
+        "libcutils",
+    ],
+}
