@@ -374,8 +374,20 @@ class ElfDso : public Dso {
         BuildId build_id = GetExpectedBuildId();
 
         uint64_t addr;
-        ElfStatus result = ReadMinExecutableVirtualAddressFromElfFile(
-            GetDebugFilePath(), build_id, &addr);
+        ElfStatus result;
+        auto tuple = SplitUrlInApk(debug_file_path_);
+        if (std::get<0>(tuple)) {
+          EmbeddedElf* elf = ApkInspector::FindElfInApkByName(std::get<1>(tuple),
+                                                              std::get<2>(tuple));
+          if (elf == nullptr) {
+            result = ElfStatus::FILE_NOT_FOUND;
+          } else {
+            result = ReadMinExecutableVirtualAddressFromEmbeddedElfFile(
+                elf->filepath(), elf->entry_offset(), elf->entry_size(), build_id, &addr);
+          }
+        } else {
+          result = ReadMinExecutableVirtualAddressFromElfFile(debug_file_path_, build_id, &addr);
+        }
         if (result != ElfStatus::NO_ERROR) {
           LOG(WARNING) << "failed to read min virtual address of "
                        << GetDebugFilePath() << ": " << result;
@@ -423,8 +435,13 @@ class ElfDso : public Dso {
     ElfStatus status;
     std::tuple<bool, std::string, std::string> tuple = SplitUrlInApk(debug_file_path_);
     if (std::get<0>(tuple)) {
-      status = ParseSymbolsFromApkFile(std::get<1>(tuple), std::get<2>(tuple), build_id,
-                                       symbol_callback);
+      EmbeddedElf* elf = ApkInspector::FindElfInApkByName(std::get<1>(tuple), std::get<2>(tuple));
+      if (elf == nullptr) {
+        status = ElfStatus::FILE_NOT_FOUND;
+      } else {
+        status = ParseSymbolsFromEmbeddedElfFile(elf->filepath(), elf->entry_offset(),
+                                                 elf->entry_size(), build_id, symbol_callback);
+      }
     } else {
       status = ParseSymbolsFromElfFile(debug_file_path_, build_id, symbol_callback);
     }
@@ -576,7 +593,13 @@ bool GetBuildIdFromDsoPath(const std::string& dso_path, BuildId* build_id) {
   auto tuple = SplitUrlInApk(dso_path);
   ElfStatus result;
   if (std::get<0>(tuple)) {
-    result = GetBuildIdFromApkFile(std::get<1>(tuple), std::get<2>(tuple), build_id);
+    EmbeddedElf* elf = ApkInspector::FindElfInApkByName(std::get<1>(tuple), std::get<2>(tuple));
+    if (elf == nullptr) {
+      result = ElfStatus::FILE_NOT_FOUND;
+    } else {
+      result = GetBuildIdFromEmbeddedElfFile(elf->filepath(), elf->entry_offset(),
+                                             elf->entry_size(), build_id);
+    }
   } else {
     result = GetBuildIdFromElfFile(dso_path, build_id);
   }
