@@ -431,12 +431,21 @@ TEST(record_cmd, support_modifier_for_clock_events) {
 
 TEST(record_cmd, handle_SIGHUP) {
   TemporaryFile tmpfile;
-  std::thread thread([]() {
-    sleep(1);
+  int pipefd[2];
+  ASSERT_EQ(0, pipe(pipefd));
+  int read_fd = pipefd[0];
+  int write_fd = pipefd[1];
+  char data[8] = {};
+  std::thread thread([&]() {
+    android::base::ReadFully(read_fd, data, 7);
     kill(getpid(), SIGHUP);
   });
-  thread.detach();
-  ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "sleep", "1000000"}));
+  ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "--start_profiling_fd",
+                                std::to_string(write_fd), "sleep", "1000000"}));
+  thread.join();
+  close(write_fd);
+  close(read_fd);
+  ASSERT_STREQ(data, "STARTED");
 }
 
 TEST(record_cmd, stop_when_no_more_targets) {
