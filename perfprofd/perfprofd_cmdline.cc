@@ -215,8 +215,7 @@ int perfprofd_main(int argc, char** argv, Config* config)
     return config;
   };
   auto reread_config = [&config_reader, config]() {
-    // Reread config file -- the uploader may have rewritten it as a result
-    // of a gservices change
+    // Reread config file -- the uploader may have rewritten it.
     config_reader.readFile();
     config_reader.FillConfig(config);
   };

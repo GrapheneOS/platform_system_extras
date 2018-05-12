@@ -146,16 +146,15 @@ bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& r
       bt_map.offset = map->pgoff;
       bt_map.name = map->dso->GetDebugFilePath();
       if (bt_map.offset == 0) {
-        size_t apk_pos = bt_map.name.find_last_of('!');
-        if (apk_pos != std::string::npos) {
+        auto tuple = SplitUrlInApk(bt_map.name);
+        if (std::get<0>(tuple)) {
           // The unwinder does not understand the ! format, so change back to
           // the previous format (apk, offset).
-          std::string shared_lib(bt_map.name.substr(apk_pos + 2));
-          bt_map.name = bt_map.name.substr(0, apk_pos);
-          uint64_t offset;
-          uint32_t length;
-          if (ApkInspector::FindOffsetInApkByName(bt_map.name, shared_lib, &offset, &length)) {
-            bt_map.offset = offset;
+          EmbeddedElf* elf = ApkInspector::FindElfInApkByName(std::get<1>(tuple),
+                                                              std::get<2>(tuple));
+          if (elf != nullptr) {
+            bt_map.name = elf->filepath();
+            bt_map.offset = elf->entry_offset();
           }
         }
       }

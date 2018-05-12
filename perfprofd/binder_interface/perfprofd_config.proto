@@ -21,8 +21,7 @@ message ProfilingConfig {
   // loop. Value of zero indicates that we should loop forever.
   optional uint32 main_loop_iterations = 3;
 
-  // Destination directory (where to write profiles). This location
-  // chosen since it is accessible to the uploader service.
+  // Destination directory (where to write profiles).
   optional string destination_directory = 4;
   // Config directory (where to read configs).
   optional string config_directory = 5;
