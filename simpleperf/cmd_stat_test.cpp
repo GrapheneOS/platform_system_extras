@@ -169,6 +169,11 @@ TEST(stat_cmd, no_modifier_for_clock_events) {
 }
 
 TEST(stat_cmd, handle_SIGHUP) {
+  if (!GetDefaultAppPackageName().empty()) {
+    // See http://b/79495636.
+    GTEST_LOG_(INFO) << "Omit this test in app's context.";
+    return;
+  }
   std::thread thread([]() {
     sleep(1);
     kill(getpid(), SIGHUP);
