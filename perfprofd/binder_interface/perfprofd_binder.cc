@@ -30,6 +30,7 @@
 
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <binder/BinderService.h>
 #include <binder/IResultReceiver.h>
 #include <binder/Status.h>
@@ -66,9 +67,16 @@ class PerfProfdNativeService : public BinderService<PerfProfdNativeService>,
 
   status_t dump(int fd, const Vector<String16> &args) override;
 
-  Status startProfiling(int32_t profilingDuration,
-                        int32_t profilingInterval,
-                        int32_t iterations) override;
+  Status startProfiling(int32_t collectionInterval,
+                        int32_t iterations,
+                        int32_t process,
+                        int32_t samplingPeriod,
+                        int32_t samplingFrequency,
+                        int32_t sampleDuration,
+                        bool stackProfile,
+                        bool useElfSymbolizer,
+                        bool sendToDropbox) override;
+  Status startProfilingString(const String16& config) override;
   Status startProfilingProtobuf(const std::vector<uint8_t>& config_proto) override;
 
   Status stopProfiling() override;
@@ -105,17 +113,61 @@ status_t PerfProfdNativeService::dump(int fd, const Vector<String16> &args) {
   return NO_ERROR;
 }
 
-Status PerfProfdNativeService::startProfiling(int32_t profilingDuration,
-                                              int32_t profilingInterval,
-                                              int32_t iterations) {
+Status PerfProfdNativeService::startProfiling(int32_t collectionInterval,
+                                              int32_t iterations,
+                                              int32_t process,
+                                              int32_t samplingPeriod,
+                                              int32_t samplingFrequency,
+                                              int32_t sampleDuration,
+                                              bool stackProfile,
+                                              bool useElfSymbolizer,
+                                              bool sendToDropbox) {
   auto config_fn = [&](ThreadedConfig& config) {
     config = ThreadedConfig();  // Reset to a default config.
 
-    config.sample_duration_in_s = static_cast<uint32_t>(profilingDuration);
-    config.collection_interval_in_s = static_cast<uint32_t>(profilingInterval);
-    config.main_loop_iterations = static_cast<uint32_t>(iterations);
+    if (collectionInterval >= 0) {
+      config.collection_interval_in_s = collectionInterval;
+    }
+    if (iterations >= 0) {
+      config.main_loop_iterations = iterations;
+    }
+    if (process >= 0) {
+      config.process = process;
+    }
+    if (samplingPeriod > 0) {
+      config.sampling_period = samplingPeriod;
+    }
+    if (samplingFrequency > 0) {
+      config.sampling_frequency = samplingFrequency;
+    }
+    if (sampleDuration > 0) {
+      config.sample_duration_in_s = sampleDuration;
+    }
+    config.stack_profile = stackProfile;
+    config.use_elf_symbolizer = useElfSymbolizer;
+    config.send_to_dropbox = sendToDropbox;
   };
   std::string error_msg;
+  if (!StartProfiling(config_fn, &error_msg)) {
+    return Status::fromExceptionCode(1, error_msg.c_str());
+  }
+  return Status::ok();
+}
+Status PerfProfdNativeService::startProfilingString(const String16& config) {
+  ConfigReader reader;
+  std::string error_msg;
+  // Split configuration along colon.
+  std::vector<std::string> args = base::Split(String8(config).string(), ":");
+  for (auto& arg : args) {
+    if (!reader.Read(arg, /* fail_on_error */ true)) {
+      error_msg = base::StringPrintf("Could not parse %s", arg.c_str());
+      return Status::fromExceptionCode(1, error_msg.c_str());
+    }
+  }
+  auto config_fn = [&](ThreadedConfig& config) {
+    config = ThreadedConfig();  // Reset to a default config.
+    reader.FillConfig(&config);
+  };
   if (!StartProfiling(config_fn, &error_msg)) {
     return Status::fromExceptionCode(1, error_msg.c_str());
   }
@@ -307,7 +359,8 @@ status_t PerfProfdNativeService::onTransact(uint32_t _aidl_code,
     }
 
     default:
-      return BBinder::onTransact(_aidl_code, _aidl_data, _aidl_reply, _aidl_flags);
+      return ::android::os::BnPerfProfd::onTransact(
+          _aidl_code, _aidl_data, _aidl_reply, _aidl_flags);
   }
 }
 

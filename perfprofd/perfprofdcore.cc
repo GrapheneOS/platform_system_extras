@@ -36,6 +36,7 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/macros.h>
+#include <android-base/scopeguard.h>
 #include <android-base/stringprintf.h>
 
 #ifdef __BIONIC__
@@ -456,7 +457,6 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
 //
 static PROFILE_RESULT invoke_perf(Config& config,
                                   const std::string &perf_path,
-                                  unsigned sampling_period,
                                   const char *stack_profile_opt,
                                   unsigned duration,
                                   const std::string &data_file_path,
@@ -481,7 +481,7 @@ static PROFILE_RESULT invoke_perf(Config& config,
     }
 
     // marshall arguments
-    constexpr unsigned max_args = 15;
+    constexpr unsigned max_args = 17;
     const char *argv[max_args];
     unsigned slot = 0;
     argv[slot++] = perf_path.c_str();
@@ -495,17 +495,20 @@ static PROFILE_RESULT invoke_perf(Config& config,
     std::string p_str;
     if (config.sampling_frequency > 0) {
       argv[slot++] = "-f";
-      p_str = android::base::StringPrintf("%u", sampling_period);
+      p_str = android::base::StringPrintf("%u", config.sampling_frequency);
       argv[slot++] = p_str.c_str();
     } else if (config.sampling_period > 0) {
       argv[slot++] = "-c";
-      p_str = android::base::StringPrintf("%u", sampling_period);
+      p_str = android::base::StringPrintf("%u", config.sampling_period);
       argv[slot++] = p_str.c_str();
     }
 
     // -g if desired
-    if (stack_profile_opt)
+    if (stack_profile_opt) {
       argv[slot++] = stack_profile_opt;
+      argv[slot++] = "-m";
+      argv[slot++] = "8192";
+    }
 
     std::string pid_str;
     if (config.process < 0) {
@@ -651,17 +654,18 @@ static ProtoUniquePtr collect_profile(Config& config)
   bool take_action = (hardwire && duration <= max_duration);
   HardwireCpuHelper helper(take_action);
 
+  auto scope_guard = android::base::make_scope_guard(
+      [&data_file_path]() { unlink(data_file_path.c_str()); });
+
   //
   // Invoke perf
   //
   const char *stack_profile_opt =
       (config.stack_profile ? "-g" : nullptr);
   const std::string& perf_path = config.perf_path;
-  uint32_t period = config.sampling_period;
 
   PROFILE_RESULT ret = invoke_perf(config,
                                    perf_path.c_str(),
-                                   period,
                                    stack_profile_opt,
                                    duration,
                                    data_file_path,
