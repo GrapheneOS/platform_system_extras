@@ -34,6 +34,7 @@
 #include <android-base/strings.h>
 #include <android-base/stringprintf.h>
 #include <procinfo/process.h>
+#include <procinfo/process_map.h>
 
 #if defined(__ANDROID__)
 #include <android-base/properties.h>
@@ -258,37 +259,11 @@ std::vector<pid_t> GetAllProcesses() {
 }
 
 bool GetThreadMmapsInProcess(pid_t pid, std::vector<ThreadMmap>* thread_mmaps) {
-  std::string map_file = android::base::StringPrintf("/proc/%d/maps", pid);
-  FILE* fp = fopen(map_file.c_str(), "re");
-  if (fp == nullptr) {
-    PLOG(DEBUG) << "can't open file " << map_file;
-    return false;
-  }
   thread_mmaps->clear();
-  LineReader reader(fp);
-  char* line;
-  while ((line = reader.ReadLine()) != nullptr) {
-    // Parse line like: 00400000-00409000 r-xp 00000000 fc:00 426998  /usr/lib/gvfs/gvfsd-http
-    uint64_t start_addr, end_addr, pgoff;
-    char type[reader.MaxLineSize()];
-    char execname[reader.MaxLineSize()];
-    strcpy(execname, "");
-    if (sscanf(line, "%" PRIx64 "-%" PRIx64 " %s %" PRIx64 " %*x:%*x %*u %s\n", &start_addr,
-               &end_addr, type, &pgoff, execname) < 4) {
-      continue;
-    }
-    if (strcmp(execname, "") == 0) {
-      strcpy(execname, DEFAULT_EXECNAME_FOR_THREAD_MMAP);
-    }
-    ThreadMmap thread;
-    thread.start_addr = start_addr;
-    thread.len = end_addr - start_addr;
-    thread.pgoff = pgoff;
-    thread.name = execname;
-    thread.executable = (type[2] == 'x');
-    thread_mmaps->push_back(thread);
-  }
-  return true;
+  return android::procinfo::ReadProcessMaps(pid,
+      [&](uint64_t start, uint64_t end, uint16_t flags, uint64_t pgoff, const char* name) {
+        thread_mmaps->emplace_back(start, end - start, pgoff, name, flags & PROT_EXEC);
+  });
 }
 
 bool GetKernelBuildId(BuildId* build_id) {
