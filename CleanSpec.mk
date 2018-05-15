@@ -68,6 +68,7 @@ $(call add-clean-step, rm -f $(TARGET_OUT_OPTIONAL_EXECUTABLES)/ioshark_bench)
 $(call add-clean-step, rm -f $(TARGET_OUT_OPTIONAL_EXECUTABLES)/cpueater)
 $(call add-clean-step, rm -f $(TARGET_OUT_OPTIONAL_EXECUTABLES)/daemonize)
 $(call add-clean-step, rm -f $(TARGET_OUT_OPTIONAL_EXECUTABLES)/directiotest)
+$(call add-clean-step, rm -f $(TARGET_OUT_OPTIONAL_EXECUTABLES)/ioshark_bench)
 # ************************************************
 # NEWER CLEAN STEPS MUST BE AT THE END OF THE LIST
 # ************************************************
