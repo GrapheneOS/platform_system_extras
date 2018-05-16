@@ -16,6 +16,8 @@
 
 #include "ext4_utils/ext4_crypt.h"
 
+#include <array>
+
 #include <asm/ioctl.h>
 #include <dirent.h>
 #include <errno.h>
@@ -29,6 +31,8 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <cutils/properties.h>
+#include <logwrap/logwrap.h>
+#include <utils/misc.h>
 
 #define XATTR_NAME_ENCRYPTION_POLICY "encryption.policy"
 #define EXT4_KEYREF_DELIMITER ((char)'.')
@@ -70,6 +74,25 @@ bool e4crypt_is_native() {
     char value[PROPERTY_VALUE_MAX];
     property_get("ro.crypto.type", value, "none");
     return !strcmp(value, "file");
+}
+
+static void log_lslr(const char* dirname) {
+    std::array<const char*, 3> argv = {"ls", "-lR", dirname};
+    int status = 0;
+    auto res =
+        android_fork_execvp(argv.size(), const_cast<char**>(argv.data()), &status, false, true);
+    if (res != 0) {
+        PLOG(ERROR) << "ls -lR " << dirname << "failed";
+        return;
+    }
+    if (!WIFEXITED(status)) {
+        LOG(ERROR) << "ls -lR " << dirname << " did not exit normally, status: " << status;
+        return;
+    }
+    if (WEXITSTATUS(status) != 0) {
+        LOG(ERROR) << "ls -lR " << dirname << " returned failure: " << WEXITSTATUS(status);
+        return;
+    }
 }
 
 static void policy_to_hex(const char* policy, char* hex) {
@@ -178,6 +201,7 @@ static bool e4crypt_policy_get(const char *directory, char *policy,
     if (ioctl(fd, EXT4_IOC_GET_ENCRYPTION_POLICY, &eep) != 0) {
         PLOG(ERROR) << "Failed to get encryption policy for " << directory;
         close(fd);
+        log_lslr(directory);
         return false;
     }
     close(fd);
@@ -216,6 +240,7 @@ static bool e4crypt_policy_check(const char *directory, const char *policy,
         policy_to_hex(policy, policy_hex);
         LOG(ERROR) << "Found policy " << existing_policy_hex << " at " << directory
                    << " which doesn't match expected value " << policy_hex;
+        log_lslr(directory);
         return false;
     }
     LOG(INFO) << "Found policy " << existing_policy_hex << " at " << directory
