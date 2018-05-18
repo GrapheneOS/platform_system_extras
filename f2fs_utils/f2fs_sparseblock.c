@@ -333,6 +333,7 @@ static int gather_sit_info(int fd, struct f2fs_info *info)
         if (read_structure(fd, address * F2FS_BLKSIZE, &info->sit_blocks[sit_block], sizeof(struct f2fs_sit_block))) {
             SLOGE("Could not read sit block at block %"PRIu64, address);
             free(info->sit_blocks);
+            info->sit_blocks = NULL;
             return -1;
         }
     }

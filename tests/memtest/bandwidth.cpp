@@ -24,6 +24,7 @@
 #include <unistd.h>
 
 #include <map>
+#include <memory>
 #include <vector>
 
 
@@ -227,7 +228,8 @@ bool processThreadArgs(int argc, char** argv, option_t options[],
         return false;
     }
 
-    BandwidthBenchmark *bench = createBandwidthBenchmarkObject(*values);
+    std::unique_ptr<BandwidthBenchmark> bench{
+        createBandwidthBenchmarkObject(*values)};
     if (!bench) {
         return false;
     }
@@ -250,7 +252,6 @@ bool processThreadArgs(int argc, char** argv, option_t options[],
     (*values)["size"].int_value = bench->size();
     (*values)["num_warm_loops"].int_value = bench->num_warm_loops();
     (*values)["num_loops"].int_value = bench->num_loops();
-    delete bench;
 
     return true;
 }
