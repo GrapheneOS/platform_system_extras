@@ -167,6 +167,32 @@ class SqliteReader(object):
     def print_data_ascii(self, depth):
         self.root.print_callsite_ascii(depth, 0, self.dsos, self.syms)
 
+    def get_script_js(self):
+        # Try to get the data directly (if packaged with embedded_loader).
+        import os.path
+        import sys
+        if '__loader__' in globals():
+            try:
+                js = __loader__.get_data(os.path.join(os.path.dirname(__file__), "script.js"))
+                if js is not None and len(js) > 0:
+                    return js
+            except:
+                pass
+        # See if we can find it another way.
+        rel_paths = [
+            # Maybe we're being run packaged.
+            "script.js",
+            # Maybe we're being run directly.
+            "../../simpleperf/scripts/inferno/script.js",
+        ]
+        for rel_path in rel_paths:
+            script_js = os.path.join(os.path.dirname(__file__), rel_path)
+            if os.path.exists(script_js):
+                with open(script_js, 'r') as script_f:
+                    return script_f.read()
+        return None
+
+
     def print_svg(self, filename, depth):
         from svg_renderer import renderSVG
         self.root.svgrenderer_compat(self.dsos, self.syms)
@@ -191,14 +217,10 @@ class SqliteReader(object):
 ''')
 
         # Emit script.js, if we can find it.
-        import os.path
-        import sys
-        script_js_rel = "../../simpleperf/scripts/inferno/script.js"
-        script_js = os.path.join(os.path.dirname(__file__), script_js_rel)
-        if os.path.exists(script_js):
+        script_data = self.get_script_js()
+        if script_data is not None:
             f.write('<script>\n')
-            with open(script_js, 'r') as script_f:
-                f.write(script_f.read())
+            f.write(script_data)
             f.write('''
 </script>
 <br/><br/>
