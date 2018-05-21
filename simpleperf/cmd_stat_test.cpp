@@ -52,6 +52,25 @@ TEST(stat_cmd, tracepoint_event) {
       StatCmd()->Run({"-a", "-e", "sched:sched_switch", "sleep", "1"})));
 }
 
+TEST(stat_cmd, rN_event) {
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
+  size_t event_number;
+  if (GetBuildArch() == ARCH_ARM64 || GetBuildArch() == ARCH_ARM) {
+    // As in D5.10.2 of the ARMv8 manual, ARM defines the event number space for PMU. part of the
+    // space is for common event numbers (which will stay the same for all ARM chips), part of the
+    // space is for implementation defined events. Here 0x08 is a common event for instructions.
+    event_number = 0x08;
+  } else if (GetBuildArch() == ARCH_X86_32 || GetBuildArch() == ARCH_X86_64) {
+    // As in volume 3 chapter 19 of the Intel manual, 0x00c0 is the event number for instruction.
+    event_number = 0x00c0;
+  } else {
+    GTEST_LOG_(INFO) << "Omit arch " << GetBuildArch();
+    return;
+  }
+  std::string event_name = android::base::StringPrintf("r%zx", event_number);
+  ASSERT_TRUE(StatCmd()->Run({"-e", event_name, "sleep", "1"}));
+}
+
 TEST(stat_cmd, event_modifier) {
   ASSERT_TRUE(
       StatCmd()->Run({"-e", "cpu-cycles:u,cpu-cycles:k", "sleep", "1"}));
