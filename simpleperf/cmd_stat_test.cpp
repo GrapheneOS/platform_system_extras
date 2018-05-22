@@ -120,7 +120,11 @@ TEST(stat_cmd, existing_threads) {
   ASSERT_TRUE(StatCmd()->Run({"-t", tid_list, "sleep", "1"}));
 }
 
-TEST(stat_cmd, no_monitored_threads) { ASSERT_FALSE(StatCmd()->Run({""})); }
+TEST(stat_cmd, no_monitored_threads) {
+  ScopedAppPackageName scoped_package_name("");
+  ASSERT_FALSE(StatCmd()->Run({}));
+  ASSERT_FALSE(StatCmd()->Run({""}));
+}
 
 TEST(stat_cmd, group_option) {
   ASSERT_TRUE(
@@ -188,11 +192,8 @@ TEST(stat_cmd, no_modifier_for_clock_events) {
 }
 
 TEST(stat_cmd, handle_SIGHUP) {
-  if (!GetDefaultAppPackageName().empty()) {
-    // See http://b/79495636.
-    GTEST_LOG_(INFO) << "Omit this test in app's context.";
-    return;
-  }
+  // See http://b/79495636.
+  ScopedAppPackageName scoped_package_name("");
   std::thread thread([]() {
     sleep(1);
     kill(getpid(), SIGHUP);
