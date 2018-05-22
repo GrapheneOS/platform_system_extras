@@ -19,7 +19,6 @@ python_defaults {
             enabled: true,
             // Cannot use the embedded launcher:
             // 1) It doesn't contain sqlite3 support.
-            // 2) It doesn't contain protobuf support.
             embedded_launcher: false,
         },
         py3: {
@@ -41,12 +40,20 @@ python_binary_host {
     ],
     libs: [
         "python-symbol",
+        // Soong won't add "libprotobuf-python" to the dependencies if
+        // filegroup contains .proto files. So add it here explicitly.
+        "libprotobuf-python",
     ],
     proto: {
         canonical_path_from_root: false,
         include_dirs: ["external/perf_data_converter/src/quipper"],
     },
     required: [ "unwind-symbols" ],
+    version: {
+        py2: {
+            embedded_launcher: true,
+        },
+    },
 }
 
 python_binary_host {
