@@ -59,48 +59,43 @@ static bool ExtractTestDataFromElfSection() {
     PLOG(ERROR) << "failed to write file " << tmp_file.path;
     return false;
   }
-  ArchiveHelper ahelper(tmp_file.fd, tmp_file.path);
+  std::unique_ptr<ArchiveHelper> ahelper = ArchiveHelper::CreateInstance(tmp_file.path);
   if (!ahelper) {
     LOG(ERROR) << "failed to open archive " << tmp_file.path;
     return false;
   }
-  ZipArchiveHandle& handle = ahelper.archive_handle();
-  void* cookie;
-  int ret = StartIteration(handle, &cookie, nullptr, nullptr);
-  if (ret != 0) {
-    LOG(ERROR) << "failed to start iterating zip entries";
-    return false;
-  }
-  std::unique_ptr<void, decltype(&EndIteration)> guard(cookie, EndIteration);
-  ZipEntry entry;
-  ZipString name;
-  while (Next(cookie, &entry, &name) == 0) {
-    std::string entry_name(name.name, name.name + name.name_length);
-    std::string path = testdata_dir + entry_name;
+  bool has_error = false;
+  auto callback = [&](ZipEntry& entry, const std::string& name) {
+    std::string path = testdata_dir + name;
     // Skip dir.
     if (path.back() == '/') {
-      continue;
+      return true;
     }
     if (!MkdirWithParents(path)) {
       LOG(ERROR) << "failed to create dir for " << path;
+      has_error = true;
       return false;
     }
-    FileHelper fhelper = FileHelper::OpenWriteOnly(path);
-    if (!fhelper) {
+    android::base::unique_fd fd = FileHelper::OpenWriteOnly(path);
+    if (fd == -1) {
       PLOG(ERROR) << "failed to create file " << path;
+      has_error = true;
       return false;
     }
-    std::vector<uint8_t> data(entry.uncompressed_length);
-    if (ExtractToMemory(handle, &entry, data.data(), data.size()) != 0) {
-      LOG(ERROR) << "failed to extract entry " << entry_name;
+    std::vector<uint8_t> data;
+    if (!ahelper->GetEntryData(entry, &data)) {
+      LOG(ERROR) << "failed to extract entry " << name;
+      has_error = true;
       return false;
     }
-    if (!android::base::WriteFully(fhelper.fd(), data.data(), data.size())) {
+    if (!android::base::WriteFully(fd, data.data(), data.size())) {
       LOG(ERROR) << "failed to write file " << path;
+      has_error = true;
       return false;
     }
-  }
-  return true;
+    return true;
+  };
+  return ahelper->IterateEntries(callback) && !has_error;
 }
 
 class ScopedEnablingPerf {
