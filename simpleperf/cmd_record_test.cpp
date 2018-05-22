@@ -156,6 +156,32 @@ TEST(record_cmd, tracepoint_event) {
   TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-a", "-e", "sched:sched_switch"})));
 }
 
+TEST(record_cmd, rN_event) {
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
+  size_t event_number;
+  if (GetBuildArch() == ARCH_ARM64 || GetBuildArch() == ARCH_ARM) {
+    // As in D5.10.2 of the ARMv8 manual, ARM defines the event number space for PMU. part of the
+    // space is for common event numbers (which will stay the same for all ARM chips), part of the
+    // space is for implementation defined events. Here 0x08 is a common event for instructions.
+    event_number = 0x08;
+  } else if (GetBuildArch() == ARCH_X86_32 || GetBuildArch() == ARCH_X86_64) {
+    // As in volume 3 chapter 19 of the Intel manual, 0x00c0 is the event number for instruction.
+    event_number = 0x00c0;
+  } else {
+    GTEST_LOG_(INFO) << "Omit arch " << GetBuildArch();
+    return;
+  }
+  std::string event_name = android::base::StringPrintf("r%zx", event_number);
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({"-e", event_name}, tmpfile.path));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader);
+  std::vector<EventAttrWithId> attrs = reader->AttrSection();
+  ASSERT_EQ(1u, attrs.size());
+  ASSERT_EQ(PERF_TYPE_RAW, attrs[0].attr->type);
+  ASSERT_EQ(event_number, attrs[0].attr->config);
+}
+
 TEST(record_cmd, branch_sampling) {
   if (IsBranchSamplingSupported()) {
     ASSERT_TRUE(RunRecordCmd({"-b"}));
