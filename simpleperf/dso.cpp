@@ -343,7 +343,20 @@ class DexFileDso : public Dso {
   std::vector<Symbol> LoadSymbols() override {
     std::vector<Symbol> symbols;
     std::vector<DexFileSymbol> dex_file_symbols;
-    if (!ReadSymbolsFromDexFile(debug_file_path_, dex_file_offsets_, &dex_file_symbols)) {
+    auto tuple = SplitUrlInApk(debug_file_path_);
+    bool status = false;
+    if (std::get<0>(tuple)) {
+      std::unique_ptr<ArchiveHelper> ahelper = ArchiveHelper::CreateInstance(std::get<1>(tuple));
+      ZipEntry entry;
+      std::vector<uint8_t> data;
+      if (ahelper->FindEntry(std::get<2>(tuple), &entry) && ahelper->GetEntryData(entry, &data)) {
+        status = ReadSymbolsFromDexFileInMemory(data.data(), data.size(), dex_file_offsets_,
+                                                &dex_file_symbols);
+      }
+    } else {
+      status = ReadSymbolsFromDexFile(debug_file_path_, dex_file_offsets_, &dex_file_symbols);
+    }
+    if (!status) {
       android::base::LogSeverity level = symbols_.empty() ? android::base::WARNING
                                                           : android::base::DEBUG;
       LOG(level) << "Failed to read symbols from " << debug_file_path_;

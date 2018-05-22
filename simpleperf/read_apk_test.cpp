@@ -20,13 +20,6 @@
 #include "get_test_data.h"
 #include "test_util.h"
 
-
-TEST(read_apk, IsValidApkPath) {
-  ASSERT_FALSE(IsValidApkPath("/dev/zero"));
-  ASSERT_FALSE(IsValidApkPath(GetTestData(ELF_FILE)));
-  ASSERT_TRUE(IsValidApkPath(GetTestData(APK_FILE)));
-}
-
 TEST(read_apk, FindElfInApkByOffset) {
   ApkInspector inspector;
   ASSERT_TRUE(inspector.FindElfInApkByOffset("/dev/null", 0) == nullptr);
@@ -48,4 +41,17 @@ TEST(read_apk, FindElfInApkByName) {
   ASSERT_TRUE(ee != nullptr);
   ASSERT_EQ(NATIVELIB_OFFSET_IN_APK, ee->entry_offset());
   ASSERT_EQ(NATIVELIB_SIZE_IN_APK, ee->entry_size());
+}
+
+TEST(read_apk, ParseExtractedInMemoryPath) {
+  std::string zip_path;
+  std::string entry_name;
+  ASSERT_TRUE(ParseExtractedInMemoryPath("/dev/ashmem/dalvik-classes.dex extracted in memory from "
+      "/data/app/com.example.simpleperf.simpleperfexamplepurejava-HZK6bPs3Z9SDT3a-tqmasA==/base.apk"
+      " (deleted)", &zip_path, &entry_name));
+  ASSERT_EQ(zip_path, "/data/app/com.example.simpleperf.simpleperfexamplepurejava"
+            "-HZK6bPs3Z9SDT3a-tqmasA==/base.apk");
+  ASSERT_EQ(entry_name, "classes.dex");
+  ASSERT_FALSE(ParseExtractedInMemoryPath("/dev/ashmem/dalvik-thread local mark stack (deleted)",
+                                          &zip_path, &entry_name));
 }

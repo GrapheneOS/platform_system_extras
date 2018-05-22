@@ -39,6 +39,10 @@ struct JITSymFile {
 struct DexSymFile {
   uint64_t dex_file_offset;  // The offset of the dex file in the file containing it
   std::string file_path;  // The path of file containing the dex file
+
+  DexSymFile() {}
+  DexSymFile(uint64_t dex_file_offset, const std::string& file_path)
+      : dex_file_offset(dex_file_offset), file_path(file_path) {}
 };
 
 class JITDebugReader {

@@ -259,7 +259,7 @@ class RecordCommand : public Command {
   bool SaveRecordWithoutUnwinding(Record* record);
   bool UpdateJITDebugInfo();
 
-  void UpdateRecordForEmbeddedElfPath(Record* record);
+  void UpdateRecordForEmbeddedPath(Record* record);
   bool UnwindRecord(SampleRecord& r);
   bool PostUnwindRecords();
   bool JoinCallChains();
@@ -1037,6 +1037,7 @@ bool RecordCommand::DumpThreadCommAndMmaps(const perf_event_attr& attr,
 }
 
 bool RecordCommand::ProcessRecord(Record* record) {
+  UpdateRecordForEmbeddedPath(record);
   if (ShouldOmitRecord(record)) {
     return true;
   }
@@ -1057,7 +1058,10 @@ bool RecordCommand::ProcessRecord(Record* record) {
 
 template <typename MmapRecordType>
 bool IsMappingOnlyExistInMemory(MmapRecordType* record) {
-  return !record->InKernel() && !IsRegularFile(record->filename) && record->filename != "[vdso]";
+  return !(record->InKernel() ||
+      strcmp(record->filename, "[vdso]") == 0 ||
+      strstr(record->filename, "!/") != nullptr ||
+      IsRegularFile(record->filename));
 }
 
 bool RecordCommand::ShouldOmitRecord(Record* record) {
@@ -1111,7 +1115,6 @@ bool RecordCommand::SaveRecordAfterUnwinding(Record* record) {
   } else if (record->type() == PERF_RECORD_LOST) {
     lost_record_count_ += static_cast<LostRecord*>(record)->lost;
   } else {
-    UpdateRecordForEmbeddedElfPath(record);
     thread_tree_.Update(*record);
   }
   return record_file_writer_->WriteRecord(*record);
@@ -1161,9 +1164,13 @@ bool RecordCommand::UpdateJITDebugInfo() {
 }
 
 template <class RecordType>
-void UpdateMmapRecordForEmbeddedElfPath(RecordType* record) {
+void UpdateMmapRecordForEmbeddedPath(RecordType* record) {
   RecordType& r = *record;
-  if (!r.InKernel() && r.data->pgoff != 0) {
+  if (r.InKernel()) {
+    return;
+  }
+  std::string filename = r.filename;
+  if (r.data->pgoff != 0) {
     // For the case of a shared library "foobar.so" embedded
     // inside an APK, we rewrite the original MMAP from
     // ["path.apk" offset=X] to ["path.apk!/foobar.so" offset=W]
@@ -1174,22 +1181,28 @@ void UpdateMmapRecordForEmbeddedElfPath(RecordType* record) {
     // is not present on the host. The new offset W is
     // calculated to be with respect to the start of foobar.so,
     // not to the start of path.apk.
-    EmbeddedElf* ee =
-        ApkInspector::FindElfInApkByOffset(r.filename, r.data->pgoff);
+    EmbeddedElf* ee = ApkInspector::FindElfInApkByOffset(filename, r.data->pgoff);
     if (ee != nullptr) {
       // Compute new offset relative to start of elf in APK.
       auto data = *r.data;
       data.pgoff -= ee->entry_offset();
-      r.SetDataAndFilename(data, GetUrlInApk(r.filename, ee->entry_name()));
+      r.SetDataAndFilename(data, GetUrlInApk(filename, ee->entry_name()));
+      return;
     }
+  }
+  std::string zip_path;
+  std::string entry_name;
+  if (ParseExtractedInMemoryPath(filename, &zip_path, &entry_name)) {
+    auto data = *r.data;
+    r.SetDataAndFilename(data, GetUrlInApk(zip_path, entry_name));
   }
 }
 
-void RecordCommand::UpdateRecordForEmbeddedElfPath(Record* record) {
+void RecordCommand::UpdateRecordForEmbeddedPath(Record* record) {
   if (record->type() == PERF_RECORD_MMAP) {
-    UpdateMmapRecordForEmbeddedElfPath(static_cast<MmapRecord*>(record));
+    UpdateMmapRecordForEmbeddedPath(static_cast<MmapRecord*>(record));
   } else if (record->type() == PERF_RECORD_MMAP2) {
-    UpdateMmapRecordForEmbeddedElfPath(static_cast<Mmap2Record*>(record));
+    UpdateMmapRecordForEmbeddedPath(static_cast<Mmap2Record*>(record));
   }
 }
 
