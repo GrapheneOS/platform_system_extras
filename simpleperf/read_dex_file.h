@@ -28,6 +28,9 @@ struct DexFileSymbol {
   std::string name;
 };
 
+bool ReadSymbolsFromDexFileInMemory(void* addr, uint64_t size,
+                                    const std::vector<uint64_t>& dex_file_offsets,
+                                    std::vector<DexFileSymbol>* symbols);
 bool ReadSymbolsFromDexFile(const std::string& file_path,
                             const std::vector<uint64_t>& dex_file_offsets,
                             std::vector<DexFileSymbol>* symbols);

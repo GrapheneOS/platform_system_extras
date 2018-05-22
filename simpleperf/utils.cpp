@@ -62,35 +62,90 @@ const char* OneTimeFreeAllocator::AllocateString(const std::string& s) {
 }
 
 
-FileHelper FileHelper::OpenReadOnly(const std::string& filename) {
+android::base::unique_fd FileHelper::OpenReadOnly(const std::string& filename) {
     int fd = TEMP_FAILURE_RETRY(open(filename.c_str(), O_RDONLY | O_BINARY));
-    return FileHelper(fd);
+    return android::base::unique_fd(fd);
 }
 
-FileHelper FileHelper::OpenWriteOnly(const std::string& filename) {
+android::base::unique_fd FileHelper::OpenWriteOnly(const std::string& filename) {
     int fd = TEMP_FAILURE_RETRY(open(filename.c_str(), O_WRONLY | O_BINARY | O_CREAT, 0644));
-    return FileHelper(fd);
+    return android::base::unique_fd(fd);
 }
 
-FileHelper::~FileHelper() {
-  if (fd_ != -1) {
-    close(fd_);
+std::unique_ptr<ArchiveHelper> ArchiveHelper::CreateInstance(const std::string& filename) {
+  android::base::unique_fd fd = FileHelper::OpenReadOnly(filename);
+  if (fd == -1) {
+    return nullptr;
   }
-}
-
-ArchiveHelper::ArchiveHelper(int fd, const std::string& debug_filename) : valid_(false) {
-  int rc = OpenArchiveFd(fd, "", &handle_, false);
-  if (rc == 0) {
-    valid_ = true;
-  } else {
-    LOG(ERROR) << "Failed to open archive " << debug_filename << ": " << ErrorCodeString(rc);
+  // Simpleperf relies on ArchiveHelper to check if a file is zip file. We expect much more elf
+  // files than zip files in a process map. In order to detect invalid zip files fast, we add a
+  // check of magic number here. Note that OpenArchiveFd() detects invalid zip files in a thorough
+  // way, but it usually needs reading at least 64K file data.
+  static const char zip_preamble[] = {0x50, 0x4b, 0x03, 0x04 };
+  char buf[4];
+  if (!android::base::ReadFully(fd, buf, 4) || memcmp(buf, zip_preamble, 4) != 0) {
+    return nullptr;
   }
+  if (lseek(fd, 0, SEEK_SET) == -1) {
+    return nullptr;
+  }
+  ZipArchiveHandle handle;
+  int result = OpenArchiveFd(fd.release(), filename.c_str(), &handle);
+  if (result != 0) {
+    LOG(ERROR) << "Failed to open archive " << filename << ": " << ErrorCodeString(result);
+    return nullptr;
+  }
+  return std::unique_ptr<ArchiveHelper>(new ArchiveHelper(handle, filename));
 }
 
 ArchiveHelper::~ArchiveHelper() {
-  if (valid_) {
-    CloseArchive(handle_);
+  CloseArchive(handle_);
+}
+
+bool ArchiveHelper::IterateEntries(
+    const std::function<bool(ZipEntry&, const std::string&)>& callback) {
+  void* iteration_cookie;
+  if (StartIteration(handle_, &iteration_cookie, nullptr, nullptr) < 0) {
+    LOG(ERROR) << "Failed to iterate " << filename_;
+    return false;
   }
+  ZipEntry zentry;
+  ZipString zname;
+  int result;
+  while ((result = Next(iteration_cookie, &zentry, &zname)) == 0) {
+    std::string name(zname.name, zname.name + zname.name_length);
+    if (!callback(zentry, name)) {
+      break;
+    }
+  }
+  EndIteration(iteration_cookie);
+  if (result == -2) {
+    LOG(ERROR) << "Failed to iterate " << filename_;
+    return false;
+  }
+  return true;
+}
+
+bool ArchiveHelper::FindEntry(const std::string& name, ZipEntry* entry) {
+  int result = ::FindEntry(handle_, ZipString(name.c_str()), entry);
+  if (result != 0) {
+    LOG(ERROR) << "Failed to find " << name << " in " << filename_;
+    return false;
+  }
+  return true;
+}
+
+bool ArchiveHelper::GetEntryData(ZipEntry& entry, std::vector<uint8_t>* data) {
+  data->resize(entry.uncompressed_length);
+  if (ExtractToMemory(handle_, &entry, data->data(), data->size()) != 0) {
+    LOG(ERROR) << "Failed to extract entry at " << entry.offset << " in " << filename_;
+    return false;
+  }
+  return true;
+}
+
+int ArchiveHelper::GetFd() {
+  return GetFileDescriptor(handle_);
 }
 
 void PrintIndented(size_t indent, const char* fmt, ...) {
