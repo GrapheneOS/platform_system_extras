@@ -182,8 +182,8 @@ struct BinaryWrapper {
 
 static ElfStatus OpenObjectFile(const std::string& filename, uint64_t file_offset,
                                 uint64_t file_size, BinaryWrapper* wrapper) {
-  FileHelper fhelper = FileHelper::OpenReadOnly(filename);
-  if (!fhelper) {
+  android::base::unique_fd fd = FileHelper::OpenReadOnly(filename);
+  if (fd == -1) {
     return ElfStatus::READ_FAILED;
   }
   if (file_size == 0) {
@@ -192,7 +192,7 @@ static ElfStatus OpenObjectFile(const std::string& filename, uint64_t file_offse
       return ElfStatus::READ_FAILED;
     }
   }
-  auto buffer_or_err = llvm::MemoryBuffer::getOpenFileSlice(fhelper.fd(), filename, file_size, file_offset);
+  auto buffer_or_err = llvm::MemoryBuffer::getOpenFileSlice(fd, filename, file_size, file_offset);
   if (!buffer_or_err) {
     return ElfStatus::READ_FAILED;
   }

@@ -30,6 +30,7 @@
 
 #include "dso.h"
 #include "environment.h"
+#include "read_apk.h"
 #include "read_elf.h"
 #include "utils.h"
 
@@ -424,17 +425,22 @@ void JITDebugReader::ReadDexSymFiles(const std::vector<CodeEntry>& dex_entries,
     if (it->start_addr + it->len < dex_entry.symfile_addr + dex_entry.symfile_size) {
       continue;
     }
-    if (!IsRegularFile(it->name)) {
-      // TODO: read dex file only exist in memory?
-      continue;
+    std::string file_path;
+    std::string zip_path;
+    std::string entry_path;
+    if (ParseExtractedInMemoryPath(it->name, &zip_path, &entry_path)) {
+      file_path = GetUrlInApk(zip_path, entry_path);
+    } else {
+      if (!IsRegularFile(it->name)) {
+        // TODO: read dex file only exist in memory?
+        continue;
+      }
+      file_path = it->name;
     }
     // Offset of dex file in .vdex file or .apk file.
     uint64_t dex_file_offset = dex_entry.symfile_addr - it->start_addr + it->pgoff;
-    DexSymFile symfile;
-    symfile.dex_file_offset = dex_file_offset;
-    symfile.file_path = it->name;
-    dex_symfiles->push_back(symfile);
-    LOG(VERBOSE) << "DexFile " << symfile.file_path << "+" << std::hex << symfile.dex_file_offset
+    dex_symfiles->emplace_back(dex_file_offset, file_path);
+    LOG(VERBOSE) << "DexFile " << file_path << "+" << std::hex << dex_file_offset
                  << " in map [" << it->start_addr << " - " << (it->start_addr + it->len)
                  << "] with size " << dex_entry.symfile_size;
   }

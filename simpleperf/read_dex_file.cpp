@@ -31,30 +31,16 @@
 #include <dex/dex_file_loader.h>
 #include <dex/dex_file.h>
 
-static bool OpenDexFiles(const std::string& file_path, std::vector<uint64_t> dex_file_offsets,
-                        const std::function<void (const art::DexFile&, uint64_t)>& callback) {
-  android::base::unique_fd fd(TEMP_FAILURE_RETRY(open(file_path.c_str(), O_RDONLY | O_CLOEXEC)));
-  if (fd == -1) {
-    return false;
-  }
-  struct stat buf;
-  if (fstat(fd, &buf) == -1 || buf.st_size < 0) {
-    return false;
-  }
-  uint64_t file_size = buf.st_size;
-  void* addr = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
-  if (addr == MAP_FAILED) {
-    return false;
-  }
-
+static bool OpenDexFiles(void* addr, uint64_t size, std::vector<uint64_t> dex_file_offsets,
+                         const std::function<void (const art::DexFile&, uint64_t)>& callback) {
   bool result = true;
   for (uint64_t offset : dex_file_offsets) {
-    if (offset >= file_size || file_size - offset < sizeof(art::DexFile::Header)) {
+    if (offset >= size || size - offset < sizeof(art::DexFile::Header)) {
       result = false;
       break;
     }
     auto header = reinterpret_cast<art::DexFile::Header*>(static_cast<char*>(addr) + offset);
-    if (file_size - offset < header->file_size_) {
+    if (size - offset < header->file_size_) {
       result = false;
       break;
     }
@@ -69,13 +55,12 @@ static bool OpenDexFiles(const std::string& file_path, std::vector<uint64_t> dex
     }
     callback(*dex_file, offset);
   }
-  munmap(addr, file_size);
   return result;
 }
 
-bool ReadSymbolsFromDexFile(const std::string& file_path,
-                            const std::vector<uint64_t>& dex_file_offsets,
-                            std::vector<DexFileSymbol>* symbols) {
+bool ReadSymbolsFromDexFileInMemory(void* addr, uint64_t size,
+                                    const std::vector<uint64_t>& dex_file_offsets,
+                                    std::vector<DexFileSymbol>* symbols) {
   auto dexfile_callback = [&](const art::DexFile& dex_file, uint64_t dex_file_offset) {
     for (uint32_t i = 0; i < dex_file.NumClassDefs(); ++i) {
       const art::DexFile::ClassDef& class_def = dex_file.GetClassDef(i);
@@ -104,5 +89,26 @@ bool ReadSymbolsFromDexFile(const std::string& file_path,
       }
     }
   };
-  return OpenDexFiles(file_path, dex_file_offsets, dexfile_callback);
+  return OpenDexFiles(addr, size, dex_file_offsets, dexfile_callback);
+}
+
+bool ReadSymbolsFromDexFile(const std::string& file_path,
+                            const std::vector<uint64_t>& dex_file_offsets,
+                            std::vector<DexFileSymbol>* symbols) {
+  android::base::unique_fd fd(TEMP_FAILURE_RETRY(open(file_path.c_str(), O_RDONLY | O_CLOEXEC)));
+  if (fd == -1) {
+    return false;
+  }
+  struct stat buf;
+  if (fstat(fd, &buf) == -1 || buf.st_size < 0) {
+    return false;
+  }
+  uint64_t file_size = buf.st_size;
+  void* addr = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  if (addr == MAP_FAILED) {
+    return false;
+  }
+  bool result = ReadSymbolsFromDexFileInMemory(addr, file_size, dex_file_offsets, symbols);
+  munmap(addr, file_size);
+  return result;
 }
