@@ -43,6 +43,7 @@ from threading import Timer
 #      --python_out=system/extras/perfprofd/scripts \
 #      system/extras/perfprofd/perfprofd_record.proto
 import perfprofd_record_pb2
+import perf_data_pb2
 
 # Make sure that symbol is on the PYTHONPATH, e.g., run as
 # PYTHONPATH=$PYTHONPATH:$ANDROID_BUILD_TOP/development/scripts python ...
@@ -120,7 +121,8 @@ def collect_tid_names(perf_data):
 
 def create_symbol_maps(profile):
     symbol_maps = {}
-    for si in profile.symbol_info:
+#    if profile.HasExtension(perfprofd_record_pb2.symbol_info):
+    for si in profile.Extensions[perfprofd_record_pb2.symbol_info]:
         map = SymbolMap(si.min_vaddr)
         symbol_maps[si.filename] = map
         for sym in si.symbols:
@@ -484,10 +486,11 @@ def run(args):
     data = file.read()
     file.close()
 
-    profile = perfprofd_record_pb2.PerfprofdRecord()
+    profile = perf_data_pb2.PerfDataProto()
+    # PerfprofdRecord()
     profile.ParseFromString(data)
 
-    perf_data = profile.perf_data
+    perf_data = profile
 
     print "Stats: ", perf_data.stats
 
