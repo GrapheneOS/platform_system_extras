@@ -4,6 +4,7 @@ cc_library {
     name: "libext4_utils",
     defaults: ["system-extras-cflags-defaults"],
     host_supported: true,
+    recovery_available: true,
     srcs: [
         "make_ext4fs.c",
         "ext4fixup.c",
