@@ -46,7 +46,7 @@ python_binary_host {
         canonical_path_from_root: false,
         include_dirs: ["external/perf_data_converter/src/quipper"],
     },
-    required: [ "unwind-symbols" ],
+    required: [ "unwind_symbols" ],
 }
 
 python_binary_host {
