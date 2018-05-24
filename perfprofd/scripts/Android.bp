@@ -17,9 +17,7 @@ python_defaults {
     version: {
         py2: {
             enabled: true,
-            // Cannot use the embedded launcher:
-            // 1) It doesn't contain sqlite3 support.
-            embedded_launcher: false,
+            embedded_launcher: true,
         },
         py3: {
             enabled: false,
@@ -49,11 +47,6 @@ python_binary_host {
         include_dirs: ["external/perf_data_converter/src/quipper"],
     },
     required: [ "unwind-symbols" ],
-    version: {
-        py2: {
-            embedded_launcher: true,
-        },
-    },
 }
 
 python_binary_host {
