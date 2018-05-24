@@ -625,8 +625,8 @@ TEST_F(PerfProfdTest, ConfigFileParsing)
 
   // Verify log contents
   const std::string expected = RAW_RESULT(
-      W: line 6: malformed unsigned value (ignored)
-      W: line 7: unknown option 'nonexistent_key' ignored
+      W: line 6: specified value 18446744073709551615 for 'collection_interval' outside permitted range [0 4294967295]
+      W: line 7: unknown option 'nonexistent_key'
       W: line 8: line malformed (no '=' found)
                                           );
 
