@@ -327,7 +327,7 @@ bool ConfigReader::Read(const std::string& content, bool fail_on_error, std::str
     }
 
     // blank line?
-    if (isblank(line.c_str())) {
+    if (isblank(line)) {
       continue;
     }
 
@@ -345,7 +345,7 @@ bool ConfigReader::Read(const std::string& content, bool fail_on_error, std::str
     std::string value(line.substr(efound+1, std::string::npos));
 
     std::string local_error_msg;
-    bool parse_success = parseLine(key.c_str(), value.c_str(), linecount, &local_error_msg);
+    bool parse_success = parseLine(key, value, linecount, &local_error_msg);
     if (!parse_success) {
       append_error(local_error_msg);
       if (fail_on_error) {
