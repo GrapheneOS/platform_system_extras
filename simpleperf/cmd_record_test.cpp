@@ -296,8 +296,10 @@ TEST(record_cmd, existing_threads) {
 }
 
 TEST(record_cmd, no_monitored_threads) {
+  ScopedAppPackageName scoped_package_name("");
   TemporaryFile tmpfile;
   ASSERT_FALSE(RecordCmd()->Run({"-o", tmpfile.path}));
+  ASSERT_FALSE(RecordCmd()->Run({"-o", tmpfile.path, ""}));
 }
 
 TEST(record_cmd, more_than_one_event_types) {

@@ -76,21 +76,23 @@ bool e4crypt_is_native() {
     return !strcmp(value, "file");
 }
 
-static void log_lslr(const char* dirname) {
-    std::array<const char*, 3> argv = {"ls", "-lR", dirname};
+static void log_ls(const char* dirname) {
+    std::array<const char*, 3> argv = {"ls", "-laZ", dirname};
     int status = 0;
     auto res =
         android_fork_execvp(argv.size(), const_cast<char**>(argv.data()), &status, false, true);
     if (res != 0) {
-        PLOG(ERROR) << "ls -lR " << dirname << "failed";
+        PLOG(ERROR) << argv[0] << " " << argv[1] << " " << argv[2] << "failed";
         return;
     }
     if (!WIFEXITED(status)) {
-        LOG(ERROR) << "ls -lR " << dirname << " did not exit normally, status: " << status;
+        LOG(ERROR) << argv[0] << " " << argv[1] << " " << argv[2]
+                   << " did not exit normally, status: " << status;
         return;
     }
     if (WEXITSTATUS(status) != 0) {
-        LOG(ERROR) << "ls -lR " << dirname << " returned failure: " << WEXITSTATUS(status);
+        LOG(ERROR) << argv[0] << " " << argv[1] << " " << argv[2]
+                   << " returned failure: " << WEXITSTATUS(status);
         return;
     }
 }
@@ -201,7 +203,7 @@ static bool e4crypt_policy_get(const char *directory, char *policy,
     if (ioctl(fd, EXT4_IOC_GET_ENCRYPTION_POLICY, &eep) != 0) {
         PLOG(ERROR) << "Failed to get encryption policy for " << directory;
         close(fd);
-        log_lslr(directory);
+        log_ls(directory);
         return false;
     }
     close(fd);
@@ -240,7 +242,7 @@ static bool e4crypt_policy_check(const char *directory, const char *policy,
         policy_to_hex(policy, policy_hex);
         LOG(ERROR) << "Found policy " << existing_policy_hex << " at " << directory
                    << " which doesn't match expected value " << policy_hex;
-        log_lslr(directory);
+        log_ls(directory);
         return false;
     }
     LOG(INFO) << "Found policy " << existing_policy_hex << " at " << directory

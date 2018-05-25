@@ -159,9 +159,11 @@ Status PerfProfdNativeService::startProfilingString(const String16& config) {
   // Split configuration along colon.
   std::vector<std::string> args = base::Split(String8(config).string(), ":");
   for (auto& arg : args) {
-    if (!reader.Read(arg, /* fail_on_error */ true)) {
-      error_msg = base::StringPrintf("Could not parse %s", arg.c_str());
-      return Status::fromExceptionCode(1, error_msg.c_str());
+    if (!reader.Read(arg, /* fail_on_error */ true, &error_msg)) {
+      std::string tmp = base::StringPrintf("Could not parse %s: %s",
+                                           arg.c_str(),
+                                           error_msg.c_str());
+      return Status::fromExceptionCode(1, tmp.c_str());
     }
   }
   auto config_fn = [&](ThreadedConfig& config) {
@@ -281,8 +283,9 @@ status_t PerfProfdNativeService::shellCommand(int in,
     } else if (args[0] == String16("startProfiling")) {
       ConfigReader reader;
       for (size_t i = 1; i < args.size(); ++i) {
-        if (!reader.Read(String8(args[i]).string(), /* fail_on_error */ true)) {
-          err_str << base::StringPrintf("Could not parse %s", String8(args[i]).string())
+        std::string error_msg;
+        if (!reader.Read(String8(args[i]).string(), /* fail_on_error */ true, &error_msg)) {
+          err_str << "Could not parse '" << String8(args[i]).string() << "': " << error_msg
                   << std::endl;
           return BAD_VALUE;
         }
