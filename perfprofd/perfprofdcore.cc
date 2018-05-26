@@ -665,7 +665,7 @@ static ProtoUniquePtr collect_profile(Config& config)
   const std::string& perf_path = config.perf_path;
 
   PROFILE_RESULT ret = invoke_perf(config,
-                                   perf_path.c_str(),
+                                   perf_path,
                                    stack_profile_opt,
                                    duration,
                                    data_file_path,
