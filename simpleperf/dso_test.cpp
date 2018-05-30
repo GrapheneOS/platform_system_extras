@@ -81,6 +81,11 @@ TEST(dso, dex_file_dso) {
     ASSERT_STREQ(symbol->DemangledName(),
                  "com.example.simpleperf.simpleperfexamplewithnative.MixActivity$1.run");
     ASSERT_EQ(0u, dso->MinVirtualAddress());
+
+    // Don't crash on not exist zip entry.
+    dso = Dso::CreateDso(dso_type, GetTestData("base.zip!/not_exist_entry"));
+    ASSERT_TRUE(dso);
+    ASSERT_EQ(nullptr, dso->FindSymbol(0));
   }
 #else
   GTEST_LOG_(INFO) << "This test only runs on linux because of libdexfile";

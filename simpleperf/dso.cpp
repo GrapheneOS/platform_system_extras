@@ -349,7 +349,8 @@ class DexFileDso : public Dso {
       std::unique_ptr<ArchiveHelper> ahelper = ArchiveHelper::CreateInstance(std::get<1>(tuple));
       ZipEntry entry;
       std::vector<uint8_t> data;
-      if (ahelper->FindEntry(std::get<2>(tuple), &entry) && ahelper->GetEntryData(entry, &data)) {
+      if (ahelper &&
+          ahelper->FindEntry(std::get<2>(tuple), &entry) && ahelper->GetEntryData(entry, &data)) {
         status = ReadSymbolsFromDexFileInMemory(data.data(), data.size(), dex_file_offsets_,
                                                 &dex_file_symbols);
       }
