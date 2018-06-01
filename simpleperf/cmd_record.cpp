@@ -1146,10 +1146,6 @@ bool RecordCommand::UpdateJITDebugInfo() {
   if (jit_symfiles.empty() && dex_symfiles.empty()) {
     return true;
   }
-  // Process records before dumping symfiles, so new symfiles won't affect old samples.
-  if (!event_selection_set_.ReadMmapEventData()) {
-    return false;
-  }
   EventAttrWithId attr_id = event_selection_set_.GetEventAttrWithId()[0];
   for (auto& symfile : jit_symfiles) {
     Mmap2Record record(*attr_id.attr, false, jit_debug_reader_->Pid(), jit_debug_reader_->Pid(),
@@ -1161,6 +1157,13 @@ bool RecordCommand::UpdateJITDebugInfo() {
   }
   for (auto& symfile : dex_symfiles) {
     thread_tree_.AddDexFileOffset(symfile.file_path, symfile.dex_file_offset);
+  }
+  // We want to let samples see the most recent JIT maps generated before them, but no JIT maps
+  // generated after them. So process existing samples each time generating new JIT maps. We prefer
+  // to process samples after processing JIT maps. Because some of the samples may hit the new JIT
+  // maps, and we want to report them properly.
+  if (!event_selection_set_.ReadMmapEventData()) {
+    return false;
   }
   return true;
 }

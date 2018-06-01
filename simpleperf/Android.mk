@@ -368,6 +368,7 @@ simpleperf_unit_test_src_files := \
   read_elf_test.cpp \
   record_test.cpp \
   sample_tree_test.cpp \
+  thread_tree_test.cpp \
   utils_test.cpp \
 
 simpleperf_unit_test_src_files_linux := \
