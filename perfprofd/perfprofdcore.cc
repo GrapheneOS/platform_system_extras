@@ -362,7 +362,7 @@ static void annotate_encoded_perf_profile(android::perfprofd::PerfprofdRecord* p
   // Incorporate cpu utilization (collected prior to perf run)
   //
   if (config.collect_cpu_utilization) {
-    profile->set_cpu_utilization(cpu_utilization);
+    profile->SetExtension(quipper::cpu_utilization, cpu_utilization);
   }
 
   //
@@ -373,7 +373,7 @@ static void annotate_encoded_perf_profile(android::perfprofd::PerfprofdRecord* p
   if (android::base::ReadFileToString("/proc/loadavg", &load) &&
       sscanf(load.c_str(), "%lf", &fload) == 1) {
     int iload = static_cast<int>(fload * 100.0);
-    profile->set_sys_load_average(iload);
+    profile->SetExtension(quipper::sys_load_average, iload);
   } else {
     PLOG(ERROR) << "Failed to read or scan /proc/loadavg";
   }
@@ -383,13 +383,13 @@ static void annotate_encoded_perf_profile(android::perfprofd::PerfprofdRecord* p
   //
   bool is_booting = get_booting();
   if (config.collect_booting) {
-    profile->set_booting(is_booting);
+    profile->SetExtension(quipper::booting, is_booting);
   }
   if (config.collect_camera_active) {
-    profile->set_camera_active(is_booting ? false : get_camera_active());
+    profile->SetExtension(quipper::camera_active, is_booting ? false : get_camera_active());
   }
   if (config.collect_charging_state) {
-    profile->set_on_charger(get_charging());
+    profile->SetExtension(quipper::on_charger, get_charging());
   }
 
   //
@@ -400,7 +400,7 @@ static void annotate_encoded_perf_profile(android::perfprofd::PerfprofdRecord* p
   std::string disp;
   if (android::base::ReadFileToString("/sys/power/wake_unlock", &disp)) {
     bool ison = (strstr(disp.c_str(), "PowerManagerService.Display") == 0);
-    profile->set_display_on(ison);
+    profile->SetExtension(quipper::display_on, ison);
   } else {
     PLOG(ERROR) << "Failed to read /sys/power/wake_unlock";
   }
@@ -440,7 +440,7 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
   //
   // Issue error if no samples
   //
-  if (encodedProfile == nullptr || encodedProfile->perf_data().events_size() == 0) {
+  if (encodedProfile == nullptr || encodedProfile->events_size() == 0) {
     return ERR_PERF_ENCODE_FAILED;
   }
 
