@@ -714,8 +714,7 @@ std::string FormatSampleEvent(const quipper::PerfDataProto_SampleEvent& sample) 
 
 struct BasicRunWithCannedPerf : PerfProfdTest {
   void VerifyBasicCannedProfile(const android::perfprofd::PerfprofdRecord& encodedProfile) {
-    ASSERT_TRUE(encodedProfile.has_perf_data()) << test_logger.JoinTestLog(" ");
-    const quipper::PerfDataProto& perf_data = encodedProfile.perf_data();
+    const quipper::PerfDataProto& perf_data = encodedProfile;
 
     // Expect 21108 events.
     EXPECT_EQ(21108, perf_data.events_size()) << CreateStats(perf_data);
@@ -948,9 +947,10 @@ TEST_F(BasicRunWithCannedPerf, WithSymbolizer)
 
   VerifyBasicCannedProfile(encodedProfile);
 
-  auto find_symbol = [&](const std::string& filename)
-      -> const android::perfprofd::PerfprofdRecord_SymbolInfo* {
-    for (auto& symbol_info : encodedProfile.symbol_info()) {
+  auto find_symbol = [&](const std::string& filename) -> const quipper::SymbolInfo* {
+    const size_t size = encodedProfile.ExtensionSize(quipper::symbol_info);
+    for (size_t i = 0; i != size; ++i) {
+      auto& symbol_info = encodedProfile.GetExtension(quipper::symbol_info, i);
       if (symbol_info.filename() == filename) {
         return &symbol_info;
       }
@@ -959,7 +959,9 @@ TEST_F(BasicRunWithCannedPerf, WithSymbolizer)
   };
   auto all_filenames = [&]() {
     std::ostringstream oss;
-    for (auto& symbol_info : encodedProfile.symbol_info()) {
+    const size_t size = encodedProfile.ExtensionSize(quipper::symbol_info);
+    for (size_t i = 0; i != size; ++i) {
+      auto& symbol_info = encodedProfile.GetExtension(quipper::symbol_info, i);
       oss << " " << symbol_info.filename();
     }
     return oss.str();
@@ -1005,9 +1007,7 @@ TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)
   android::perfprofd::PerfprofdRecord encodedProfile;
   readEncodedProfile(dest_dir, false, encodedProfile);
 
-
-  ASSERT_TRUE(encodedProfile.has_perf_data());
-  const quipper::PerfDataProto& perf_data = encodedProfile.perf_data();
+  const quipper::PerfDataProto& perf_data = encodedProfile;
 
   // Expect 21108 events.
   EXPECT_EQ(2224, perf_data.events_size()) << CreateStats(perf_data);
@@ -1094,7 +1094,7 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
-  EXPECT_LT(0, encodedProfile.perf_data().events_size());
+  EXPECT_LT(0, encodedProfile.events_size());
 
   // Verify log contents
   const std::string expected = std::string(
@@ -1152,7 +1152,7 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
-  EXPECT_LT(0, encodedProfile.perf_data().events_size());
+  EXPECT_LT(0, encodedProfile.events_size());
 
   // Examine that encoded.1 file is removed while encoded.{0|2} exists.
   EXPECT_EQ(0, access(encoded_file_path(dest_dir, 0).c_str(), F_OK));
@@ -1224,7 +1224,7 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
 
   // Examine what we get back. Since it's a live profile, we can't
   // really do much in terms of verifying the contents.
-  EXPECT_LT(0, encodedProfile.perf_data().events_size());
+  EXPECT_LT(0, encodedProfile.events_size());
 
   // Verify log contents
   const std::string expected = std::string(
@@ -1243,12 +1243,12 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
   CompareLogMessages(expandVars(expected), "CallChainRunWithLivePerf", true);
 
   // Check that we have at least one SampleEvent with a callchain.
-  SampleEventIterator samples(encodedProfile.perf_data());
+  SampleEventIterator samples(encodedProfile);
   bool found_callchain = false;
   while (!found_callchain && samples != samples.end()) {
     found_callchain = samples->sample_event().callchain_size() > 0;
   }
-  EXPECT_TRUE(found_callchain) << CreateStats(encodedProfile.perf_data());
+  EXPECT_TRUE(found_callchain) << CreateStats(encodedProfile);
 }
 
 #endif
