@@ -61,7 +61,7 @@ class Node {
     // std::chrono::milliseconds::max() if no active request on Node; update
     // node's controlled file node value and the current value index based on
     // active request.
-    std::chrono::milliseconds Update();
+    std::chrono::milliseconds Update(bool log_error = true);
 
     std::string GetName() const;
     std::string GetPath() const;
