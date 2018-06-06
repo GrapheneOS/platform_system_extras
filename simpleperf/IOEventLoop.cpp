@@ -24,11 +24,13 @@
 struct IOEvent {
   IOEventLoop* loop;
   event* e;
+  timeval timeout;
   std::function<bool()> callback;
   bool enabled;
 
   IOEvent(IOEventLoop* loop, const std::function<bool()>& callback)
-      : loop(loop), e(nullptr), callback(callback), enabled(false) {}
+      : loop(loop), e(nullptr), timeout({}), callback(callback), enabled(false) {
+  }
 
   ~IOEvent() {
     if (e != nullptr) {
@@ -138,9 +140,8 @@ bool IOEventLoop::AddSignalEvents(std::vector<int> sigs,
   return true;
 }
 
-bool IOEventLoop::AddPeriodicEvent(timeval duration,
-                                   const std::function<bool()>& callback) {
-  return AddEvent(-1, EV_PERSIST, &duration, callback) != nullptr;
+IOEventRef IOEventLoop::AddPeriodicEvent(timeval duration, const std::function<bool()>& callback) {
+  return AddEvent(-1, EV_PERSIST, &duration, callback);
 }
 
 IOEventRef IOEventLoop::AddEvent(int fd_or_sig, short events, timeval* timeout,
@@ -157,6 +158,9 @@ IOEventRef IOEventLoop::AddEvent(int fd_or_sig, short events, timeval* timeout,
   if (event_add(e->e, timeout) != 0) {
     LOG(ERROR) << "event_add() failed";
     return nullptr;
+  }
+  if (timeout != nullptr) {
+    e->timeout = *timeout;
   }
   e->enabled = true;
   events_.push_back(std::move(e));
@@ -200,7 +204,9 @@ bool IOEventLoop::DisableEvent(IOEventRef ref) {
 
 bool IOEventLoop::EnableEvent(IOEventRef ref) {
   if (!ref->enabled) {
-    if (event_add(ref->e, nullptr) != 0) {
+    timeval* timeout = (ref->timeout.tv_sec != 0 || ref->timeout.tv_usec != 0) ?
+                        &ref->timeout : nullptr;
+    if (event_add(ref->e, timeout) != 0) {
       LOG(ERROR) << "event_add() failed";
       return false;
     }
