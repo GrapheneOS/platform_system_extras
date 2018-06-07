@@ -125,4 +125,6 @@ int GetAndroidVersion();
 
 constexpr int kAndroidVersionP = 9;
 
+std::string GetHardwareFromCpuInfo(const std::string& cpu_info);
+
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_
