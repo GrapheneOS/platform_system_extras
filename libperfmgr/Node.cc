@@ -66,7 +66,7 @@ bool Node::RemoveRequest(const std::string& hint_type) {
     return ret;
 }
 
-std::chrono::milliseconds Node::Update() {
+std::chrono::milliseconds Node::Update(bool log_error) {
     std::size_t value_index = default_val_index_;
     std::chrono::milliseconds expire_time = std::chrono::milliseconds::max();
 
@@ -86,8 +86,10 @@ std::chrono::milliseconds Node::Update() {
             open(node_path_.c_str(), O_WRONLY | O_CLOEXEC | O_TRUNC)));
 
         if (fd_ == -1 || !android::base::WriteStringToFd(req_value, fd_)) {
-            LOG(ERROR) << "Failed to write to node: " << node_path_
-                       << " with value: " << req_value << ", fd: " << fd_;
+            if (log_error) {
+                LOG(WARNING) << "Failed to write to node: " << node_path_
+                             << " with value: " << req_value << ", fd: " << fd_;
+            }
             // Retry in 500ms or sooner
             expire_time = std::min(expire_time, std::chrono::milliseconds(500));
         } else {
