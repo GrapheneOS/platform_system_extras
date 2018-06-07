@@ -55,6 +55,7 @@ cc_test {
     defaults: ["system-extras-cflags-defaults"],
     srcs: ["pagemap_test.cpp"],
     shared_libs: ["libpagemap"],
+    required: ["libpagemap"],
 }
 
 cc_test {
