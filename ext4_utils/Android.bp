@@ -6,16 +6,8 @@ cc_library {
     host_supported: true,
     recovery_available: true,
     srcs: [
-        "make_ext4fs.c",
-        "ext4fixup.c",
         "ext4_utils.c",
-        "allocate.c",
-        "contents.c",
-        "extent.c",
-        "indirect.c",
-        "sha1.c",
         "wipe.c",
-        "crc16.c",
         "ext4_sb.c",
     ],
     // Various instances of dereferencing a type-punned pointer in extent.c
@@ -45,6 +37,7 @@ cc_library {
             shared_libs: [
                 "libbase",
                 "libkeyutils",
+                "liblogwrap",
                 "libselinux",
             ],
 

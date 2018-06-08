@@ -9,7 +9,7 @@ mkuserimg.sh [-s] SRC_DIR OUTPUT_FILE EXT_VARIANT MOUNT_POINT SIZE [-j <journal_
              [-T TIMESTAMP] [-C FS_CONFIG] [-D PRODUCT_OUT] [-B BLOCK_LIST_FILE]
              [-d BASE_ALLOC_FILE_IN ] [-A BASE_ALLOC_FILE_OUT ] [-L LABEL]
              [-i INODES ] [-M RSV_PCT] [-e ERASE_BLOCK_SIZE] [-o FLASH_BLOCK_SIZE]
-             [-U MKE2FS_UUID] [-S MKE2FS_HASH_SEED] [FILE_CONTEXTS]
+             [-U MKE2FS_UUID] [-S MKE2FS_HASH_SEED] [-c] [FILE_CONTEXTS]
 EOT
 }
 
@@ -129,6 +129,11 @@ if [[ "$1" == "-S" ]]; then
   shift; shift
 fi
 
+if [[ "$1" == "-c" ]]; then
+  E2FSDROID_OPTS+=" -s"
+  shift;
+fi
+
 if [[ $MKE2FS_EXTENDED_OPTS ]]; then
   MKE2FS_OPTS+=" -E $MKE2FS_EXTENDED_OPTS"
 fi
@@ -138,8 +143,9 @@ if [[ $1 ]]; then
 fi
 
 case $EXT_VARIANT in
+  ext2) ;;
   ext4) ;;
-  *) echo "Only ext4 is supported!"; exit 3 ;;
+  *) echo "Only ext2/4 are supported!"; exit 3 ;;
 esac
 
 if [ -z $MOUNT_POINT ]; then
