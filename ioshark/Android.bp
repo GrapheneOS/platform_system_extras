@@ -58,3 +58,9 @@ cc_binary_host {
     defaults: ["ioshark_defaults"],
     srcs: ["dump_ioshark_filenames.c"],
 }
+
+cc_binary_host {
+    name: "convert_format",
+    defaults: ["ioshark_defaults"],
+    srcs: ["convert_format.c"],
+}
