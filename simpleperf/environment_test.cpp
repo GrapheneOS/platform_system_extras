@@ -44,3 +44,10 @@ TEST(environment, PrepareVdsoFile) {
   ASSERT_TRUE(dso != nullptr);
   ASSERT_NE(dso->GetDebugFilePath(), "[vdso]");
 }
+
+TEST(environment, GetHardwareFromCpuInfo) {
+  std::string cpu_info = "CPU revision : 10\n\n"
+      "Hardware : Symbol i.MX6 Freeport_Plat Quad/DualLite (Device Tree)\n";
+  ASSERT_EQ("Symbol i.MX6 Freeport_Plat Quad/DualLite (Device Tree)",
+            GetHardwareFromCpuInfo(cpu_info));
+}

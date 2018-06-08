@@ -57,9 +57,13 @@ static bool RunRecordCmd(std::vector<std::string> v,
   return RecordCmd()->Run(v);
 }
 
-TEST(record_cmd, no_options) { ASSERT_TRUE(RunRecordCmd({})); }
+TEST(record_cmd, no_options) {
+  TEST_REQUIRE_HW_COUNTER();
+  ASSERT_TRUE(RunRecordCmd({}));
+}
 
 TEST(record_cmd, system_wide_option) {
+  TEST_REQUIRE_HW_COUNTER();
   TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-a"})));
 }
 
@@ -86,6 +90,7 @@ void CheckEventType(const std::string& record_file, const std::string event_type
 }
 
 TEST(record_cmd, sample_period_option) {
+  TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({"-c", "100000"}, tmpfile.path));
   CheckEventType(tmpfile.path, "cpu-cycles", 100000u, 0);
@@ -96,6 +101,7 @@ TEST(record_cmd, event_option) {
 }
 
 TEST(record_cmd, freq_option) {
+  TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({"-f", "99"}, tmpfile.path));
   CheckEventType(tmpfile.path, "cpu-cycles", 0, 99u);
@@ -105,6 +111,7 @@ TEST(record_cmd, freq_option) {
 }
 
 TEST(record_cmd, multiple_freq_or_sample_period_option) {
+  TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({"-f", "99", "-e", "cpu-cycles", "-c", "1000000", "-e",
                             "cpu-clock"}, tmpfile.path));
@@ -113,11 +120,13 @@ TEST(record_cmd, multiple_freq_or_sample_period_option) {
 }
 
 TEST(record_cmd, output_file_option) {
+  TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmpfile;
   ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "sleep", SLEEP_SEC}));
 }
 
 TEST(record_cmd, dump_kernel_mmap) {
+  TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
   std::unique_ptr<RecordFileReader> reader =
@@ -141,6 +150,7 @@ TEST(record_cmd, dump_kernel_mmap) {
 }
 
 TEST(record_cmd, dump_build_id_feature) {
+  TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
   std::unique_ptr<RecordFileReader> reader =
@@ -157,6 +167,7 @@ TEST(record_cmd, tracepoint_event) {
 }
 
 TEST(record_cmd, rN_event) {
+  TEST_REQUIRE_HW_COUNTER();
   OMIT_TEST_ON_NON_NATIVE_ABIS();
   size_t event_number;
   if (GetBuildArch() == ARCH_ARM64 || GetBuildArch() == ARCH_ARM) {
@@ -183,6 +194,7 @@ TEST(record_cmd, rN_event) {
 }
 
 TEST(record_cmd, branch_sampling) {
+  TEST_REQUIRE_HW_COUNTER();
   if (IsBranchSamplingSupported()) {
     ASSERT_TRUE(RunRecordCmd({"-b"}));
     ASSERT_TRUE(RunRecordCmd({"-j", "any,any_call,any_ret,ind_call"}));
@@ -196,14 +208,17 @@ TEST(record_cmd, branch_sampling) {
 }
 
 TEST(record_cmd, event_modifier) {
+  TEST_REQUIRE_HW_COUNTER();
   ASSERT_TRUE(RunRecordCmd({"-e", "cpu-cycles:u"}));
 }
 
 TEST(record_cmd, fp_callchain_sampling) {
+  TEST_REQUIRE_HW_COUNTER();
   ASSERT_TRUE(RunRecordCmd({"--call-graph", "fp"}));
 }
 
 TEST(record_cmd, fp_callchain_sampling_warning_on_arm) {
+  TEST_REQUIRE_HW_COUNTER();
   if (GetBuildArch() != ARCH_ARM) {
     GTEST_LOG_(INFO) << "This test does nothing as it only tests on arm arch.";
     return;
@@ -216,6 +231,7 @@ TEST(record_cmd, fp_callchain_sampling_warning_on_arm) {
 }
 
 TEST(record_cmd, system_wide_fp_callchain_sampling) {
+  TEST_REQUIRE_HW_COUNTER();
   TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-a", "--call-graph", "fp"})));
 }
 
@@ -242,7 +258,25 @@ bool IsInNativeAbi() {
   return in_native_abi == 1;
 }
 
+bool HasHardwareCounter() {
+  static int has_hw_counter = -1;
+  if (has_hw_counter == -1) {
+    has_hw_counter = 1;
+#if defined(__arm__)
+    std::string cpu_info;
+    if (android::base::ReadFileToString("/proc/cpuinfo", &cpu_info)) {
+      std::string hardware = GetHardwareFromCpuInfo(cpu_info);
+      if (std::regex_search(hardware, std::regex(R"(i\.MX6.*Quad)"))) {
+        has_hw_counter = 0;
+      }
+    }
+#endif
+  }
+  return has_hw_counter == 1;
+}
+
 TEST(record_cmd, dwarf_callchain_sampling) {
+  TEST_REQUIRE_HW_COUNTER();
   OMIT_TEST_ON_NON_NATIVE_ABIS();
   ASSERT_TRUE(IsDwarfCallChainSamplingSupported());
   std::vector<std::unique_ptr<Workload>> workloads;
@@ -255,12 +289,14 @@ TEST(record_cmd, dwarf_callchain_sampling) {
 }
 
 TEST(record_cmd, system_wide_dwarf_callchain_sampling) {
+  TEST_REQUIRE_HW_COUNTER();
   OMIT_TEST_ON_NON_NATIVE_ABIS();
   ASSERT_TRUE(IsDwarfCallChainSamplingSupported());
   TEST_IN_ROOT(RunRecordCmd({"-a", "--call-graph", "dwarf"}));
 }
 
 TEST(record_cmd, no_unwind_option) {
+  TEST_REQUIRE_HW_COUNTER();
   OMIT_TEST_ON_NON_NATIVE_ABIS();
   ASSERT_TRUE(IsDwarfCallChainSamplingSupported());
   ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf", "--no-unwind"}));
@@ -268,6 +304,7 @@ TEST(record_cmd, no_unwind_option) {
 }
 
 TEST(record_cmd, post_unwind_option) {
+  TEST_REQUIRE_HW_COUNTER();
   OMIT_TEST_ON_NON_NATIVE_ABIS();
   ASSERT_TRUE(IsDwarfCallChainSamplingSupported());
   std::vector<std::unique_ptr<Workload>> workloads;
@@ -279,6 +316,7 @@ TEST(record_cmd, post_unwind_option) {
 }
 
 TEST(record_cmd, existing_processes) {
+  TEST_REQUIRE_HW_COUNTER();
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(2, &workloads);
   std::string pid_list = android::base::StringPrintf(
@@ -287,6 +325,7 @@ TEST(record_cmd, existing_processes) {
 }
 
 TEST(record_cmd, existing_threads) {
+  TEST_REQUIRE_HW_COUNTER();
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(2, &workloads);
   // Process id can also be used as thread id in linux.
@@ -296,6 +335,7 @@ TEST(record_cmd, existing_threads) {
 }
 
 TEST(record_cmd, no_monitored_threads) {
+  TEST_REQUIRE_HW_COUNTER();
   ScopedAppPackageName scoped_package_name("");
   TemporaryFile tmpfile;
   ASSERT_FALSE(RecordCmd()->Run({"-o", tmpfile.path}));
@@ -303,11 +343,13 @@ TEST(record_cmd, no_monitored_threads) {
 }
 
 TEST(record_cmd, more_than_one_event_types) {
+  TEST_REQUIRE_HW_COUNTER();
   ASSERT_TRUE(RunRecordCmd({"-e", "cpu-cycles,cpu-clock"}));
   ASSERT_TRUE(RunRecordCmd({"-e", "cpu-cycles", "-e", "cpu-clock"}));
 }
 
 TEST(record_cmd, mmap_page_option) {
+  TEST_REQUIRE_HW_COUNTER();
   ASSERT_TRUE(RunRecordCmd({"-m", "1"}));
   ASSERT_FALSE(RunRecordCmd({"-m", "0"}));
   ASSERT_FALSE(RunRecordCmd({"-m", "7"}));
@@ -332,6 +374,7 @@ static void CheckKernelSymbol(const std::string& path, bool need_kallsyms,
 }
 
 TEST(record_cmd, kernel_symbol) {
+  TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({"--no-dump-symbols"}, tmpfile.path));
   bool success;
@@ -383,6 +426,7 @@ static void CheckDsoSymbolRecords(const std::string& path,
 }
 
 TEST(record_cmd, no_dump_symbols) {
+  TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
   bool success;
@@ -405,6 +449,7 @@ TEST(record_cmd, no_dump_symbols) {
 }
 
 TEST(record_cmd, dump_kernel_symbols) {
+  TEST_REQUIRE_HW_COUNTER();
   if (!IsRoot()) {
     GTEST_LOG_(INFO) << "Test requires root privilege";
     return;
@@ -432,15 +477,20 @@ TEST(record_cmd, dump_kernel_symbols) {
 }
 
 TEST(record_cmd, group_option) {
+  TEST_REQUIRE_HW_COUNTER();
   ASSERT_TRUE(RunRecordCmd({"--group", "cpu-cycles,cpu-clock", "-m", "16"}));
   ASSERT_TRUE(RunRecordCmd({"--group", "cpu-cycles,cpu-clock", "--group",
                             "cpu-cycles:u,cpu-clock:u", "--group",
                             "cpu-cycles:k,cpu-clock:k", "-m", "16"}));
 }
 
-TEST(record_cmd, symfs_option) { ASSERT_TRUE(RunRecordCmd({"--symfs", "/"})); }
+TEST(record_cmd, symfs_option) {
+  TEST_REQUIRE_HW_COUNTER();
+  ASSERT_TRUE(RunRecordCmd({"--symfs", "/"}));
+}
 
 TEST(record_cmd, duration_option) {
+  TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmpfile;
   ASSERT_TRUE(RecordCmd()->Run({"--duration", "1.2", "-p",
                                 std::to_string(getpid()), "-o", tmpfile.path, "--in-app"}));
@@ -458,6 +508,7 @@ TEST(record_cmd, support_modifier_for_clock_events) {
 }
 
 TEST(record_cmd, handle_SIGHUP) {
+  TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmpfile;
   int pipefd[2];
   ASSERT_EQ(0, pipe(pipefd));
@@ -477,6 +528,7 @@ TEST(record_cmd, handle_SIGHUP) {
 }
 
 TEST(record_cmd, stop_when_no_more_targets) {
+  TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmpfile;
   std::atomic<int> tid(0);
   std::thread thread([&]() {
@@ -489,6 +541,7 @@ TEST(record_cmd, stop_when_no_more_targets) {
 }
 
 TEST(record_cmd, donot_stop_when_having_targets) {
+  TEST_REQUIRE_HW_COUNTER();
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(1, &workloads);
   std::string pid = std::to_string(workloads[0]->GetPid());
@@ -500,6 +553,7 @@ TEST(record_cmd, donot_stop_when_having_targets) {
 }
 
 TEST(record_cmd, start_profiling_fd_option) {
+  TEST_REQUIRE_HW_COUNTER();
   int pipefd[2];
   ASSERT_EQ(0, pipe(pipefd));
   int read_fd = pipefd[0];
@@ -518,6 +572,7 @@ TEST(record_cmd, start_profiling_fd_option) {
 }
 
 TEST(record_cmd, record_meta_info_feature) {
+  TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
@@ -543,6 +598,7 @@ TEST(record_cmd, cpu_clock_for_a_long_time) {
 }
 
 TEST(record_cmd, dump_regs_for_tracepoint_events) {
+  TEST_REQUIRE_HW_COUNTER();
   TEST_REQUIRE_HOST_ROOT();
   OMIT_TEST_ON_NON_NATIVE_ABIS();
   // Check if the kernel can dump registers for tracepoint events.
@@ -552,6 +608,7 @@ TEST(record_cmd, dump_regs_for_tracepoint_events) {
 }
 
 TEST(record_cmd, trace_offcpu_option) {
+  TEST_REQUIRE_HW_COUNTER();
   // On linux host, we need root privilege to read tracepoint events.
   TEST_REQUIRE_HOST_ROOT();
   OMIT_TEST_ON_NON_NATIVE_ABIS();
@@ -566,10 +623,12 @@ TEST(record_cmd, trace_offcpu_option) {
 }
 
 TEST(record_cmd, exit_with_parent_option) {
+  TEST_REQUIRE_HW_COUNTER();
   ASSERT_TRUE(RunRecordCmd({"--exit-with-parent"}));
 }
 
 TEST(record_cmd, clockid_option) {
+  TEST_REQUIRE_HW_COUNTER();
   if (!IsSettingClockIdSupported()) {
     ASSERT_FALSE(RunRecordCmd({"--clockid", "monotonic"}));
   } else {
@@ -584,6 +643,7 @@ TEST(record_cmd, clockid_option) {
 }
 
 TEST(record_cmd, generate_samples_by_hw_counters) {
+  TEST_REQUIRE_HW_COUNTER();
   std::vector<std::string> events = {"cpu-cycles", "instructions"};
   for (auto& event : events) {
     TemporaryFile tmpfile;
@@ -602,16 +662,19 @@ TEST(record_cmd, generate_samples_by_hw_counters) {
 }
 
 TEST(record_cmd, callchain_joiner_options) {
+  TEST_REQUIRE_HW_COUNTER();
   ASSERT_TRUE(RunRecordCmd({"--no-callchain-joiner"}));
   ASSERT_TRUE(RunRecordCmd({"--callchain-joiner-min-matching-nodes", "2"}));
 }
 
 TEST(record_cmd, dashdash) {
+  TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmpfile;
   ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "--", "sleep", "1"}));
 }
 
 TEST(record_cmd, size_limit_option) {
+  TEST_REQUIRE_HW_COUNTER();
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(1, &workloads);
   std::string pid = std::to_string(workloads[0]->GetPid());
