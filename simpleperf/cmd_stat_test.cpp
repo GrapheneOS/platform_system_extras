@@ -53,6 +53,7 @@ TEST(stat_cmd, tracepoint_event) {
 }
 
 TEST(stat_cmd, rN_event) {
+  TEST_REQUIRE_HW_COUNTER();
   OMIT_TEST_ON_NON_NATIVE_ABIS();
   size_t event_number;
   if (GetBuildArch() == ARCH_ARM64 || GetBuildArch() == ARCH_ARM) {
@@ -72,6 +73,7 @@ TEST(stat_cmd, rN_event) {
 }
 
 TEST(stat_cmd, event_modifier) {
+  TEST_REQUIRE_HW_COUNTER();
   ASSERT_TRUE(
       StatCmd()->Run({"-e", "cpu-cycles:u,cpu-cycles:k", "sleep", "1"}));
 }
@@ -127,6 +129,7 @@ TEST(stat_cmd, no_monitored_threads) {
 }
 
 TEST(stat_cmd, group_option) {
+  TEST_REQUIRE_HW_COUNTER();
   ASSERT_TRUE(
       StatCmd()->Run({"--group", "cpu-clock,page-faults", "sleep", "1"}));
   ASSERT_TRUE(StatCmd()->Run({"--group", "cpu-cycles,instructions", "--group",
@@ -135,6 +138,7 @@ TEST(stat_cmd, group_option) {
 }
 
 TEST(stat_cmd, auto_generated_summary) {
+  TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmp_file;
   ASSERT_TRUE(StatCmd()->Run({"--group", "instructions:u,instructions:k", "-o",
                               tmp_file.path, "sleep", "1"}));
@@ -214,6 +218,7 @@ TEST(stat_cmd, stop_when_no_more_targets) {
 }
 
 TEST(stat_cmd, sample_speed_should_be_zero) {
+  TEST_REQUIRE_HW_COUNTER();
   EventSelectionSet set(true);
   ASSERT_TRUE(set.AddEventType("cpu-cycles"));
   set.AddMonitoredProcesses({getpid()});
@@ -228,6 +233,7 @@ TEST(stat_cmd, sample_speed_should_be_zero) {
 }
 
 TEST(stat_cmd, calculating_cpu_frequency) {
+  TEST_REQUIRE_HW_COUNTER();
   CaptureStdout capture;
   ASSERT_TRUE(capture.Start());
   ASSERT_TRUE(StatCmd()->Run({"--csv", "--group", "task-clock,cpu-cycles", "sleep", "1"}));
