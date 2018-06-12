@@ -202,9 +202,8 @@ class PerfProfdTest : public testing::Test {
   // match, e.g. if we see the expected excerpt anywhere in the
   // result, it's a match (for exact match, set exact to true)
   //
-  void CompareLogMessages(const std::string& expected,
-                          const char* testpoint,
-                          bool exactMatch = false) {
+  ::testing::AssertionResult CompareLogMessages(const std::string& expected,
+                                                bool exactMatch = false) {
      std::string sqexp = squeezeWhite(expected, "expected");
 
      // Strip out JIT errors.
@@ -216,17 +215,18 @@ class PerfProfdTest : public testing::Test {
      std::string sqact = squeezeWhite(test_logger.JoinTestLog(" ", strip_jit), "actual");
 
      if (exactMatch) {
-       EXPECT_STREQ(sqexp.c_str(), sqact.c_str());
-     } else {
-       std::size_t foundpos = sqact.find(sqexp);
-       bool wasFound = true;
-       if (foundpos == std::string::npos) {
-         std::cerr << testpoint << ": expected result not found\n";
-         std::cerr << " Actual: \"" << sqact << "\"\n";
-         std::cerr << " Expected: \"" << sqexp << "\"\n";
-         wasFound = false;
+       if (sqexp == sqact) {
+         return ::testing::AssertionSuccess() << sqexp << " is equal to " << sqact;
        }
-       EXPECT_TRUE(wasFound);
+       return ::testing::AssertionFailure() << "Expected:" << std::endl << sqexp << std::endl
+                                            << "Received:" << std::endl << sqact;
+     } else {
+       if (sqact.find(sqexp) == std::string::npos) {
+         return ::testing::AssertionFailure()
+             << "Expected to find:" << std::endl << sqexp << std::endl
+             << "in:" << std::endl << sqact;
+       }
+       return ::testing::AssertionSuccess() << sqexp << " was found in " << sqact;
      }
   }
 
@@ -482,7 +482,7 @@ TEST_F(PerfProfdTest, MissingGMS)
                                           );
 
   // check to make sure entire log matches
-  CompareLogMessages(expected, "MissingGMS");
+  EXPECT_TRUE(CompareLogMessages(expected));
 }
 
 
@@ -518,7 +518,7 @@ TEST_F(PerfProfdTest, MissingOptInSemaphoreFile)
       I: profile collection skipped (missing config directory)
                                           );
   // check to make sure log excerpt matches
-  CompareLogMessages(expected, "MissingOptInSemaphoreFile");
+  EXPECT_TRUE(CompareLogMessages(expected));
 }
 
 TEST_F(PerfProfdTest, MissingPerfExecutable)
@@ -555,7 +555,7 @@ TEST_F(PerfProfdTest, MissingPerfExecutable)
       I: profile collection skipped (missing 'perf' executable)
                                           );
   // check to make sure log excerpt matches
-  CompareLogMessages(expected, "MissingPerfExecutable");
+  EXPECT_TRUE(CompareLogMessages(expected));
 }
 
 TEST_F(PerfProfdTest, BadPerfRun)
@@ -590,14 +590,16 @@ TEST_F(PerfProfdTest, BadPerfRun)
   // Check return code from daemon
   EXPECT_EQ(0, daemon_main_return_code);
 
-  // Verify log contents
-  const std::string expected = RAW_RESULT(
-      W: perf bad exit status 1
-      W: profile collection failed
-                                          );
+  // Verify log contents. Because of perferr logging containing pids and test paths,
+  // it is easier to have three expected parts.
+  const std::string expected1 = "W: perf bad exit status 1";
+  const std::string expected2 = "W: /bin/false record";
+  const std::string expected3 = "W: profile collection failed";
 
   // check to make sure log excerpt matches
-  CompareLogMessages(expected, "BadPerfRun");
+  EXPECT_TRUE(CompareLogMessages(expected1));
+  EXPECT_TRUE(CompareLogMessages(expected2));
+  EXPECT_TRUE(CompareLogMessages(expected3));
 }
 
 TEST_F(PerfProfdTest, ConfigFileParsing)
@@ -631,7 +633,7 @@ TEST_F(PerfProfdTest, ConfigFileParsing)
                                           );
 
   // check to make sure log excerpt matches
-  CompareLogMessages(expected, "ConfigFileParsing");
+  EXPECT_TRUE(CompareLogMessages(expected));
 }
 
 TEST_F(PerfProfdTest, ProfileCollectionAnnotations)
@@ -1110,7 +1112,7 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
       I: finishing Android Wide Profiling daemon
                                           );
   // check to make sure log excerpt matches
-  CompareLogMessages(expandVars(expected), "BasicRunWithLivePerf", true);
+  EXPECT_TRUE(CompareLogMessages(expandVars(expected), true));
 }
 
 TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
@@ -1183,7 +1185,7 @@ TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
       I: finishing Android Wide Profiling daemon
                                           );
   // check to make sure log excerpt matches
-  CompareLogMessages(expandVars(expected), "BasicRunWithLivePerf", true);
+  EXPECT_TRUE(CompareLogMessages(expandVars(expected), true));
 }
 
 TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
@@ -1240,7 +1242,7 @@ TEST_F(PerfProfdTest, CallChainRunWithLivePerf)
       I: finishing Android Wide Profiling daemon
                                           );
   // check to make sure log excerpt matches
-  CompareLogMessages(expandVars(expected), "CallChainRunWithLivePerf", true);
+  EXPECT_TRUE(CompareLogMessages(expandVars(expected), true));
 
   // Check that we have at least one SampleEvent with a callchain.
   SampleEventIterator samples(encodedProfile);

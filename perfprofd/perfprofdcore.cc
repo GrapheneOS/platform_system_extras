@@ -465,6 +465,7 @@ static PROFILE_RESULT invoke_perf(Config& config,
   pid_t pid = fork();
 
   if (pid == -1) {
+    PLOG(ERROR) << "Fork failed";
     return ERR_FORK_FAILED;
   }
 
@@ -562,6 +563,15 @@ static PROFILE_RESULT invoke_perf(Config& config,
     int st = 0;
     pid_t reaped = TEMP_FAILURE_RETRY(waitpid(pid, &st, 0));
 
+    auto print_perferr = [&perf_stderr_path]() {
+      std::string tmp;
+      if (android::base::ReadFileToString(perf_stderr_path, &tmp)) {
+        LOG(WARNING) << tmp;
+      } else {
+        PLOG(WARNING) << "Could not read " << perf_stderr_path;
+      }
+    };
+
     if (reaped == -1) {
       PLOG(WARNING) << "waitpid failed";
     } else if (WIFSIGNALED(st)) {
@@ -570,8 +580,10 @@ static PROFILE_RESULT invoke_perf(Config& config,
         return OK_PROFILE_COLLECTION;
       }
       LOG(WARNING) << "perf killed by signal " << WTERMSIG(st);
+      print_perferr();
     } else if (WEXITSTATUS(st) != 0) {
       LOG(WARNING) << "perf bad exit status " << WEXITSTATUS(st);
+      print_perferr();
     } else {
       return OK_PROFILE_COLLECTION;
     }
