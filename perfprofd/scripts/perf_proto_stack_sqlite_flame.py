@@ -21,6 +21,7 @@ import argparse
 import itertools
 import sqlite3
 
+
 class Callsite(object):
     def __init__(self, dso_id, sym_id):
         self.dso_id = dso_id
@@ -66,6 +67,7 @@ class Callsite(object):
     # Functions for flamegraph compatibility.
 
     callsite_counter = 0
+
     @classmethod
     def _get_next_callsite_id(cls):
         cls.callsite_counter += 1
@@ -96,6 +98,7 @@ class Callsite(object):
         if self.child_map:
             return max([c.get_max_depth() for c in self.child_map.itervalues()]) + 1
         return 1
+
 
 class SqliteReader(object):
     def __init__(self):
@@ -202,7 +205,6 @@ class SqliteReader(object):
                     return script_f.read()
         return None
 
-
     def print_svg(self, filename, depth):
         from svg_renderer import renderSVG
         self.root.svgrenderer_compat(self.dsos, self.syms)
@@ -218,7 +220,7 @@ class SqliteReader(object):
 
         class FakeProcess:
             def __init__(self):
-                self.props = { 'trace_offcpu': False }
+                self.props = {'trace_offcpu': False}
         fake_process = FakeProcess()
         renderSVG(fake_process, self.root, f, 'hot')
 
@@ -240,6 +242,7 @@ class SqliteReader(object):
 </html>
 ''')
         f.close()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='''Translate a perfprofd database into a flame
