@@ -590,14 +590,16 @@ TEST_F(PerfProfdTest, BadPerfRun)
   // Check return code from daemon
   EXPECT_EQ(0, daemon_main_return_code);
 
-  // Verify log contents
-  const std::string expected = RAW_RESULT(
-      W: perf bad exit status 1
-      W: profile collection failed
-                                          );
+  // Verify log contents. Because of perferr logging containing pids and test paths,
+  // it is easier to have three expected parts.
+  const std::string expected1 = "W: perf bad exit status 1";
+  const std::string expected2 = "W: /bin/false record";
+  const std::string expected3 = "W: profile collection failed";
 
   // check to make sure log excerpt matches
-  EXPECT_TRUE(CompareLogMessages(expected));
+  EXPECT_TRUE(CompareLogMessages(expected1));
+  EXPECT_TRUE(CompareLogMessages(expected2));
+  EXPECT_TRUE(CompareLogMessages(expected3));
 }
 
 TEST_F(PerfProfdTest, ConfigFileParsing)
