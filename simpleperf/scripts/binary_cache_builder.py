@@ -23,14 +23,10 @@ from __future__ import print_function
 import argparse
 import os
 import os.path
-import re
 import shutil
-import subprocess
-import sys
-import time
 
-from simpleperf_report_lib import *
-from utils import *
+from simpleperf_report_lib import ReportLib
+from utils import AdbHelper, flatten_arg_list, log_info, log_warning, log_exit, ReadElf
 
 
 class BinaryCacheBuilder(object):
@@ -53,6 +49,7 @@ class BinaryCacheBuilder(object):
         self.binary_cache_dir = 'binary_cache'
         if not os.path.isdir(self.binary_cache_dir):
             os.makedirs(self.binary_cache_dir)
+        self.binaries = {}
 
 
     def build_binary_cache(self):
@@ -65,7 +62,7 @@ class BinaryCacheBuilder(object):
     def _collect_used_binaries(self):
         """read perf.data, collect all used binaries and their build id (if available)."""
         # A dict mapping from binary name to build_id
-        binaries = dict()
+        binaries = {}
         lib = ReportLib()
         lib.SetRecordFile(self.perf_data_path)
         lib.SetLogSeverity('error')
@@ -99,7 +96,7 @@ class BinaryCacheBuilder(object):
         # and same build_id.
 
         # Map from filename to binary paths.
-        filename_dict = dict()
+        filename_dict = {}
         for binary in self.binaries:
             index = binary.rfind('/')
             filename = binary[index+1:]
@@ -111,17 +108,19 @@ class BinaryCacheBuilder(object):
         # Walk through all files in symfs_dirs, and copy matching files to build_cache.
         for symfs_dir in self.symfs_dirs:
             for root, _, files in os.walk(symfs_dir):
-                for file in files:
-                    paths = filename_dict.get(file)
-                    if paths is not None:
-                        build_id = self._read_build_id(os.path.join(root, file))
-                        if not build_id:
-                            continue
-                        for binary in paths:
-                            expected_build_id = self.binaries.get(binary)
-                            if expected_build_id == build_id:
-                                self._copy_to_binary_cache(os.path.join(root, file),
-                                                           expected_build_id, binary)
+                for filename in files:
+                    paths = filename_dict.get(filename)
+                    if not paths:
+                        continue
+                    build_id = self._read_build_id(os.path.join(root, filename))
+                    if not build_id:
+                        continue
+                    for binary in paths:
+                        expected_build_id = self.binaries.get(binary)
+                        if expected_build_id == build_id:
+                            self._copy_to_binary_cache(os.path.join(root, filename),
+                                                       expected_build_id, binary)
+                            break
 
 
     def _copy_to_binary_cache(self, from_path, expected_build_id, target_file):
@@ -129,16 +128,24 @@ class BinaryCacheBuilder(object):
             target_file = target_file[1:]
         target_file = target_file.replace('/', os.sep)
         target_file = os.path.join(self.binary_cache_dir, target_file)
-        if (os.path.isfile(target_file) and self._read_build_id(target_file) == expected_build_id
-            and self._file_has_symbol_table(target_file)):
-            # The existing file in binary_cache can provide more information, so no
-            # need to copy.
+        if not self._need_to_copy(target_file, expected_build_id):
+            # The existing file in binary_cache can provide more information, so no need to copy.
             return
         target_dir = os.path.dirname(target_file)
         if not os.path.isdir(target_dir):
             os.makedirs(target_dir)
         log_info('copy to binary_cache: %s to %s' % (from_path, target_file))
         shutil.copy(from_path, target_file)
+
+
+    def _need_to_copy(self, target_file, expected_build_id):
+        if not os.path.isfile(target_file):
+            return True
+        if self._read_build_id(target_file) != expected_build_id:
+            return True
+        if not self._file_has_symbol_table(target_file):
+            return True
+        return False
 
 
     def _pull_binaries_from_device(self):
@@ -176,14 +183,14 @@ class BinaryCacheBuilder(object):
             log_info('use current file in binary_cache: %s' % binary_cache_file)
 
 
-    def _read_build_id(self, file):
+    def _read_build_id(self, file_path):
         """read build id of a binary on host."""
-        return self.readelf.get_build_id(file)
+        return self.readelf.get_build_id(file_path)
 
 
-    def _file_has_symbol_table(self, file):
+    def _file_has_symbol_table(self, file_path):
         """Test if an elf file has symbol table section."""
-        return '.symtab' in self.readelf.get_sections(file)
+        return '.symtab' in self.readelf.get_sections(file_path)
 
 
     def _pull_file_from_device(self, device_path, host_path):
@@ -193,7 +200,7 @@ class BinaryCacheBuilder(object):
         # Instead, we can first copy the file to /data/local/tmp, then pull it.
         filename = device_path[device_path.rfind('/')+1:]
         if (self.adb.run(['shell', 'cp', device_path, '/data/local/tmp']) and
-            self.adb.run(['pull', '/data/local/tmp/' + filename, host_path])):
+                self.adb.run(['pull', '/data/local/tmp/' + filename, host_path])):
             self.adb.run(['shell', 'rm', '/data/local/tmp/' + filename])
             return True
         log_warning('failed to pull %s from device' % device_path)
@@ -201,24 +208,23 @@ class BinaryCacheBuilder(object):
 
 
     def _pull_kernel_symbols(self):
-        file = os.path.join(self.binary_cache_dir, 'kallsyms')
-        if os.path.isfile(file):
-            os.remove(file)
+        file_path = os.path.join(self.binary_cache_dir, 'kallsyms')
+        if os.path.isfile(file_path):
+            os.remove(file_path)
         if self.adb.switch_to_root():
             self.adb.run(['shell', '"echo 0 >/proc/sys/kernel/kptr_restrict"'])
-            self.adb.run(['pull', '/proc/kallsyms', file])
+            self.adb.run(['pull', '/proc/kallsyms', file_path])
 
 
 def main():
-    parser = argparse.ArgumentParser(description=
-"""Pull binaries needed by perf.data from device to binary_cache directory.""")
-    parser.add_argument('-i', '--perf_data_path', default='perf.data', help=
-"""The path of profiling data.""")
-    parser.add_argument('-lib', '--native_lib_dir', nargs='+', help=
-"""Path to find debug version of native shared libraries used in the app.""",
-                        action='append')
-    parser.add_argument('--disable_adb_root', action='store_true', help=
-"""Force adb to run in non root mode.""")
+    parser = argparse.ArgumentParser(description="""
+        Pull binaries needed by perf.data from device to binary_cache directory.""")
+    parser.add_argument('-i', '--perf_data_path', default='perf.data', help="""
+        The path of profiling data.""")
+    parser.add_argument('-lib', '--native_lib_dir', nargs='+', help="""
+        Path to find debug version of native shared libraries used in the app.""", action='append')
+    parser.add_argument('--disable_adb_root', action='store_true', help="""
+        Force adb to run in non root mode.""")
     parser.add_argument('--ndk_path', nargs=1, help='Find tools in the ndk path.')
     args = parser.parse_args()
     config = {}
