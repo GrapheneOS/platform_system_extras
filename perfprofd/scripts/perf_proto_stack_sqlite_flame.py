@@ -204,7 +204,7 @@ class SqliteReader(object):
 
 
     def print_svg(self, filename, depth):
-        from svg_renderer import renderSVG
+        from svg_renderer import render_svg
         self.root.svgrenderer_compat(self.dsos, self.syms)
         self.root.generate_offset(0)
         f = open(filename, 'w')
@@ -220,7 +220,7 @@ class SqliteReader(object):
             def __init__(self):
                 self.props = { 'trace_offcpu': False }
         fake_process = FakeProcess()
-        renderSVG(fake_process, self.root, f, 'hot')
+        render_svg(fake_process, self.root, f, 'hot')
 
         f.write('''
 </div>
