@@ -22,18 +22,27 @@
 #include <functional>
 #include <memory>
 #include <stack>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include <android-base/logging.h>
 #include <android-base/test_utils.h>
 
+#include "IOEventLoop.h"
+#include "record.h"
+
 namespace simpleperf {
 
 struct JITSymFile {
+  pid_t pid;  // The process having the JITed code
   uint64_t addr;  // The start addr of the JITed code
   uint64_t len;  // The length of the JITed code
   std::string file_path;  // The path of a temporary ELF file storing debug info of the JITed code
+
+  JITSymFile() {}
+  JITSymFile(pid_t pid, uint64_t addr, uint64_t len, const std::string& file_path)
+      : pid(pid), addr(addr), len(len), file_path(file_path) {}
 };
 
 struct DexSymFile {
@@ -45,16 +54,23 @@ struct DexSymFile {
       : dex_file_offset(dex_file_offset), file_path(file_path) {}
 };
 
+// JITDebugReader reads debug info of JIT code and dex files of processes using ART. The
+// corresponding debug interface in ART is at art/runtime/jit/debugger_interface.cc.
 class JITDebugReader {
  public:
-  JITDebugReader(pid_t pid, bool keep_symfiles);
+  JITDebugReader(bool keep_symfiles) : keep_symfiles_(keep_symfiles) {}
 
-  pid_t Pid() const {
-    return pid_;
-  }
+  typedef std::function<bool(const std::vector<JITSymFile>&, const std::vector<DexSymFile>&, bool)>
+      symfile_callback_t;
+  bool RegisterSymFileCallback(IOEventLoop* loop, const symfile_callback_t& callback);
 
-  void ReadUpdate(std::vector<JITSymFile>* new_jit_symfiles,
-                  std::vector<DexSymFile>* new_dex_symfiles);
+  // There are two ways to select which processes to monitor. One is using MonitorProcess(), the
+  // other is finding all processes having libart.so using records.
+  bool MonitorProcess(pid_t pid);
+  bool UpdateRecord(const Record* record);
+
+  // Read new debug info from all monitored processes.
+  bool ReadAllProcesses();
 
  private:
 
@@ -73,42 +89,69 @@ class JITDebugReader {
     uint64_t timestamp;  // CLOCK_MONOTONIC time of last action
   };
 
-  bool TryInit();
-  bool ReadRemoteMem(uint64_t remote_addr, uint64_t size, void* data);
-  bool ReadDescriptors(Descriptor* jit_descriptor, Descriptor* dex_descriptor);
-  bool LoadDescriptor(const char* data, Descriptor* descriptor);
-  template <typename DescriptorT>
+  struct Process {
+    pid_t pid = -1;
+    bool initialized = false;
+    bool died = false;
+    bool is_64bit = false;
+    // The jit descriptor and dex descriptor can be read in one process_vm_readv() call.
+    uint64_t descriptors_addr = 0;
+    uint64_t descriptors_size = 0;
+    // offset relative to descriptors_addr
+    uint64_t jit_descriptor_offset = 0;
+    // offset relative to descriptors_addr
+    uint64_t dex_descriptor_offset = 0;
+
+    // The state we know about the remote jit debug descriptor.
+    Descriptor last_jit_descriptor;
+    // The state we know about the remote dex debug descriptor.
+    Descriptor last_dex_descriptor;
+  };
+
+  // The location of descriptors in libart.so.
+  struct DescriptorsLocation {
+    uint64_t relative_addr = 0;
+    uint64_t size = 0;
+    uint64_t jit_descriptor_offset = 0;
+    uint64_t dex_descriptor_offset = 0;
+  };
+
+  bool ReadProcess(pid_t pid);
+  void ReadProcess(Process& process, std::vector<JITSymFile>* jit_symfiles,
+                   std::vector<DexSymFile>* dex_symfiles);
+  bool InitializeProcess(Process& process);
+  const DescriptorsLocation* GetDescriptorsLocation(const std::string& art_lib_path,
+                                                    bool is_64bit);
+  bool ReadRemoteMem(Process& process, uint64_t remote_addr, uint64_t size, void* data);
+  bool ReadDescriptors(Process& process, Descriptor* jit_descriptor, Descriptor* dex_descriptor);
+  bool LoadDescriptor(bool is_64bit, const char* data, Descriptor* descriptor);
+  template <typename DescriptorT, typename CodeEntryT>
   bool LoadDescriptorImpl(const char* data, Descriptor* descriptor);
 
-  bool ReadNewCodeEntries(const Descriptor& descriptor, uint64_t last_action_timestamp,
+  bool ReadNewCodeEntries(Process& process, const Descriptor& descriptor,
+                          uint64_t last_action_timestamp, uint32_t read_entry_limit,
                           std::vector<CodeEntry>* new_code_entries);
   template <typename DescriptorT, typename CodeEntryT>
-  bool ReadNewCodeEntriesImpl(const Descriptor& descriptor, uint64_t last_action_timestamp,
+  bool ReadNewCodeEntriesImpl(Process& process, const Descriptor& descriptor,
+                              uint64_t last_action_timestamp, uint32_t read_entry_limit,
                               std::vector<CodeEntry>* new_code_entries);
 
-  void ReadJITSymFiles(const std::vector<CodeEntry>& jit_entries,
+  void ReadJITSymFiles(Process& process, const std::vector<CodeEntry>& jit_entries,
                        std::vector<JITSymFile>* jit_symfiles);
-  void ReadDexSymFiles(const std::vector<CodeEntry>& dex_entries,
+  void ReadDexSymFiles(Process& process, const std::vector<CodeEntry>& dex_entries,
                        std::vector<DexSymFile>* dex_symfiles);
 
-  pid_t pid_;
-  bool keep_symfiles_;
-  bool initialized_;
-  bool is_64bit_;
+  bool keep_symfiles_ = false;
+  IOEventRef read_event_ = nullptr;
+  symfile_callback_t symfile_callback_;
 
-  // The jit descriptor and dex descriptor can be read in one process_vm_readv() call.
-  uint64_t descriptors_addr_;
-  uint64_t descriptors_size_;
+  // Keys are pids of processes having libart.so, values show whether a process has been monitored.
+  std::unordered_map<pid_t, bool> pids_with_art_lib_;
+
+  // All monitored processes
+  std::unordered_map<pid_t, Process> processes_;
+  std::unordered_map<std::string, DescriptorsLocation> descriptors_location_cache_;
   std::vector<char> descriptors_buf_;
-  // offset relative to descriptors_addr
-  uint64_t jit_descriptor_offset_;
-  // offset relative to descriptors_addr
-  uint64_t dex_descriptor_offset_;
-
-  // The state we know about the remote jit debug descriptor.
-  Descriptor last_jit_descriptor_;
-  // The state we know about the remote dex debug descriptor.
-  Descriptor last_dex_descriptor_;
 };
 
 }  //namespace simpleperf

@@ -259,7 +259,8 @@ class RecordCommand : public Command {
   bool SaveRecordForPostUnwinding(Record* record);
   bool SaveRecordAfterUnwinding(Record* record);
   bool SaveRecordWithoutUnwinding(Record* record);
-  bool UpdateJITDebugInfo();
+  bool ProcessJITDebugInfo(const std::vector<JITSymFile>& jit_symfiles,
+                           const std::vector<DexSymFile>& dex_symfiles, bool sync_kernel_records);
 
   void UpdateRecordForEmbeddedPath(Record* record);
   bool UnwindRecord(SampleRecord& r);
@@ -416,21 +417,12 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     need_to_check_targets = true;
   }
   // Profiling JITed/interpreted Java code is supported starting from Android P.
-  if (!system_wide_collection_ && !app_package_name_.empty() &&
-      GetAndroidVersion() >= kAndroidVersionP) {
-    pid_t app_pid = 0;
-    // TODO: support a JITDebugReader for each app process?
-    if (!event_selection_set_.GetMonitoredProcesses().empty()) {
-      app_pid = *event_selection_set_.GetMonitoredProcesses().begin();
-    } else if (!event_selection_set_.GetMonitoredThreads().empty()) {
-      app_pid = *event_selection_set_.GetMonitoredThreads().begin();
-    }
-    CHECK_NE(app_pid, 0);
+  if (GetAndroidVersion() >= kAndroidVersionP) {
     // JIT symfiles are stored in temporary files, and are deleted after recording. But if
     // `-g --no-unwind` option is used, we want to keep symfiles to support unwinding in
     // the debug-unwind cmd.
     bool keep_symfiles = dwarf_callchain_sampling_ && !unwind_dwarf_callchain_;
-    jit_debug_reader_.reset(new JITDebugReader(app_pid, keep_symfiles));
+    jit_debug_reader_.reset(new JITDebugReader(keep_symfiles));
     // To profile java code, need to dump maps containing vdex files, which are not executable.
     event_selection_set_.SetRecordNotExecutableMaps(true);
   }
@@ -478,18 +470,29 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     }
   }
   if (jit_debug_reader_) {
-    // Update JIT info at the beginning of recording.
-    if (!UpdateJITDebugInfo()) {
+    auto callback = [this](const std::vector<JITSymFile>& jit_symfiles,
+                           const std::vector<DexSymFile>& dex_symfiles, bool sync_kernel_records) {
+      return ProcessJITDebugInfo(jit_symfiles, dex_symfiles, sync_kernel_records);
+    };
+    if (!jit_debug_reader_->RegisterSymFileCallback(loop, callback)) {
       return false;
     }
-    // It takes about 30us-130us on Pixel (depending on the cpu frequency) to check update when
-    // no update happens (most time spent in process_vm_preadv). We want to know the JIT debug
-    // info change as soon as possible, while not wasting too much time checking updates. So use
-    // a period of 100 ms.
-    const double kUpdateJITDebugInfoPeriodInSecond = 0.1;
-    if (!loop->AddPeriodicEvent(SecondToTimeval(kUpdateJITDebugInfoPeriodInSecond),
-                                [&]() { return UpdateJITDebugInfo(); })) {
-      return false;
+    if (!app_package_name_.empty()) {
+      std::set<pid_t> pids = event_selection_set_.GetMonitoredProcesses();
+      for (pid_t tid : event_selection_set_.GetMonitoredThreads()) {
+        pid_t pid;
+        if (GetProcessForThread(tid, &pid)) {
+          pids.insert(pid);
+        }
+      }
+      for (pid_t pid : pids) {
+        if (!jit_debug_reader_->MonitorProcess(pid)) {
+          return false;
+        }
+      }
+      if (!jit_debug_reader_->ReadAllProcesses()) {
+        return false;
+      }
     }
   }
   return true;
@@ -1048,7 +1051,10 @@ bool RecordCommand::ProcessRecord(Record* record) {
       return event_selection_set_.GetIOEventLoop()->ExitLoop();
     }
   }
-  last_record_timestamp_ = record->Timestamp();
+  if (jit_debug_reader_ && !jit_debug_reader_->UpdateRecord(record)) {
+    return false;
+  }
+  last_record_timestamp_ = std::max(last_record_timestamp_, record->Timestamp());
   if (unwind_dwarf_callchain_) {
     if (post_unwind_) {
       return SaveRecordForPostUnwinding(record);
@@ -1139,16 +1145,12 @@ bool RecordCommand::SaveRecordWithoutUnwinding(Record* record) {
   return record_file_writer_->WriteRecord(*record);
 }
 
-bool RecordCommand::UpdateJITDebugInfo() {
-  std::vector<JITSymFile> jit_symfiles;
-  std::vector<DexSymFile> dex_symfiles;
-  jit_debug_reader_->ReadUpdate(&jit_symfiles, &dex_symfiles);
-  if (jit_symfiles.empty() && dex_symfiles.empty()) {
-    return true;
-  }
+bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITSymFile>& jit_symfiles,
+                                        const std::vector<DexSymFile>& dex_symfiles,
+                                        bool sync_kernel_records) {
   EventAttrWithId attr_id = event_selection_set_.GetEventAttrWithId()[0];
   for (auto& symfile : jit_symfiles) {
-    Mmap2Record record(*attr_id.attr, false, jit_debug_reader_->Pid(), jit_debug_reader_->Pid(),
+    Mmap2Record record(*attr_id.attr, false, symfile.pid, symfile.pid,
                        symfile.addr, symfile.len, 0, map_flags::PROT_JIT_SYMFILE_MAP,
                        symfile.file_path, attr_id.ids[0], last_record_timestamp_);
     if (!ProcessRecord(&record)) {
@@ -1162,7 +1164,7 @@ bool RecordCommand::UpdateJITDebugInfo() {
   // generated after them. So process existing samples each time generating new JIT maps. We prefer
   // to process samples after processing JIT maps. Because some of the samples may hit the new JIT
   // maps, and we want to report them properly.
-  if (!event_selection_set_.ReadMmapEventData()) {
+  if (sync_kernel_records && !event_selection_set_.ReadMmapEventData()) {
     return false;
   }
   return true;
@@ -1175,6 +1177,13 @@ void UpdateMmapRecordForEmbeddedPath(RecordType* record) {
     return;
   }
   std::string filename = r.filename;
+  bool name_changed = false;
+  // Some vdex files in map files are marked with deleted flag, but they exist in the file system.
+  // It may be because a new file is used to replace the old one, but still worth to try.
+  if (android::base::EndsWith(filename, " (deleted)")) {
+    filename.resize(filename.size() - 10);
+    name_changed = true;
+  }
   if (r.data->pgoff != 0) {
     // For the case of a shared library "foobar.so" embedded
     // inside an APK, we rewrite the original MMAP from
@@ -1198,8 +1207,12 @@ void UpdateMmapRecordForEmbeddedPath(RecordType* record) {
   std::string zip_path;
   std::string entry_name;
   if (ParseExtractedInMemoryPath(filename, &zip_path, &entry_name)) {
+    filename = GetUrlInApk(zip_path, entry_name);
+    name_changed = true;
+  }
+  if (name_changed) {
     auto data = *r.data;
-    r.SetDataAndFilename(data, GetUrlInApk(zip_path, entry_name));
+    r.SetDataAndFilename(data, filename);
   }
 }
 
