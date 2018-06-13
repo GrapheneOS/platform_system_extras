@@ -35,18 +35,19 @@ import os
 import subprocess
 import sys
 
-scripts_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-sys.path.append(scripts_path)
+# pylint: disable=wrong-import-position
+SCRIPTS_PATH = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.append(SCRIPTS_PATH)
 from simpleperf_report_lib import ReportLib
 from utils import log_exit, log_info, AdbHelper, open_report_in_browser
 
-from data_types import *
-from svg_renderer import *
+from data_types import Process
+from svg_renderer import get_proper_scaled_time_string, render_svg
 
 
 def collect_data(args):
     """ Run app_profiler.py to generate record file. """
-    app_profiler_args = [sys.executable, os.path.join(scripts_path, "app_profiler.py"), "-nb"]
+    app_profiler_args = [sys.executable, os.path.join(SCRIPTS_PATH, "app_profiler.py"), "-nb"]
     if args.app:
         app_profiler_args += ["-p", args.app]
     elif args.native_program:
@@ -106,10 +107,10 @@ def parse_samples(process, args, sample_filter_fn):
     process.cmd = lib.GetRecordCmd()
     product_props = lib.MetaInfo().get("product_props")
     if product_props:
-        tuple = product_props.split(':')
-        process.props['ro.product.manufacturer'] = tuple[0]
-        process.props['ro.product.model'] = tuple[1]
-        process.props['ro.product.name'] = tuple[2]
+        manufacturer, model, name = product_props.split(':')
+        process.props['ro.product.manufacturer'] = manufacturer
+        process.props['ro.product.model'] = model
+        process.props['ro.product.name'] = name
     if lib.MetaInfo().get('trace_offcpu') == 'true':
         process.props['trace_offcpu'] = True
         if args.one_flamegraph:
@@ -163,7 +164,7 @@ def output_report(process, args):
     if not args.embedded_flamegraph:
         f.write("<html><body>")
     f.write("<div id='flamegraph_id' style='font-family: Monospace; %s'>" % (
-            "display: none;" if args.embedded_flamegraph else ""))
+        "display: none;" if args.embedded_flamegraph else ""))
     f.write("""<style type="text/css"> .s { stroke:black; stroke-width:0.5; cursor:pointer;}
             </style>""")
     f.write('<style type="text/css"> .t:hover { cursor:pointer; } </style>')
@@ -177,7 +178,7 @@ def output_report(process, args):
         event_entry = 'Event count: %s<br/>' % ("{:,}".format(process.num_events))
     # TODO: collect capture duration info from perf.data.
     duration_entry = ("Duration: %s seconds<br/>" % args.capture_duration
-                      ) if args.capture_duration else ""
+                     ) if args.capture_duration else ""
     f.write("""<div style='display:inline-block;'>
                   <font size='8'>
                   Inferno Flamegraph Report%s</font><br/><br/>
@@ -186,14 +187,13 @@ def output_report(process, args):
                   Threads : %d <br/>
                   Samples : %d<br/>
                   %s
-                  %s""" % (
-        (': ' + args.title) if args.title else '',
-        process_entry,
-        datetime.datetime.now().strftime("%Y-%m-%d (%A) %H:%M:%S"),
-        len(process.threads),
-        process.num_samples,
-        event_entry,
-        duration_entry))
+                  %s""" % ((': ' + args.title) if args.title else '',
+                           process_entry,
+                           datetime.datetime.now().strftime("%Y-%m-%d (%A) %H:%M:%S"),
+                           len(process.threads),
+                           process.num_samples,
+                           event_entry,
+                           duration_entry))
     if 'ro.product.model' in process.props:
         f.write(
             "Machine : %s (%s) by %s<br/>" %
@@ -212,8 +212,8 @@ def output_report(process, args):
     # Sort threads by the event count in a thread.
     for thread in sorted(process.threads.values(), key=lambda x: x.num_events, reverse=True):
         f.write("<br/><br/><b>Thread %d (%s) (%d samples):</b><br/>\n\n\n\n" % (
-                thread.tid, thread.name, thread.num_samples))
-        renderSVG(process, thread.flamegraph, f, args.color)
+            thread.tid, thread.name, thread.num_samples))
+        render_svg(process, thread.flamegraph, f, args.color)
 
     f.write("</div>")
     if not args.embedded_flamegraph:
@@ -224,7 +224,7 @@ def output_report(process, args):
 
 def generate_threads_offsets(process):
     for thread in process.threads.values():
-       thread.flamegraph.generate_offset(0)
+        thread.flamegraph.generate_offset(0)
 
 
 def collect_machine_info(process):
@@ -305,7 +305,7 @@ def main():
         if result:
             try:
                 process.pid = int(output)
-            except:
+            except ValueError:
                 process.pid = 0
         collect_machine_info(process)
     else:
@@ -313,7 +313,7 @@ def main():
 
     sample_filter_fn = None
     if args.one_flamegraph:
-        def filter_fn(sample, symbol, callchain):
+        def filter_fn(sample, _symbol, _callchain):
             sample.pid = sample.tid = process.pid
             return True
         sample_filter_fn = filter_fn

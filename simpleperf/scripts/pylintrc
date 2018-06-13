@@ -7,3 +7,6 @@ disable=C0111,W0403,design
 function-rgx=[a-z_][a-z0-9_]{2,50}$
 method-rgx=[a-z_][a-z0-9_]{2,50}$
 variable-rgx=[a-z_][a-z0-9_]{0,30}$
+attr-rgx=[a-z_][a-z0-9_]{0,30}$
+argument-rgx=[a-z_][a-z0-9_]{0,30}$
+max-module-lines=5000

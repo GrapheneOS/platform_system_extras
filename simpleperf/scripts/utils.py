@@ -69,17 +69,17 @@ def log_exit(msg):
 def disable_debug_log():
     logging.getLogger().setLevel(logging.WARN)
 
-def str_to_bytes(str):
+def str_to_bytes(str_value):
     if not is_python3():
-        return str
+        return str_value
     # In python 3, str are wide strings whereas the C api expects 8 bit strings,
     # hence we have to convert. For now using utf-8 as the encoding.
-    return str.encode('utf-8')
+    return str_value.encode('utf-8')
 
-def bytes_to_str(bytes):
+def bytes_to_str(bytes_value):
     if not is_python3():
-        return bytes
-    return bytes.decode('utf-8')
+        return bytes_value
+    return bytes_value.decode('utf-8')
 
 def get_target_binary_path(arch, binary_name):
     if arch == 'aarch64':
@@ -94,21 +94,21 @@ def get_target_binary_path(arch, binary_name):
 
 
 def get_host_binary_path(binary_name):
-    dir = os.path.join(get_script_dir(), 'bin')
+    dirname = os.path.join(get_script_dir(), 'bin')
     if is_windows():
         if binary_name.endswith('.so'):
             binary_name = binary_name[0:-3] + '.dll'
         elif '.' not in binary_name:
             binary_name += '.exe'
-        dir = os.path.join(dir, 'windows')
+        dirname = os.path.join(dirname, 'windows')
     elif sys.platform == 'darwin': # OSX
         if binary_name.endswith('.so'):
             binary_name = binary_name[0:-3] + '.dylib'
-        dir = os.path.join(dir, 'darwin')
+        dirname = os.path.join(dirname, 'darwin')
     else:
-        dir = os.path.join(dir, 'linux')
-    dir = os.path.join(dir, 'x86_64' if sys.maxsize > 2 ** 32 else 'x86')
-    binary_path = os.path.join(dir, binary_name)
+        dirname = os.path.join(dirname, 'linux')
+    dirname = os.path.join(dirname, 'x86_64' if sys.maxsize > 2 ** 32 else 'x86')
+    binary_path = os.path.join(dirname, binary_name)
     if not os.path.isfile(binary_path):
         log_fatal("can't find binary: %s" % binary_path)
     return binary_path
@@ -121,7 +121,7 @@ def is_executable_available(executable, option='--help'):
                                    stderr=subprocess.PIPE)
         subproc.communicate()
         return subproc.returncode == 0
-    except:
+    except OSError:
         return False
 
 DEFAULT_NDK_PATH = {
@@ -304,6 +304,7 @@ class AdbHelper(object):
         if '86' in output:
             return 'x86'
         log_fatal('unsupported architecture: %s' % output.strip())
+        return ''
 
 
     def get_android_version(self):
@@ -342,18 +343,14 @@ def open_report_in_browser(report_path):
         try:
             subprocess.check_call(['open', report_path])
             return
-        except:
+        except subprocess.CalledProcessError:
             pass
     import webbrowser
     try:
         # Try to open the report with Chrome
-        browser_key = ''
-        for key, _ in webbrowser._browsers.items():
-            if 'chrome' in key:
-                browser_key = key
-        browser = webbrowser.get(browser_key)
+        browser = webbrowser.get('google-chrome')
         browser.open(report_path, new=0, autoraise=True)
-    except:
+    except webbrowser.Error:
         # webbrowser.get() doesn't work well on darwin/windows.
         webbrowser.open_new_tab(report_path)
 
@@ -490,7 +487,7 @@ class Addr2Nearestline(object):
                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             (stdoutdata, _) = subproc.communicate(str_to_bytes(addr_request))
             stdoutdata = bytes_to_str(stdoutdata)
-        except:
+        except OSError:
             return
         addr_map = {}
         cur_line_list = None
@@ -591,7 +588,7 @@ class Objdump(object):
             subproc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             (stdoutdata, _) = subproc.communicate()
             stdoutdata = bytes_to_str(stdoutdata)
-        except:
+        except OSError:
             return None
 
         if not stdoutdata:
