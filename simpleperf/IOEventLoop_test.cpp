@@ -216,6 +216,32 @@ TEST(IOEventLoop, disable_enable_event) {
   close(fd[1]);
 }
 
+TEST(IOEventLoop, disable_enable_periodic_event) {
+  timeval tv;
+  tv.tv_sec = 0;
+  tv.tv_usec = 200000;
+  IOEventLoop loop;
+  IOEventRef wait_ref = loop.AddPeriodicEvent(tv, [&]() { return loop.ExitLoop(); });
+  ASSERT_TRUE(wait_ref != nullptr);
+  ASSERT_TRUE(loop.DisableEvent(wait_ref));
+
+  tv.tv_sec = 0;
+  tv.tv_usec = 100000;
+  size_t periodic_count = 0;
+  IOEventRef ref = loop.AddPeriodicEvent(tv, [&]() {
+    if (!loop.DisableEvent(ref)) {
+      return false;
+    }
+    periodic_count++;
+    if (periodic_count < 2u) {
+      return loop.EnableEvent(ref);
+    }
+    return loop.EnableEvent(wait_ref);
+  });
+  ASSERT_TRUE(loop.RunLoop());
+  ASSERT_EQ(2u, periodic_count);
+}
+
 TEST(IOEventLoop, exit_before_loop) {
   IOEventLoop loop;
   ASSERT_TRUE(loop.ExitLoop());

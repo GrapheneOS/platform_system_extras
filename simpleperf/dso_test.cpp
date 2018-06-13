@@ -92,6 +92,15 @@ TEST(dso, dex_file_dso) {
 #endif  // defined(__linux__)
 }
 
+TEST(dso, dex_file_offsets) {
+  std::unique_ptr<Dso> dso = Dso::CreateDso(DSO_DEX_FILE, "");
+  ASSERT_TRUE(dso);
+  for (uint64_t offset : {0x3, 0x1, 0x5, 0x4, 0x2, 0x4, 0x3}) {
+    dso->AddDexFileOffset(offset);
+  }
+  ASSERT_EQ(*dso->DexFileOffsets(), std::vector<uint64_t>({0x1, 0x2, 0x3, 0x4, 0x5}));
+}
+
 TEST(dso, embedded_elf) {
   const std::string file_path = GetUrlInApk(GetTestData(APK_FILE), NATIVELIB_IN_APK);
   std::unique_ptr<Dso> dso = Dso::CreateDso(DSO_ELF_FILE, file_path);
