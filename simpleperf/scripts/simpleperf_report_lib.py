@@ -21,11 +21,8 @@
 """
 
 import ctypes as ct
-import os
-import subprocess
 import sys
-import unittest
-from utils import *
+from utils import bytes_to_str, get_host_binary_path, is_windows, str_to_bytes
 
 
 def _get_native_lib():
@@ -45,6 +42,9 @@ def _char_pt(s):
 def _char_pt_to_str(char_pt):
     return bytes_to_str(char_pt)
 
+def _check(cond, failmsg):
+    if not cond:
+        raise RuntimeError(failmsg)
 
 class SampleStruct(ct.Structure):
     """ Instance of a sample in perf.data.
@@ -179,6 +179,7 @@ class ReportLibStructure(ct.Structure):
     _fields_ = []
 
 
+# pylint: disable=invalid-name
 class ReportLib(object):
 
     def __init__(self, native_lib_path=None):
@@ -231,17 +232,17 @@ class ReportLib(object):
     def SetLogSeverity(self, log_level='info'):
         """ Set log severity of native lib, can be verbose,debug,info,error,fatal."""
         cond = self._SetLogSeverityFunc(self.getInstance(), _char_pt(log_level))
-        self._check(cond, 'Failed to set log level')
+        _check(cond, 'Failed to set log level')
 
     def SetSymfs(self, symfs_dir):
         """ Set directory used to find symbols."""
         cond = self._SetSymfsFunc(self.getInstance(), _char_pt(symfs_dir))
-        self._check(cond, 'Failed to set symbols directory')
+        _check(cond, 'Failed to set symbols directory')
 
     def SetRecordFile(self, record_file):
         """ Set the path of record file, like perf.data."""
         cond = self._SetRecordFileFunc(self.getInstance(), _char_pt(record_file))
-        self._check(cond, 'Failed to set record file')
+        _check(cond, 'Failed to set record file')
 
     def ShowIpForUnknownSymbol(self):
         self._ShowIpForUnknownSymbolFunc(self.getInstance())
@@ -253,7 +254,7 @@ class ReportLib(object):
     def SetKallsymsFile(self, kallsym_file):
         """ Set the file path to a copy of the /proc/kallsyms file (for off device decoding) """
         cond = self._SetKallsymsFileFunc(self.getInstance(), _char_pt(kallsym_file))
-        self._check(cond, 'Failed to set kallsyms file')
+        _check(cond, 'Failed to set kallsyms file')
 
     def GetNextSample(self):
         psample = self._GetNextSampleFunc(self.getInstance())
@@ -364,7 +365,3 @@ class ReportLib(object):
         if self._instance is None:
             raise Exception('Instance is Closed')
         return self._instance
-
-    def _check(self, cond, failmsg):
-        if not cond:
-            raise Exception(failmsg)
