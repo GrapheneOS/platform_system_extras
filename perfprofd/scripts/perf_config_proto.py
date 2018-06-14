@@ -46,6 +46,7 @@ config_options = [
     ('send_to_dropbox', 'b'),
 ]
 
+
 def collect_and_write(filename):
     config = perfprofd_config_pb2.ProfilingConfig()
 
@@ -75,6 +76,7 @@ def collect_and_write(filename):
     f.write(config.SerializeToString())
     f.close()
 
+
 def read_and_print(filename):
     config = perfprofd_config_pb2.ProfilingConfig()
 
@@ -83,6 +85,7 @@ def read_and_print(filename):
     f.close()
 
     print config
+
 
 if sys.argv[1] == 'read':
     read_and_print(sys.argv[2])
