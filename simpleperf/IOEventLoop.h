@@ -57,8 +57,7 @@ class IOEventLoop {
 
   // Register a periodic Event, so [callback] is called periodically every
   // [duration].
-  bool AddPeriodicEvent(timeval duration,
-                        const std::function<bool()>& callback);
+  IOEventRef AddPeriodicEvent(timeval duration, const std::function<bool()>& callback);
 
   // Run a loop polling for Events. It only exits when ExitLoop() is called
   // in a callback function of registered Events.

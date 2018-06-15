@@ -24,7 +24,8 @@ import sys
 import tempfile
 
 from simpleperf_report_lib import ReportLib
-from utils import *
+from utils import log_info, log_warning, log_exit
+from utils import Addr2Nearestline, get_script_dir, Objdump, open_report_in_browser, remove
 
 
 class HtmlWriter(object):
@@ -81,8 +82,15 @@ class EventScope(object):
         result['eventName'] = self.name
         result['eventCount'] = self.event_count
         result['processes'] = [process.get_sample_info(gen_addr_hit_map)
-                                  for process in self.processes.values()]
+                               for process in self.processes.values()]
         return result
+
+    @property
+    def libraries(self):
+        for process in self.processes.values():
+            for thread in process.threads.values():
+                for lib in thread.libs.values():
+                    yield lib
 
 
 class ProcessScope(object):
@@ -107,7 +115,7 @@ class ProcessScope(object):
         result['pid'] = self.pid
         result['eventCount'] = self.event_count
         result['threads'] = [thread.get_sample_info(gen_addr_hit_map)
-                                for thread in self.threads.values()]
+                             for thread in self.threads.values()]
         return result
 
 
@@ -123,8 +131,7 @@ class ThreadScope(object):
         """ callstack is a list of tuple (lib_id, func_id, addr).
             For each i > 0, callstack[i] calls callstack[i-1]."""
         hit_func_ids = set()
-        for i in range(len(callstack)):
-            lib_id, func_id, addr = callstack[i]
+        for i, (lib_id, func_id, addr) in enumerate(callstack):
             # When a callstack contains recursive function, only add for each function once.
             if func_id in hit_func_ids:
                 continue
@@ -157,7 +164,7 @@ class ThreadScope(object):
         result['tid'] = self.tid
         result['eventCount'] = self.event_count
         result['libs'] = [lib.gen_sample_info(gen_addr_hit_map)
-                            for lib in self.libs.values()]
+                          for lib in self.libs.values()]
         return result
 
 
@@ -179,7 +186,7 @@ class LibScope(object):
         result['libId'] = self.lib_id
         result['eventCount'] = self.event_count
         result['functions'] = [func.gen_sample_info(gen_addr_hit_map)
-                                  for func in self.functions.values()]
+                               for func in self.functions.values()]
         return result
 
 
@@ -399,17 +406,7 @@ class SourceFileSet(object):
 
 
 class SourceFileSearcher(object):
-
-    SOURCE_FILE_EXTS = {'.h', '.hh', '.H', '.hxx', '.hpp', '.h++',
-                        '.c', '.cc', '.C', '.cxx', '.cpp', '.c++',
-                        '.java', '.kt'}
-
-    @classmethod
-    def is_source_filename(cls, filename):
-        ext = os.path.splitext(filename)[1]
-        return ext in cls.SOURCE_FILE_EXTS
-
-    """" Find source file paths in the file system.
+    """ Find source file paths in the file system.
         The file paths reported by addr2line are the paths stored in debug sections
         of shared libraries. And we need to convert them to file paths in the file
         system. It is done in below steps:
@@ -424,6 +421,16 @@ class SourceFileSearcher(object):
            2.1 Find all real paths with the same file name as the abstract path.
            2.2 Select the real path having the longest common suffix with the abstract path.
     """
+
+    SOURCE_FILE_EXTS = {'.h', '.hh', '.H', '.hxx', '.hpp', '.h++',
+                        '.c', '.cc', '.C', '.cxx', '.cpp', '.c++',
+                        '.java', '.kt'}
+
+    @classmethod
+    def is_source_filename(cls, filename):
+        ext = os.path.splitext(filename)[1]
+        return ext in cls.SOURCE_FILE_EXTS
+
     def __init__(self, source_dirs):
         # Map from filename to a list of reversed directory path containing filename.
         self.filename_to_rparents = {}
@@ -594,30 +601,25 @@ class RecordData(object):
             thread.add_callstack(raw_sample.period, callstack, self.build_addr_hit_map)
 
         for event in self.events.values():
-            for process in event.processes.values():
-                for thread in process.threads.values():
-                    for lib in thread.libs.values():
-                        for func_id in lib.functions:
-                            function = lib.functions[func_id]
-                            function.update_subtree_event_count()
+            for lib in event.libraries:
+                for func_id in lib.functions:
+                    function = lib.functions[func_id]
+                    function.update_subtree_event_count()
 
     def limit_percents(self, min_func_percent, min_callchain_percent):
         hit_func_ids = set()
         for event in self.events.values():
             min_limit = event.event_count * min_func_percent * 0.01
-            for process in event.processes.values():
-                for thread in process.threads.values():
-                    for lib in thread.libs.values():
-                        to_del_func_ids = []
-                        for func_id in lib.functions:
-                            function = lib.functions[func_id]
-                            if function.call_graph.subtree_event_count < min_limit:
-                                to_del_func_ids.append(func_id)
-                            else:
-                                function.limit_callchain_percent(min_callchain_percent,
-                                                                 hit_func_ids)
-                        for func_id in to_del_func_ids:
-                            del lib.functions[func_id]
+            for lib in event.libraries:
+                to_del_func_ids = []
+                for func_id in lib.functions:
+                    function = lib.functions[func_id]
+                    if function.call_graph.subtree_event_count < min_limit:
+                        to_del_func_ids.append(func_id)
+                    else:
+                        function.limit_callchain_percent(min_callchain_percent, hit_func_ids)
+                for func_id in to_del_func_ids:
+                    del lib.functions[func_id]
         self.functions.trim_functions(hit_func_ids)
 
     def _get_event(self, event_name):
@@ -642,15 +644,12 @@ class RecordData(object):
                                function.start_addr + function.addr_len - 1)
         # Request line for each addr in FunctionScope.addr_hit_map.
         for event in self.events.values():
-            for process in event.processes.values():
-                for thread in process.threads.values():
-                    for lib in thread.libs.values():
-                        lib_name = self.libs.get_lib_name(lib.lib_id)
-                        for function in lib.functions.values():
-                            func_addr = self.functions.id_to_func[
-                                            function.call_graph.func_id].start_addr
-                            for addr in function.addr_hit_map:
-                                addr2line.add_addr(lib_name, func_addr, addr)
+            for lib in event.libraries:
+                lib_name = self.libs.get_lib_name(lib.lib_id)
+                for function in lib.functions.values():
+                    func_addr = self.functions.id_to_func[function.call_graph.func_id].start_addr
+                    for addr in function.addr_hit_map:
+                        addr2line.add_addr(lib_name, func_addr, addr)
         addr2line.convert_addrs_to_lines()
 
         # Set line range for each function.
@@ -659,8 +658,7 @@ class RecordData(object):
                 continue
             dso = addr2line.get_dso(self.libs.get_lib_name(function.lib_id))
             start_source = addr2line.get_addr_source(dso, function.start_addr)
-            end_source = addr2line.get_addr_source(dso,
-                            function.start_addr + function.addr_len - 1)
+            end_source = addr2line.get_addr_source(dso, function.start_addr + function.addr_len - 1)
             if not start_source or not end_source:
                 continue
             start_file_path, start_line = start_source[-1]
@@ -673,22 +671,20 @@ class RecordData(object):
 
         # Build FunctionScope.line_hit_map.
         for event in self.events.values():
-            for process in event.processes.values():
-                for thread in process.threads.values():
-                    for lib in thread.libs.values():
-                        dso = addr2line.get_dso(self.libs.get_lib_name(lib.lib_id))
-                        for function in lib.functions.values():
-                            for addr in function.addr_hit_map:
-                                source = addr2line.get_addr_source(dso, addr)
-                                if not source:
-                                    continue
-                                for file_path, line in source:
-                                    source_file = self.source_files.get_source_file(file_path)
-                                    # Show [line - 5, line + 5] of the line hit by a sample.
-                                    source_file.request_lines(line - 5, line + 5)
-                                    count_info = function.addr_hit_map[addr]
-                                    function.build_line_hit_map(source_file.file_id, line,
-                                                                count_info[0], count_info[1])
+            for lib in event.libraries:
+                dso = addr2line.get_dso(self.libs.get_lib_name(lib.lib_id))
+                for function in lib.functions.values():
+                    for addr in function.addr_hit_map:
+                        source = addr2line.get_addr_source(dso, addr)
+                        if not source:
+                            continue
+                        for file_path, line in source:
+                            source_file = self.source_files.get_source_file(file_path)
+                            # Show [line - 5, line + 5] of the line hit by a sample.
+                            source_file.request_lines(line - 5, line + 5)
+                            count_info = function.addr_hit_map[addr]
+                            function.build_line_hit_map(source_file.file_id, line, count_info[0],
+                                                        count_info[1])
 
         # Collect needed source code in SourceFileSet.
         self.source_files.load_source_code(source_dirs)
@@ -771,7 +767,7 @@ class RecordData(object):
 
     def _gen_sample_info(self):
         return [event.get_sample_info(self.gen_addr_hit_map_in_record_info)
-                    for event in self.events.values()]
+                for event in self.events.values()]
 
     def _gen_source_files(self):
         source_files = sorted(self.source_files.path_to_source_files.values(),
@@ -799,22 +795,23 @@ class ReportGenerator(object):
         self.hw.open_tag('html')
         self.hw.open_tag('head')
         self.hw.open_tag('link', rel='stylesheet', type='text/css',
-            href='https://code.jquery.com/ui/1.12.0/themes/smoothness/jquery-ui.css'
-                         ).close_tag()
+                         href='https://code.jquery.com/ui/1.12.0/themes/smoothness/jquery-ui.css'
+                        ).close_tag()
 
         self.hw.open_tag('link', rel='stylesheet', type='text/css',
-             href='https://cdn.datatables.net/1.10.16/css/jquery.dataTables.min.css'
-                         ).close_tag()
+                         href='https://cdn.datatables.net/1.10.16/css/jquery.dataTables.min.css'
+                        ).close_tag()
         self.hw.open_tag('script', src='https://www.gstatic.com/charts/loader.js').close_tag()
         self.hw.open_tag('script').add(
             "google.charts.load('current', {'packages': ['corechart', 'table']});").close_tag()
         self.hw.open_tag('script', src='https://code.jquery.com/jquery-3.2.1.js').close_tag()
-        self.hw.open_tag('script', src='https://code.jquery.com/ui/1.12.1/jquery-ui.js'
-                         ).close_tag()
+        self.hw.open_tag('script', src='https://code.jquery.com/ui/1.12.1/jquery-ui.js').close_tag()
         self.hw.open_tag('script',
-            src='https://cdn.datatables.net/1.10.16/js/jquery.dataTables.min.js').close_tag()
+                         src='https://cdn.datatables.net/1.10.16/js/jquery.dataTables.min.js'
+                        ).close_tag()
         self.hw.open_tag('script',
-            src='https://cdn.datatables.net/1.10.16/js/dataTables.jqueryui.min.js').close_tag()
+                         src='https://cdn.datatables.net/1.10.16/js/dataTables.jqueryui.min.js'
+                        ).close_tag()
         self.hw.open_tag('style', type='text/css').add("""
             .colForLine { width: 50px; }
             .colForCount { width: 100px; }

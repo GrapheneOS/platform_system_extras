@@ -44,7 +44,8 @@ import copy
 import re
 import subprocess
 
-from utils import *
+from utils import log_exit, log_fatal
+from utils import get_host_binary_path
 
 
 class MapEntry(object):
@@ -122,7 +123,7 @@ class UnwindingTimes(object):
 
 class UnwindingMemConsumption(object):
 
-    def __init___(self):
+    def __init__(self):
         self.before_unwinding = None
         self.after_unwinding = None
 
@@ -341,13 +342,14 @@ def parse_callchain_record(lines, i, chain_type, process_maps):
         elif items[0] == 'callchain:':
             in_callchain = True
         elif in_callchain:
-            # "dalvik-jit-code-cache (deleted)[+346c] (/dev/ashmem/dalvik-jit-code-cache (deleted)[+346c])"
+            # "dalvik-jit-code-cache (deleted)[+346c] (/dev/ashmem/dalvik-jit-code-cache
+            #  (deleted)[+346c])"
             if re.search(r'\)\[\+\w+\]\)$', line):
                 break_pos = line.rfind('(', 0, line.rfind('('))
             else:
                 break_pos = line.rfind('(')
             if break_pos > 0:
-                m = re.match('(.+)\[\+(\w+)\]\)', line[break_pos + 1:])
+                m = re.match(r'(.+)\[\+(\w+)\]\)', line[break_pos + 1:])
                 if m:
                     function_names.append(line[:break_pos].strip())
                     filenames.append(m.group(1))

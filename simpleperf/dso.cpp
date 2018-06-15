@@ -333,7 +333,12 @@ class DexFileDso : public Dso {
       : Dso(DSO_DEX_FILE, path, debug_file_path) {}
 
   void AddDexFileOffset(uint64_t dex_file_offset) override {
-    dex_file_offsets_.push_back(dex_file_offset);
+    auto it = std::lower_bound(dex_file_offsets_.begin(), dex_file_offsets_.end(),
+                               dex_file_offset);
+    if (it != dex_file_offsets_.end() && *it == dex_file_offset) {
+      return;
+    }
+    dex_file_offsets_.insert(it, dex_file_offset);
   }
 
   const std::vector<uint64_t>* DexFileOffsets() override {

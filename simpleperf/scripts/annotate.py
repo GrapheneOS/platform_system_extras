@@ -24,14 +24,15 @@ import os
 import os.path
 import shutil
 import subprocess
-import sys
 
-from simpleperf_report_lib import *
-from utils import *
+from simpleperf_report_lib import ReportLib
+from utils import log_info, log_warning, log_exit, log_fatal
+from utils import bytes_to_str, extant_dir, find_tool_path, flatten_arg_list, is_windows
+from utils import ReadElf, str_to_bytes
 
 class SourceLine(object):
-    def __init__(self, file, function, line):
-        self.file = file
+    def __init__(self, file_id, function, line):
+        self.file = file_id
         self.function = function
         self.line = line
 
@@ -56,31 +57,30 @@ class Addr2Line(object):
     """collect information of how to map [dso_name,vaddr] to [source_file:line].
     """
     def __init__(self, ndk_path, symfs_dir=None):
-        self.dso_dict = dict()
+        self.dso_dict = {}
         self.addr2line_path = find_tool_path('addr2line', ndk_path)
         if self.addr2line_path is None:
             log_exit("Can't find addr2line. Please set ndk path with --ndk-path option.")
         self.readelf = ReadElf(ndk_path)
         self.symfs_dir = symfs_dir
+        # store a list of source files
+        self.file_list = []
+        # map from file to id with file_list[id] == file
+        self.file_dict = {}
 
 
     def add_addr(self, dso_name, addr):
         dso = self.dso_dict.get(dso_name)
         if dso is None:
-            self.dso_dict[dso_name] = dso = dict()
+            self.dso_dict[dso_name] = dso = {}
         if addr not in dso:
             dso[addr] = None
 
-
     def convert_addrs_to_lines(self):
-        # store a list of source files
-        self.file_list = []
-        # map from file to id with file_list[id] == file
-        self.file_dict = {}
         self.file_list.append('')
         self.file_dict[''] = 0
 
-        for dso_name in self.dso_dict.keys():
+        for dso_name in self.dso_dict:
             self._convert_addrs_to_lines(dso_name, self.dso_dict[dso_name])
         self._combine_source_files()
 
@@ -121,30 +121,30 @@ class Addr2Line(object):
                 items = stdoutdata[out_pos].rsplit(':', 1)
                 if len(items) != 2:
                     continue
-                (file, line) = items
+                (file_path, line) = items
                 line = line.split()[0]  # Remove comments after line number
                 out_pos += 1
-                if '?' in file:
-                    file = 0
+                if '?' in file_path:
+                    file_id = 0
                 else:
-                    file = self._get_file_id(file)
+                    file_id = self._get_file_id(file_path)
                 if '?' in line:
                     line = 0
                 else:
                     line = int(line)
-                source_lines.append(SourceLine(file, function, line))
+                source_lines.append(SourceLine(file_id, function, line))
             dso[addrs[addr_pos]] = source_lines
             addr_pos += 1
         assert addr_pos == len(addrs)
 
 
-    def _get_file_id(self, file):
-        id = self.file_dict.get(file)
-        if id is None:
-            id = len(self.file_list)
-            self.file_list.append(file)
-            self.file_dict[file] = id
-        return id
+    def _get_file_id(self, file_path):
+        file_id = self.file_dict.get(file_path)
+        if file_id is None:
+            file_id = len(self.file_list)
+            self.file_list.append(file_path)
+            self.file_dict[file_path] = file_id
+        return file_id
 
     def _combine_source_files(self):
         """It is possible that addr2line gives us different names for the same
@@ -155,29 +155,29 @@ class Addr2Line(object):
            source files with no conflicts in path.
         """
         # Collect files having the same filename.
-        filename_dict = dict()
-        for file in self.file_list:
-            index = max(file.rfind('/'), file.rfind(os.sep))
-            filename = file[index+1:]
+        filename_dict = {}
+        for file_path in self.file_list:
+            index = max(file_path.rfind('/'), file_path.rfind(os.sep))
+            filename = file_path[index+1:]
             entry = filename_dict.get(filename)
             if entry is None:
                 filename_dict[filename] = entry = []
-            entry.append(file)
+            entry.append(file_path)
 
         # Combine files having the same filename and having no conflicts in path.
-        for filename in filename_dict.keys():
+        for filename in filename_dict:
             files = filename_dict[filename]
             if len(files) == 1:
                 continue
-            for file in files:
-                to_file = file
+            for file_path in files:
+                to_file = file_path
                 # Test if we can merge files[i] with another file having longer
                 # path.
                 for f in files:
-                    if len(f) > len(to_file) and f.find(file) != -1:
+                    if len(f) > len(to_file) and f.find(file_path) != -1:
                         to_file = f
-                if to_file != file:
-                    from_id = self.file_dict[file]
+                if to_file != file_path:
+                    from_id = self.file_dict[file_path]
                     to_id = self.file_dict[to_file]
                     self.file_list[from_id] = self.file_list[to_id]
 
@@ -239,8 +239,8 @@ class DsoPeriod(object):
 
 class FilePeriod(object):
     """Period for each source file"""
-    def __init__(self, file):
-        self.file = file
+    def __init__(self, file_id):
+        self.file = file_id
         self.period = Period()
         # Period for each line in the file.
         self.line_dict = {}
@@ -283,12 +283,6 @@ class SourceFileAnnotator(object):
         kallsyms = 'binary_cache/kallsyms'
         if not os.path.isfile(kallsyms):
             kallsyms = None
-        source_dirs = config['source_dirs']
-        for dir in source_dirs:
-            if not os.path.isdir(dir):
-                log_exit('[source_dirs] "%s" is not a dir' % dir)
-        if not config['source_dirs']:
-            log_exit('Please set source directories.')
 
         # init member variables
         self.config = config
@@ -312,6 +306,10 @@ class SourceFileAnnotator(object):
         os.makedirs(output_dir)
 
         self.addr2line = Addr2Line(self.config['ndk_path'], symfs_dir)
+        self.period = 0
+        self.dso_periods = {}
+        self.file_periods = {}
+        self.source_file_dict = {}
 
 
     def annotate(self):
@@ -380,9 +378,6 @@ class SourceFileAnnotator(object):
         """read perf.data, collect Period for all types:
             binaries, source files, functions, lines.
         """
-        self.period = 0
-        self.dso_periods = dict()
-        self.file_periods = dict()
         for perf_data in self.config['perf_data_list']:
             lib = ReportLib()
             lib.SetRecordFile(perf_data)
@@ -397,49 +392,52 @@ class SourceFileAnnotator(object):
                     break
                 if not self._filter_sample(sample):
                     continue
-                symbols = []
-                symbols.append(lib.GetSymbolOfCurrentSample())
-                callchain = lib.GetCallChainOfCurrentSample()
-                for i in range(callchain.nr):
-                    symbols.append(callchain.entries[i].symbol)
-                # Each sample has a callchain, but its period is only used once
-                # to add period for each function/source_line/source_file/binary.
-                # For example, if more than one entry in the callchain hits a
-                # function, the event count of that function is only increased once.
-                # Otherwise, we may get periods > 100%.
-                is_sample_used = False
-                used_dso_dict = dict()
-                used_file_dict = dict()
-                used_function_dict = dict()
-                used_line_dict = dict()
-                period = Period(sample.period, sample.period)
-                for i in range(len(symbols)):
-                    symbol = symbols[i]
-                    if i == 1:
-                        period = Period(0, sample.period)
-                    if not self._filter_symbol(symbol):
-                        continue
-                    is_sample_used = True
-                    # Add period to dso.
-                    self._add_dso_period(symbol.dso_name, period, used_dso_dict)
-                    # Add period to source file.
-                    sources = self.addr2line.get_sources(symbol.dso_name, symbol.vaddr_in_file)
-                    for source in sources:
-                        if source.file:
-                            self._add_file_period(source, period, used_file_dict)
-                            # Add period to line.
-                            if source.line:
-                                self._add_line_period(source, period, used_line_dict)
-                    # Add period to function.
-                    sources = self.addr2line.get_sources(symbol.dso_name, symbol.symbol_addr)
-                    for source in sources:
-                        if source.file:
-                            self._add_file_period(source, period, used_file_dict)
-                            if source.function:
-                                self._add_function_period(source, period, used_function_dict)
+                self._generate_periods_for_sample(lib, sample)
 
-                if is_sample_used:
-                    self.period += sample.period
+
+    def _generate_periods_for_sample(self, lib, sample):
+        symbols = []
+        symbols.append(lib.GetSymbolOfCurrentSample())
+        callchain = lib.GetCallChainOfCurrentSample()
+        for i in range(callchain.nr):
+            symbols.append(callchain.entries[i].symbol)
+            # Each sample has a callchain, but its period is only used once
+            # to add period for each function/source_line/source_file/binary.
+            # For example, if more than one entry in the callchain hits a
+            # function, the event count of that function is only increased once.
+            # Otherwise, we may get periods > 100%.
+            is_sample_used = False
+            used_dso_dict = {}
+            used_file_dict = {}
+            used_function_dict = {}
+            used_line_dict = {}
+            period = Period(sample.period, sample.period)
+            for j, symbol in enumerate(symbols):
+                if j == 1:
+                    period = Period(0, sample.period)
+                if not self._filter_symbol(symbol):
+                    continue
+                is_sample_used = True
+                # Add period to dso.
+                self._add_dso_period(symbol.dso_name, period, used_dso_dict)
+                # Add period to source file.
+                sources = self.addr2line.get_sources(symbol.dso_name, symbol.vaddr_in_file)
+                for source in sources:
+                    if source.file:
+                        self._add_file_period(source, period, used_file_dict)
+                        # Add period to line.
+                        if source.line:
+                            self._add_line_period(source, period, used_line_dict)
+                # Add period to function.
+                sources = self.addr2line.get_sources(symbol.dso_name, symbol.symbol_addr)
+                for source in sources:
+                    if source.file:
+                        self._add_file_period(source, period, used_file_dict)
+                        if source.function:
+                            self._add_function_period(source, period, used_function_dict)
+
+            if is_sample_used:
+                self.period += sample.period
 
 
     def _add_dso_period(self, dso_name, period, used_dso_dict):
@@ -521,20 +519,19 @@ class SourceFileAnnotator(object):
 
 
     def _collect_source_files(self):
-        self.source_file_dict = dict()
         source_file_suffix = ['h', 'c', 'cpp', 'cc', 'java', 'kt']
         for source_dir in self.config['source_dirs']:
             for root, _, files in os.walk(source_dir):
-                for file in files:
-                    if file[file.rfind('.')+1:] in source_file_suffix:
-                        entry = self.source_file_dict.get(file)
+                for filename in files:
+                    if filename[filename.rfind('.')+1:] in source_file_suffix:
+                        entry = self.source_file_dict.get(filename)
                         if entry is None:
-                            entry = self.source_file_dict[file] = []
-                        entry.append(os.path.join(root, file))
+                            entry = self.source_file_dict[filename] = []
+                        entry.append(os.path.join(root, filename))
 
 
-    def _find_source_file(self, file):
-        filename = file[file.rfind(os.sep)+1:]
+    def _find_source_file(self, file_path):
+        filename = file_path[file_path.rfind(os.sep)+1:]
         source_files = self.source_file_dict.get(filename)
         if source_files is None:
             return None
@@ -542,7 +539,7 @@ class SourceFileAnnotator(object):
         best_path = None
         best_suffix_len = 0
         for path in source_files:
-            suffix_len = len(os.path.commonprefix((path[::-1], file[::-1])))
+            suffix_len = len(os.path.commonprefix((path[::-1], file_path[::-1])))
             if suffix_len > best_suffix_len:
                 best_suffix_len = suffix_len
                 best_path = path
@@ -550,7 +547,7 @@ class SourceFileAnnotator(object):
             elif suffix_len == best_suffix_len:
                 best_path_count += 1
         if best_path_count > 1:
-            log_warning('multiple source for %s, select %s' % (file, best_path))
+            log_warning('multiple source for %s, select %s' % (file_path, best_path))
         return best_path
 
 
@@ -560,7 +557,7 @@ class SourceFileAnnotator(object):
            2. Annotate c++ source files.
         """
         dest_dir = self.config['annotate_dest_dir']
-        for key in self.file_periods.keys():
+        for key in self.file_periods:
             is_java = False
             if key.startswith('$JAVA_SRC_ROOT/'):
                 path = key[len('$JAVA_SRC_ROOT/'):]
@@ -601,7 +598,7 @@ class SourceFileAnnotator(object):
         with open(from_path, 'r') as rf:
             lines = rf.readlines()
 
-        annotates = dict()
+        annotates = {}
         for line in file_period.line_dict.keys():
             annotates[line] = self._get_percentage_str(file_period.line_dict[line], True)
         for func_name in file_period.function_dict.keys():
@@ -613,7 +610,7 @@ class SourceFileAnnotator(object):
         annotates[1] = '[file] ' + self._get_percentage_str(file_period.period, True)
 
         max_annotate_cols = 0
-        for key in annotates.keys():
+        for key in annotates:
             max_annotate_cols = max(max_annotate_cols, len(annotates[key]))
 
         empty_annotate = ' ' * (max_annotate_cols + 6)
@@ -636,22 +633,22 @@ class SourceFileAnnotator(object):
                 wf.write(lines[line-1])
 
 def main():
-    parser = argparse.ArgumentParser(description=
-"""Annotate source files based on profiling data. It reads line information from
-binary_cache generated by app_profiler.py or binary_cache_builder.py, and
-generate annotated source files in annotated_files directory.""")
-    parser.add_argument('-i', '--perf_data_list', nargs='+', action='append', help=
-"""The paths of profiling data. Default is perf.data.""")
-    parser.add_argument('-s', '--source_dirs', nargs='+', action='append', help=
-"""Directories to find source files.""")
-    parser.add_argument('--comm', nargs='+', action='append', help=
-"""Use samples only in threads with selected names.""")
-    parser.add_argument('--pid', nargs='+', action='append', help=
-"""Use samples only in processes with selected process ids.""")
-    parser.add_argument('--tid', nargs='+', action='append', help=
-"""Use samples only in threads with selected thread ids.""")
-    parser.add_argument('--dso', nargs='+', action='append', help=
-"""Use samples only in selected binaries.""")
+    parser = argparse.ArgumentParser(description="""
+        Annotate source files based on profiling data. It reads line information from binary_cache
+        generated by app_profiler.py or binary_cache_builder.py, and generate annotated source
+        files in annotated_files directory.""")
+    parser.add_argument('-i', '--perf_data_list', nargs='+', action='append', help="""
+        The paths of profiling data. Default is perf.data.""")
+    parser.add_argument('-s', '--source_dirs', type=extant_dir, nargs='+', action='append', help="""
+        Directories to find source files.""")
+    parser.add_argument('--comm', nargs='+', action='append', help="""
+        Use samples only in threads with selected names.""")
+    parser.add_argument('--pid', nargs='+', action='append', help="""
+        Use samples only in processes with selected process ids.""")
+    parser.add_argument('--tid', nargs='+', action='append', help="""
+        Use samples only in threads with selected thread ids.""")
+    parser.add_argument('--dso', nargs='+', action='append', help="""
+        Use samples only in selected binaries.""")
     parser.add_argument('--ndk_path', type=extant_dir, help='Set the path of a ndk release.')
 
     args = parser.parse_args()

@@ -20,8 +20,7 @@
 
 from __future__ import print_function
 import argparse
-import sys
-from simpleperf_report_lib import *
+from simpleperf_report_lib import ReportLib
 
 
 def report_sample(record_file, symfs_dir, kallsyms_file=None):
@@ -57,7 +56,7 @@ def report_sample(record_file, symfs_dir, kallsyms_file=None):
         print('')
 
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description='Report samples in perf.data.')
     parser.add_argument('--symfs',
                         help='Set the path to find binaries with symbols and debug info.')
@@ -66,3 +65,7 @@ if __name__ == '__main__':
                         help='Default is perf.data.')
     args = parser.parse_args()
     report_sample(args.record_file, args.symfs, args.kallsyms)
+
+
+if __name__ == '__main__':
+    main()
