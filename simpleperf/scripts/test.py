@@ -913,6 +913,22 @@ class TestReportLib(unittest.TestCase):
         report_lib.ShowArtFrames(True)
         self.assertTrue(has_art_frame(report_lib))
 
+    def test_tracing_data(self):
+        self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_tracepoint_event.data'))
+        has_tracing_data = False
+        while self.report_lib.GetNextSample():
+            event = self.report_lib.GetEventOfCurrentSample()
+            tracing_data = self.report_lib.GetTracingDataOfCurrentSample()
+            if event.name == 'sched:sched_switch':
+                self.assertIsNotNone(tracing_data)
+                self.assertIn('prev_pid', tracing_data)
+                self.assertIn('next_comm', tracing_data)
+                if tracing_data['prev_pid'] == 9896 and tracing_data['next_comm'] == 'swapper/4':
+                    has_tracing_data = True
+            else:
+                self.assertIsNone(tracing_data)
+        self.assertTrue(has_tracing_data)
+
 
 class TestRunSimpleperfOnDevice(TestBase):
     def test_smoke(self):
