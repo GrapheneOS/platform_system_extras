@@ -130,13 +130,12 @@ class RecordFileReader {
   // is by calling ReadRecord() in a loop.
 
   // If sorted is true, sort records before passing them to callback function.
-  bool ReadDataSection(const std::function<bool(std::unique_ptr<Record>)>& callback,
-                       bool sorted = true);
+  bool ReadDataSection(const std::function<bool(std::unique_ptr<Record>)>& callback);
 
   // Read next record. If read successfully, set [record] and return true.
   // If there is no more records, set [record] to nullptr and return true.
   // Otherwise return false.
-  bool ReadRecord(std::unique_ptr<Record>& record, bool sorted = true);
+  bool ReadRecord(std::unique_ptr<Record>& record);
 
   size_t GetAttrIndexOfRecord(const Record* record);
 
@@ -183,7 +182,6 @@ class RecordFileReader {
   size_t event_id_pos_in_sample_records_;
   size_t event_id_reverse_pos_in_non_sample_records_;
 
-  std::unique_ptr<RecordCache> record_cache_;
   uint64_t read_record_size_;
 
   DISALLOW_COPY_AND_ASSIGN(RecordFileReader);
