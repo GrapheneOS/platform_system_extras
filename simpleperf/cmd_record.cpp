@@ -1273,7 +1273,7 @@ bool RecordCommand::PostUnwindRecords() {
   auto callback = [this](std::unique_ptr<Record> record) {
     return SaveRecordAfterUnwinding(record.get());
   };
-  return reader->ReadDataSection(callback, false);
+  return reader->ReadDataSection(callback);
 }
 
 bool RecordCommand::JoinCallChains() {
@@ -1321,7 +1321,7 @@ bool RecordCommand::JoinCallChains() {
     sr.UpdateUserCallChain(ips);
     return record_file_writer_->WriteRecord(sr);
   };
-  return reader->ReadDataSection(record_callback, false);
+  return reader->ReadDataSection(record_callback);
 }
 
 bool RecordCommand::DumpAdditionalFeatures(

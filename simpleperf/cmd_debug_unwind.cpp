@@ -338,7 +338,7 @@ bool DebugUnwindCommand::JoinCallChains() {
     sr.UpdateUserCallChain(ips);
     return writer_->WriteRecord(sr);
   };
-  return reader->ReadDataSection(record_callback, false);
+  return reader->ReadDataSection(record_callback);
 }
 
 bool DebugUnwindCommand::WriteFeatureSections() {
