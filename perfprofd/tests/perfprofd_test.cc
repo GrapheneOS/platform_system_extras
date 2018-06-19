@@ -593,7 +593,7 @@ TEST_F(PerfProfdTest, BadPerfRun)
   // Verify log contents. Because of perferr logging containing pids and test paths,
   // it is easier to have three expected parts.
   const std::string expected1 = "W: perf bad exit status 1";
-  const std::string expected2 = "W: /bin/false record";
+  const std::string expected2 = "bin/false record";
   const std::string expected3 = "W: profile collection failed";
 
   // check to make sure log excerpt matches
