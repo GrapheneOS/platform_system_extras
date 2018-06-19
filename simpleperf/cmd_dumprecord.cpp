@@ -215,7 +215,7 @@ bool DumpRecordCommand::DumpDataSection() {
     }
     return true;
   };
-  return record_file_reader_->ReadDataSection(record_callback, false);
+  return record_file_reader_->ReadDataSection(record_callback);
 }
 
 bool DumpRecordCommand::DumpFeatureSection() {
