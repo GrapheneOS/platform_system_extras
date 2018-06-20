@@ -26,6 +26,7 @@
 #include "event_type.h"
 #include "record_file.h"
 #include "thread_tree.h"
+#include "tracing.h"
 #include "utils.h"
 
 class ReportLib;
@@ -45,8 +46,23 @@ struct Sample {
   uint64_t period;
 };
 
+struct TracingFieldFormat {
+  const char* name;
+  uint32_t offset;
+  uint32_t elem_size;
+  uint32_t elem_count;
+  uint32_t is_signed;
+};
+
+struct TracingDataFormat {
+  uint32_t size;
+  uint32_t field_count;
+  TracingFieldFormat* fields;
+};
+
 struct Event {
   const char* name;
+  TracingDataFormat tracing_data_format;
 };
 
 struct Mapping {
@@ -97,14 +113,21 @@ Sample* GetNextSample(ReportLib* report_lib) EXPORT;
 Event* GetEventOfCurrentSample(ReportLib* report_lib) EXPORT;
 SymbolEntry* GetSymbolOfCurrentSample(ReportLib* report_lib) EXPORT;
 CallChain* GetCallChainOfCurrentSample(ReportLib* report_lib) EXPORT;
+const char* GetTracingDataOfCurrentSample(ReportLib* report_lib) EXPORT;
 
 const char* GetBuildIdForPath(ReportLib* report_lib, const char* path) EXPORT;
 FeatureSection* GetFeatureSection(ReportLib* report_lib, const char* feature_name) EXPORT;
 }
 
-struct EventAttrWithName {
+struct EventInfo {
   perf_event_attr attr;
   std::string name;
+
+  struct TracingInfo {
+    TracingDataFormat data_format;
+    std::vector<std::string> field_names;
+    std::vector<TracingFieldFormat> fields;
+  } tracing_info;
 };
 
 class ReportLib {
@@ -136,13 +159,15 @@ class ReportLib {
   Event* GetEventOfCurrentSample() { return &current_event_; }
   SymbolEntry* GetSymbolOfCurrentSample() { return current_symbol_; }
   CallChain* GetCallChainOfCurrentSample() { return &current_callchain_; }
+  const char* GetTracingDataOfCurrentSample() { return current_tracing_data_; }
 
   const char* GetBuildIdForPath(const char* path);
   FeatureSection* GetFeatureSection(const char* feature_name);
 
  private:
   void SetCurrentSample();
-  void SetEventOfCurrentSample();
+  const EventInfo* FindEventOfCurrentSample();
+  void CreateEvents();
 
   bool OpenRecordFileIfNecessary();
   Mapping* AddMapping(const MapEntry& map);
@@ -157,16 +182,18 @@ class ReportLib {
   Event current_event_;
   SymbolEntry* current_symbol_;
   CallChain current_callchain_;
+  const char* current_tracing_data_;
   std::vector<std::unique_ptr<Mapping>> current_mappings_;
   std::vector<CallChainEntry> callchain_entries_;
   std::string build_id_string_;
-  std::vector<EventAttrWithName> event_attrs_;
+  std::vector<EventInfo> events_;
   std::unique_ptr<ScopedEventTypes> scoped_event_types_;
   bool trace_offcpu_;
   std::unordered_map<pid_t, std::unique_ptr<SampleRecord>> next_sample_cache_;
   FeatureSection feature_section_;
   std::vector<char> feature_section_data_;
   bool show_art_frames_;
+  std::unique_ptr<Tracing> tracing_;
 };
 
 bool ReportLib::SetLogSeverity(const char* log_level) {
@@ -241,6 +268,10 @@ Sample* ReportLib::GetNextSample() {
       }
       current_record_.reset(static_cast<SampleRecord*>(record.release()));
       break;
+    } else if (record->type() == PERF_RECORD_TRACING_DATA ||
+               record->type() == SIMPLE_PERF_RECORD_TRACING_DATA) {
+      const auto& r = *static_cast<TracingDataRecord*>(record.get());
+      tracing_.reset(new Tracing(std::vector<char>(r.data, r.data + r.data_size)));
     }
   }
   SetCurrentSample();
@@ -312,18 +343,20 @@ void ReportLib::SetCurrentSample() {
   current_symbol_ = &(callchain_entries_[0].symbol);
   current_callchain_.nr = callchain_entries_.size() - 1;
   current_callchain_.entries = &callchain_entries_[1];
-  SetEventOfCurrentSample();
+  const EventInfo* event = FindEventOfCurrentSample();
+  current_event_.name = event->name.c_str();
+  current_event_.tracing_data_format = event->tracing_info.data_format;
+  if (current_event_.tracing_data_format.size > 0u && (r.sample_type & PERF_SAMPLE_RAW)) {
+    CHECK_GE(r.raw_data.size, current_event_.tracing_data_format.size);
+    current_tracing_data_ = r.raw_data.data;
+  } else {
+    current_tracing_data_ = nullptr;
+  }
 }
 
-void ReportLib::SetEventOfCurrentSample() {
-  if (event_attrs_.empty()) {
-    std::vector<EventAttrWithId> attrs = record_file_reader_->AttrSection();
-    for (const auto& attr_with_id : attrs) {
-      EventAttrWithName attr;
-      attr.attr = *attr_with_id.attr;
-      attr.name = GetEventNameByAttr(attr.attr);
-      event_attrs_.push_back(attr);
-    }
+const EventInfo* ReportLib::FindEventOfCurrentSample() {
+  if (events_.empty()) {
+    CreateEvents();
   }
   size_t attr_index;
   if (trace_offcpu_) {
@@ -332,7 +365,43 @@ void ReportLib::SetEventOfCurrentSample() {
   } else {
     attr_index = record_file_reader_->GetAttrIndexOfRecord(current_record_.get());
   }
-  current_event_.name = event_attrs_[attr_index].name.c_str();
+  return &events_[attr_index];
+}
+
+void ReportLib::CreateEvents() {
+  std::vector<EventAttrWithId> attrs = record_file_reader_->AttrSection();
+  events_.resize(attrs.size());
+  for (size_t i = 0; i < attrs.size(); ++i) {
+    events_[i].attr = *attrs[i].attr;
+    events_[i].name = GetEventNameByAttr(events_[i].attr);
+    EventInfo::TracingInfo& tracing_info = events_[i].tracing_info;
+    if (events_[i].attr.type == PERF_TYPE_TRACEPOINT && tracing_) {
+      TracingFormat format = tracing_->GetTracingFormatHavingId(events_[i].attr.config);
+      tracing_info.field_names.resize(format.fields.size());
+      tracing_info.fields.resize(format.fields.size());
+      for (size_t i = 0; i < format.fields.size(); ++i) {
+        tracing_info.field_names[i] = format.fields[i].name;
+        TracingFieldFormat& field = tracing_info.fields[i];
+        field.name = tracing_info.field_names[i].c_str();
+        field.offset = format.fields[i].offset;
+        field.elem_size = format.fields[i].elem_size;
+        field.elem_count = format.fields[i].elem_count;
+        field.is_signed = format.fields[i].is_signed;
+      }
+      if (tracing_info.fields.empty()) {
+        tracing_info.data_format.size = 0;
+      } else {
+        TracingFieldFormat& field = tracing_info.fields.back();
+        tracing_info.data_format.size = field.offset + field.elem_size * field.elem_count;
+      }
+      tracing_info.data_format.field_count = tracing_info.fields.size();
+      tracing_info.data_format.fields = &tracing_info.fields[0];
+    } else {
+      tracing_info.data_format.size = 0;
+      tracing_info.data_format.field_count = 0;
+      tracing_info.data_format.fields = nullptr;
+    }
+  }
 }
 
 Mapping* ReportLib::AddMapping(const MapEntry& map) {
@@ -418,6 +487,10 @@ SymbolEntry* GetSymbolOfCurrentSample(ReportLib* report_lib) {
 
 CallChain* GetCallChainOfCurrentSample(ReportLib* report_lib) {
   return report_lib->GetCallChainOfCurrentSample();
+}
+
+const char* GetTracingDataOfCurrentSample(ReportLib* report_lib) {
+  return report_lib->GetTracingDataOfCurrentSample();
 }
 
 const char* GetBuildIdForPath(ReportLib* report_lib, const char* path) {
