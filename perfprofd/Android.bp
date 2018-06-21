@@ -136,6 +136,7 @@ cc_defaults {
         "cpuconfig.cc",
         "perfprofdcore.cc",
         "perfprofd_cmdline.cc",
+        "perfprofd_perf.cc",
         "symbolizer.cc"
     ],
 
