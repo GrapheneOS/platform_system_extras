@@ -24,7 +24,7 @@
 class RecordTest : public ::testing::Test {
  protected:
   virtual void SetUp() {
-    const EventType* type = FindEventTypeByName("cpu-cycles");
+    const EventType* type = FindEventTypeByName("cpu-clock");
     ASSERT_TRUE(type != nullptr);
     event_attr = CreateDefaultPerfEventAttr(*type);
     event_attr.sample_id_all = 1;
@@ -55,16 +55,16 @@ TEST_F(RecordTest, SampleRecordMatchBinary) {
   event_attr.sample_type = PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_TIME
                            | PERF_SAMPLE_ID | PERF_SAMPLE_CPU
                            | PERF_SAMPLE_PERIOD | PERF_SAMPLE_CALLCHAIN;
-  SampleRecord record(event_attr, 1, 2, 3, 4, 5, 6, 7, {8, 9, 10});
+  SampleRecord record(event_attr, 1, 2, 3, 4, 5, 6, 7, {8, 9, 10}, {}, 0);
   CheckRecordMatchBinary(record);
 }
 
 TEST_F(RecordTest, SampleRecord_exclude_kernel_callchain) {
-  SampleRecord r(event_attr, 0, 1, 0, 0, 0, 0, 0, {});
+  SampleRecord r(event_attr, 0, 1, 0, 0, 0, 0, 0, {}, {}, 0);
   ASSERT_EQ(0u, r.ExcludeKernelCallChain());
 
   event_attr.sample_type |= PERF_SAMPLE_CALLCHAIN;
-  SampleRecord r1(event_attr, 0, 1, 0, 0, 0, 0, 0, {PERF_CONTEXT_USER, 2});
+  SampleRecord r1(event_attr, 0, 1, 0, 0, 0, 0, 0, {PERF_CONTEXT_USER, 2}, {}, 0);
   ASSERT_EQ(1u, r1.ExcludeKernelCallChain());
   ASSERT_EQ(2u, r1.ip_data.ip);
   SampleRecord r2(event_attr, r1.BinaryForTestingOnly());
@@ -73,7 +73,7 @@ TEST_F(RecordTest, SampleRecord_exclude_kernel_callchain) {
   ASSERT_EQ(PERF_CONTEXT_USER, r2.callchain_data.ips[0]);
   ASSERT_EQ(2u, r2.callchain_data.ips[1]);
 
-  SampleRecord r3(event_attr, 0, 1, 0, 0, 0, 0, 0, {1, PERF_CONTEXT_USER, 2});
+  SampleRecord r3(event_attr, 0, 1, 0, 0, 0, 0, 0, {1, PERF_CONTEXT_USER, 2}, {}, 0);
   ASSERT_EQ(1u, r3.ExcludeKernelCallChain());
   ASSERT_EQ(2u, r3.ip_data.ip);
   SampleRecord r4(event_attr, r3.BinaryForTestingOnly());
@@ -83,8 +83,29 @@ TEST_F(RecordTest, SampleRecord_exclude_kernel_callchain) {
   ASSERT_EQ(PERF_CONTEXT_USER, r4.callchain_data.ips[1]);
   ASSERT_EQ(2u, r4.callchain_data.ips[2]);
 
-  SampleRecord r5(event_attr, 0, 1, 0, 0, 0, 0, 0, {1, 2});
+  SampleRecord r5(event_attr, 0, 1, 0, 0, 0, 0, 0, {1, 2}, {}, 0);
   ASSERT_EQ(0u, r5.ExcludeKernelCallChain());
-  SampleRecord r6(event_attr, 0, 1, 0, 0, 0, 0, 0, {1, 2, PERF_CONTEXT_USER});
+  SampleRecord r6(event_attr, 0, 1, 0, 0, 0, 0, 0, {1, 2, PERF_CONTEXT_USER}, {}, 0);
   ASSERT_EQ(0u, r6.ExcludeKernelCallChain());
+}
+
+TEST_F(RecordTest, SampleRecord_ReplaceRegAndStackWithCallChain) {
+  event_attr.sample_type |= PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER;
+  SampleRecord expected(event_attr, 0, 1, 2, 3, 4, 5, 6, {1, PERF_CONTEXT_USER, 2, 3, 4, 5}, {},
+                        0);
+  for (size_t stack_size : {8, 1024}) {
+    SampleRecord r(event_attr, 0, 1, 2, 3, 4, 5, 6, {1}, std::vector<char>(stack_size), 10);
+    r.ReplaceRegAndStackWithCallChain({2, 3, 4, 5});
+    CheckRecordMatchBinary(r);
+    CheckRecordEqual(r, expected);
+  }
+}
+
+TEST_F(RecordTest, SampleRecord_UpdateUserCallChain) {
+  event_attr.sample_type |= PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER;
+  SampleRecord r(event_attr, 0, 1, 2, 3, 4, 5, 6, {1, PERF_CONTEXT_USER, 2}, {}, 0);
+  r.UpdateUserCallChain({3, 4, 5});
+  CheckRecordMatchBinary(r);
+  SampleRecord expected(event_attr, 0, 1, 2, 3, 4, 5, 6, {1, PERF_CONTEXT_USER, 3, 4, 5}, {}, 0);
+  CheckRecordEqual(r, expected);
 }
