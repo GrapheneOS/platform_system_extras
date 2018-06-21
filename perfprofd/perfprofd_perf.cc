@@ -23,10 +23,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <vector>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
@@ -48,6 +50,63 @@ PerfResult InvokePerf(Config& config,
                       const std::string &data_file_path,
                       const std::string &perf_stderr_path)
 {
+  std::vector<std::string> argv_backing;
+  std::vector<const char*> argv_vector;
+
+  {
+    auto add = [&argv_backing](auto arg) {
+      argv_backing.push_back(arg);
+    };
+
+    add(perf_path);
+    add("record");
+
+    // -o perf.data
+    add("-o");
+    add(data_file_path);
+
+    // -c/f N
+    std::string p_str;
+    if (config.sampling_frequency > 0) {
+      add("-f");
+      add(android::base::StringPrintf("%u", config.sampling_frequency));
+    } else if (config.sampling_period > 0) {
+      add("-c");
+      add(android::base::StringPrintf("%u", config.sampling_period));
+    }
+
+    // -g if desired
+    if (stack_profile_opt != nullptr) {
+      add(stack_profile_opt);
+      add("-m");
+      add("8192");
+    }
+
+    if (config.process < 0) {
+      // system wide profiling
+      add("-a");
+    } else {
+      add("-p");
+      add(std::to_string(config.process));
+    }
+
+    // no need for kernel or other symbols
+    add("--no-dump-kernel-symbols");
+    add("--no-dump-symbols");
+
+    // sleep <duration>
+    add("--duration");
+    add(android::base::StringPrintf("%u", duration));
+
+
+    // Now create the char* buffer.
+    argv_vector.resize(argv_backing.size() + 1, nullptr);
+    std::transform(argv_backing.begin(),
+                   argv_backing.end(),
+                   argv_vector.begin(),
+                   [](const std::string& in) { return in.c_str(); });
+  }
+
   pid_t pid = fork();
 
   if (pid == -1) {
@@ -67,69 +126,16 @@ PerfResult InvokePerf(Config& config,
       PLOG(WARNING) << "unable to open " << perf_stderr_path << " for writing";
     }
 
-    // marshall arguments
-    constexpr unsigned max_args = 17;
-    const char *argv[max_args];
-    unsigned slot = 0;
-    argv[slot++] = perf_path.c_str();
-    argv[slot++] = "record";
-
-    // -o perf.data
-    argv[slot++] = "-o";
-    argv[slot++] = data_file_path.c_str();
-
-    // -c/f N
-    std::string p_str;
-    if (config.sampling_frequency > 0) {
-      argv[slot++] = "-f";
-      p_str = android::base::StringPrintf("%u", config.sampling_frequency);
-      argv[slot++] = p_str.c_str();
-    } else if (config.sampling_period > 0) {
-      argv[slot++] = "-c";
-      p_str = android::base::StringPrintf("%u", config.sampling_period);
-      argv[slot++] = p_str.c_str();
-    }
-
-    // -g if desired
-    if (stack_profile_opt) {
-      argv[slot++] = stack_profile_opt;
-      argv[slot++] = "-m";
-      argv[slot++] = "8192";
-    }
-
-    std::string pid_str;
-    if (config.process < 0) {
-      // system wide profiling
-      argv[slot++] = "-a";
-    } else {
-      argv[slot++] = "-p";
-      pid_str = std::to_string(config.process);
-      argv[slot++] = pid_str.c_str();
-    }
-
-    // no need for kernel or other symbols
-    argv[slot++] = "--no-dump-kernel-symbols";
-    argv[slot++] = "--no-dump-symbols";
-
-    // sleep <duration>
-    argv[slot++] = "--duration";
-    std::string d_str = android::base::StringPrintf("%u", duration);
-    argv[slot++] = d_str.c_str();
-
-    // terminator
-    argv[slot++] = nullptr;
-    assert(slot < max_args);
-
     // record the final command line in the error output file for
     // posterity/debugging purposes
     fprintf(stderr, "perf invocation (pid=%d):\n", getpid());
-    for (unsigned i = 0; argv[i] != nullptr; ++i) {
-      fprintf(stderr, "%s%s", i ? " " : "", argv[i]);
+    for (unsigned i = 0; argv_vector[i] != nullptr; ++i) {
+      fprintf(stderr, "%s%s", i ? " " : "", argv_vector[i]);
     }
     fprintf(stderr, "\n");
 
     // exec
-    execvp(argv[0], (char * const *)argv);
+    execvp(argv_vector[0], const_cast<char* const*>(argv_vector.data()));
     fprintf(stderr, "exec failed: %s\n", strerror(errno));
     exit(1);
 
