@@ -6,8 +6,6 @@ cc_library {
     host_supported: true,
     recovery_available: true,
     srcs: [
-        "make_ext4fs.c",
-        "ext4fixup.c",
         "ext4_utils.c",
         "allocate.c",
         "contents.c",
