@@ -50,6 +50,7 @@
 #include "perf_data_converter.h"
 #include "perfprofdcore.h"
 #include "perfprofd_io.h"
+#include "perfprofd_perf.h"
 #include "symbolizer.h"
 
 //
@@ -452,147 +453,6 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
 }
 
 //
-// Invoke "perf record". Return value is OK_PROFILE_COLLECTION for
-// success, or some other error code if something went wrong.
-//
-static PROFILE_RESULT invoke_perf(Config& config,
-                                  const std::string &perf_path,
-                                  const char *stack_profile_opt,
-                                  unsigned duration,
-                                  const std::string &data_file_path,
-                                  const std::string &perf_stderr_path)
-{
-  pid_t pid = fork();
-
-  if (pid == -1) {
-    PLOG(ERROR) << "Fork failed";
-    return ERR_FORK_FAILED;
-  }
-
-  if (pid == 0) {
-    // child
-
-    // Open file to receive stderr/stdout from perf
-    FILE *efp = fopen(perf_stderr_path.c_str(), "w");
-    if (efp) {
-      dup2(fileno(efp), STDERR_FILENO);
-      dup2(fileno(efp), STDOUT_FILENO);
-    } else {
-      PLOG(WARNING) << "unable to open " << perf_stderr_path << " for writing";
-    }
-
-    // marshall arguments
-    constexpr unsigned max_args = 17;
-    const char *argv[max_args];
-    unsigned slot = 0;
-    argv[slot++] = perf_path.c_str();
-    argv[slot++] = "record";
-
-    // -o perf.data
-    argv[slot++] = "-o";
-    argv[slot++] = data_file_path.c_str();
-
-    // -c/f N
-    std::string p_str;
-    if (config.sampling_frequency > 0) {
-      argv[slot++] = "-f";
-      p_str = android::base::StringPrintf("%u", config.sampling_frequency);
-      argv[slot++] = p_str.c_str();
-    } else if (config.sampling_period > 0) {
-      argv[slot++] = "-c";
-      p_str = android::base::StringPrintf("%u", config.sampling_period);
-      argv[slot++] = p_str.c_str();
-    }
-
-    // -g if desired
-    if (stack_profile_opt) {
-      argv[slot++] = stack_profile_opt;
-      argv[slot++] = "-m";
-      argv[slot++] = "8192";
-    }
-
-    std::string pid_str;
-    if (config.process < 0) {
-      // system wide profiling
-      argv[slot++] = "-a";
-    } else {
-      argv[slot++] = "-p";
-      pid_str = std::to_string(config.process);
-      argv[slot++] = pid_str.c_str();
-    }
-
-    // no need for kernel or other symbols
-    argv[slot++] = "--no-dump-kernel-symbols";
-    argv[slot++] = "--no-dump-symbols";
-
-    // sleep <duration>
-    argv[slot++] = "--duration";
-    std::string d_str = android::base::StringPrintf("%u", duration);
-    argv[slot++] = d_str.c_str();
-
-    // terminator
-    argv[slot++] = nullptr;
-    assert(slot < max_args);
-
-    // record the final command line in the error output file for
-    // posterity/debugging purposes
-    fprintf(stderr, "perf invocation (pid=%d):\n", getpid());
-    for (unsigned i = 0; argv[i] != nullptr; ++i) {
-      fprintf(stderr, "%s%s", i ? " " : "", argv[i]);
-    }
-    fprintf(stderr, "\n");
-
-    // exec
-    execvp(argv[0], (char * const *)argv);
-    fprintf(stderr, "exec failed: %s\n", strerror(errno));
-    exit(1);
-
-  } else {
-    // parent
-
-    // Try to sleep.
-    config.Sleep(duration);
-
-    // We may have been woken up to stop profiling.
-    if (config.ShouldStopProfiling()) {
-      // Send SIGHUP to simpleperf to make it stop.
-      kill(pid, SIGHUP);
-    }
-
-    // Wait for the child, so it's reaped correctly.
-    int st = 0;
-    pid_t reaped = TEMP_FAILURE_RETRY(waitpid(pid, &st, 0));
-
-    auto print_perferr = [&perf_stderr_path]() {
-      std::string tmp;
-      if (android::base::ReadFileToString(perf_stderr_path, &tmp)) {
-        LOG(WARNING) << tmp;
-      } else {
-        PLOG(WARNING) << "Could not read " << perf_stderr_path;
-      }
-    };
-
-    if (reaped == -1) {
-      PLOG(WARNING) << "waitpid failed";
-    } else if (WIFSIGNALED(st)) {
-      if (WTERMSIG(st) == SIGHUP && config.ShouldStopProfiling()) {
-        // That was us...
-        return OK_PROFILE_COLLECTION;
-      }
-      LOG(WARNING) << "perf killed by signal " << WTERMSIG(st);
-      print_perferr();
-    } else if (WEXITSTATUS(st) != 0) {
-      LOG(WARNING) << "perf bad exit status " << WEXITSTATUS(st);
-      print_perferr();
-    } else {
-      return OK_PROFILE_COLLECTION;
-    }
-  }
-
-  return ERR_PERF_RECORD_FAILED;
-}
-
-//
 // Remove all files in the destination directory during initialization
 //
 static void cleanup_destination_dir(const std::string& dest_dir)
@@ -676,13 +536,14 @@ static ProtoUniquePtr collect_profile(Config& config)
       (config.stack_profile ? "-g" : nullptr);
   const std::string& perf_path = config.perf_path;
 
-  PROFILE_RESULT ret = invoke_perf(config,
-                                   perf_path,
-                                   stack_profile_opt,
-                                   duration,
-                                   data_file_path,
-                                   perf_stderr_path);
-  if (ret != OK_PROFILE_COLLECTION) {
+  android::perfprofd::PerfResult invoke_res =
+      android::perfprofd::InvokePerf(config,
+                                     perf_path,
+                                     stack_profile_opt,
+                                     duration,
+                                     data_file_path,
+                                     perf_stderr_path);
+  if (invoke_res != android::perfprofd::PerfResult::kOK) {
     return nullptr;
   }
 
