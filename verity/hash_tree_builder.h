@@ -34,6 +34,8 @@
 class HashTreeBuilder {
  public:
   explicit HashTreeBuilder(size_t block_size);
+  // Returns the size of the verity tree in bytes given the input data size.
+  uint64_t CalculateSize(uint64_t input_size) const;
   // Gets ready for the hash tree computation. We expect |expected_data_size|
   // bytes source data.
   bool Initialize(int64_t expected_data_size,
@@ -47,10 +49,13 @@ class HashTreeBuilder {
   bool BuildHashTree();
   // Writes the computed hash tree top-down to |output|.
   bool WriteHashTreeToFile(const std::string& output) const;
-  bool WriteHashTreeToFd(int fd) const;
+  bool WriteHashTreeToFd(int fd, off_t offset) const;
 
   size_t hash_size() const { return hash_size_; }
   const std::vector<unsigned char>& root_hash() const { return root_hash_; }
+  // Converts |bytes| to string for hexdump.
+  static std::string BytesArrayToString(
+      const std::vector<unsigned char>& bytes);
 
  private:
   // Calculates the hash of one single block. Write the result to |out|, a
