@@ -22,6 +22,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <openssl/evp.h>
 
 #include "build_verity_tree_utils.h"
 #include "hash_tree_builder.h"
@@ -38,7 +39,7 @@ class BuildVerityTreeTest : public ::testing::Test {
   void SetUp() override {
     salt_hex =
         std::vector<unsigned char>(kSaltHex, kSaltHex + sizeof(kSaltHex));
-    builder.reset(new HashTreeBuilder(4096));
+    builder.reset(new HashTreeBuilder(4096, EVP_sha256()));
   }
 
   const std::vector<unsigned char>& zero_block_hash() const {
@@ -131,5 +132,17 @@ TEST_F(BuildVerityTreeTest, StreamingDataMultipleBlocks) {
   ASSERT_EQ(2u, verity_tree().size());
   ASSERT_EQ(2 * 4096u, verity_tree()[0].size());
   ASSERT_EQ("6e73d59b0b6baf026e921814979a7db02244c95a46b869a17aa1310dad066deb",
+            HashTreeBuilder::BytesArrayToString(builder->root_hash()));
+}
+
+TEST_F(BuildVerityTreeTest, SHA1MultipleBlocks) {
+  std::vector<unsigned char> data(128 * 4096, 0xff);
+
+  builder.reset(
+      new HashTreeBuilder(4096, HashTreeBuilder::HashFunction("SHA1")));
+
+  GenerateHashTree(data, salt_hex);
+  ASSERT_EQ(1u, verity_tree().size());
+  ASSERT_EQ("7ea287e6167929988810077abaafbc313b2b8593000000000000000000000000",
             HashTreeBuilder::BytesArrayToString(builder->root_hash()));
 }
