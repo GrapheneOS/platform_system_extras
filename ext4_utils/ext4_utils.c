@@ -123,7 +123,8 @@ void ext4_create_fs_aux_info()
 
 	aux_info.default_i_flags = EXT4_NOATIME_FL;
 
-	u32 last_group_size = aux_info.len_blocks % info.blocks_per_group;
+	u32 last_group_size = aux_info.len_blocks == info.blocks_per_group
+		? aux_info.len_blocks : aux_info.len_blocks % info.blocks_per_group;
 	u32 last_header_size = 2 + aux_info.inode_table_blocks;
 	if (ext4_bg_has_super_block((int)aux_info.groups - 1))
 		last_header_size += 1 + aux_info.bg_desc_blocks +
