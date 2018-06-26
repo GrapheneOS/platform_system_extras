@@ -28,29 +28,18 @@ cc_library_static {
         "libbase",
         "libbinder",
         "libperfprofdcore",
+        "libperfprofd_proto_config",
         "libprotobuf-cpp-lite",
     ],
     srcs: [
         "perfprofd_binder.cc",
         ":perfprofd_aidl",
-        ":perfprofd_config_proto",
     ],
-
-    proto: {
-        type: "lite",
-    },
 }
 
 filegroup {
     name: "perfprofd_aidl",
     srcs: [
         "aidl/android/os/IPerfProfd.aidl",
-    ],
-}
-
-filegroup {
-    name: "perfprofd_config_proto",
-    srcs: [
-        "perfprofd_config.proto",
     ],
 }
