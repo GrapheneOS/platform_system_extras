@@ -109,6 +109,36 @@ cc_library_static {
     export_static_lib_headers: ["libquipper"],
 }
 
+filegroup {
+    name: "perfprofd_config_proto",
+    srcs: [
+        "perfprofd_config.proto",
+    ],
+}
+
+cc_library_static {
+    name: "libperfprofd_proto_config",
+    defaults: [
+        "perfprofd_defaults",
+    ],
+    host_supported: true,
+
+    static_libs: [
+        "libprotobuf-cpp-lite",
+    ],
+    srcs: [
+        "perfprofd_counters.cc",
+        ":perfprofd_config_proto",
+    ],
+
+    proto: {
+        export_proto_headers: true,
+        type: "lite",
+    },
+
+    export_include_dirs: ["."],  // Really only the -fwd.h.
+}
+
 //
 // Static library containing guts of AWP daemon.
 //
@@ -180,6 +210,7 @@ cc_binary {
     static_libs: [
         "libperfprofdcore",
         "libperfprofd_binder",
+        "libperfprofd_proto_config",
         "libsimpleperf_elf_read",
     ],
     group_static_libs: true,
