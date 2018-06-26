@@ -1,0 +1,1510 @@
+
+syntax = "proto2";
+
+option java_package = "android.perfprofd";
+
+package android.perfprofd;
+
+message CounterSet {
+
+  optional bool branch_load_misses = 1;
+  optional bool branch_loads = 2;
+  optional bool branch_store_misses = 3;
+  optional bool branch_stores = 4;
+  optional bool L1_dcache_load_misses = 5;
+  optional bool L1_dcache_loads = 6;
+  optional bool L1_dcache_store_misses = 7;
+  optional bool L1_dcache_stores = 8;
+  optional bool branch_misses = 9;
+  optional bool cache_misses = 10;
+  optional bool cache_references = 11;
+  optional bool cpu_cycles = 12;
+  optional bool instructions = 13;
+  optional bool raw_br_mis_pred = 14;
+  optional bool raw_br_mis_pred_retired = 15;
+  optional bool raw_br_pred = 16;
+  optional bool raw_br_retired = 17;
+  optional bool raw_bus_access = 18;
+  optional bool raw_cpu_cycles = 19;
+  optional bool raw_exception_return = 20;
+  optional bool raw_exception_taken = 21;
+  optional bool raw_inst_spec = 22;
+  optional bool raw_instruction_retired = 23;
+  optional bool raw_l1_dcache = 24;
+  optional bool raw_l1_dcache_allocate = 25;
+  optional bool raw_l1_dcache_refill = 26;
+  optional bool raw_l1_dtlb = 27;
+  optional bool raw_l1_dtlb_refill = 28;
+  optional bool raw_l1_icache = 29;
+  optional bool raw_l1_icache_refill = 30;
+  optional bool raw_l1_itlb_refill = 31;
+  optional bool raw_l2_dcache = 32;
+  optional bool raw_l2_dcache_allocate = 33;
+  optional bool raw_l2_dcache_refill = 34;
+  optional bool raw_l2_dcache_wb = 35;
+  optional bool raw_l2_icache_refill = 36;
+  optional bool raw_l2_itlb = 37;
+  optional bool raw_l3_dcache_allocate = 38;
+  optional bool raw_l3_dcache_refill = 39;
+  optional bool raw_mem_access = 40;
+  optional bool raw_stall_backend = 41;
+  optional bool raw_stall_frontend = 42;
+  optional bool raw_ttbr_write_retired = 43;
+  optional bool alignment_faults = 44;
+  optional bool context_switches = 45;
+  optional bool cpu_clock = 46;
+  optional bool cpu_migrations = 47;
+  optional bool emulation_faults = 48;
+  optional bool major_faults = 49;
+  optional bool minor_faults = 50;
+  optional bool page_faults = 51;
+  optional bool task_clock = 52;
+
+
+  message TracepointSet {
+
+
+    message Asoc {
+
+      optional bool snd_soc_bias_level_done = 1;
+      optional bool snd_soc_bias_level_start = 2;
+      optional bool snd_soc_cache_sync = 3;
+      optional bool snd_soc_dapm_connected = 4;
+      optional bool snd_soc_dapm_done = 5;
+      optional bool snd_soc_dapm_input_path = 6;
+      optional bool snd_soc_dapm_output_path = 7;
+      optional bool snd_soc_dapm_start = 8;
+      optional bool snd_soc_dapm_walk_done = 9;
+      optional bool snd_soc_dapm_widget_event_done = 10;
+      optional bool snd_soc_dapm_widget_event_start = 11;
+      optional bool snd_soc_dapm_widget_power = 12;
+      optional bool snd_soc_jack_irq = 13;
+      optional bool snd_soc_jack_notify = 14;
+      optional bool snd_soc_jack_report = 15;
+
+    };
+    optional Asoc asoc = 1;
+
+
+    message Binder {
+
+      optional bool binder_alloc_lru_end = 1;
+      optional bool binder_alloc_lru_start = 2;
+      optional bool binder_alloc_page_end = 3;
+      optional bool binder_alloc_page_start = 4;
+      optional bool binder_command = 5;
+      optional bool binder_free_lru_end = 6;
+      optional bool binder_free_lru_start = 7;
+      optional bool binder_ioctl = 8;
+      optional bool binder_ioctl_done = 9;
+      optional bool binder_lock = 10;
+      optional bool binder_locked = 11;
+      optional bool binder_read_done = 12;
+      optional bool binder_return = 13;
+      optional bool binder_set_priority = 14;
+      optional bool binder_transaction = 15;
+      optional bool binder_transaction_alloc_buf = 16;
+      optional bool binder_transaction_buffer_release = 17;
+      optional bool binder_transaction_failed_buffer_release = 18;
+      optional bool binder_transaction_fd = 19;
+      optional bool binder_transaction_node_to_ref = 20;
+      optional bool binder_transaction_received = 21;
+      optional bool binder_transaction_ref_to_node = 22;
+      optional bool binder_transaction_ref_to_ref = 23;
+      optional bool binder_unlock = 24;
+      optional bool binder_unmap_kernel_end = 25;
+      optional bool binder_unmap_kernel_start = 26;
+      optional bool binder_unmap_user_end = 27;
+      optional bool binder_unmap_user_start = 28;
+      optional bool binder_update_page_range = 29;
+      optional bool binder_wait_for_work = 30;
+      optional bool binder_write_done = 31;
+
+    };
+    optional Binder binder = 2;
+
+
+    message Block {
+
+      optional bool block_bio_backmerge = 1;
+      optional bool block_bio_bounce = 2;
+      optional bool block_bio_complete = 3;
+      optional bool block_bio_frontmerge = 4;
+      optional bool block_bio_queue = 5;
+      optional bool block_bio_remap = 6;
+      optional bool block_dirty_buffer = 7;
+      optional bool block_getrq = 8;
+      optional bool block_plug = 9;
+      optional bool block_rq_abort = 10;
+      optional bool block_rq_complete = 11;
+      optional bool block_rq_insert = 12;
+      optional bool block_rq_issue = 13;
+      optional bool block_rq_remap = 14;
+      optional bool block_rq_requeue = 15;
+      optional bool block_sleeprq = 16;
+      optional bool block_split = 17;
+      optional bool block_touch_buffer = 18;
+      optional bool block_unplug = 19;
+
+    };
+    optional Block block = 3;
+
+
+    message Cfg80211 {
+
+      optional bool cfg80211_cac_event = 1;
+      optional bool cfg80211_ch_switch_notify = 2;
+      optional bool cfg80211_chandef_dfs_required = 3;
+      optional bool cfg80211_cqm_pktloss_notify = 4;
+      optional bool cfg80211_cqm_rssi_notify = 5;
+      optional bool cfg80211_del_sta = 6;
+      optional bool cfg80211_ft_event = 7;
+      optional bool cfg80211_get_bss = 8;
+      optional bool cfg80211_gtk_rekey_notify = 9;
+      optional bool cfg80211_ibss_joined = 10;
+      optional bool cfg80211_inform_bss_frame = 11;
+      optional bool cfg80211_mgmt_tx_status = 12;
+      optional bool cfg80211_michael_mic_failure = 13;
+      optional bool cfg80211_new_sta = 14;
+      optional bool cfg80211_notify_new_peer_candidate = 15;
+      optional bool cfg80211_pmksa_candidate_notify = 16;
+      optional bool cfg80211_probe_status = 17;
+      optional bool cfg80211_radar_event = 18;
+      optional bool cfg80211_ready_on_channel = 19;
+      optional bool cfg80211_ready_on_channel_expired = 20;
+      optional bool cfg80211_reg_can_beacon = 21;
+      optional bool cfg80211_report_obss_beacon = 22;
+      optional bool cfg80211_report_wowlan_wakeup = 23;
+      optional bool cfg80211_return_bool = 24;
+      optional bool cfg80211_return_bss = 25;
+      optional bool cfg80211_return_u32 = 26;
+      optional bool cfg80211_return_uint = 27;
+      optional bool cfg80211_rx_mgmt = 28;
+      optional bool cfg80211_rx_mlme_mgmt = 29;
+      optional bool cfg80211_rx_spurious_frame = 30;
+      optional bool cfg80211_rx_unexpected_4addr_frame = 31;
+      optional bool cfg80211_rx_unprot_mlme_mgmt = 32;
+      optional bool cfg80211_scan_done = 33;
+      optional bool cfg80211_sched_scan_results = 34;
+      optional bool cfg80211_sched_scan_stopped = 35;
+      optional bool cfg80211_send_assoc_timeout = 36;
+      optional bool cfg80211_send_auth_timeout = 37;
+      optional bool cfg80211_send_rx_assoc = 38;
+      optional bool cfg80211_send_rx_auth = 39;
+      optional bool cfg80211_stop_iface = 40;
+      optional bool cfg80211_tdls_oper_request = 41;
+      optional bool cfg80211_tx_mlme_mgmt = 42;
+      optional bool rdev_abort_scan = 43;
+      optional bool rdev_add_key = 44;
+      optional bool rdev_add_mpath = 45;
+      optional bool rdev_add_station = 46;
+      optional bool rdev_add_tx_ts = 47;
+      optional bool rdev_add_virtual_intf = 48;
+      optional bool rdev_assoc = 49;
+      optional bool rdev_auth = 50;
+      optional bool rdev_cancel_remain_on_channel = 51;
+      optional bool rdev_change_beacon = 52;
+      optional bool rdev_change_bss = 53;
+      optional bool rdev_change_mpath = 54;
+      optional bool rdev_change_station = 55;
+      optional bool rdev_change_virtual_intf = 56;
+      optional bool rdev_channel_switch = 57;
+      optional bool rdev_connect = 58;
+      optional bool rdev_crit_proto_start = 59;
+      optional bool rdev_crit_proto_stop = 60;
+      optional bool rdev_deauth = 61;
+      optional bool rdev_del_key = 62;
+      optional bool rdev_del_mpath = 63;
+      optional bool rdev_del_pmksa = 64;
+      optional bool rdev_del_station = 65;
+      optional bool rdev_del_tx_ts = 66;
+      optional bool rdev_del_virtual_intf = 67;
+      optional bool rdev_disassoc = 68;
+      optional bool rdev_disconnect = 69;
+      optional bool rdev_dump_mpath = 70;
+      optional bool rdev_dump_station = 71;
+      optional bool rdev_dump_survey = 72;
+      optional bool rdev_flush_pmksa = 73;
+      optional bool rdev_get_antenna = 74;
+      optional bool rdev_get_channel = 75;
+      optional bool rdev_get_key = 76;
+      optional bool rdev_get_mesh_config = 77;
+      optional bool rdev_get_mpath = 78;
+      optional bool rdev_get_station = 79;
+      optional bool rdev_get_tx_power = 80;
+      optional bool rdev_join_ibss = 81;
+      optional bool rdev_join_mesh = 82;
+      optional bool rdev_leave_ibss = 83;
+      optional bool rdev_leave_mesh = 84;
+      optional bool rdev_libertas_set_mesh_channel = 85;
+      optional bool rdev_mgmt_frame_register = 86;
+      optional bool rdev_mgmt_tx = 87;
+      optional bool rdev_mgmt_tx_cancel_wait = 88;
+      optional bool rdev_probe_client = 89;
+      optional bool rdev_remain_on_channel = 90;
+      optional bool rdev_resume = 91;
+      optional bool rdev_return_chandef = 92;
+      optional bool rdev_return_int = 93;
+      optional bool rdev_return_int_cookie = 94;
+      optional bool rdev_return_int_int = 95;
+      optional bool rdev_return_int_mesh_config = 96;
+      optional bool rdev_return_int_mpath_info = 97;
+      optional bool rdev_return_int_station_info = 98;
+      optional bool rdev_return_int_survey_info = 99;
+      optional bool rdev_return_int_tx_rx = 100;
+      optional bool rdev_return_void = 101;
+      optional bool rdev_return_void_tx_rx = 102;
+      optional bool rdev_return_wdev = 103;
+      optional bool rdev_rfkill_poll = 104;
+      optional bool rdev_scan = 105;
+      optional bool rdev_sched_scan_start = 106;
+      optional bool rdev_sched_scan_stop = 107;
+      optional bool rdev_set_antenna = 108;
+      optional bool rdev_set_ap_chanwidth = 109;
+      optional bool rdev_set_bitrate_mask = 110;
+      optional bool rdev_set_cqm_rssi_config = 111;
+      optional bool rdev_set_cqm_txe_config = 112;
+      optional bool rdev_set_default_key = 113;
+      optional bool rdev_set_default_mgmt_key = 114;
+      optional bool rdev_set_mac_acl = 115;
+      optional bool rdev_set_monitor_channel = 116;
+      optional bool rdev_set_noack_map = 117;
+      optional bool rdev_set_pmksa = 118;
+      optional bool rdev_set_power_mgmt = 119;
+      optional bool rdev_set_qos_map = 120;
+      optional bool rdev_set_rekey_data = 121;
+      optional bool rdev_set_tx_power = 122;
+      optional bool rdev_set_txq_params = 123;
+      optional bool rdev_set_wakeup = 124;
+      optional bool rdev_set_wds_peer = 125;
+      optional bool rdev_set_wiphy_params = 126;
+      optional bool rdev_start_ap = 127;
+      optional bool rdev_start_p2p_device = 128;
+      optional bool rdev_stop_ap = 129;
+      optional bool rdev_stop_p2p_device = 130;
+      optional bool rdev_suspend = 131;
+      optional bool rdev_tdls_mgmt = 132;
+      optional bool rdev_tdls_oper = 133;
+      optional bool rdev_testmode_cmd = 134;
+      optional bool rdev_testmode_dump = 135;
+      optional bool rdev_update_connect_params = 136;
+      optional bool rdev_update_ft_ies = 137;
+      optional bool rdev_update_mesh_config = 138;
+
+    };
+    optional Cfg80211 cfg80211 = 4;
+
+
+    message Cma {
+
+      optional bool cma_alloc = 1;
+      optional bool cma_alloc_busy_retry = 2;
+      optional bool cma_alloc_start = 3;
+      optional bool cma_release = 4;
+
+    };
+    optional Cma cma = 5;
+
+
+    message Compaction {
+
+      optional bool mm_compaction_begin = 1;
+      optional bool mm_compaction_end = 2;
+      optional bool mm_compaction_isolate_freepages = 3;
+      optional bool mm_compaction_isolate_migratepages = 4;
+      optional bool mm_compaction_migratepages = 5;
+
+    };
+    optional Compaction compaction = 6;
+
+
+    message Cpufreq_interactive {
+
+      optional bool cpufreq_interactive_already = 1;
+      optional bool cpufreq_interactive_boost = 2;
+      optional bool cpufreq_interactive_cpuload = 3;
+      optional bool cpufreq_interactive_load_change = 4;
+      optional bool cpufreq_interactive_notyet = 5;
+      optional bool cpufreq_interactive_setspeed = 6;
+      optional bool cpufreq_interactive_target = 7;
+      optional bool cpufreq_interactive_unboost = 8;
+
+    };
+    optional Cpufreq_interactive cpufreq_interactive = 7;
+
+
+    message Cpufreq_sched {
+
+      optional bool cpufreq_sched_request_opp = 1;
+      optional bool cpufreq_sched_throttled = 2;
+      optional bool cpufreq_sched_update_capacity = 3;
+
+    };
+    optional Cpufreq_sched cpufreq_sched = 8;
+
+
+    message Devfreq {
+
+      optional bool devfreq_msg = 1;
+
+    };
+    optional Devfreq devfreq = 9;
+
+
+    message Dwc3 {
+
+      optional bool dwc3_alloc_request = 1;
+      optional bool dwc3_complete_trb = 2;
+      optional bool dwc3_ctrl_req = 3;
+      optional bool dwc3_ep0 = 4;
+      optional bool dwc3_ep_dequeue = 5;
+      optional bool dwc3_ep_queue = 6;
+      optional bool dwc3_event = 7;
+      optional bool dwc3_free_request = 8;
+      optional bool dwc3_gadget_ep_cmd = 9;
+      optional bool dwc3_gadget_generic_cmd = 10;
+      optional bool dwc3_gadget_giveback = 11;
+      optional bool dwc3_prepare_trb = 12;
+      optional bool dwc3_readl = 13;
+      optional bool dwc3_writel = 14;
+
+    };
+    optional Dwc3 dwc3 = 10;
+
+
+    message Emulation {
+
+      optional bool instruction_emulation = 1;
+
+    };
+    optional Emulation emulation = 11;
+
+
+    message Exception {
+
+      optional bool kernel_panic = 1;
+      optional bool kernel_panic_late = 2;
+      optional bool undef_instr = 3;
+      optional bool unhandled_abort = 4;
+      optional bool user_fault = 5;
+
+    };
+    optional Exception exception = 12;
+
+
+    message Ext4 {
+
+      optional bool ext4_alloc_da_blocks = 1;
+      optional bool ext4_allocate_blocks = 2;
+      optional bool ext4_allocate_inode = 3;
+      optional bool ext4_begin_ordered_truncate = 4;
+      optional bool ext4_collapse_range = 5;
+      optional bool ext4_da_release_space = 6;
+      optional bool ext4_da_reserve_space = 7;
+      optional bool ext4_da_update_reserve_space = 8;
+      optional bool ext4_da_write_begin = 9;
+      optional bool ext4_da_write_end = 10;
+      optional bool ext4_da_write_pages = 11;
+      optional bool ext4_da_write_pages_extent = 12;
+      optional bool ext4_direct_IO_enter = 13;
+      optional bool ext4_direct_IO_exit = 14;
+      optional bool ext4_discard_blocks = 15;
+      optional bool ext4_discard_preallocations = 16;
+      optional bool ext4_drop_inode = 17;
+      optional bool ext4_es_cache_extent = 18;
+      optional bool ext4_es_find_delayed_extent_range_enter = 19;
+      optional bool ext4_es_find_delayed_extent_range_exit = 20;
+      optional bool ext4_es_insert_extent = 21;
+      optional bool ext4_es_lookup_extent_enter = 22;
+      optional bool ext4_es_lookup_extent_exit = 23;
+      optional bool ext4_es_remove_extent = 24;
+      optional bool ext4_es_shrink = 25;
+      optional bool ext4_es_shrink_count = 26;
+      optional bool ext4_es_shrink_scan_enter = 27;
+      optional bool ext4_es_shrink_scan_exit = 28;
+      optional bool ext4_evict_inode = 29;
+      optional bool ext4_ext_convert_to_initialized_enter = 30;
+      optional bool ext4_ext_convert_to_initialized_fastpath = 31;
+      optional bool ext4_ext_handle_unwritten_extents = 32;
+      optional bool ext4_ext_in_cache = 33;
+      optional bool ext4_ext_load_extent = 34;
+      optional bool ext4_ext_map_blocks_enter = 35;
+      optional bool ext4_ext_map_blocks_exit = 36;
+      optional bool ext4_ext_put_in_cache = 37;
+      optional bool ext4_ext_remove_space = 38;
+      optional bool ext4_ext_remove_space_done = 39;
+      optional bool ext4_ext_rm_idx = 40;
+      optional bool ext4_ext_rm_leaf = 41;
+      optional bool ext4_ext_show_extent = 42;
+      optional bool ext4_fallocate_enter = 43;
+      optional bool ext4_fallocate_exit = 44;
+      optional bool ext4_find_delalloc_range = 45;
+      optional bool ext4_forget = 46;
+      optional bool ext4_free_blocks = 47;
+      optional bool ext4_free_inode = 48;
+      optional bool ext4_get_implied_cluster_alloc_exit = 49;
+      optional bool ext4_get_reserved_cluster_alloc = 50;
+      optional bool ext4_ind_map_blocks_enter = 51;
+      optional bool ext4_ind_map_blocks_exit = 52;
+      optional bool ext4_invalidatepage = 53;
+      optional bool ext4_journal_start = 54;
+      optional bool ext4_journal_start_reserved = 55;
+      optional bool ext4_journalled_invalidatepage = 56;
+      optional bool ext4_journalled_write_end = 57;
+      optional bool ext4_load_inode = 58;
+      optional bool ext4_load_inode_bitmap = 59;
+      optional bool ext4_mark_inode_dirty = 60;
+      optional bool ext4_mb_bitmap_load = 61;
+      optional bool ext4_mb_buddy_bitmap_load = 62;
+      optional bool ext4_mb_discard_preallocations = 63;
+      optional bool ext4_mb_new_group_pa = 64;
+      optional bool ext4_mb_new_inode_pa = 65;
+      optional bool ext4_mb_release_group_pa = 66;
+      optional bool ext4_mb_release_inode_pa = 67;
+      optional bool ext4_mballoc_alloc = 68;
+      optional bool ext4_mballoc_discard = 69;
+      optional bool ext4_mballoc_free = 70;
+      optional bool ext4_mballoc_prealloc = 71;
+      optional bool ext4_punch_hole = 72;
+      optional bool ext4_read_block_bitmap_load = 73;
+      optional bool ext4_readpage = 74;
+      optional bool ext4_releasepage = 75;
+      optional bool ext4_remove_blocks = 76;
+      optional bool ext4_request_blocks = 77;
+      optional bool ext4_request_inode = 78;
+      optional bool ext4_sync_file_enter = 79;
+      optional bool ext4_sync_file_exit = 80;
+      optional bool ext4_sync_fs = 81;
+      optional bool ext4_trim_all_free = 82;
+      optional bool ext4_trim_extent = 83;
+      optional bool ext4_truncate_enter = 84;
+      optional bool ext4_truncate_exit = 85;
+      optional bool ext4_unlink_enter = 86;
+      optional bool ext4_unlink_exit = 87;
+      optional bool ext4_write_begin = 88;
+      optional bool ext4_write_end = 89;
+      optional bool ext4_writepage = 90;
+      optional bool ext4_writepages = 91;
+      optional bool ext4_writepages_result = 92;
+      optional bool ext4_zero_range = 93;
+
+    };
+    optional Ext4 ext4 = 13;
+
+
+    message Fence {
+
+      optional bool fence_annotate_wait_on = 1;
+      optional bool fence_destroy = 2;
+      optional bool fence_emit = 3;
+      optional bool fence_enable_signal = 4;
+      optional bool fence_init = 5;
+      optional bool fence_signaled = 6;
+      optional bool fence_wait_end = 7;
+      optional bool fence_wait_start = 8;
+
+    };
+    optional Fence fence = 14;
+
+
+    message Filelock {
+
+      optional bool break_lease_block = 1;
+      optional bool break_lease_noblock = 2;
+      optional bool break_lease_unblock = 3;
+      optional bool generic_add_lease = 4;
+      optional bool generic_delete_lease = 5;
+      optional bool time_out_leases = 6;
+
+    };
+    optional Filelock filelock = 15;
+
+
+    message Filemap {
+
+      optional bool mm_filemap_add_to_page_cache = 1;
+      optional bool mm_filemap_delete_from_page_cache = 2;
+
+    };
+    optional Filemap filemap = 16;
+
+
+    message Gpio {
+
+      optional bool gpio_direction = 1;
+      optional bool gpio_value = 2;
+
+    };
+    optional Gpio gpio = 17;
+
+
+    message I2c {
+
+      optional bool i2c_read = 1;
+      optional bool i2c_reply = 2;
+      optional bool i2c_result = 3;
+      optional bool i2c_write = 4;
+      optional bool smbus_read = 5;
+      optional bool smbus_reply = 6;
+      optional bool smbus_result = 7;
+      optional bool smbus_write = 8;
+
+    };
+    optional I2c i2c = 18;
+
+
+    message Iommu {
+
+      optional bool add_device_to_group = 1;
+      optional bool attach_device_to_domain = 2;
+      optional bool detach_device_from_domain = 3;
+      optional bool io_page_fault = 4;
+      optional bool map = 5;
+      optional bool map_end = 6;
+      optional bool map_sg_end = 7;
+      optional bool map_sg_start = 8;
+      optional bool map_start = 9;
+      optional bool remove_device_from_group = 10;
+      optional bool unmap = 11;
+      optional bool unmap_end = 12;
+      optional bool unmap_start = 13;
+
+    };
+    optional Iommu iommu = 19;
+
+
+    message Ipa {
+
+      optional bool idle_sleep_enter = 1;
+      optional bool idle_sleep_exit = 2;
+      optional bool intr_to_poll = 3;
+      optional bool poll_to_intr = 4;
+      optional bool rmnet_ipa_netifni = 5;
+      optional bool rmnet_ipa_netifrx = 6;
+
+    };
+    optional Ipa ipa = 20;
+
+
+    message Ipi {
+
+      optional bool ipi_entry = 1;
+      optional bool ipi_exit = 2;
+      optional bool ipi_raise = 3;
+
+    };
+    optional Ipi ipi = 21;
+
+
+    message Irq {
+
+      optional bool irq_handler_entry = 1;
+      optional bool irq_handler_exit = 2;
+      optional bool softirq_entry = 3;
+      optional bool softirq_exit = 4;
+      optional bool softirq_raise = 5;
+
+    };
+    optional Irq irq = 22;
+
+
+    message Jbd2 {
+
+      optional bool jbd2_checkpoint = 1;
+      optional bool jbd2_checkpoint_stats = 2;
+      optional bool jbd2_commit_flushing = 3;
+      optional bool jbd2_commit_locking = 4;
+      optional bool jbd2_commit_logging = 5;
+      optional bool jbd2_drop_transaction = 6;
+      optional bool jbd2_end_commit = 7;
+      optional bool jbd2_handle_extend = 8;
+      optional bool jbd2_handle_start = 9;
+      optional bool jbd2_handle_stats = 10;
+      optional bool jbd2_lock_buffer_stall = 11;
+      optional bool jbd2_run_stats = 12;
+      optional bool jbd2_start_commit = 13;
+      optional bool jbd2_submit_inode_data = 14;
+      optional bool jbd2_update_log_tail = 15;
+      optional bool jbd2_write_superblock = 16;
+
+    };
+    optional Jbd2 jbd2 = 23;
+
+
+    message Kgsl {
+
+      optional bool adreno_cmdbatch_fault = 1;
+      optional bool adreno_cmdbatch_queued = 2;
+      optional bool adreno_cmdbatch_recovery = 3;
+      optional bool adreno_cmdbatch_retired = 4;
+      optional bool adreno_cmdbatch_submitted = 5;
+      optional bool adreno_cmdbatch_sync = 6;
+      optional bool adreno_drawctxt_invalidate = 7;
+      optional bool adreno_drawctxt_sleep = 8;
+      optional bool adreno_drawctxt_switch = 9;
+      optional bool adreno_drawctxt_wait_done = 10;
+      optional bool adreno_drawctxt_wait_start = 11;
+      optional bool adreno_drawctxt_wake = 12;
+      optional bool adreno_gpu_fault = 13;
+      optional bool adreno_hw_preempt_clear_to_trig = 14;
+      optional bool adreno_hw_preempt_comp_to_clear = 15;
+      optional bool adreno_hw_preempt_token_submit = 16;
+      optional bool adreno_hw_preempt_trig_to_comp = 17;
+      optional bool adreno_hw_preempt_trig_to_comp_int = 18;
+      optional bool adreno_preempt_done = 19;
+      optional bool adreno_preempt_trigger = 20;
+      optional bool adreno_sp_tp = 21;
+      optional bool dispatch_queue_context = 22;
+      optional bool kgsl_a3xx_irq_status = 23;
+      optional bool kgsl_a4xx_irq_status = 24;
+      optional bool kgsl_a5xx_irq_status = 25;
+      optional bool kgsl_active_count = 26;
+      optional bool kgsl_bus = 27;
+      optional bool kgsl_buslevel = 28;
+      optional bool kgsl_clk = 29;
+      optional bool kgsl_constraint = 30;
+      optional bool kgsl_context_create = 31;
+      optional bool kgsl_context_destroy = 32;
+      optional bool kgsl_context_detach = 33;
+      optional bool kgsl_fire_event = 34;
+      optional bool kgsl_gpubusy = 35;
+      optional bool kgsl_irq = 36;
+      optional bool kgsl_issueibcmds = 37;
+      optional bool kgsl_mem_alloc = 38;
+      optional bool kgsl_mem_free = 39;
+      optional bool kgsl_mem_map = 40;
+      optional bool kgsl_mem_mmap = 41;
+      optional bool kgsl_mem_sync_cache = 42;
+      optional bool kgsl_mem_sync_full_cache = 43;
+      optional bool kgsl_mem_timestamp_free = 44;
+      optional bool kgsl_mem_timestamp_queue = 45;
+      optional bool kgsl_mem_unmapped_area_collision = 46;
+      optional bool kgsl_mmu_pagefault = 47;
+      optional bool kgsl_msg = 48;
+      optional bool kgsl_pagetable_destroy = 49;
+      optional bool kgsl_popp_level = 50;
+      optional bool kgsl_popp_mod = 51;
+      optional bool kgsl_popp_nap = 52;
+      optional bool kgsl_pwr_request_state = 53;
+      optional bool kgsl_pwr_set_state = 54;
+      optional bool kgsl_pwrlevel = 55;
+      optional bool kgsl_pwrstats = 56;
+      optional bool kgsl_rail = 57;
+      optional bool kgsl_readtimestamp = 58;
+      optional bool kgsl_register_event = 59;
+      optional bool kgsl_regwrite = 60;
+      optional bool kgsl_retention_clk = 61;
+      optional bool kgsl_user_pwrlevel_constraint = 62;
+      optional bool kgsl_waittimestamp_entry = 63;
+      optional bool kgsl_waittimestamp_exit = 64;
+      optional bool syncpoint_fence = 65;
+      optional bool syncpoint_fence_expire = 66;
+      optional bool syncpoint_timestamp = 67;
+      optional bool syncpoint_timestamp_expire = 68;
+
+    };
+    optional Kgsl kgsl = 24;
+
+
+    message Kmem {
+
+      optional bool alloc_pages_iommu_end = 1;
+      optional bool alloc_pages_iommu_fail = 2;
+      optional bool alloc_pages_iommu_start = 3;
+      optional bool alloc_pages_sys_end = 4;
+      optional bool alloc_pages_sys_fail = 5;
+      optional bool alloc_pages_sys_start = 6;
+      optional bool dma_alloc_contiguous_retry = 7;
+      optional bool iommu_map_range = 8;
+      optional bool iommu_sec_ptbl_map_range_end = 9;
+      optional bool iommu_sec_ptbl_map_range_start = 10;
+      optional bool ion_alloc_buffer_end = 11;
+      optional bool ion_alloc_buffer_fail = 12;
+      optional bool ion_alloc_buffer_fallback = 13;
+      optional bool ion_alloc_buffer_start = 14;
+      optional bool ion_cp_alloc_retry = 15;
+      optional bool ion_cp_secure_buffer_end = 16;
+      optional bool ion_cp_secure_buffer_start = 17;
+      optional bool ion_prefetching = 18;
+      optional bool ion_secure_cma_add_to_pool_end = 19;
+      optional bool ion_secure_cma_add_to_pool_start = 20;
+      optional bool ion_secure_cma_allocate_end = 21;
+      optional bool ion_secure_cma_allocate_start = 22;
+      optional bool ion_secure_cma_shrink_pool_end = 23;
+      optional bool ion_secure_cma_shrink_pool_start = 24;
+      optional bool kfree = 25;
+      optional bool kmalloc = 26;
+      optional bool kmalloc_node = 27;
+      optional bool kmem_cache_alloc = 28;
+      optional bool kmem_cache_alloc_node = 29;
+      optional bool kmem_cache_free = 30;
+      optional bool migrate_pages_end = 31;
+      optional bool migrate_pages_start = 32;
+      optional bool migrate_retry = 33;
+      optional bool mm_page_alloc = 34;
+      optional bool mm_page_alloc_extfrag = 35;
+      optional bool mm_page_alloc_zone_locked = 36;
+      optional bool mm_page_free = 37;
+      optional bool mm_page_free_batched = 38;
+      optional bool mm_page_pcpu_drain = 39;
+
+    };
+    optional Kmem kmem = 25;
+
+
+    message Lowmemorykiller {
+
+      optional bool lowmemory_kill = 1;
+
+    };
+    optional Lowmemorykiller lowmemorykiller = 26;
+
+
+    message Mdss {
+
+      optional bool mdp_cmd_kickoff = 1;
+      optional bool mdp_cmd_pingpong_done = 2;
+      optional bool mdp_cmd_release_bw = 3;
+      optional bool mdp_cmd_wait_pingpong = 4;
+      optional bool mdp_commit = 5;
+      optional bool mdp_misr_crc = 6;
+      optional bool mdp_mixer_update = 7;
+      optional bool mdp_perf_prefill_calc = 8;
+      optional bool mdp_perf_set_ot = 9;
+      optional bool mdp_perf_set_panic_luts = 10;
+      optional bool mdp_perf_set_qos_luts = 11;
+      optional bool mdp_perf_set_wm_levels = 12;
+      optional bool mdp_perf_update_bus = 13;
+      optional bool mdp_sspp_change = 14;
+      optional bool mdp_sspp_set = 15;
+      optional bool mdp_trace_counter = 16;
+      optional bool mdp_video_underrun_done = 17;
+      optional bool rotator_bw_ao_as_context = 18;
+      optional bool tracing_mark_write = 19;
+
+    };
+    optional Mdss mdss = 27;
+
+
+    message Migrate {
+
+      optional bool mm_migrate_pages = 1;
+      optional bool mm_migrate_pages_start = 2;
+      optional bool mm_numa_migrate_ratelimit = 3;
+
+    };
+    optional Migrate migrate = 28;
+
+
+    message Module {
+
+      optional bool module_free = 1;
+      optional bool module_get = 2;
+      optional bool module_load = 3;
+      optional bool module_put = 4;
+      optional bool module_request = 5;
+
+    };
+    optional Module module = 29;
+
+
+    message Msm_bus {
+
+      optional bool bus_agg_bw = 1;
+      optional bool bus_avail_bw = 2;
+      optional bool bus_bimc_config_limiter = 3;
+      optional bool bus_bke_params = 4;
+      optional bool bus_client_status = 5;
+      optional bool bus_rules_matches = 6;
+      optional bool bus_update_request = 7;
+      optional bool bus_update_request_end = 8;
+
+    };
+    optional Msm_bus msm_bus = 30;
+
+
+    message Msm_low_power {
+
+      optional bool cluster_enter = 1;
+      optional bool cluster_exit = 2;
+      optional bool cpu_idle_enter = 3;
+      optional bool cpu_idle_exit = 4;
+      optional bool cpu_power_select = 5;
+      optional bool pre_pc_cb = 6;
+
+    };
+    optional Msm_low_power msm_low_power = 31;
+
+
+    message Msm_vidc {
+
+      optional bool msm_smem_buffer_iommu_op_end = 1;
+      optional bool msm_smem_buffer_iommu_op_start = 2;
+      optional bool msm_smem_buffer_ion_op_end = 3;
+      optional bool msm_smem_buffer_ion_op_start = 4;
+      optional bool msm_v4l2_vidc_buffer_event_end = 5;
+      optional bool msm_v4l2_vidc_buffer_event_start = 6;
+      optional bool msm_v4l2_vidc_close_end = 7;
+      optional bool msm_v4l2_vidc_close_start = 8;
+      optional bool msm_v4l2_vidc_fw_load_end = 9;
+      optional bool msm_v4l2_vidc_fw_load_start = 10;
+      optional bool msm_v4l2_vidc_open_end = 11;
+      optional bool msm_v4l2_vidc_open_start = 12;
+      optional bool msm_vidc_common_state_change = 13;
+      optional bool venus_hfi_var_done = 14;
+
+    };
+    optional Msm_vidc msm_vidc = 32;
+
+
+    message Napi {
+
+      optional bool napi_poll = 1;
+
+    };
+    optional Napi napi = 33;
+
+
+    message Net {
+
+      optional bool napi_gro_frags_entry = 1;
+      optional bool napi_gro_receive_entry = 2;
+      optional bool net_dev_queue = 3;
+      optional bool net_dev_start_xmit = 4;
+      optional bool net_dev_xmit = 5;
+      optional bool netif_receive_skb = 6;
+      optional bool netif_receive_skb_entry = 7;
+      optional bool netif_rx = 8;
+      optional bool netif_rx_entry = 9;
+      optional bool netif_rx_ni_entry = 10;
+
+    };
+    optional Net net = 34;
+
+
+    message Oom {
+
+      optional bool oom_score_adj_update = 1;
+
+    };
+    optional Oom oom = 35;
+
+
+    message Pagemap {
+
+      optional bool mm_lru_activate = 1;
+      optional bool mm_lru_insertion = 2;
+
+    };
+    optional Pagemap pagemap = 36;
+
+
+    message Perf_trace_counters {
+
+      optional bool perf_trace_user = 1;
+      optional bool sched_switch_with_ctrs = 2;
+
+    };
+    optional Perf_trace_counters perf_trace_counters = 37;
+
+
+    message Power {
+
+      optional bool bw_hwmon_meas = 1;
+      optional bool bw_hwmon_update = 2;
+      optional bool cache_hwmon_meas = 3;
+      optional bool cache_hwmon_update = 4;
+      optional bool clock_disable = 5;
+      optional bool clock_enable = 6;
+      optional bool clock_set_parent = 7;
+      optional bool clock_set_rate = 8;
+      optional bool clock_set_rate_complete = 9;
+      optional bool clock_state = 10;
+      optional bool core_ctl_eval_need = 11;
+      optional bool core_ctl_set_busy = 12;
+      optional bool cpu_capacity = 13;
+      optional bool cpu_frequency = 14;
+      optional bool cpu_frequency_limits = 15;
+      optional bool cpu_frequency_switch_end = 16;
+      optional bool cpu_frequency_switch_start = 17;
+      optional bool cpu_idle = 18;
+      optional bool cpu_mode_detect = 19;
+      optional bool cpufreq_freq_synced = 20;
+      optional bool cpufreq_sampling_event = 21;
+      optional bool dev_pm_qos_add_request = 22;
+      optional bool dev_pm_qos_remove_request = 23;
+      optional bool dev_pm_qos_update_request = 24;
+      optional bool device_pm_callback_end = 25;
+      optional bool device_pm_callback_start = 26;
+      optional bool memlat_dev_meas = 27;
+      optional bool memlat_dev_update = 28;
+      optional bool msmpower_max_ddr = 29;
+      optional bool perf_cl_peak_exit_timer_start = 30;
+      optional bool perf_cl_peak_exit_timer_stop = 31;
+      optional bool pm_qos_add_request = 32;
+      optional bool pm_qos_remove_request = 33;
+      optional bool pm_qos_update_flags = 34;
+      optional bool pm_qos_update_request = 35;
+      optional bool pm_qos_update_request_timeout = 36;
+      optional bool pm_qos_update_target = 37;
+      optional bool power_domain_target = 38;
+      optional bool pstate_sample = 39;
+      optional bool reevaluate_hotplug = 40;
+      optional bool set_max_cpus = 41;
+      optional bool single_cycle_exit_timer_start = 42;
+      optional bool single_cycle_exit_timer_stop = 43;
+      optional bool single_mode_timeout = 44;
+      optional bool suspend_resume = 45;
+      optional bool track_iowait = 46;
+      optional bool wakeup_source_activate = 47;
+      optional bool wakeup_source_deactivate = 48;
+
+    };
+    optional Power power = 38;
+
+
+    message Printk {
+
+      optional bool console = 1;
+
+    };
+    optional Printk printk = 39;
+
+
+    message Random {
+
+      optional bool add_device_randomness = 1;
+      optional bool add_disk_randomness = 2;
+      optional bool add_input_randomness = 3;
+      optional bool credit_entropy_bits = 4;
+      optional bool debit_entropy = 5;
+      optional bool extract_entropy = 6;
+      optional bool extract_entropy_user = 7;
+      optional bool get_random_bytes = 8;
+      optional bool get_random_bytes_arch = 9;
+      optional bool mix_pool_bytes = 10;
+      optional bool mix_pool_bytes_nolock = 11;
+      optional bool push_to_pool = 12;
+      optional bool random_read = 13;
+      optional bool urandom_read = 14;
+      optional bool xfer_secondary_pool = 15;
+
+    };
+    optional Random random = 40;
+
+
+    message Raw_syscalls {
+
+      optional bool sys_enter = 1;
+      optional bool sys_exit = 2;
+
+    };
+    optional Raw_syscalls raw_syscalls = 41;
+
+
+    message Rcu {
+
+      optional bool rcu_utilization = 1;
+
+    };
+    optional Rcu rcu = 42;
+
+
+    message Regmap {
+
+      optional bool regcache_drop_region = 1;
+      optional bool regcache_sync = 2;
+      optional bool regmap_async_complete_done = 3;
+      optional bool regmap_async_complete_start = 4;
+      optional bool regmap_async_io_complete = 5;
+      optional bool regmap_async_write_start = 6;
+      optional bool regmap_cache_bypass = 7;
+      optional bool regmap_cache_only = 8;
+      optional bool regmap_hw_read_done = 9;
+      optional bool regmap_hw_read_start = 10;
+      optional bool regmap_hw_write_done = 11;
+      optional bool regmap_hw_write_start = 12;
+      optional bool regmap_reg_read = 13;
+      optional bool regmap_reg_read_cache = 14;
+      optional bool regmap_reg_write = 15;
+
+    };
+    optional Regmap regmap = 43;
+
+
+    message Regulator {
+
+      optional bool regulator_disable = 1;
+      optional bool regulator_disable_complete = 2;
+      optional bool regulator_enable = 3;
+      optional bool regulator_enable_complete = 4;
+      optional bool regulator_enable_delay = 5;
+      optional bool regulator_set_voltage = 6;
+      optional bool regulator_set_voltage_complete = 7;
+
+    };
+    optional Regulator regulator = 44;
+
+
+    message Rmnet_data {
+
+      optional bool __rmnet_deliver_skb = 1;
+      optional bool rmnet_associate = 2;
+      optional bool rmnet_egress_handler = 3;
+      optional bool rmnet_end_deaggregation = 4;
+      optional bool rmnet_fc_map = 5;
+      optional bool rmnet_fc_qmi = 6;
+      optional bool rmnet_gro_downlink = 7;
+      optional bool rmnet_ingress_handler = 8;
+      optional bool rmnet_map_aggregate = 9;
+      optional bool rmnet_map_checksum_downlink_packet = 10;
+      optional bool rmnet_map_checksum_uplink_packet = 11;
+      optional bool rmnet_map_flush_packet_queue = 12;
+      optional bool rmnet_start_aggregation = 13;
+      optional bool rmnet_start_deaggregation = 14;
+      optional bool rmnet_unassociate = 15;
+      optional bool rmnet_unregister_cb_clear_lepcs = 16;
+      optional bool rmnet_unregister_cb_clear_vnds = 17;
+      optional bool rmnet_unregister_cb_entry = 18;
+      optional bool rmnet_unregister_cb_exit = 19;
+      optional bool rmnet_unregister_cb_unhandled = 20;
+      optional bool rmnet_vnd_start_xmit = 21;
+
+    };
+    optional Rmnet_data rmnet_data = 45;
+
+
+    message Rndis_ipa {
+
+      optional bool rndis_netif_ni = 1;
+      optional bool rndis_status_rcvd = 2;
+      optional bool rndis_tx_dp = 3;
+
+    };
+    optional Rndis_ipa rndis_ipa = 46;
+
+
+    message Rpm {
+
+      optional bool rpm_idle = 1;
+      optional bool rpm_resume = 2;
+      optional bool rpm_return_int = 3;
+      optional bool rpm_suspend = 4;
+
+    };
+    optional Rpm rpm = 47;
+
+
+    message Rpm_smd {
+
+      optional bool rpm_smd_ack_recvd = 1;
+      optional bool rpm_smd_interrupt_notify = 2;
+      optional bool rpm_smd_send_active_set = 3;
+      optional bool rpm_smd_send_sleep_set = 4;
+      optional bool rpm_smd_sleep_set = 5;
+
+    };
+    optional Rpm_smd rpm_smd = 48;
+
+
+    message Sched {
+
+      optional bool sched_blocked_reason = 1;
+      optional bool sched_boost_cpu = 2;
+      optional bool sched_boost_task = 3;
+      optional bool sched_contrib_scale_f = 4;
+      optional bool sched_energy_diff = 5;
+      optional bool sched_energy_perf_deltas = 6;
+      optional bool sched_kthread_stop = 7;
+      optional bool sched_kthread_stop_ret = 8;
+      optional bool sched_load_avg_cpu = 9;
+      optional bool sched_load_avg_task = 10;
+      optional bool sched_migrate_task = 11;
+      optional bool sched_move_numa = 12;
+      optional bool sched_overutilized = 13;
+      optional bool sched_pi_setprio = 14;
+      optional bool sched_process_exec = 15;
+      optional bool sched_process_exit = 16;
+      optional bool sched_process_fork = 17;
+      optional bool sched_process_free = 18;
+      optional bool sched_process_hang = 19;
+      optional bool sched_process_wait = 20;
+      optional bool sched_stat_blocked = 21;
+      optional bool sched_stat_iowait = 22;
+      optional bool sched_stat_runtime = 23;
+      optional bool sched_stat_sleep = 24;
+      optional bool sched_stat_wait = 25;
+      optional bool sched_stick_numa = 26;
+      optional bool sched_swap_numa = 27;
+      optional bool sched_switch = 28;
+      optional bool sched_tune_boostgroup_update = 29;
+      optional bool sched_tune_config = 30;
+      optional bool sched_tune_filter = 31;
+      optional bool sched_tune_tasks_update = 32;
+      optional bool sched_wait_task = 33;
+      optional bool sched_wake_idle_without_ipi = 34;
+      optional bool sched_wakeup = 35;
+      optional bool sched_wakeup_new = 36;
+      optional bool sched_waking = 37;
+      optional bool walt_migration_update_sum = 38;
+      optional bool walt_update_history = 39;
+      optional bool walt_update_task_ravg = 40;
+
+    };
+    optional Sched sched = 49;
+
+
+    message Scm {
+
+      optional bool scm_call_end = 1;
+      optional bool scm_call_start = 2;
+
+    };
+    optional Scm scm = 50;
+
+
+    message Scsi {
+
+      optional bool scsi_dispatch_cmd_done = 1;
+      optional bool scsi_dispatch_cmd_error = 2;
+      optional bool scsi_dispatch_cmd_start = 3;
+      optional bool scsi_dispatch_cmd_timeout = 4;
+      optional bool scsi_eh_wakeup = 5;
+
+    };
+    optional Scsi scsi = 51;
+
+
+    message Signal {
+
+      optional bool signal_deliver = 1;
+      optional bool signal_generate = 2;
+
+    };
+    optional Signal signal = 52;
+
+
+    message Skb {
+
+      optional bool consume_skb = 1;
+      optional bool kfree_skb = 2;
+      optional bool print_skb_gso = 3;
+      optional bool skb_copy_datagram_iovec = 4;
+
+    };
+    optional Skb skb = 53;
+
+
+    message Sock {
+
+      optional bool sock_exceed_buf_limit = 1;
+      optional bool sock_rcvqueue_full = 2;
+
+    };
+    optional Sock sock = 54;
+
+
+    message Spi {
+
+      optional bool spi_master_busy = 1;
+      optional bool spi_master_idle = 2;
+      optional bool spi_message_done = 3;
+      optional bool spi_message_start = 4;
+      optional bool spi_message_submit = 5;
+      optional bool spi_transfer_start = 6;
+      optional bool spi_transfer_stop = 7;
+
+    };
+    optional Spi spi = 55;
+
+
+    message Swiotlb {
+
+      optional bool swiotlb_bounced = 1;
+
+    };
+    optional Swiotlb swiotlb = 56;
+
+
+    message Sync {
+
+      optional bool sync_pt = 1;
+      optional bool sync_timeline = 2;
+      optional bool sync_wait = 3;
+
+    };
+    optional Sync sync = 57;
+
+
+    message Task {
+
+      optional bool task_newtask = 1;
+      optional bool task_rename = 2;
+
+    };
+    optional Task task = 58;
+
+
+    message Thermal {
+
+      optional bool bcl_hw_event = 1;
+      optional bool bcl_hw_mitigation = 2;
+      optional bool bcl_hw_mitigation_event = 3;
+      optional bool bcl_hw_reg_access = 4;
+      optional bool bcl_hw_sensor_reading = 5;
+      optional bool bcl_hw_state_event = 6;
+      optional bool bcl_sw_mitigation = 7;
+      optional bool bcl_sw_mitigation_event = 8;
+      optional bool cdev_update = 9;
+      optional bool thermal_post_core_offline = 10;
+      optional bool thermal_post_core_online = 11;
+      optional bool thermal_post_frequency_mit = 12;
+      optional bool thermal_power_cpu_get_power = 13;
+      optional bool thermal_power_cpu_limit = 14;
+      optional bool thermal_pre_core_offline = 15;
+      optional bool thermal_pre_core_online = 16;
+      optional bool thermal_pre_frequency_mit = 17;
+      optional bool thermal_temperature = 18;
+      optional bool thermal_zone_trip = 19;
+      optional bool tsens_read = 20;
+      optional bool tsens_threshold_clear = 21;
+      optional bool tsens_threshold_hit = 22;
+
+    };
+    optional Thermal thermal = 59;
+
+
+    message Timer {
+
+      optional bool hrtimer_cancel = 1;
+      optional bool hrtimer_expire_entry = 2;
+      optional bool hrtimer_expire_exit = 3;
+      optional bool hrtimer_init = 4;
+      optional bool hrtimer_start = 5;
+      optional bool itimer_expire = 6;
+      optional bool itimer_state = 7;
+      optional bool tick_stop = 8;
+      optional bool timer_cancel = 9;
+      optional bool timer_expire_entry = 10;
+      optional bool timer_expire_exit = 11;
+      optional bool timer_init = 12;
+      optional bool timer_start = 13;
+
+    };
+    optional Timer timer = 60;
+
+
+    message Tracer_pkt {
+
+      optional bool tracer_pkt_event = 1;
+
+    };
+    optional Tracer_pkt tracer_pkt = 61;
+
+
+    message Udp {
+
+      optional bool udp_fail_queue_rcv_skb = 1;
+
+    };
+    optional Udp udp = 62;
+
+
+    message Ufs {
+
+      optional bool ufshcd_auto_bkops_state = 1;
+      optional bool ufshcd_clk_gating = 2;
+      optional bool ufshcd_clk_scaling = 3;
+      optional bool ufshcd_command = 4;
+      optional bool ufshcd_hibern8_on_idle = 5;
+      optional bool ufshcd_init = 6;
+      optional bool ufshcd_profile_clk_gating = 7;
+      optional bool ufshcd_profile_clk_scaling = 8;
+      optional bool ufshcd_profile_hibern8 = 9;
+      optional bool ufshcd_runtime_resume = 10;
+      optional bool ufshcd_runtime_suspend = 11;
+      optional bool ufshcd_system_resume = 12;
+      optional bool ufshcd_system_suspend = 13;
+
+    };
+    optional Ufs ufs = 63;
+
+
+    message V4l2 {
+
+      optional bool v4l2_dqbuf = 1;
+      optional bool v4l2_qbuf = 2;
+
+    };
+    optional V4l2 v4l2 = 64;
+
+
+    message Vmscan {
+
+      optional bool mm_shrink_slab_end = 1;
+      optional bool mm_shrink_slab_start = 2;
+      optional bool mm_vmscan_direct_reclaim_begin = 3;
+      optional bool mm_vmscan_direct_reclaim_end = 4;
+      optional bool mm_vmscan_kswapd_sleep = 5;
+      optional bool mm_vmscan_kswapd_wake = 6;
+      optional bool mm_vmscan_lru_isolate = 7;
+      optional bool mm_vmscan_lru_shrink_inactive = 8;
+      optional bool mm_vmscan_memcg_isolate = 9;
+      optional bool mm_vmscan_memcg_reclaim_begin = 10;
+      optional bool mm_vmscan_memcg_reclaim_end = 11;
+      optional bool mm_vmscan_memcg_softlimit_reclaim_begin = 12;
+      optional bool mm_vmscan_memcg_softlimit_reclaim_end = 13;
+      optional bool mm_vmscan_wakeup_kswapd = 14;
+      optional bool mm_vmscan_writepage = 15;
+
+    };
+    optional Vmscan vmscan = 65;
+
+
+    message Workqueue {
+
+      optional bool workqueue_activate_work = 1;
+      optional bool workqueue_execute_end = 2;
+      optional bool workqueue_execute_start = 3;
+      optional bool workqueue_queue_work = 4;
+
+    };
+    optional Workqueue workqueue = 66;
+
+
+    message Writeback {
+
+      optional bool balance_dirty_pages = 1;
+      optional bool bdi_dirty_ratelimit = 2;
+      optional bool global_dirty_state = 3;
+      optional bool wbc_writepage = 4;
+      optional bool writeback_bdi_register = 5;
+      optional bool writeback_bdi_unregister = 6;
+      optional bool writeback_congestion_wait = 7;
+      optional bool writeback_dirty_inode = 8;
+      optional bool writeback_dirty_inode_start = 9;
+      optional bool writeback_dirty_page = 10;
+      optional bool writeback_exec = 11;
+      optional bool writeback_nowork = 12;
+      optional bool writeback_pages_written = 13;
+      optional bool writeback_queue = 14;
+      optional bool writeback_queue_io = 15;
+      optional bool writeback_sb_inodes_requeue = 16;
+      optional bool writeback_single_inode = 17;
+      optional bool writeback_single_inode_start = 18;
+      optional bool writeback_start = 19;
+      optional bool writeback_wait = 20;
+      optional bool writeback_wait_iff_congested = 21;
+      optional bool writeback_wake_background = 22;
+      optional bool writeback_write_inode = 23;
+      optional bool writeback_write_inode_start = 24;
+      optional bool writeback_written = 25;
+
+    };
+    optional Writeback writeback = 67;
+
+
+    message Xhci_hcd {
+
+      optional bool xhci_address_ctx = 1;
+      optional bool xhci_cmd_completion = 2;
+      optional bool xhci_dbg_address = 3;
+      optional bool xhci_dbg_cancel_urb = 4;
+      optional bool xhci_dbg_context_change = 5;
+      optional bool xhci_dbg_init = 6;
+      optional bool xhci_dbg_quirks = 7;
+      optional bool xhci_dbg_reset_ep = 8;
+      optional bool xhci_dbg_ring_expansion = 9;
+
+    };
+    optional Xhci_hcd xhci_hcd = 68;
+
+
+  };
+  optional TracepointSet tracepoints = 53;
+};
+
+message PerfConfigElement {
+  optional CounterSet counter_set = 1;
+  optional bool as_group = 2 [ default = false ];
+  optional uint32 sampling_period = 3;
+};
+
+// The configuration for a profiling session.
+message ProfilingConfig {
+  // Average number of seconds between perf profile collections (if
+  // set to 100, then over time we want to see a perf profile
+  // collected every 100 seconds). The actual time within the interval
+  // for the collection is chosen randomly.
+  optional uint32 collection_interval_in_s = 1;
+
+  // Use the specified fixed seed for random number generation (unit
+  // testing)
+  optional uint32 use_fixed_seed = 2;
+
+  // Number of times to iterate through main
+  // loop. Value of zero indicates that we should loop forever.
+  optional uint32 main_loop_iterations = 3;
+
+  // Destination directory (where to write profiles).
+  optional string destination_directory = 4;
+  // Config directory (where to read configs).
+  optional string config_directory = 5;
+  // Full path to 'perf' executable.
+  optional string perf_path = 6;
+
+  // Desired sampling period (passed to perf -c option). Small
+  // sampling periods can perturb the collected profiles, so enforce
+  // min/max. A value of 0 means perf default. sampling_frequency
+  // takes priority.
+  optional uint32 sampling_period = 7;
+  // Desired sampling frequency (passed to perf -f option). A value of 0
+  // means using sampling_period or default.
+  optional uint32 sampling_frequency = 22;
+  // Length of time to collect samples (number of seconds for 'perf
+  // record -a' run).
+  optional uint32 sample_duration_in_s = 8;
+
+  // If this parameter is non-zero it will cause perfprofd to
+  // exit immediately if the build type is not userdebug or eng.
+  // Currently defaults to 1 (true).
+  optional bool only_debug_build = 9;
+
+  // If the "mpdecision" service is running at the point we are ready
+  // to kick off a profiling run, then temporarily disable the service
+  // and hard-wire all cores on prior to the collection run, provided
+  // that the duration of the recording is less than or equal to the value of
+  // 'hardwire_cpus_max_duration'.
+  optional bool hardwire_cpus = 10;
+  optional uint32 hardwire_cpus_max_duration_in_s = 11;
+
+  // Maximum number of unprocessed profiles we can accumulate in the
+  // destination directory. Once we reach this limit, we continue
+  // to collect, but we just overwrite the most recent profile.
+  optional uint32 max_unprocessed_profiles = 12;
+
+  // If set to 1, pass the -g option when invoking 'perf' (requests
+  // stack traces as opposed to flat profile).
+  optional bool stack_profile = 13;
+
+  // Control collection of various additional profile tags
+  optional bool collect_cpu_utilization = 14;
+  optional bool collect_charging_state = 15;
+  optional bool collect_booting = 16;
+  optional bool collect_camera_active = 17;
+
+  // The pid of the process to profile. May be negative, in which case
+  // the whole system will be profiled.
+  optional int32 process = 18;
+
+  // Whether to use a symbolizer on-device.
+  optional bool use_elf_symbolizer = 19;
+
+  // Whether to send the result to dropbox.
+  optional bool send_to_dropbox = 20;
+
+  // If true, use libz to compress the output proto.
+  optional bool compress = 21;
+
+  repeated PerfConfigElement event_config = 23;
+};
