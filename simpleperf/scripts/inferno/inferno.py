@@ -172,6 +172,7 @@ def output_report(process, args):
     f.write(get_local_asset_content("inferno.b64"))
     f.write('"/>')
     process_entry = ("Process : %s (%d)<br/>" % (process.name, process.pid)) if process.pid else ""
+    thread_entry = '' if args.one_flamegraph else ('Threads: %d<br/>' % len(process.threads))
     if process.props['trace_offcpu']:
         event_entry = 'Total time: %s<br/>' % get_proper_scaled_time_string(process.num_events)
     else:
@@ -184,13 +185,13 @@ def output_report(process, args):
                   Inferno Flamegraph Report%s</font><br/><br/>
                   %s
                   Date&nbsp;&nbsp;&nbsp;&nbsp;: %s<br/>
-                  Threads : %d <br/>
+                  %s
                   Samples : %d<br/>
                   %s
                   %s""" % ((': ' + args.title) if args.title else '',
                            process_entry,
                            datetime.datetime.now().strftime("%Y-%m-%d (%A) %H:%M:%S"),
-                           len(process.threads),
+                           thread_entry,
                            process.num_samples,
                            event_entry,
                            duration_entry))
@@ -211,8 +212,10 @@ def output_report(process, args):
 
     # Sort threads by the event count in a thread.
     for thread in sorted(process.threads.values(), key=lambda x: x.num_events, reverse=True):
-        f.write("<br/><br/><b>Thread %d (%s) (%d samples):</b><br/>\n\n\n\n" % (
-            thread.tid, thread.name, thread.num_samples))
+        thread_name = 'One flamegraph' if args.one_flamegraph else ('Thread %d (%s)' %
+                                                                    (thread.tid, thread.name))
+        f.write("<br/><br/><b>%s (%d samples):</b><br/>\n\n\n\n" %
+                (thread_name, thread.num_samples))
         render_svg(process, thread.flamegraph, f, args.color)
 
     f.write("</div>")
