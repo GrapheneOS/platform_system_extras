@@ -60,6 +60,33 @@ def parse_simpleperf_events(str):
 
 events = parse_simpleperf_events(subprocess.check_output(['adb', 'shell', 'simpleperf list']))
 
+def format_event(event):
+    return event.replace('-', '_').lower()
+
+def FirstUpper(str):
+    return str[0:1].upper() + str[1:]
+
+def format_category(cat):
+    with_lower_dash = cat.replace('-', '_')
+    # Find all '_' and make the following character upper-case.
+    def upper_case_after_dash(input):
+        state = False
+        for c in input:
+            if state:
+                state = False
+                yield c.upper()
+            else:
+                yield c
+
+            if c == '_':
+                state = True
+
+    almost_camel_cased_dashed = "".join(upper_case_after_dash(with_lower_dash))
+    # Delete all '_'.
+    almost_camel_cased = almost_camel_cased_dashed.replace('_', '')
+    # Capitalize.
+    return FirstUpper(almost_camel_cased)
+
 field_count = 1
 
 print """
@@ -71,7 +98,7 @@ message CounterSet {
 """
 
 for event in events.regular:
-    print '  optional bool %s = %d;' % (event.replace('-', '_'), field_count)
+    print '  optional bool %s = %d;' % (format_event(event), field_count)
     field_count += 1
 
 print ''
@@ -80,30 +107,28 @@ print """
   message TracepointSet {
 """
 
-def FirstUpper(str):
-    return str[0:1].upper() + str[1:]
 
 cat_count = 1;
 
 for cat in sorted(events.categories):
     print """
     message %s {
-""" % (FirstUpper(cat.replace('-', '_')))
+""" % (format_category(cat))
 
     cat_field_count = 1
     for name in events.categories[cat]:
-        print "      optional bool %s = %d;" % (name.replace('-', '_'), cat_field_count)
+        print "      optional bool %s = %d;" % (format_event(name), cat_field_count)
         cat_field_count += 1
 
     print """
     };
     optional %s %s = %d;
-""" % (FirstUpper(cat.replace('-', '_')), cat.replace('-', '_'), cat_count)
+""" % (format_category(cat), format_event(cat), cat_count)
     cat_count += 1
 
 print """
   };
-  optional TracePointSet tracepoints = %d;
+  optional TracepointSet tracepoints = %d;
 };
 
 message PerfConfigElement {
@@ -122,7 +147,7 @@ std::vector<const char*> GetEvents(const ::android::perfprofd::CounterSet& count
 """
 
 for event in events.regular:
-    proto_name = event.replace('-', '_').lower();
+    proto_name = format_event(event);
     print '  if (counter_set.has_%s() && counter_set.%s())' % (proto_name, proto_name)
     print '    result.push_back("%s");' % (event)
 
@@ -132,7 +157,7 @@ print """
 """
 
 for cat in sorted(events.categories):
-    cat_proto_name = cat.replace('-', '_').lower()
+    cat_proto_name = format_event(cat)
 
     print """
     if (tracepoints.has_%s()) {
@@ -140,7 +165,7 @@ for cat in sorted(events.categories):
 """ % (cat_proto_name, cat_proto_name, cat_proto_name)
 
     for name in events.categories[cat]:
-        name_proto_name = name.replace('-', '_').lower()
+        name_proto_name = format_event(name)
         print '      if (%s.has_%s() && %s.%s())' % (cat_proto_name, name_proto_name, cat_proto_name, name_proto_name)
         print '        result.push_back("%s:%s");' % (cat, name)
 

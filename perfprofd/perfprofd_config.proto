@@ -11,10 +11,10 @@ message CounterSet {
   optional bool branch_loads = 2;
   optional bool branch_store_misses = 3;
   optional bool branch_stores = 4;
-  optional bool L1_dcache_load_misses = 5;
-  optional bool L1_dcache_loads = 6;
-  optional bool L1_dcache_store_misses = 7;
-  optional bool L1_dcache_stores = 8;
+  optional bool l1_dcache_load_misses = 5;
+  optional bool l1_dcache_loads = 6;
+  optional bool l1_dcache_store_misses = 7;
+  optional bool l1_dcache_stores = 8;
   optional bool branch_misses = 9;
   optional bool cache_misses = 10;
   optional bool cache_references = 11;
@@ -318,7 +318,7 @@ message CounterSet {
     optional Compaction compaction = 6;
 
 
-    message Cpufreq_interactive {
+    message CpufreqInteractive {
 
       optional bool cpufreq_interactive_already = 1;
       optional bool cpufreq_interactive_boost = 2;
@@ -330,17 +330,17 @@ message CounterSet {
       optional bool cpufreq_interactive_unboost = 8;
 
     };
-    optional Cpufreq_interactive cpufreq_interactive = 7;
+    optional CpufreqInteractive cpufreq_interactive = 7;
 
 
-    message Cpufreq_sched {
+    message CpufreqSched {
 
       optional bool cpufreq_sched_request_opp = 1;
       optional bool cpufreq_sched_throttled = 2;
       optional bool cpufreq_sched_update_capacity = 3;
 
     };
-    optional Cpufreq_sched cpufreq_sched = 8;
+    optional CpufreqSched cpufreq_sched = 8;
 
 
     message Devfreq {
@@ -406,8 +406,8 @@ message CounterSet {
       optional bool ext4_da_write_end = 10;
       optional bool ext4_da_write_pages = 11;
       optional bool ext4_da_write_pages_extent = 12;
-      optional bool ext4_direct_IO_enter = 13;
-      optional bool ext4_direct_IO_exit = 14;
+      optional bool ext4_direct_io_enter = 13;
+      optional bool ext4_direct_io_exit = 14;
       optional bool ext4_discard_blocks = 15;
       optional bool ext4_discard_preallocations = 16;
       optional bool ext4_drop_inode = 17;
@@ -808,7 +808,7 @@ message CounterSet {
     optional Module module = 29;
 
 
-    message Msm_bus {
+    message MsmBus {
 
       optional bool bus_agg_bw = 1;
       optional bool bus_avail_bw = 2;
@@ -820,10 +820,10 @@ message CounterSet {
       optional bool bus_update_request_end = 8;
 
     };
-    optional Msm_bus msm_bus = 30;
+    optional MsmBus msm_bus = 30;
 
 
-    message Msm_low_power {
+    message MsmLowPower {
 
       optional bool cluster_enter = 1;
       optional bool cluster_exit = 2;
@@ -833,10 +833,10 @@ message CounterSet {
       optional bool pre_pc_cb = 6;
 
     };
-    optional Msm_low_power msm_low_power = 31;
+    optional MsmLowPower msm_low_power = 31;
 
 
-    message Msm_vidc {
+    message MsmVidc {
 
       optional bool msm_smem_buffer_iommu_op_end = 1;
       optional bool msm_smem_buffer_iommu_op_start = 2;
@@ -854,7 +854,7 @@ message CounterSet {
       optional bool venus_hfi_var_done = 14;
 
     };
-    optional Msm_vidc msm_vidc = 32;
+    optional MsmVidc msm_vidc = 32;
 
 
     message Napi {
@@ -899,13 +899,13 @@ message CounterSet {
     optional Pagemap pagemap = 36;
 
 
-    message Perf_trace_counters {
+    message PerfTraceCounters {
 
       optional bool perf_trace_user = 1;
       optional bool sched_switch_with_ctrs = 2;
 
     };
-    optional Perf_trace_counters perf_trace_counters = 37;
+    optional PerfTraceCounters perf_trace_counters = 37;
 
 
     message Power {
@@ -993,13 +993,13 @@ message CounterSet {
     optional Random random = 40;
 
 
-    message Raw_syscalls {
+    message RawSyscalls {
 
       optional bool sys_enter = 1;
       optional bool sys_exit = 2;
 
     };
-    optional Raw_syscalls raw_syscalls = 41;
+    optional RawSyscalls raw_syscalls = 41;
 
 
     message Rcu {
@@ -1046,7 +1046,7 @@ message CounterSet {
     optional Regulator regulator = 44;
 
 
-    message Rmnet_data {
+    message RmnetData {
 
       optional bool __rmnet_deliver_skb = 1;
       optional bool rmnet_associate = 2;
@@ -1071,17 +1071,17 @@ message CounterSet {
       optional bool rmnet_vnd_start_xmit = 21;
 
     };
-    optional Rmnet_data rmnet_data = 45;
+    optional RmnetData rmnet_data = 45;
 
 
-    message Rndis_ipa {
+    message RndisIpa {
 
       optional bool rndis_netif_ni = 1;
       optional bool rndis_status_rcvd = 2;
       optional bool rndis_tx_dp = 3;
 
     };
-    optional Rndis_ipa rndis_ipa = 46;
+    optional RndisIpa rndis_ipa = 46;
 
 
     message Rpm {
@@ -1095,7 +1095,7 @@ message CounterSet {
     optional Rpm rpm = 47;
 
 
-    message Rpm_smd {
+    message RpmSmd {
 
       optional bool rpm_smd_ack_recvd = 1;
       optional bool rpm_smd_interrupt_notify = 2;
@@ -1104,7 +1104,7 @@ message CounterSet {
       optional bool rpm_smd_sleep_set = 5;
 
     };
-    optional Rpm_smd rpm_smd = 48;
+    optional RpmSmd rpm_smd = 48;
 
 
     message Sched {
@@ -1294,12 +1294,12 @@ message CounterSet {
     optional Timer timer = 60;
 
 
-    message Tracer_pkt {
+    message TracerPkt {
 
       optional bool tracer_pkt_event = 1;
 
     };
-    optional Tracer_pkt tracer_pkt = 61;
+    optional TracerPkt tracer_pkt = 61;
 
 
     message Udp {
@@ -1404,7 +1404,7 @@ message CounterSet {
     optional Writeback writeback = 67;
 
 
-    message Xhci_hcd {
+    message XhciHcd {
 
       optional bool xhci_address_ctx = 1;
       optional bool xhci_cmd_completion = 2;
@@ -1417,7 +1417,7 @@ message CounterSet {
       optional bool xhci_dbg_ring_expansion = 9;
 
     };
-    optional Xhci_hcd xhci_hcd = 68;
+    optional XhciHcd xhci_hcd = 68;
 
 
   };
