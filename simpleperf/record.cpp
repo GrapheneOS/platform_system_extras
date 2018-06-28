@@ -451,12 +451,7 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, char* p) : Record(p) {
       regs_user_data.reg_mask = 0;
     } else {
       regs_user_data.reg_mask = attr.sample_regs_user;
-      size_t bit_nr = 0;
-      for (size_t i = 0; i < 64; ++i) {
-        if ((regs_user_data.reg_mask >> i) & 1) {
-          bit_nr++;
-        }
-      }
+      size_t bit_nr = __builtin_popcountll(regs_user_data.reg_mask);
       regs_user_data.reg_nr = bit_nr;
       regs_user_data.regs = reinterpret_cast<uint64_t*>(p);
       p += bit_nr * sizeof(uint64_t);
@@ -482,7 +477,8 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, char* p) : Record(p) {
 SampleRecord::SampleRecord(const perf_event_attr& attr, uint64_t id,
                            uint64_t ip, uint32_t pid, uint32_t tid,
                            uint64_t time, uint32_t cpu, uint64_t period,
-                           const std::vector<uint64_t>& ips) {
+                           const std::vector<uint64_t>& ips, const std::vector<char>& stack,
+                           uint64_t dyn_stack_size) {
   SetTypeAndMisc(PERF_RECORD_SAMPLE, PERF_RECORD_MISC_USER);
   sample_type = attr.sample_type;
   CHECK_EQ(0u, sample_type & ~(PERF_SAMPLE_IP | PERF_SAMPLE_TID
@@ -502,7 +498,9 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, uint64_t id,
   branch_stack_data.stack_nr = 0;
   regs_user_data.abi = 0;
   regs_user_data.reg_mask = 0;
-  stack_user_data.size = 0;
+  regs_user_data.reg_nr = 0;
+  stack_user_data.size = stack.size();
+  stack_user_data.dyn_size = dyn_stack_size;
 
   uint32_t size = header_size();
   if (sample_type & PERF_SAMPLE_IP) {
@@ -530,7 +528,7 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, uint64_t id,
     size += sizeof(uint64_t);
   }
   if (sample_type & PERF_SAMPLE_STACK_USER) {
-    size += sizeof(uint64_t);
+    size += sizeof(uint64_t) + (stack.empty() ? 0 : stack.size() + sizeof(uint64_t));
   }
 
   SetSize(size);
@@ -565,52 +563,22 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, uint64_t id,
   }
   if (sample_type & PERF_SAMPLE_STACK_USER) {
     MoveToBinaryFormat(stack_user_data.size, p);
+    if (stack_user_data.size > 0) {
+      stack_user_data.data = p;
+      MoveToBinaryFormat(stack.data(), stack_user_data.size, p);
+      MoveToBinaryFormat(stack_user_data.dyn_size, p);
+    }
   }
   CHECK_EQ(p, new_binary + size);
   UpdateBinary(new_binary);
 }
 
-void SampleRecord::ReplaceRegAndStackWithCallChain(
-    const std::vector<uint64_t>& ips) {
+void SampleRecord::ReplaceRegAndStackWithCallChain(const std::vector<uint64_t>& ips) {
   uint32_t size_added_in_callchain = sizeof(uint64_t) * (ips.size() + 1);
-  uint32_t size_reduced_in_reg_stack =
-      regs_user_data.reg_nr * sizeof(uint64_t) + stack_user_data.size +
-      sizeof(uint64_t);
-  CHECK_LE(size_added_in_callchain, size_reduced_in_reg_stack);
-  uint32_t size_reduced = size_reduced_in_reg_stack - size_added_in_callchain;
-  SetSize(size() - size_reduced);
-  char* p = binary_;
-  MoveToBinaryFormat(header, p);
-  p = (stack_user_data.data + stack_user_data.size + sizeof(uint64_t)) -
-      (size_reduced_in_reg_stack - size_added_in_callchain);
-  stack_user_data.size = 0;
-  regs_user_data.abi = 0;
-  p -= sizeof(uint64_t);
-  *reinterpret_cast<uint64_t*>(p) = stack_user_data.size;
-  p -= sizeof(uint64_t);
-  *reinterpret_cast<uint64_t*>(p) = regs_user_data.abi;
-  if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
-    p -= branch_stack_data.stack_nr * sizeof(BranchStackItemType);
-    memmove(p, branch_stack_data.stack,
-            branch_stack_data.stack_nr * sizeof(BranchStackItemType));
-    p -= sizeof(uint64_t);
-    *reinterpret_cast<uint64_t*>(p) = branch_stack_data.stack_nr;
-  }
-  if (sample_type & PERF_SAMPLE_RAW) {
-    p -= raw_data.size;
-    memmove(p, raw_data.data, raw_data.size);
-    p -= sizeof(uint32_t);
-    *reinterpret_cast<uint32_t*>(p) = raw_data.size;
-  }
-  p -= ips.size() * sizeof(uint64_t);
-  memcpy(p, ips.data(), ips.size() * sizeof(uint64_t));
-  p -= sizeof(uint64_t);
-  *reinterpret_cast<uint64_t*>(p) = PERF_CONTEXT_USER;
-  p -= sizeof(uint64_t) * (callchain_data.ip_nr);
-  callchain_data.ips = reinterpret_cast<uint64_t*>(p);
-  callchain_data.ip_nr += ips.size() + 1;
-  p -= sizeof(uint64_t);
-  *reinterpret_cast<uint64_t*>(p) = callchain_data.ip_nr;
+  uint32_t size_reduced_in_reg_stack = regs_user_data.reg_nr * sizeof(uint64_t) +
+      stack_user_data.size + sizeof(uint64_t);
+  uint32_t new_size = size() + size_added_in_callchain - size_reduced_in_reg_stack;
+  BuildBinaryWithNewCallChain(new_size, ips);
 }
 
 size_t SampleRecord::ExcludeKernelCallChain() {
@@ -655,78 +623,74 @@ bool SampleRecord::HasUserCallChain() const {
 }
 
 void SampleRecord::UpdateUserCallChain(const std::vector<uint64_t>& user_ips) {
-  std::vector<uint64_t> kernel_ips;
+  size_t kernel_ip_count = 0;
   for (size_t i = 0; i < callchain_data.ip_nr; ++i) {
     if (callchain_data.ips[i] == PERF_CONTEXT_USER) {
       break;
     }
-    kernel_ips.push_back(callchain_data.ips[i]);
+    kernel_ip_count++;
   }
-  kernel_ips.push_back(PERF_CONTEXT_USER);
-  size_t new_size = size() - callchain_data.ip_nr * sizeof(uint64_t) +
-                    (kernel_ips.size() + user_ips.size()) * sizeof(uint64_t);
-  if (new_size == size()) {
+  if (kernel_ip_count + 1 + user_ips.size() <= callchain_data.ip_nr) {
+    // Callchain isn't changed.
     return;
   }
-  char* new_binary = new char[new_size];
+  size_t new_size = size() + (kernel_ip_count + 1 + user_ips.size() - callchain_data.ip_nr) *
+      sizeof(uint64_t);
+  callchain_data.ip_nr = kernel_ip_count;
+  BuildBinaryWithNewCallChain(new_size, user_ips);
+}
+
+void SampleRecord::BuildBinaryWithNewCallChain(uint32_t new_size,
+                                               const std::vector<uint64_t>& ips) {
+  size_t callchain_pos = reinterpret_cast<char*>(callchain_data.ips) - binary_ - sizeof(uint64_t);
+  char* new_binary = binary_;
+  if (new_size > size()) {
+    new_binary = new char[new_size];
+    memcpy(new_binary, binary_, callchain_pos);
+  }
   char* p = new_binary;
   SetSize(new_size);
   MoveToBinaryFormat(header, p);
-  if (sample_type & PERF_SAMPLE_IDENTIFIER) {
-    MoveToBinaryFormat(id_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_IP) {
-    MoveToBinaryFormat(ip_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_TID) {
-    MoveToBinaryFormat(tid_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_TIME) {
-    MoveToBinaryFormat(time_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_ADDR) {
-    MoveToBinaryFormat(addr_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_ID) {
-    MoveToBinaryFormat(id_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_STREAM_ID) {
-    MoveToBinaryFormat(stream_id_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_CPU) {
-    MoveToBinaryFormat(cpu_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_PERIOD) {
-    MoveToBinaryFormat(period_data, p);
-  }
-  if (sample_type & PERF_SAMPLE_CALLCHAIN) {
-    callchain_data.ip_nr = kernel_ips.size() + user_ips.size();
-    MoveToBinaryFormat(callchain_data.ip_nr, p);
-    callchain_data.ips = reinterpret_cast<uint64_t*>(p);
-    MoveToBinaryFormat(kernel_ips.data(), kernel_ips.size(), p);
-    MoveToBinaryFormat(user_ips.data(), user_ips.size(), p);
-  }
-  if (sample_type & PERF_SAMPLE_RAW) {
-    MoveToBinaryFormat(raw_data.size, p);
-    MoveToBinaryFormat(raw_data.data, raw_data.size, p);
-    raw_data.data = p - raw_data.size;
-  }
-  if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
-    MoveToBinaryFormat(branch_stack_data.stack_nr, p);
-    char* old_p = p;
-    MoveToBinaryFormat(branch_stack_data.stack, branch_stack_data.stack_nr, p);
-    branch_stack_data.stack = reinterpret_cast<BranchStackItemType*>(old_p);
+  p = new_binary + new_size;
+  if (sample_type & PERF_SAMPLE_STACK_USER) {
+    stack_user_data.size = 0;
+    p -= sizeof(uint64_t);
+    memcpy(p, &stack_user_data.size, sizeof(uint64_t));
   }
   if (sample_type & PERF_SAMPLE_REGS_USER) {
-    MoveToBinaryFormat(regs_user_data.abi, p);
-    CHECK_EQ(regs_user_data.abi, 0u);
+    regs_user_data.abi = 0;
+    p -= sizeof(uint64_t);
+    memcpy(p, &regs_user_data.abi, sizeof(uint64_t));
   }
-  if (sample_type & PERF_SAMPLE_STACK_USER) {
-    MoveToBinaryFormat(stack_user_data.size, p);
-    CHECK_EQ(stack_user_data.size, 0u);
+  if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
+    p -= branch_stack_data.stack_nr * sizeof(BranchStackItemType);
+    memcpy(p, branch_stack_data.stack, branch_stack_data.stack_nr * sizeof(BranchStackItemType));
+    branch_stack_data.stack = reinterpret_cast<BranchStackItemType*>(p);
+    p -= sizeof(uint64_t);
+    memcpy(p, &branch_stack_data.stack_nr, sizeof(uint64_t));
   }
-  CHECK_EQ(p, new_binary + new_size) << "sample_type = " << std::hex << sample_type;
-  UpdateBinary(new_binary);
+  if (sample_type & PERF_SAMPLE_RAW) {
+    p -= raw_data.size;
+    memcpy(p, raw_data.data, raw_data.size);
+    raw_data.data = p;
+    p -= sizeof(uint32_t);
+    memcpy(p, &raw_data.size, sizeof(uint32_t));
+  }
+  uint64_t* p64 = reinterpret_cast<uint64_t*>(p);
+  p64 -= ips.size();
+  memcpy(p64, ips.data(), ips.size() * sizeof(uint64_t));
+  *--p64 = PERF_CONTEXT_USER;
+  if (callchain_data.ip_nr > 0) {
+    p64 -= callchain_data.ip_nr;
+    memcpy(p64, callchain_data.ips, callchain_data.ip_nr * sizeof(uint64_t));
+  }
+  callchain_data.ips = p64;
+  callchain_data.ip_nr += 1 + ips.size();
+  *--p64 = callchain_data.ip_nr;
+  CHECK_EQ(callchain_pos, static_cast<size_t>(reinterpret_cast<char*>(p64) - new_binary));
+  if (new_binary != binary_) {
+    UpdateBinary(new_binary);
+  }
 }
 
 // When simpleperf requests the kernel to dump 64K stack per sample, it will allocate 64K space in

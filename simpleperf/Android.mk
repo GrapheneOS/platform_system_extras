@@ -122,6 +122,7 @@ libsimpleperf_src_files_linux := \
   perf_clock.cpp \
   read_dex_file.cpp \
   record_file_writer.cpp \
+  RecordReadThread.cpp \
   UnixSocket.cpp \
   workload.cpp \
 
@@ -383,6 +384,7 @@ simpleperf_unit_test_src_files_linux := \
   IOEventLoop_test.cpp \
   read_dex_file_test.cpp \
   record_file_test.cpp \
+  RecordReadThread_test.cpp \
   UnixSocket_test.cpp \
   workload_test.cpp \
 
@@ -395,7 +397,7 @@ LOCAL_SRC_FILES := \
   $(simpleperf_unit_test_src_files) \
   $(simpleperf_unit_test_src_files_linux) \
 
-LOCAL_STATIC_LIBRARIES += libsimpleperf $(simpleperf_static_libraries_with_libc_target)
+LOCAL_STATIC_LIBRARIES += libsimpleperf $(simpleperf_static_libraries_with_libc_target) libgmock
 LOCAL_TEST_DATA := $(call find-test-data-in-subdirs,$(LOCAL_PATH),"*",testdata)
 LOCAL_MULTILIB := both
 LOCAL_FORCE_STATIC_EXECUTABLE := true
@@ -413,7 +415,7 @@ LOCAL_CFLAGS_windows := $(simpleperf_cflags_host_windows)
 LOCAL_SRC_FILES := $(simpleperf_unit_test_src_files)
 LOCAL_SRC_FILES_linux := $(simpleperf_unit_test_src_files_linux)
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_host)
-LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
+LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux) libgmock
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := both
 include $(LLVM_HOST_BUILD_MK)
@@ -466,6 +468,7 @@ LOCAL_MODULE := libsimpleperf_cts_test
 LOCAL_CFLAGS := $(simpleperf_cflags_target) -DRUN_IN_APP_CONTEXT="\"com.android.simpleperf\""
 LOCAL_SRC_FILES := $(libsimpleperf_cts_test_src_files)
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_target)
+LOCAL_WHOLE_STATIC_LIBRARIES := libgmock
 LOCAL_MULTILIB := both
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 include $(LLVM_DEVICE_BUILD_MK)
@@ -482,6 +485,7 @@ LOCAL_CFLAGS_linux := $(simpleperf_cflags_host_linux)
 LOCAL_SRC_FILES := $(libsimpleperf_cts_test_src_files)
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
 LOCAL_STATIC_LIBRARIES_linux := $(simpleperf_static_libraries_host_linux)
+LOCAL_WHOLE_STATIC_LIBRARIES := libgmock
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := both
 include $(LLVM_HOST_BUILD_MK)

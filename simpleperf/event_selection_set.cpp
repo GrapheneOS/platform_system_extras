@@ -28,6 +28,7 @@
 #include "IOEventLoop.h"
 #include "perf_regs.h"
 #include "utils.h"
+#include "RecordReadThread.h"
 
 constexpr uint64_t DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT = 4000;
 constexpr uint64_t DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT = 1;
@@ -88,11 +89,9 @@ bool IsDumpingRegsForTracepointEventsSupported() {
   done = true;
   thread.join();
 
-  std::vector<char> buffer;
-  size_t buffer_pos = 0;
-  size_t size = event_fd->GetAvailableMmapData(buffer, buffer_pos);
+  std::vector<char> buffer = event_fd->GetAvailableMmapData();
   std::vector<std::unique_ptr<Record>> records =
-      ReadRecordsFromBuffer(attr, buffer.data(), size);
+      ReadRecordsFromBuffer(attr, buffer.data(), buffer.size());
   for (auto& r : records) {
     if (r->type() == PERF_RECORD_SAMPLE) {
       auto& record = *static_cast<SampleRecord*>(r.get());
@@ -116,6 +115,11 @@ bool IsSettingClockIdSupported() {
   attr.clockid = CLOCK_MONOTONIC;
   return IsEventAttrSupported(attr);
 }
+
+EventSelectionSet::EventSelectionSet(bool for_stat_cmd)
+    : for_stat_cmd_(for_stat_cmd), loop_(new IOEventLoop) {}
+
+EventSelectionSet::~EventSelectionSet() {}
 
 bool EventSelectionSet::BuildAndCheckEventSelection(
     const std::string& event_name, EventSelection* selection) {
@@ -580,155 +584,46 @@ bool EventSelectionSet::ReadCounters(std::vector<CountersInfo>* counters) {
   return true;
 }
 
-bool EventSelectionSet::MmapEventFiles(size_t min_mmap_pages,
-                                       size_t max_mmap_pages) {
-  for (size_t i = max_mmap_pages; i >= min_mmap_pages; i >>= 1) {
-    if (MmapEventFiles(i, i == min_mmap_pages)) {
-      LOG(VERBOSE) << "Mapped buffer size is " << i << " pages.";
-      mmap_pages_ = i;
-      return true;
-    }
-    for (auto& group : groups_) {
-      for (auto& selection : group) {
-        for (auto& event_fd : selection.event_fds) {
-          event_fd->DestroyMappedBuffer();
-        }
-      }
-    }
-  }
-  return false;
-}
-
-bool EventSelectionSet::MmapEventFiles(size_t mmap_pages, bool report_error) {
-  // Allocate a mapped buffer for each cpu.
-  std::map<int, EventFd*> cpu_map;
-  for (auto& group : groups_) {
-    for (auto& selection : group) {
-      for (auto& event_fd : selection.event_fds) {
-        auto it = cpu_map.find(event_fd->Cpu());
-        if (it != cpu_map.end()) {
-          if (!event_fd->ShareMappedBuffer(*(it->second), report_error)) {
-            return false;
-          }
-        } else {
-          if (!event_fd->CreateMappedBuffer(mmap_pages, report_error)) {
-            return false;
-          }
-          cpu_map[event_fd->Cpu()] = event_fd.get();
-        }
-      }
-    }
-  }
+bool EventSelectionSet::MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pages,
+                                       size_t record_buffer_size) {
+  record_read_thread_.reset(new simpleperf::RecordReadThread(
+      record_buffer_size, groups_[0][0].event_attr, min_mmap_pages, max_mmap_pages));
   return true;
 }
 
 bool EventSelectionSet::PrepareToReadMmapEventData(const std::function<bool(Record*)>& callback) {
-  // Add read Events for perf event files having mapped buffer.
-  for (auto& group : groups_) {
-    for (auto& selection : group) {
-      for (auto& event_fd : selection.event_fds) {
-        if (event_fd->HasMappedBuffer()) {
-          if (!event_fd->StartPolling(*loop_, [this]() {
-                return ReadMmapEventData();
-              })) {
-            return false;
-          }
-        }
-      }
-      for (auto& sampler : selection.inplace_samplers) {
-        if (!sampler->StartPolling(*loop_, callback,
-                                   [&] { return CheckMonitoredTargets(); })) {
-          return false;
-        }
-      }
-    }
-  }
-
   // Prepare record callback function.
   record_callback_ = callback;
-  return true;
-}
-
-// When reading from mmap buffers, we prefer reading from all buffers at once
-// rather than reading one buffer at a time. Because by reading all buffers
-// at once, we can merge records from different buffers easily in memory.
-// Otherwise, we have to sort records with greater effort.
-bool EventSelectionSet::ReadMmapEventData() {
-  size_t head_size = 0;
-  std::vector<RecordBufferHead>& heads = record_buffer_heads_;
-  if (heads.empty()) {
-    heads.resize(1);
+  if (!record_read_thread_->RegisterDataCallback(*loop_,
+                                                 [this]() { return ReadMmapEventData(false); })) {
+    return false;
   }
-  heads[0].current_pos = 0;
-  size_t buffer_pos = 0;
-
+  std::vector<EventFd*> event_fds;
   for (auto& group : groups_) {
     for (auto& selection : group) {
       for (auto& event_fd : selection.event_fds) {
-        if (event_fd->HasMappedBuffer()) {
-          if (event_fd->GetAvailableMmapData(record_buffer_, buffer_pos) != 0) {
-            heads[head_size].end_pos = buffer_pos;
-            heads[head_size].attr = &selection.event_attr;
-            head_size++;
-            if (heads.size() == head_size) {
-              heads.resize(head_size + 1);
-            }
-            heads[head_size].current_pos = buffer_pos;
-          }
-        }
+        event_fds.push_back(event_fd.get());
       }
     }
   }
+  return record_read_thread_->AddEventFds(event_fds);
+}
 
-  if (head_size == 0) {
-    return true;
+bool EventSelectionSet::ReadMmapEventData(bool sync_kernel_buffer) {
+  if (sync_kernel_buffer && !record_read_thread_->SyncKernelBuffer()) {
+    return false;
   }
-  if (head_size == 1) {
-    // Only one buffer has data, process it directly.
-    std::vector<std::unique_ptr<Record>> records =
-        ReadRecordsFromBuffer(*heads[0].attr,
-                              record_buffer_.data(), buffer_pos);
-    for (auto& r : records) {
-      if (!record_callback_(r.get())) {
-        return false;
-      }
-    }
-  } else {
-    // Use a priority queue to merge records from different buffers. As
-    // records from the same buffer are already ordered by time, we only
-    // need to merge the first record from all buffers. And each time a
-    // record is popped from the queue, we put the next record from its
-    // buffer into the queue.
-    auto comparator = [&](RecordBufferHead* h1, RecordBufferHead* h2) {
-      return h1->timestamp > h2->timestamp;
-    };
-    std::priority_queue<RecordBufferHead*, std::vector<RecordBufferHead*>, decltype(comparator)> q(comparator);
-    for (size_t i = 0; i < head_size; ++i) {
-      RecordBufferHead& h = heads[i];
-      h.r = ReadRecordFromBuffer(*h.attr, &record_buffer_[h.current_pos]);
-      h.timestamp = h.r->Timestamp();
-      h.current_pos += h.r->size();
-      q.push(&h);
-    }
-    while (!q.empty()) {
-      RecordBufferHead* h = q.top();
-      q.pop();
-      if (!record_callback_(h->r.get())) {
-        return false;
-      }
-      if (h->current_pos < h->end_pos) {
-        h->r = ReadRecordFromBuffer(*h->attr, &record_buffer_[h->current_pos]);
-        h->timestamp = h->r->Timestamp();
-        h->current_pos += h->r->size();
-        q.push(h);
-      }
+  std::unique_ptr<Record> r;
+  while ((r = record_read_thread_->GetRecord()) != nullptr) {
+    if (!record_callback_(r.get())) {
+      return false;
     }
   }
   return true;
 }
 
 bool EventSelectionSet::FinishReadMmapEventData() {
-  if (!ReadMmapEventData()) {
+  if (!ReadMmapEventData(true)) {
     return false;
   }
   if (!HasInplaceSampler()) {
@@ -768,6 +663,11 @@ bool EventSelectionSet::FinishReadMmapEventData() {
     return false;
   }
   return loop_->RunLoop();
+}
+
+void EventSelectionSet::GetLostRecords(size_t* lost_samples, size_t* lost_non_samples,
+                                       size_t* cut_stack_samples) {
+  record_read_thread_->GetLostRecords(lost_samples, lost_non_samples, cut_stack_samples);
 }
 
 bool EventSelectionSet::HandleCpuHotplugEvents(const std::vector<int>& monitored_cpus,
@@ -814,14 +714,28 @@ bool EventSelectionSet::HandleCpuOfflineEvent(int cpu) {
   if (!for_stat_cmd_) {
     // Read mmap data here, so we won't lose the existing records of the
     // offlined cpu.
-    if (!ReadMmapEventData()) {
+    if (!ReadMmapEventData(true)) {
+      return false;
+    }
+  }
+  if (record_read_thread_) {
+    std::vector<EventFd*> remove_fds;
+    for (auto& group : groups_) {
+      for (auto& selection : group) {
+        for (auto& fd : selection.event_fds) {
+          if (fd->Cpu() == cpu) {
+            remove_fds.push_back(fd.get());
+          }
+        }
+      }
+    }
+    if (!record_read_thread_->RemoveEventFds(remove_fds)) {
       return false;
     }
   }
   for (auto& group : groups_) {
     for (auto& selection : group) {
-      for (auto it = selection.event_fds.begin();
-           it != selection.event_fds.end();) {
+      for (auto it = selection.event_fds.begin(); it != selection.event_fds.end();) {
         if ((*it)->Cpu() == cpu) {
           if (for_stat_cmd_) {
             CounterInfo counter;
@@ -829,12 +743,6 @@ bool EventSelectionSet::HandleCpuOfflineEvent(int cpu) {
               return false;
             }
             selection.hotplugged_counters.push_back(counter);
-          } else {
-            if ((*it)->HasMappedBuffer()) {
-              if (!(*it)->StopPolling()) {
-                return false;
-              }
-            }
           }
           it = selection.event_fds.erase(it);
         } else {
@@ -867,7 +775,7 @@ bool EventSelectionSet::HandleCpuOnlineEvent(int cpu) {
       }
     }
   }
-  if (!for_stat_cmd_) {
+  if (record_read_thread_) {
     // Prepare mapped buffer.
     if (!CreateMappedBufferForCpu(cpu)) {
       return false;
@@ -895,34 +803,17 @@ bool EventSelectionSet::HandleCpuOnlineEvent(int cpu) {
 }
 
 bool EventSelectionSet::CreateMappedBufferForCpu(int cpu) {
-  EventFd* fd_with_buffer = nullptr;
+  std::vector<EventFd*> event_fds;
   for (auto& group : groups_) {
     for (auto& selection : group) {
-      for (auto& event_fd : selection.event_fds) {
-        if (event_fd->Cpu() != cpu) {
-          continue;
-        }
-        if (fd_with_buffer == nullptr) {
-          if (!event_fd->CreateMappedBuffer(mmap_pages_, true)) {
-            return false;
-          }
-          fd_with_buffer = event_fd.get();
-        } else {
-          if (!event_fd->ShareMappedBuffer(*fd_with_buffer, true)) {
-            fd_with_buffer->DestroyMappedBuffer();
-            return false;
-          }
+      for (auto& fd : selection.event_fds) {
+        if (fd->Cpu() == cpu) {
+          event_fds.push_back(fd.get());
         }
       }
     }
   }
-  if (fd_with_buffer != nullptr &&
-      !fd_with_buffer->StartPolling(*loop_, [this]() {
-        return ReadMmapEventData();
-      })) {
-    return false;
-  }
-  return true;
+  return record_read_thread_->AddEventFds(event_fds);
 }
 
 bool EventSelectionSet::StopWhenNoMoreTargets(double check_interval_in_sec) {
