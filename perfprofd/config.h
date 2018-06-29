@@ -20,8 +20,7 @@
 
 #include <cstdint>
 #include <string>
-
-#include <unistd.h>
+#include <vector>
 
 struct Config {
   virtual ~Config() {}
@@ -101,6 +100,13 @@ struct Config {
 
   // If true, send the proto to dropbox instead to a file.
   bool send_to_dropbox = false;
+
+  struct PerfCounterConfigElem {
+    std::vector<std::string> events;
+    bool group;
+    uint32_t sampling_period;
+  };
+  std::vector<PerfCounterConfigElem> event_config;
 
   // Sleep for the given number of seconds.
   virtual void Sleep(size_t seconds) = 0;

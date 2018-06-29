@@ -25,11 +25,13 @@
 #include <cstring>
 #include <map>
 #include <sstream>
+#include <vector>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/parseint.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 
 using android::base::StringPrintf;
 
@@ -47,6 +49,13 @@ struct ConfigReader::Data {
   std::map<std::string, values> u_info;
   std::map<std::string, unsigned> u_entries;
   std::map<std::string, std::string> s_entries;
+
+  struct events {
+    std::vector<std::string> names;
+    unsigned period;
+    bool group;
+  };
+  std::vector<events> e_entries;
   bool trace_config_read;
 };
 
@@ -286,6 +295,33 @@ bool ConfigReader::parseLine(const std::string& key,
     return true;
   }
 
+  // Check whether this follows event syntax, and create an event entry, if necessary.
+  // -e_evtname(,evtname)*=period
+  // -g_evtname(,evtname)*=period
+  {
+    bool event_key = android::base::StartsWith(key, "-e_");
+    bool group_key = android::base::StartsWith(key, "-g_");
+    if (event_key || group_key) {
+      Data::events events;
+      events.group = group_key;
+
+      uint64_t conv;
+      if (!android::base::ParseUint(value, &conv)) {
+        *error_msg = StringPrintf("line %u: key %s cannot be parsed", linecount, key.c_str());
+        return false;
+      }
+      if (conv > std::numeric_limits<unsigned>::max()) {
+        *error_msg = StringPrintf("line %u: key %s: period too large", linecount, key.c_str());
+        return false;
+      }
+      events.period = static_cast<unsigned>(conv);
+
+      events.names = android::base::Split(key.substr(3), ",");
+      data_->e_entries.push_back(events);
+      return true;
+    }
+  }
+
   *error_msg = StringPrintf("line %u: unknown option '%s'", linecount, key.c_str());
   return false;
 }
@@ -407,4 +443,13 @@ void ConfigReader::FillConfig(Config* config) {
   config->use_elf_symbolizer = getBoolValue("use_elf_symbolizer");
   config->compress = getBoolValue("compress");
   config->send_to_dropbox = getBoolValue("dropbox");
+
+  config->event_config.clear();
+  for (auto event : data_->e_entries) {
+    Config::PerfCounterConfigElem elem;
+    elem.events = event.names;
+    elem.group = event.group;
+    elem.sampling_period = event.period;
+    config->event_config.push_back(std::move(elem));
+  }
 }

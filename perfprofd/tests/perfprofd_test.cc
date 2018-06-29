@@ -636,6 +636,80 @@ TEST_F(PerfProfdTest, ConfigFileParsing)
   EXPECT_TRUE(CompareLogMessages(expected));
 }
 
+TEST_F(PerfProfdTest, ConfigFileParsing_Events) {
+  auto check_event_config = [](const Config& config,
+                               size_t index,
+                               const std::vector<std::string>& names,
+                               bool group,
+                               uint32_t period) {
+    if (config.event_config.size() <= index) {
+      return ::testing::AssertionFailure() << "Not enough entries " << config.event_config.size()
+                                                                    << " " << index;
+    }
+    const auto& elem = config.event_config[index];
+
+    if (elem.group != group) {
+      return ::testing::AssertionFailure() << "Type wrong " << elem.group << " " << group;
+    }
+
+    if (elem.sampling_period != period) {
+      return ::testing::AssertionFailure() << "Period wrong " << elem.sampling_period << " "
+                                                              << period;
+    }
+
+    auto strvec = [](const std::vector<std::string>& v) {
+      return "[" + android::base::Join(v, ',') + "]";
+    };
+    if (elem.events.size() != names.size()) {
+      return ::testing::AssertionFailure() << "Names wrong " << strvec(elem.events) << " "
+                                                             << strvec(names);
+    }
+    for (size_t i = 0; i != elem.events.size(); ++i) {
+      if (elem.events[i] != names[i]) {
+        return ::testing::AssertionFailure() << "Names wrong at " << i << ": "
+                                             << strvec(elem.events) << " "
+                                             << strvec(names);
+      }
+    }
+    return ::testing::AssertionSuccess();
+  };
+
+  {
+    std::string data = "-e_hello,world=1\n"
+                       "-g_foo,bar=2\n"
+                       "-e_abc,xyz=3\n"
+                       "-g_ftrace:test,ftrace:test2=4";
+
+    ConfigReader reader;
+    std::string error_msg;
+    ASSERT_TRUE(reader.Read(data, true, &error_msg)) << error_msg;
+
+    PerfProfdRunner::LoggingConfig config;
+    reader.FillConfig(&config);
+
+    EXPECT_TRUE(check_event_config(config, 0, { "hello", "world" }, false, 1));
+    EXPECT_TRUE(check_event_config(config, 1, { "foo", "bar" }, true, 2));
+    EXPECT_TRUE(check_event_config(config, 2, { "abc", "xyz" }, false, 3));
+    EXPECT_TRUE(check_event_config(config, 3, { "ftrace:test", "ftrace:test2" }, true, 4));
+  }
+
+  {
+    std::string data = "-e_hello,world=dummy";
+
+    ConfigReader reader;
+    std::string error_msg;
+    EXPECT_FALSE(reader.Read(data, true, &error_msg));
+  }
+
+  {
+    std::string data = "-g_hello,world=dummy";
+
+    ConfigReader reader;
+    std::string error_msg;
+    EXPECT_FALSE(reader.Read(data, true, &error_msg));
+  }
+}
+
 TEST_F(PerfProfdTest, ProfileCollectionAnnotations)
 {
   unsigned util1 = collect_cpu_utilization();
