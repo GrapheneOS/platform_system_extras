@@ -33,6 +33,7 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 
 #include "config.h"
 
@@ -73,6 +74,23 @@ PerfResult InvokePerf(Config& config,
     } else if (config.sampling_period > 0) {
       add("-c");
       add(android::base::StringPrintf("%u", config.sampling_period));
+    }
+
+    if (!config.event_config.empty()) {
+      for (const auto& event_set : config.event_config) {
+        if (event_set.events.empty()) {
+          LOG(WARNING) << "Unexpected empty event set";
+          continue;
+        }
+
+        if (event_set.sampling_period > 0) {
+          add("-c");
+          add(std::to_string(event_set.sampling_period));
+        }
+        add(event_set.group ? "--group" : "-e");
+
+        add(android::base::Join(event_set.events, ','));
+      }
     }
 
     // -g if desired
