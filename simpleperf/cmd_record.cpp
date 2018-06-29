@@ -91,6 +91,14 @@ constexpr size_t DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE = 8 * 1024 * 1024;
 static constexpr size_t kRecordBufferSize = 64 * 1024 * 1024;
 static constexpr size_t kSystemWideRecordBufferSize = 256 * 1024 * 1024;
 
+struct TimeStat {
+  uint64_t prepare_recording_time = 0;
+  uint64_t start_recording_time = 0;
+  uint64_t stop_recording_time = 0;
+  uint64_t finish_recording_time = 0;
+  uint64_t post_process_time = 0;
+};
+
 class RecordCommand : public Command {
  public:
   RecordCommand()
@@ -319,6 +327,7 @@ class RecordCommand : public Command {
 
   std::unique_ptr<JITDebugReader> jit_debug_reader_;
   uint64_t last_record_timestamp_;  // used to insert Mmap2Records for JIT debug info
+  TimeStat time_stat_;
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
@@ -349,9 +358,11 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   }
+  time_stat_.prepare_recording_time = GetSystemClock();
   if (!PrepareRecording(workload.get())) {
     return false;
   }
+  time_stat_.start_recording_time = GetSystemClock();
   if (!DoRecording(workload.get())) {
     return false;
   }
@@ -522,9 +533,11 @@ bool RecordCommand::DoRecording(Workload* workload) {
   if (!event_selection_set_.GetIOEventLoop()->RunLoop()) {
     return false;
   }
+  time_stat_.stop_recording_time = GetSystemClock();
   if (!event_selection_set_.FinishReadMmapEventData()) {
     return false;
   }
+  time_stat_.finish_recording_time = GetSystemClock();
   return true;
 }
 
@@ -548,6 +561,7 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
   if (!record_file_writer_->Close()) {
     return false;
   }
+  time_stat_.post_process_time = GetSystemClock();
 
   // 4. Show brief record result.
   size_t lost_samples;
@@ -577,6 +591,14 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
   if (callchain_joiner_) {
     callchain_joiner_->DumpStat();
   }
+  LOG(DEBUG) << "Prepare recording time "
+      << (time_stat_.start_recording_time - time_stat_.prepare_recording_time) / 1e6
+      << " ms, recording time "
+      << (time_stat_.stop_recording_time - time_stat_.start_recording_time) / 1e6
+      << " ms, stop recording time "
+      << (time_stat_.finish_recording_time - time_stat_.stop_recording_time) / 1e6
+      << " ms, post process time "
+      << (time_stat_.post_process_time - time_stat_.finish_recording_time) / 1e6 << " ms.";
   return true;
 }
 
