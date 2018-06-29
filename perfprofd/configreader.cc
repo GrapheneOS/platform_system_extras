@@ -23,6 +23,7 @@
 #include <climits>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <sstream>
 
 #include <android-base/file.h>
@@ -38,9 +39,20 @@ using android::base::StringPrintf;
 static const char *config_file_path =
     "/data/data/com.google.android.gms/files/perfprofd.conf";
 
-ConfigReader::ConfigReader()
-    : trace_config_read(false)
+struct ConfigReader::Data {
+  struct values {
+    unsigned minv;
+    unsigned maxv;
+  };
+  std::map<std::string, values> u_info;
+  std::map<std::string, unsigned> u_entries;
+  std::map<std::string, std::string> s_entries;
+  bool trace_config_read;
+};
+
+ConfigReader::ConfigReader() : data_(new ConfigReader::Data())
 {
+  data_->trace_config_read = false;
   addDefaultEntries();
 }
 
@@ -157,58 +169,58 @@ void ConfigReader::addUnsignedEntry(const char *key,
                                     unsigned max_value)
 {
   std::string ks(key);
-  CHECK(u_entries.find(ks) == u_entries.end() &&
-        s_entries.find(ks) == s_entries.end())
+  CHECK(data_->u_entries.find(ks) == data_->u_entries.end() &&
+        data_->s_entries.find(ks) == data_->s_entries.end())
       << "internal error -- duplicate entry for key " << key;
-  values vals;
+  Data::values vals;
   vals.minv = min_value;
   vals.maxv = max_value;
-  u_info[ks] = vals;
-  u_entries[ks] = default_value;
+  data_->u_info[ks] = vals;
+  data_->u_entries[ks] = default_value;
 }
 
 void ConfigReader::addStringEntry(const char *key, const char *default_value)
 {
   std::string ks(key);
-  CHECK(u_entries.find(ks) == u_entries.end() &&
-        s_entries.find(ks) == s_entries.end())
+  CHECK(data_->u_entries.find(ks) == data_->u_entries.end() &&
+        data_->s_entries.find(ks) == data_->s_entries.end())
       << "internal error -- duplicate entry for key " << key;
   CHECK(default_value != nullptr) << "internal error -- bad default value for key " << key;
-  s_entries[ks] = std::string(default_value);
+  data_->s_entries[ks] = std::string(default_value);
 }
 
 unsigned ConfigReader::getUnsignedValue(const char *key) const
 {
   std::string ks(key);
-  auto it = u_entries.find(ks);
-  CHECK(it != u_entries.end());
+  auto it = data_->u_entries.find(ks);
+  CHECK(it != data_->u_entries.end());
   return it->second;
 }
 
 bool ConfigReader::getBoolValue(const char *key) const
 {
   std::string ks(key);
-  auto it = u_entries.find(ks);
-  CHECK(it != u_entries.end());
+  auto it = data_->u_entries.find(ks);
+  CHECK(it != data_->u_entries.end());
   return it->second != 0;
 }
 
 std::string ConfigReader::getStringValue(const char *key) const
 {
   std::string ks(key);
-  auto it = s_entries.find(ks);
-  CHECK(it != s_entries.end());
+  auto it = data_->s_entries.find(ks);
+  CHECK(it != data_->s_entries.end());
   return it->second;
 }
 
 void ConfigReader::overrideUnsignedEntry(const char *key, unsigned new_value)
 {
   std::string ks(key);
-  auto it = u_entries.find(ks);
-  CHECK(it != u_entries.end());
-  values vals;
-  auto iit = u_info.find(key);
-  CHECK(iit != u_info.end());
+  auto it = data_->u_entries.find(ks);
+  CHECK(it != data_->u_entries.end());
+  Data::values vals;
+  auto iit = data_->u_info.find(key);
+  CHECK(iit != data_->u_info.end());
   vals = iit->second;
   CHECK(new_value >= vals.minv && new_value <= vals.maxv);
   it->second = new_value;
@@ -235,15 +247,15 @@ bool ConfigReader::parseLine(const std::string& key,
     return false;
   }
 
-  auto uit = u_entries.find(key);
-  if (uit != u_entries.end()) {
+  auto uit = data_->u_entries.find(key);
+  if (uit != data_->u_entries.end()) {
     uint64_t conv;
     if (!android::base::ParseUint(value, &conv)) {
       *error_msg = StringPrintf("line %u: value %s cannot be parsed", linecount, value.c_str());
     }
-    values vals;
-    auto iit = u_info.find(key);
-    DCHECK(iit != u_info.end());
+    Data::values vals;
+    auto iit = data_->u_info.find(key);
+    DCHECK(iit != data_->u_info.end());
     vals = iit->second;
     if (conv < vals.minv || conv > vals.maxv) {
       *error_msg = StringPrintf("line %u: "
@@ -256,18 +268,18 @@ bool ConfigReader::parseLine(const std::string& key,
                                 vals.maxv);
       return false;
     } else {
-      if (trace_config_read) {
+      if (data_->trace_config_read) {
         LOG(INFO) << "option " << key << " set to " << conv;
       }
       uit->second = static_cast<unsigned>(conv);
     }
-    trace_config_read = (getUnsignedValue("trace_config_read") != 0);
+    data_->trace_config_read = (getUnsignedValue("trace_config_read") != 0);
     return true;
   }
 
-  auto sit = s_entries.find(key);
-  if (sit != s_entries.end()) {
-    if (trace_config_read) {
+  auto sit = data_->s_entries.find(key);
+  if (sit != data_->s_entries.end()) {
+    if (data_->trace_config_read) {
       LOG(INFO) << "option " << key << " set to " << value;
     }
     sit->second = std::string(value);
