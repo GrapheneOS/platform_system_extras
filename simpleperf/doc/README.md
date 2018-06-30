@@ -981,6 +981,9 @@ $ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
 # Record both on CPU time and off CPU time.
 $ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
     -r "-e task-clock -g -f 1000 --duration 10 --trace-offcpu"
+
+# Save profiling data in a custom file (like perf_custom.data) instead of perf.data.
+$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -o perf_custom.data
 ```
 
 #### Profile from launch of an application

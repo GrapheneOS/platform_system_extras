@@ -636,6 +636,80 @@ TEST_F(PerfProfdTest, ConfigFileParsing)
   EXPECT_TRUE(CompareLogMessages(expected));
 }
 
+TEST_F(PerfProfdTest, ConfigFileParsing_Events) {
+  auto check_event_config = [](const Config& config,
+                               size_t index,
+                               const std::vector<std::string>& names,
+                               bool group,
+                               uint32_t period) {
+    if (config.event_config.size() <= index) {
+      return ::testing::AssertionFailure() << "Not enough entries " << config.event_config.size()
+                                                                    << " " << index;
+    }
+    const auto& elem = config.event_config[index];
+
+    if (elem.group != group) {
+      return ::testing::AssertionFailure() << "Type wrong " << elem.group << " " << group;
+    }
+
+    if (elem.sampling_period != period) {
+      return ::testing::AssertionFailure() << "Period wrong " << elem.sampling_period << " "
+                                                              << period;
+    }
+
+    auto strvec = [](const std::vector<std::string>& v) {
+      return "[" + android::base::Join(v, ',') + "]";
+    };
+    if (elem.events.size() != names.size()) {
+      return ::testing::AssertionFailure() << "Names wrong " << strvec(elem.events) << " "
+                                                             << strvec(names);
+    }
+    for (size_t i = 0; i != elem.events.size(); ++i) {
+      if (elem.events[i] != names[i]) {
+        return ::testing::AssertionFailure() << "Names wrong at " << i << ": "
+                                             << strvec(elem.events) << " "
+                                             << strvec(names);
+      }
+    }
+    return ::testing::AssertionSuccess();
+  };
+
+  {
+    std::string data = "-e_hello,world=1\n"
+                       "-g_foo,bar=2\n"
+                       "-e_abc,xyz=3\n"
+                       "-g_ftrace:test,ftrace:test2=4";
+
+    ConfigReader reader;
+    std::string error_msg;
+    ASSERT_TRUE(reader.Read(data, true, &error_msg)) << error_msg;
+
+    PerfProfdRunner::LoggingConfig config;
+    reader.FillConfig(&config);
+
+    EXPECT_TRUE(check_event_config(config, 0, { "hello", "world" }, false, 1));
+    EXPECT_TRUE(check_event_config(config, 1, { "foo", "bar" }, true, 2));
+    EXPECT_TRUE(check_event_config(config, 2, { "abc", "xyz" }, false, 3));
+    EXPECT_TRUE(check_event_config(config, 3, { "ftrace:test", "ftrace:test2" }, true, 4));
+  }
+
+  {
+    std::string data = "-e_hello,world=dummy";
+
+    ConfigReader reader;
+    std::string error_msg;
+    EXPECT_FALSE(reader.Read(data, true, &error_msg));
+  }
+
+  {
+    std::string data = "-g_hello,world=dummy";
+
+    ConfigReader reader;
+    std::string error_msg;
+    EXPECT_FALSE(reader.Read(data, true, &error_msg));
+  }
+}
+
 TEST_F(PerfProfdTest, ProfileCollectionAnnotations)
 {
   unsigned util1 = collect_cpu_utilization();
@@ -1080,6 +1154,130 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
 
   // Disable compression.
   runner.addToConfig("compress=0");
+
+  // Create semaphore file
+  runner.create_semaphore_file();
+
+  // Kick off daemon
+  int daemon_main_return_code = runner.invoke();
+
+  // Check return code from daemon
+  ASSERT_EQ(0, daemon_main_return_code);
+
+  // Read and decode the resulting perf.data.encoded file
+  android::perfprofd::PerfprofdRecord encodedProfile;
+  readEncodedProfile(dest_dir, false, encodedProfile);
+
+  // Examine what we get back. Since it's a live profile, we can't
+  // really do much in terms of verifying the contents.
+  EXPECT_LT(0, encodedProfile.events_size());
+
+  // Verify log contents
+  const std::string expected = std::string(
+      "I: starting Android Wide Profiling daemon ") +
+      "I: config file path set to " + conf_dir + "/perfprofd.conf " +
+      RAW_RESULT(
+      I: random seed set to 12345678
+      I: sleep 674 seconds
+      I: initiating profile collection
+      I: sleep 2 seconds
+      I: profile collection complete
+      I: sleep 9325 seconds
+      I: finishing Android Wide Profiling daemon
+                                          );
+  // check to make sure log excerpt matches
+  EXPECT_TRUE(CompareLogMessages(expandVars(expected), true));
+}
+
+TEST_F(PerfProfdTest, BasicRunWithLivePerf_Events)
+{
+  //
+  // Basic test to check that the event set functionality works.
+  //
+  // Note: this is brittle, as we do not really know which events the hardware
+  //       supports. Use "cpu-cycles" and "page-faults" as something likely.
+  //
+  PerfProfdRunner runner(conf_dir);
+  runner.addToConfig("only_debug_build=0");
+  std::string ddparam("destination_directory="); ddparam += dest_dir;
+  runner.addToConfig(ddparam);
+  std::string cfparam("config_directory="); cfparam += conf_dir;
+  runner.addToConfig(cfparam);
+  runner.addToConfig("main_loop_iterations=1");
+  runner.addToConfig("use_fixed_seed=12345678");
+  runner.addToConfig("max_unprocessed_profiles=100");
+  runner.addToConfig("collection_interval=9999");
+  runner.addToConfig("sample_duration=2");
+  // Avoid the symbolizer for spurious messages.
+  runner.addToConfig("use_elf_symbolizer=0");
+
+  // Disable compression.
+  runner.addToConfig("compress=0");
+
+  // Set event set.
+  runner.addToConfig("-e_cpu-cycles,page-faults@100000=dummy");
+
+  // Create semaphore file
+  runner.create_semaphore_file();
+
+  // Kick off daemon
+  int daemon_main_return_code = runner.invoke();
+
+  // Check return code from daemon
+  ASSERT_EQ(0, daemon_main_return_code);
+
+  // Read and decode the resulting perf.data.encoded file
+  android::perfprofd::PerfprofdRecord encodedProfile;
+  readEncodedProfile(dest_dir, false, encodedProfile);
+
+  // Examine what we get back. Since it's a live profile, we can't
+  // really do much in terms of verifying the contents.
+  EXPECT_LT(0, encodedProfile.events_size());
+
+  // Verify log contents
+  const std::string expected = std::string(
+      "I: starting Android Wide Profiling daemon ") +
+      "I: config file path set to " + conf_dir + "/perfprofd.conf " +
+      RAW_RESULT(
+      I: random seed set to 12345678
+      I: sleep 674 seconds
+      I: initiating profile collection
+      I: sleep 2 seconds
+      I: profile collection complete
+      I: sleep 9325 seconds
+      I: finishing Android Wide Profiling daemon
+                                          );
+  // check to make sure log excerpt matches
+  EXPECT_TRUE(CompareLogMessages(expandVars(expected), true));
+}
+
+TEST_F(PerfProfdTest, BasicRunWithLivePerf_EventsGroup)
+{
+  //
+  // Basic test to check that the event set functionality works.
+  //
+  // Note: this is brittle, as we do not really know which events the hardware
+  //       supports. Use "cpu-cycles" and "page-faults" as something likely.
+  //
+  PerfProfdRunner runner(conf_dir);
+  runner.addToConfig("only_debug_build=0");
+  std::string ddparam("destination_directory="); ddparam += dest_dir;
+  runner.addToConfig(ddparam);
+  std::string cfparam("config_directory="); cfparam += conf_dir;
+  runner.addToConfig(cfparam);
+  runner.addToConfig("main_loop_iterations=1");
+  runner.addToConfig("use_fixed_seed=12345678");
+  runner.addToConfig("max_unprocessed_profiles=100");
+  runner.addToConfig("collection_interval=9999");
+  runner.addToConfig("sample_duration=2");
+  // Avoid the symbolizer for spurious messages.
+  runner.addToConfig("use_elf_symbolizer=0");
+
+  // Disable compression.
+  runner.addToConfig("compress=0");
+
+  // Set event set.
+  runner.addToConfig("-g_cpu-cycles,page-faults@100000=dummy");
 
   // Create semaphore file
   runner.create_semaphore_file();

@@ -18,8 +18,8 @@
 #ifndef SYSTEM_EXTRAS_PERFPROFD_CONFIGREADER_H_
 #define SYSTEM_EXTRAS_PERFPROFD_CONFIGREADER_H_
 
+#include <memory>
 #include <string>
-#include <map>
 
 #include "config.h"
 
@@ -67,11 +67,8 @@ class ConfigReader {
                  unsigned linecount,
                  std::string* error_msg);
 
-  typedef struct { unsigned minv, maxv; } values;
-  std::map<std::string, values> u_info;
-  std::map<std::string, unsigned> u_entries;
-  std::map<std::string, std::string> s_entries;
-  bool trace_config_read;
+  struct Data;
+  std::unique_ptr<Data> data_;
 };
 
 #endif
