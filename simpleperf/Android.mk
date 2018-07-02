@@ -119,7 +119,6 @@ libsimpleperf_src_files_linux := \
   IOEventLoop.cpp \
   JITDebugReader.cpp \
   OfflineUnwinder.cpp \
-  perf_clock.cpp \
   read_dex_file.cpp \
   record_file_writer.cpp \
   RecordReadThread.cpp \
