@@ -693,31 +693,6 @@ void SampleRecord::BuildBinaryWithNewCallChain(uint32_t new_size,
   }
 }
 
-// When simpleperf requests the kernel to dump 64K stack per sample, it will allocate 64K space in
-// each sample to store stack data. However, a thread may use less stack than 64K. So not all the
-// 64K stack data in a sample is valid. And this function is used to remove invalid stack data in
-// a sample, which can save time and disk space when storing samples in file.
-void SampleRecord::RemoveInvalidStackData() {
-  if (sample_type & PERF_SAMPLE_STACK_USER) {
-    uint64_t valid_stack_size = GetValidStackSize();
-    if (stack_user_data.size > valid_stack_size) {
-      // Shrink stack size to valid_stack_size, and update it in binary.
-      stack_user_data.size = valid_stack_size;
-      char* p = stack_user_data.data - sizeof(stack_user_data.size);
-      MoveToBinaryFormat(stack_user_data.size, p);
-      p += valid_stack_size;
-      // Update dyn_size in binary.
-      if (valid_stack_size != 0u) {
-        MoveToBinaryFormat(stack_user_data.dyn_size, p);
-      }
-      // Update sample size.
-      header.size = p - binary_;
-      p = binary_;
-      header.MoveToBinaryFormat(p);
-    }
-  }
-}
-
 void SampleRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "sample_type: 0x%" PRIx64 "\n", sample_type);
   if (sample_type & PERF_SAMPLE_IP) {
