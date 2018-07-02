@@ -43,7 +43,6 @@
 #include "IOEventLoop.h"
 #include "JITDebugReader.h"
 #include "OfflineUnwinder.h"
-#include "perf_clock.h"
 #include "read_apk.h"
 #include "read_elf.h"
 #include "record.h"
@@ -233,7 +232,6 @@ class RecordCommand : public Command {
         event_selection_set_(false),
         mmap_page_range_(std::make_pair(1, DESIRED_PAGES_IN_MAPPED_BUFFER)),
         record_filename_("perf.data"),
-        start_sampling_time_in_ns_(0),
         sample_record_count_(0),
         lost_record_count_(0),
         start_profiling_fd_(-1),
@@ -309,8 +307,6 @@ class RecordCommand : public Command {
   std::string record_filename_;
   std::unique_ptr<RecordFileWriter> record_file_writer_;
 
-  uint64_t start_sampling_time_in_ns_;  // nanoseconds from machine starting
-
   uint64_t sample_record_count_;
   uint64_t lost_record_count_;
   int start_profiling_fd_;
@@ -371,9 +367,6 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
 
 bool RecordCommand::PrepareRecording(Workload* workload) {
   // 1. Prepare in other modules.
-  if (!InitPerfClock()) {
-    return false;
-  }
   PrepareVdsoFile();
 
   // 2. Add default event type.
@@ -519,8 +512,6 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
 
 bool RecordCommand::DoRecording(Workload* workload) {
   // Write records in mapped buffers of perf_event_files to output file while workload is running.
-  start_sampling_time_in_ns_ = GetPerfClock();
-  LOG(VERBOSE) << "start_sampling_time is " << start_sampling_time_in_ns_ << " ns";
   if (workload != nullptr && !workload->IsStarted() && !workload->Start()) {
     return false;
   }
@@ -1131,12 +1122,6 @@ bool RecordCommand::ShouldOmitRecord(Record* record) {
 }
 
 bool RecordCommand::SaveRecordForPostUnwinding(Record* record) {
-  if (ShouldOmitRecord(record)) {
-    return true;
-  }
-  if (record->type() == PERF_RECORD_SAMPLE) {
-    static_cast<SampleRecord*>(record)->RemoveInvalidStackData();
-  }
   if (!record_file_writer_->WriteRecord(*record)) {
     LOG(ERROR) << "If there isn't enough space for storing profiling data, consider using "
                << "--no-post-unwind option.";
