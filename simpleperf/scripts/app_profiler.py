@@ -241,7 +241,7 @@ class ProfilerBase(object):
             if self.args.disable_adb_root:
                 binary_cache_args += ['--disable_adb_root']
             if self.args.ndk_path:
-                binary_cache_args += ['--ndk-path', self.args.ndk_path]
+                binary_cache_args += ['--ndk_path', self.args.ndk_path]
             subprocess.check_call(binary_cache_args)
 
 
