@@ -60,7 +60,7 @@ class Addr2Line(object):
         self.dso_dict = {}
         self.addr2line_path = find_tool_path('addr2line', ndk_path)
         if self.addr2line_path is None:
-            log_exit("Can't find addr2line. Please set ndk path with --ndk-path option.")
+            log_exit("Can't find addr2line. Please set ndk path with --ndk_path option.")
         self.readelf = ReadElf(ndk_path)
         self.symfs_dir = symfs_dir
         # store a list of source files
