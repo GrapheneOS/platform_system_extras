@@ -400,20 +400,14 @@ struct SampleRecord : public Record {
   size_t ExcludeKernelCallChain();
   bool HasUserCallChain() const;
   void UpdateUserCallChain(const std::vector<uint64_t>& user_ips);
-  void RemoveInvalidStackData();
 
   uint64_t Timestamp() const override;
   uint32_t Cpu() const override;
   uint64_t Id() const override;
 
   uint64_t GetValidStackSize() const {
-    // If stack_user_data.dyn_size == 0, it may be because the kernel misses
-    // the patch to update dyn_size, like in N9 (See b/22612370). So assume
-    // all stack data is valid if dyn_size == 0.
-    if (stack_user_data.dyn_size == 0) {
-      return stack_user_data.size;
-    }
-    return stack_user_data.dyn_size;
+    // Invaid stack data has been removed by RecordReadThread::PushRecordToRecordBuffer().
+    return stack_user_data.size;
   }
 
   void AdjustCallChainGeneratedByKernel();
