@@ -415,7 +415,7 @@ class Addr2Nearestline(object):
     def __init__(self, ndk_path, binary_cache_path):
         self.addr2line_path = find_tool_path('addr2line', ndk_path)
         if not self.addr2line_path:
-            log_exit("Can't find addr2line. Please set ndk path with --ndk-path option.")
+            log_exit("Can't find addr2line. Please set ndk path with --ndk_path option.")
         self.readelf = ReadElf(ndk_path)
         self.dso_map = {}  # map from dso_path to Dso.
         self.binary_cache_path = binary_cache_path
