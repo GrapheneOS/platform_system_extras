@@ -390,6 +390,11 @@ class TestExamplePureJava(TestExampleBase):
         self.assertEqual(subproc.returncode, 0)
         self.run_cmd(["report.py"])
 
+    def test_app_profiler_with_ndk_path(self):
+        # Although we pass an invalid ndk path, it should be able to find tools in default ndk path.
+        self.run_cmd(['app_profiler.py', '--app', self.package_name, '-a', self.activity_name,
+                      '--ndk_path', '.'])
+
     def test_report(self):
         self.common_test_report()
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
