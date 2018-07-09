@@ -33,6 +33,10 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
+#include "perfprofd_config.pb.h"
+
+#include "perfprofd_counters.h"
+
 using android::base::StringPrintf;
 
 //
@@ -451,5 +455,59 @@ void ConfigReader::FillConfig(Config* config) {
     elem.group = event.group;
     elem.sampling_period = event.period;
     config->event_config.push_back(std::move(elem));
+  }
+}
+
+void ConfigReader::ProtoToConfig(const android::perfprofd::ProfilingConfig& in, Config* out) {
+  // Copy base proto values.
+#define CHECK_AND_COPY_FROM_PROTO(name)      \
+  if (in.has_ ## name()) {      \
+    out->name = in.name();  \
+  }
+  CHECK_AND_COPY_FROM_PROTO(collection_interval_in_s)
+  CHECK_AND_COPY_FROM_PROTO(use_fixed_seed)
+  CHECK_AND_COPY_FROM_PROTO(main_loop_iterations)
+  CHECK_AND_COPY_FROM_PROTO(destination_directory)
+  CHECK_AND_COPY_FROM_PROTO(config_directory)
+  CHECK_AND_COPY_FROM_PROTO(perf_path)
+  CHECK_AND_COPY_FROM_PROTO(sampling_period)
+  CHECK_AND_COPY_FROM_PROTO(sampling_frequency)
+  CHECK_AND_COPY_FROM_PROTO(sample_duration_in_s)
+  CHECK_AND_COPY_FROM_PROTO(only_debug_build)
+  CHECK_AND_COPY_FROM_PROTO(hardwire_cpus)
+  CHECK_AND_COPY_FROM_PROTO(hardwire_cpus_max_duration_in_s)
+  CHECK_AND_COPY_FROM_PROTO(max_unprocessed_profiles)
+  CHECK_AND_COPY_FROM_PROTO(stack_profile)
+  CHECK_AND_COPY_FROM_PROTO(collect_cpu_utilization)
+  CHECK_AND_COPY_FROM_PROTO(collect_charging_state)
+  CHECK_AND_COPY_FROM_PROTO(collect_booting)
+  CHECK_AND_COPY_FROM_PROTO(collect_camera_active)
+  CHECK_AND_COPY_FROM_PROTO(process)
+  CHECK_AND_COPY_FROM_PROTO(use_elf_symbolizer)
+  CHECK_AND_COPY_FROM_PROTO(send_to_dropbox)
+  CHECK_AND_COPY_FROM_PROTO(compress)
+#undef CHECK_AND_COPY_FROM_PROTO
+
+  // Convert counters.
+  for (const auto& event_config : in.event_config()) {
+    if (event_config.has_counter_set()) {
+      Config::PerfCounterConfigElem config_elem;
+      std::vector<const char*> counters_char = android::perfprofd::GenerateEventsString(
+          event_config.counter_set());
+      if (counters_char.empty()) {
+        LOG(WARNING) << "Could not generate counter names for config element";
+        continue;
+      }
+      config_elem.events.resize(counters_char.size());
+      std::transform(counters_char.begin(),
+                     counters_char.end(),
+                     config_elem.events.begin(),
+                     [](const char* in) -> std::string { return in; });
+      config_elem.group = event_config.has_as_group() ? event_config.as_group() : false;
+      config_elem.sampling_period = event_config.has_sampling_period()
+                                              ? event_config.sampling_period()
+                                                  : 0;
+      out->event_config.push_back(std::move(config_elem));
+    }
   }
 }
