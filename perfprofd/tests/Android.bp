@@ -26,6 +26,7 @@ cc_test {
     stl: "libc++",
     static_libs: [
         "libperfprofdcored",
+        "libperfprofd_proto_config",
         "libsimpleperf_elf_read",
         "libbase",
         "libutils",
