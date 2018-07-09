@@ -54,10 +54,6 @@ function getTableRow(cols, colName, attrs={}) {
     return s;
 }
 
-function toPercentageStr(percentage) {
-    return percentage.toFixed(2) + '%';
-}
-
 function getProcessName(pid) {
     let name = gProcesses[pid];
     return name ? `${pid} (${name})`: pid.toString();
@@ -367,7 +363,7 @@ class ChartView {
             title = 'Functions in library ' + getLibName(this.libInfo.libId);
             firstColumn = 'Function';
             for (let func of this.libInfo.functions) {
-                rows.push(getItem('Function: ' + getFuncName(func.g.f), func.g.e,
+                rows.push(getItem('Function: ' + getFuncName(func.f), func.c[1],
                                   this.libInfo.eventCount));
             }
         }
@@ -537,11 +533,11 @@ class SampleTableView {
                     for (let t = 0; t < lib.functions.length; ++t) {
                         let func = lib.functions[t];
                         let key = [i, j, k, t].join('_');
-                        let totalValue = getSampleWeight(func.g.s);
-                        let selfValue = getSampleWeight(func.g.e);
-                        tableStr += getTableRow([totalValue, selfValue, func.c,
+                        let totalValue = getSampleWeight(func.c[2]);
+                        let selfValue = getSampleWeight(func.c[1]);
+                        tableStr += getTableRow([totalValue, selfValue, func.c[0],
                                                  processName, threadName, libName,
-                                                 getFuncName(func.g.f)], 'td', {key: key});
+                                                 getFuncName(func.f)], 'td', {key: key});
                     }
                 }
             }
@@ -637,13 +633,14 @@ class FunctionTab {
         this.selectorView.draw();
 
         this.div.append(getHtml('hr'));
-        let funcName = getFuncName(this.func.g.f);
+        let funcName = getFuncName(this.func.f);
         this.div.append(getHtml('b', {text: `Functions called by ${funcName}`}) + '<br/>');
-        this.callgraphView = new FlameGraphView(this.div, this.func.g, false);
+        this.callgraphView = new FlameGraphView(this.div, this.threadInfo.g, this.func, false);
 
         this.div.append(getHtml('hr'));
         this.div.append(getHtml('b', {text: `Functions calling ${funcName}`}) + '<br/>');
-        this.reverseCallgraphView = new FlameGraphView(this.div, this.func.rg, true);
+        this.reverseCallgraphView = new FlameGraphView(this.div, this.threadInfo.rg, this.func,
+                                                       true);
 
         let sourceFiles = collectSourceFilesForFunction(this.func);
         if (sourceFiles) {
@@ -667,7 +664,7 @@ class FunctionTab {
         let processName = getProcessName(this.processInfo.pid);
         let threadName = getThreadName(this.threadInfo.tid);
         let libName = getLibName(this.lib.libId);
-        let funcName = getFuncName(this.func.g.f);
+        let funcName = getFuncName(this.func.f);
         // Draw a table of 'Name', 'Value'.
         let rows = [];
         rows.push(['Event Type', eventName]);
@@ -734,7 +731,6 @@ class FunctionSampleWeightSelectorView {
             RAW_EVENT_COUNT: 3,
             EVENT_COUNT_IN_TIME: 4,
         };
-        let name = eventInfo.eventName;
         this.supportEventCountInTime = isClockEvent(eventInfo);
         if (this.supportEventCountInTime) {
             this.curOption = this.options.EVENT_COUNT_IN_TIME;
@@ -808,16 +804,33 @@ class FunctionSampleWeightSelectorView {
 class FlameGraphView {
     // If reverseOrder is false, the root of the flamegraph is at the bottom,
     // otherwise it is at the top.
-    constructor(divContainer, callgraph, reverseOrder) {
+    constructor(divContainer, callgraph, funcInfo, reverseOrder) {
         this.id = divContainer.children().length;
         this.div = $('<div>', {id: 'fg_' + this.id});
         this.div.appendTo(divContainer);
-        this.callgraph = callgraph;
         this.reverseOrder = reverseOrder;
         this.sampleWeightFunction = null;
         this.svgWidth = $(window).width();
         this.svgNodeHeight = 17;
         this.fontSize = 12;
+
+        let funcId = funcInfo.f;
+        let initNodes = [];
+        function findNodesMatchingFuncId(node) {
+            if (node.f == funcId) {
+                initNodes.push(node);
+            } else {
+                for (let child of node.c) {
+                    findNodesMatchingFuncId(child);
+                }
+            }
+        }
+        findNodesMatchingFuncId(callgraph);
+        this.initNodes = initNodes;
+        this.sumCount = 0;
+        for (let node of initNodes) {
+            this.sumCount += node.s;
+        }
 
         function getMaxDepth(node) {
             let depth = 0;
@@ -826,7 +839,10 @@ class FlameGraphView {
             }
             return depth + 1;
         }
-        this.maxDepth = getMaxDepth(this.callgraph);
+        this.maxDepth = 0;
+        for (let node of this.initNodes) {
+            this.maxDepth = Math.max(this.maxDepth, getMaxDepth(node));
+        }
         this.svgHeight = this.svgNodeHeight * (this.maxDepth + 3);
     }
 
@@ -841,7 +857,7 @@ class FlameGraphView {
         this.div.append(svgStr);
         this.svg = this.div.find('svg');
         this._renderBackground();
-        this._renderSvgNodes(this.callgraph, 0, 0);
+        this._renderSvgNodes(this.initNodes, 0, 0);
         this._renderUnzoomNode();
         this._renderInfoNode();
         this._renderPercentNode();
@@ -873,7 +889,7 @@ class FlameGraphView {
     }
 
     _getWidthPercentage(eventCount) {
-        return eventCount * 100.0 / this.callgraph.s;
+        return eventCount * 100.0 / this.sumCount;
     }
 
     _getHeatColor(widthPercentage) {
@@ -884,10 +900,14 @@ class FlameGraphView {
         };
     }
 
-    _renderSvgNodes(callNode, depth, xOffset) {
+    _renderSvgNodes(nodes, depth, xOffset) {
         let x = xOffset;
         let y = this._getYForDepth(depth);
-        let width = this._getWidthPercentage(callNode.s);
+        let sumCount = 0;
+        for (let node of nodes) {
+            sumCount += node.s;
+        }
+        let width = this._getWidthPercentage(sumCount);
         if (width < 0.1) {
             return xOffset;
         }
@@ -896,10 +916,10 @@ class FlameGraphView {
         for (let key in color) {
             borderColor[key] = Math.max(0, color[key] - 50);
         }
-        let funcName = getFuncName(callNode.f);
-        let libName = getLibNameOfFunction(callNode.f);
-        let sampleWeight = this.sampleWeightFunction(callNode.s);
-        let title = funcName + ' | ' + libName + ' (' + callNode.s + ' events: ' +
+        let funcName = getFuncName(nodes[0].f);
+        let libName = getLibNameOfFunction(nodes[0].f);
+        let sampleWeight = this.sampleWeightFunction(sumCount);
+        let title = funcName + ' | ' + libName + ' (' + sumCount + ' events: ' +
                     sampleWeight + ')';
         this.svg.append(`<g> <title>${title}</title> <rect x="${x}%" y="${y}" ox="${x}" \
                         depth="${depth}" width="${width}%" owidth="${width}" height="15.0" \
@@ -910,8 +930,19 @@ class FlameGraphView {
                         font-family="Monospace"></text></g>`);
 
         let childXOffset = xOffset;
-        for (let child of callNode.c) {
-            childXOffset = this._renderSvgNodes(child, depth + 1, childXOffset);
+        let map = new Map();
+        for (let node of nodes) {
+            for (let child of node.c) {
+                let subNodes = map.get(child.f);
+                if (subNodes) {
+                    subNodes.push(child);
+                } else {
+                    map.set(child.f, [child]);
+                }
+            }
+        }
+        for (let subNodes of map.values()) {
+            childXOffset = this._renderSvgNodes(subNodes, depth + 1, childXOffset);
         }
         return xOffset + width;
     }
@@ -1122,7 +1153,7 @@ function collectSourceFilesForFunction(func) {
     }
 
     // Show lines for the function.
-    let funcRange = getFuncSourceRange(func.g.f);
+    let funcRange = getFuncSourceRange(func.f);
     if (funcRange) {
         let file = getFile(funcRange.fileId);
         file.addLineRange(funcRange.startLine);
@@ -1217,7 +1248,7 @@ function collectDisassemblyForFunction(func) {
         return null;
     }
     let hitAddrs = func.a;
-    let rawCode = getFuncDisassembly(func.g.f);
+    let rawCode = getFuncDisassembly(func.f);
     if (!rawCode) {
         return null;
     }
