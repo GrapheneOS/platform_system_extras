@@ -134,7 +134,7 @@ class EventSelectionSet {
   bool ReadCounters(std::vector<CountersInfo>* counters);
   bool MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pages, size_t record_buffer_size);
   bool PrepareToReadMmapEventData(const std::function<bool(Record*)>& callback);
-  bool ReadMmapEventData(bool sync_kernel_buffer);
+  bool SyncKernelBuffer();
   bool FinishReadMmapEventData();
   void GetLostRecords(size_t* lost_samples, size_t* lost_non_samples, size_t* cut_stack_samples);
 
@@ -166,6 +166,7 @@ class EventSelectionSet {
                                     const std::map<pid_t, std::set<pid_t>>& process_map);
   bool OpenEventFilesOnGroup(EventSelectionGroup& group, pid_t tid, int cpu,
                              std::string* failed_event_type);
+  bool ReadMmapEventData(bool with_time_limit);
 
   bool DetectCpuHotplugEvents();
   bool HandleCpuOnlineEvent(int cpu);
