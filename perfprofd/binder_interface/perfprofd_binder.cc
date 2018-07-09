@@ -186,39 +186,11 @@ template <typename ProtoLoaderFn>
 Status PerfProfdNativeService::StartProfilingProtobuf(ProtoLoaderFn fn) {
   ProfilingConfig proto_config;
   if (!fn(proto_config)) {
-    return binder::Status::fromExceptionCode(2);
+    return binder::Status::fromExceptionCode(2, "Could not read protobuf");
   }
   auto config_fn = [&proto_config](ThreadedConfig& config) {
     config = ThreadedConfig();  // Reset to a default config.
-
-    // Copy proto values.
-#define CHECK_AND_COPY_FROM_PROTO(name)      \
-    if (proto_config.has_ ## name ()) {      \
-      config. name = proto_config. name ();  \
-    }
-    CHECK_AND_COPY_FROM_PROTO(collection_interval_in_s)
-    CHECK_AND_COPY_FROM_PROTO(use_fixed_seed)
-    CHECK_AND_COPY_FROM_PROTO(main_loop_iterations)
-    CHECK_AND_COPY_FROM_PROTO(destination_directory)
-    CHECK_AND_COPY_FROM_PROTO(config_directory)
-    CHECK_AND_COPY_FROM_PROTO(perf_path)
-    CHECK_AND_COPY_FROM_PROTO(sampling_period)
-    CHECK_AND_COPY_FROM_PROTO(sampling_frequency)
-    CHECK_AND_COPY_FROM_PROTO(sample_duration_in_s)
-    CHECK_AND_COPY_FROM_PROTO(only_debug_build)
-    CHECK_AND_COPY_FROM_PROTO(hardwire_cpus)
-    CHECK_AND_COPY_FROM_PROTO(hardwire_cpus_max_duration_in_s)
-    CHECK_AND_COPY_FROM_PROTO(max_unprocessed_profiles)
-    CHECK_AND_COPY_FROM_PROTO(stack_profile)
-    CHECK_AND_COPY_FROM_PROTO(collect_cpu_utilization)
-    CHECK_AND_COPY_FROM_PROTO(collect_charging_state)
-    CHECK_AND_COPY_FROM_PROTO(collect_booting)
-    CHECK_AND_COPY_FROM_PROTO(collect_camera_active)
-    CHECK_AND_COPY_FROM_PROTO(process)
-    CHECK_AND_COPY_FROM_PROTO(use_elf_symbolizer)
-    CHECK_AND_COPY_FROM_PROTO(send_to_dropbox)
-    CHECK_AND_COPY_FROM_PROTO(compress)
-#undef CHECK_AND_COPY_FROM_PROTO
+    ConfigReader::ProtoToConfig(proto_config, &config);
   };
   std::string error_msg;
   if (!StartProfiling(config_fn, &error_msg)) {

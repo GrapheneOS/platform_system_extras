@@ -152,6 +152,7 @@ cc_defaults {
 
     static_libs: [
         "libbase",
+        "libperfprofd_proto_config",
         "libprotobuf-cpp-lite",
         "libsimpleperf_elf_read",
     ],

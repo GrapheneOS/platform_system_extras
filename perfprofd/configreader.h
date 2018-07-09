@@ -23,6 +23,12 @@
 
 #include "config.h"
 
+namespace android {
+namespace perfprofd {
+class ProfilingConfig;  // Config proto.
+}  // namespace perfprofd
+}  // namespace android
+
 //
 // This table describes the perfprofd config file syntax in terms of
 // key/value pairs.  Values come in two flavors: strings, or unsigned
@@ -54,6 +60,8 @@ class ConfigReader {
   void overrideUnsignedEntry(const char *key, unsigned new_value);
 
   void FillConfig(Config* config);
+
+  static void ProtoToConfig(const android::perfprofd::ProfilingConfig& in, Config* out);
 
  private:
   void addUnsignedEntry(const char *key,
