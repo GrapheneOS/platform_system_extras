@@ -1190,7 +1190,7 @@ bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITSymFile>& jit_symfi
   // generated after them. So process existing samples each time generating new JIT maps. We prefer
   // to process samples after processing JIT maps. Because some of the samples may hit the new JIT
   // maps, and we want to report them properly.
-  if (sync_kernel_records && !event_selection_set_.ReadMmapEventData(true)) {
+  if (sync_kernel_records && !event_selection_set_.SyncKernelBuffer()) {
     return false;
   }
   return true;

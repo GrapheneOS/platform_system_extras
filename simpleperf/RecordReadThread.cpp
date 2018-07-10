@@ -216,8 +216,7 @@ RecordReadThread::RecordReadThread(size_t record_buffer_size, const perf_event_a
 
 RecordReadThread::~RecordReadThread() {
   if (read_thread_) {
-    SendCmdToReadThread(CMD_STOP_THREAD, nullptr);
-    read_thread_->join();
+    StopReadThread();
   }
 }
 
@@ -235,13 +234,7 @@ bool RecordReadThread::RegisterDataCallback(IOEventLoop& loop,
   read_data_fd_.reset(data_fd[0]);
   write_data_fd_.reset(data_fd[1]);
   has_data_notification_ = false;
-  auto callback = [this, data_callback]() {
-    char dummy;
-    TEMP_FAILURE_RETRY(read(read_data_fd_, &dummy, 1));
-    has_data_notification_ = false;
-    return data_callback();
-  };
-  if (!loop.AddReadEvent(read_data_fd_, callback)) {
+  if (!loop.AddReadEvent(read_data_fd_, data_callback)) {
     return false;
   }
   read_thread_.reset(new std::thread([&]() { RunReadThread(); }));
@@ -258,6 +251,15 @@ bool RecordReadThread::RemoveEventFds(const std::vector<EventFd*>& event_fds) {
 
 bool RecordReadThread::SyncKernelBuffer() {
   return SendCmdToReadThread(CMD_SYNC_KERNEL_BUFFER, nullptr);
+}
+
+bool RecordReadThread::StopReadThread() {
+  bool result = SendCmdToReadThread(CMD_STOP_THREAD, nullptr);
+  if (result) {
+    read_thread_->join();
+    read_thread_ = nullptr;
+  }
+  return result;
 }
 
 bool RecordReadThread::SendCmdToReadThread(Cmd cmd, void* cmd_arg) {
@@ -280,7 +282,15 @@ bool RecordReadThread::SendCmdToReadThread(Cmd cmd, void* cmd_arg) {
 std::unique_ptr<Record> RecordReadThread::GetRecord() {
   record_buffer_.MoveToNextRecord();
   char* p = record_buffer_.GetCurrentRecord();
-  return p != nullptr ? ReadRecordFromBuffer(attr_, p) : nullptr;
+  if (p != nullptr) {
+    return ReadRecordFromBuffer(attr_, p);
+  }
+  if (has_data_notification_) {
+    char dummy;
+    TEMP_FAILURE_RETRY(read(read_data_fd_, &dummy, 1));
+    has_data_notification_ = false;
+  }
+  return nullptr;
 }
 
 void RecordReadThread::RunReadThread() {
