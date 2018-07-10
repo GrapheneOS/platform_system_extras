@@ -69,3 +69,21 @@ python_binary_host {
         "simpleperf-inferno",
     ],
 }
+
+python_binary_host {
+    name: "perf_config_proto",
+    defaults: ["perfprofd_python_default"],
+    main: "perf_config_proto.py",
+    srcs: [
+        "perf_config_proto.py",
+        ":perfprofd_config_proto",
+    ],
+    libs: [
+        // Soong won't add "libprotobuf-python" to the dependencies if
+        // filegroup contains .proto files. So add it here explicitly.
+        "libprotobuf-python",
+    ],
+    proto: {
+        canonical_path_from_root: false,
+    },
+}
