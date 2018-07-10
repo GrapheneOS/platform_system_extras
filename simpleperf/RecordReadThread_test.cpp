@@ -247,6 +247,7 @@ TEST_F(RecordReadThreadTest, handle_cmds) {
   ASSERT_TRUE(has_notify);
   ASSERT_TRUE(thread.GetRecord());
   ASSERT_TRUE(thread.RemoveEventFds(event_fds));
+  ASSERT_TRUE(thread.StopReadThread());
 }
 
 TEST_F(RecordReadThreadTest, read_records) {
@@ -335,4 +336,32 @@ TEST_F(RecordReadThreadTest, process_sample_record) {
   ASSERT_EQ(lost_samples, 1u);
   ASSERT_EQ(lost_non_samples, 0u);
   ASSERT_EQ(cut_stack_samples, 1u);
+}
+
+// Test that the data notification exists until the RecordBuffer is empty. So we can read all
+// records even if reading one record at a time.
+TEST_F(RecordReadThreadTest, has_data_notification_until_buffer_empty) {
+  perf_event_attr attr = CreateFakeEventAttr();
+  RecordReadThread thread(128 * 1024, attr, 1, 1);
+  IOEventLoop loop;
+  size_t record_index = 0;
+  auto read_one_record = [&]() {
+    std::unique_ptr<Record> r = thread.GetRecord();
+    if (!r) {
+      return loop.ExitLoop();
+    }
+    std::unique_ptr<Record>& expected = records_[record_index++];
+    if (r->size() != expected->size() || memcmp(r->Binary(), expected->Binary(), r->size()) != 0) {
+      return false;
+    }
+    return true;
+  };
+  ASSERT_TRUE(thread.RegisterDataCallback(loop, read_one_record));
+  records_ = CreateFakeRecords(attr, 2, 0, 0);
+  std::vector<EventFd*> event_fds = CreateFakeEventFds(attr, 1);
+  ASSERT_TRUE(thread.AddEventFds(event_fds));
+  ASSERT_TRUE(thread.SyncKernelBuffer());
+  ASSERT_TRUE(loop.RunLoop());
+  ASSERT_EQ(record_index, records_.size());
+  ASSERT_TRUE(thread.RemoveEventFds(event_fds));
 }
