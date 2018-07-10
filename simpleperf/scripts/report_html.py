@@ -86,6 +86,12 @@ class EventScope(object):
         return result
 
     @property
+    def threads(self):
+        for process in self.processes.values():
+            for thread in process.threads.values():
+                yield thread
+
+    @property
     def libraries(self):
         for process in self.processes.values():
             for thread in process.threads.values():
@@ -126,6 +132,8 @@ class ThreadScope(object):
         self.name = ''
         self.event_count = 0
         self.libs = {}  # map from lib_id to LibScope
+        self.call_graph = CallNode(-1)
+        self.reverse_call_graph = CallNode(-1)
 
     def add_callstack(self, event_count, callstack, build_addr_hit_map):
         """ callstack is a list of tuple (lib_id, func_id, addr).
@@ -141,23 +149,41 @@ class ThreadScope(object):
             if not lib:
                 lib = self.libs[lib_id] = LibScope(lib_id)
             function = lib.get_function(func_id)
+            function.subtree_event_count += event_count
             if i == 0:
                 lib.event_count += event_count
+                function.event_count += event_count
                 function.sample_count += 1
-            function.add_reverse_callchain(callstack, i + 1, len(callstack), event_count)
-
             if build_addr_hit_map:
                 function.build_addr_hit_map(addr, event_count if i == 0 else 0, event_count)
 
-        hit_func_ids.clear()
-        for i in range(len(callstack) - 1, -1, -1):
-            lib_id, func_id, _ = callstack[i]
-            # When a callstack contains recursive function, only add for each function once.
-            if func_id in hit_func_ids:
-                continue
-            hit_func_ids.add(func_id)
-            lib = self.libs.get(lib_id)
-            lib.get_function(func_id).add_callchain(callstack, i - 1, -1, event_count)
+        # build call graph and reverse call graph
+        node = self.call_graph
+        for item in reversed(callstack):
+            node = node.get_child(item[1])
+        node.event_count += event_count
+        node = self.reverse_call_graph
+        for item in callstack:
+            node = node.get_child(item[1])
+        node.event_count += event_count
+
+    def update_subtree_event_count(self):
+        self.call_graph.update_subtree_event_count()
+        self.reverse_call_graph.update_subtree_event_count()
+
+    def limit_percents(self, min_func_limit, min_callchain_percent, hit_func_ids):
+        for lib in self.libs.values():
+            to_del_funcs = []
+            for function in lib.functions.values():
+                if function.subtree_event_count < min_func_limit:
+                    to_del_funcs.append(function.func_id)
+                else:
+                    hit_func_ids.add(function.func_id)
+            for func_id in to_del_funcs:
+                del lib.functions[func_id]
+        min_limit = min_callchain_percent * 0.01 * self.call_graph.subtree_event_count
+        self.call_graph.cut_edge(min_limit, hit_func_ids)
+        self.reverse_call_graph.cut_edge(min_limit, hit_func_ids)
 
     def get_sample_info(self, gen_addr_hit_map):
         result = {}
@@ -165,6 +191,8 @@ class ThreadScope(object):
         result['eventCount'] = self.event_count
         result['libs'] = [lib.gen_sample_info(gen_addr_hit_map)
                           for lib in self.libs.values()]
+        result['g'] = self.call_graph.gen_sample_info()
+        result['rg'] = self.reverse_call_graph.gen_sample_info()
         return result
 
 
@@ -193,24 +221,13 @@ class LibScope(object):
 class FunctionScope(object):
 
     def __init__(self, func_id):
+        self.func_id = func_id
         self.sample_count = 0
-        self.call_graph = CallNode(func_id)
-        self.reverse_call_graph = CallNode(func_id)
+        self.event_count = 0
+        self.subtree_event_count = 0
         self.addr_hit_map = None  # map from addr to [event_count, subtree_event_count].
         # map from (source_file_id, line) to [event_count, subtree_event_count].
         self.line_hit_map = None
-
-    def add_callchain(self, callchain, start, end, event_count):
-        node = self.call_graph
-        for i in range(start, end, -1):
-            node = node.get_child(callchain[i][1])
-        node.event_count += event_count
-
-    def add_reverse_callchain(self, callchain, start, end, event_count):
-        node = self.reverse_call_graph
-        for i in range(start, end):
-            node = node.get_child(callchain[i][1])
-        node.event_count += event_count
 
     def build_addr_hit_map(self, addr, event_count, subtree_event_count):
         if self.addr_hit_map is None:
@@ -233,21 +250,10 @@ class FunctionScope(object):
             count_info[0] += event_count
             count_info[1] += subtree_event_count
 
-    def update_subtree_event_count(self):
-        a = self.call_graph.update_subtree_event_count()
-        b = self.reverse_call_graph.update_subtree_event_count()
-        return max(a, b)
-
-    def limit_callchain_percent(self, min_callchain_percent, hit_func_ids):
-        min_limit = min_callchain_percent * 0.01 * self.call_graph.subtree_event_count
-        self.call_graph.cut_edge(min_limit, hit_func_ids)
-        self.reverse_call_graph.cut_edge(min_limit, hit_func_ids)
-
     def gen_sample_info(self, gen_addr_hit_map):
         result = {}
-        result['c'] = self.sample_count
-        result['g'] = self.call_graph.gen_sample_info()
-        result['rg'] = self.reverse_call_graph.gen_sample_info()
+        result['f'] = self.func_id
+        result['c'] = [self.sample_count, self.event_count, self.subtree_event_count]
         if self.line_hit_map:
             items = []
             for key in self.line_hit_map:
@@ -503,6 +509,8 @@ class RecordData(object):
                     tid
                     eventCount
                     libs: [libInfo],
+                    g: callGraph,
+                    rg: reverseCallgraph
                 }
                 libInfo = {
                     libId,
@@ -510,9 +518,8 @@ class RecordData(object):
                     functions: [funcInfo]
                 }
                 funcInfo = {
-                    c: sampleCount
-                    g: callGraph
-                    rg: reverseCallgraph
+                    f: functionId
+                    c: [sampleCount, eventCount, subTreeEventCount]
                     s: [sourceCodeInfo] [optional]
                     a: [addrInfo] (sorted by addrInfo.addr) [optional]
                 }
@@ -601,25 +608,22 @@ class RecordData(object):
             thread.add_callstack(raw_sample.period, callstack, self.build_addr_hit_map)
 
         for event in self.events.values():
-            for lib in event.libraries:
-                for func_id in lib.functions:
-                    function = lib.functions[func_id]
-                    function.update_subtree_event_count()
+            for thread in event.threads:
+                thread.update_subtree_event_count()
 
     def limit_percents(self, min_func_percent, min_callchain_percent):
         hit_func_ids = set()
         for event in self.events.values():
             min_limit = event.event_count * min_func_percent * 0.01
-            for lib in event.libraries:
-                to_del_func_ids = []
-                for func_id in lib.functions:
-                    function = lib.functions[func_id]
-                    if function.call_graph.subtree_event_count < min_limit:
-                        to_del_func_ids.append(func_id)
+            for process in event.processes.values():
+                to_del_threads = []
+                for thread in event.threads:
+                    if thread.call_graph.subtree_event_count < min_limit:
+                        to_del_threads.append(thread.tid)
                     else:
-                        function.limit_callchain_percent(min_callchain_percent, hit_func_ids)
-                for func_id in to_del_func_ids:
-                    del lib.functions[func_id]
+                        thread.limit_percents(min_limit, min_callchain_percent, hit_func_ids)
+                for thread in to_del_threads:
+                    del process.threads[thread]
         self.functions.trim_functions(hit_func_ids)
 
     def _get_event(self, event_name):
@@ -647,7 +651,7 @@ class RecordData(object):
             for lib in event.libraries:
                 lib_name = self.libs.get_lib_name(lib.lib_id)
                 for function in lib.functions.values():
-                    func_addr = self.functions.id_to_func[function.call_graph.func_id].start_addr
+                    func_addr = self.functions.id_to_func[function.func_id].start_addr
                     for addr in function.addr_hit_map:
                         addr2line.add_addr(lib_name, func_addr, addr)
         addr2line.convert_addrs_to_lines()
