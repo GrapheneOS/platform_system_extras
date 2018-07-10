@@ -43,6 +43,8 @@ static int usage(int /* argc */, char* argv[]) {
             "  -s,--metadata-slots=COUNT     Number of slots to store metadata copies.\n"
             "  -p,--partition=DATA           Add a partition given the data, see below.\n"
             "  -o,--output=FILE              Output file.\n"
+            "  --alignment-offset=N          Alignment offset in bytes to device parent.\n"
+            "  --alignment=N                 Optimal partition alignment in bytes.\n"
             "\n"
             "Partition format:\n"
             "  <name>:<guid>:<attributes>:<size>\n"
@@ -59,12 +61,16 @@ int main(int argc, char* argv[]) {
         { "partition", required_argument, nullptr, 'p' },
         { "output", required_argument, nullptr, 'o' },
         { "help", no_argument, nullptr, 'h' },
+        { "alignment-offset", required_argument, nullptr, 'O' },
+        { "alignment", required_argument, nullptr, 'a' },
         { nullptr, 0, nullptr, 0 },
     };
 
     uint64_t blockdevice_size = 0;
     uint32_t metadata_size = 0;
     uint32_t metadata_slots = 0;
+    uint32_t alignment_offset = 0;
+    uint32_t alignment = kDefaultPartitionAlignment;
     std::string output_path;
     std::vector<std::string> partitions;
 
@@ -98,6 +104,18 @@ int main(int argc, char* argv[]) {
             case 'o':
                 output_path = optarg;
                 break;
+            case 'O':
+                if (!android::base::ParseUint(optarg, &alignment_offset)) {
+                    fprintf(stderr, "Invalid argument to --alignment-offset.\n");
+                    return EX_USAGE;
+                }
+                break;
+            case 'a':
+                if (!android::base::ParseUint(optarg, &alignment)) {
+                    fprintf(stderr, "Invalid argument to --alignment.\n");
+                    return EX_USAGE;
+                }
+                break;
             default:
                 break;
         }
@@ -130,8 +148,10 @@ int main(int argc, char* argv[]) {
         return EX_USAGE;
     }
 
+    BlockDeviceInfo device_info(blockdevice_size, alignment, alignment_offset);
+
     std::unique_ptr<MetadataBuilder> builder =
-            MetadataBuilder::New(blockdevice_size, metadata_size, metadata_slots);
+            MetadataBuilder::New(device_info, metadata_size, metadata_slots);
 
     for (const auto& partition_info : partitions) {
         std::vector<std::string> parts = android::base::Split(partition_info, ":");
