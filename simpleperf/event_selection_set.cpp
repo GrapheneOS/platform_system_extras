@@ -595,7 +595,7 @@ bool EventSelectionSet::PrepareToReadMmapEventData(const std::function<bool(Reco
   // Prepare record callback function.
   record_callback_ = callback;
   if (!record_read_thread_->RegisterDataCallback(*loop_,
-                                                 [this]() { return ReadMmapEventData(false); })) {
+                                                 [this]() { return ReadMmapEventData(true); })) {
     return false;
   }
   std::vector<EventFd*> event_fds;
@@ -609,21 +609,35 @@ bool EventSelectionSet::PrepareToReadMmapEventData(const std::function<bool(Reco
   return record_read_thread_->AddEventFds(event_fds);
 }
 
-bool EventSelectionSet::ReadMmapEventData(bool sync_kernel_buffer) {
-  if (sync_kernel_buffer && !record_read_thread_->SyncKernelBuffer()) {
-    return false;
+bool EventSelectionSet::SyncKernelBuffer() {
+  return record_read_thread_->SyncKernelBuffer();
+}
+
+// Read records from the RecordBuffer. If with_time_limit is false, read until the RecordBuffer is
+// empty, otherwise stop after 100 ms or when the record buffer is empty.
+bool EventSelectionSet::ReadMmapEventData(bool with_time_limit) {
+  uint64_t start_time_in_ns;
+  if (with_time_limit) {
+    start_time_in_ns = GetSystemClock();
   }
   std::unique_ptr<Record> r;
   while ((r = record_read_thread_->GetRecord()) != nullptr) {
     if (!record_callback_(r.get())) {
       return false;
     }
+    if (with_time_limit && (GetSystemClock() - start_time_in_ns) >= 1e8) {
+      break;
+    }
   }
   return true;
 }
 
 bool EventSelectionSet::FinishReadMmapEventData() {
-  if (!ReadMmapEventData(true)) {
+  // Stop the read thread, so we don't get more records beyond current time.
+  if (!SyncKernelBuffer() || !record_read_thread_->StopReadThread()) {
+    return false;
+  }
+  if (!ReadMmapEventData(false)) {
     return false;
   }
   if (!HasInplaceSampler()) {

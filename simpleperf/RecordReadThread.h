@@ -132,6 +132,8 @@ class RecordReadThread {
   bool RemoveEventFds(const std::vector<EventFd*>& event_fds);
   // Move all available records in kernel buffers to the RecordBuffer.
   bool SyncKernelBuffer();
+  // Stop the read thread, no more records will be put into the RecordBuffer.
+  bool StopReadThread();
 
   // If available, return the next record in the RecordBuffer, otherwise return nullptr.
   std::unique_ptr<Record> GetRecord();
