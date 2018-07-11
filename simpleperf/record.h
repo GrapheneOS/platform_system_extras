@@ -397,7 +397,9 @@ struct SampleRecord : public Record {
                const std::vector<char>& stack, uint64_t dyn_stack_size);
 
   void ReplaceRegAndStackWithCallChain(const std::vector<uint64_t>& ips);
-  size_t ExcludeKernelCallChain();
+  // Remove kernel callchain, return true if there is a user space callchain left, otherwise
+  // return false.
+  bool ExcludeKernelCallChain();
   bool HasUserCallChain() const;
   void UpdateUserCallChain(const std::vector<uint64_t>& user_ips);
 
