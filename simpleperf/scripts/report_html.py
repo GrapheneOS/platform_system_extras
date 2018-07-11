@@ -16,16 +16,14 @@
 #
 
 import argparse
+import collections
 import datetime
 import json
 import os
-import subprocess
-import sys
-import tempfile
 
 from simpleperf_report_lib import ReportLib
-from utils import log_info, log_warning, log_exit
-from utils import Addr2Nearestline, get_script_dir, Objdump, open_report_in_browser, remove
+from utils import log_info, log_exit
+from utils import Addr2Nearestline, get_script_dir, Objdump, open_report_in_browser
 
 
 class HtmlWriter(object):
@@ -81,8 +79,9 @@ class EventScope(object):
         result = {}
         result['eventName'] = self.name
         result['eventCount'] = self.event_count
+        processes = sorted(self.processes.values(), key=lambda a: a.event_count, reverse=True)
         result['processes'] = [process.get_sample_info(gen_addr_hit_map)
-                               for process in self.processes.values()]
+                               for process in processes]
         return result
 
     @property
@@ -120,8 +119,9 @@ class ProcessScope(object):
         result = {}
         result['pid'] = self.pid
         result['eventCount'] = self.event_count
+        threads = sorted(self.threads.values(), key=lambda a: a.event_count, reverse=True)
         result['threads'] = [thread.get_sample_info(gen_addr_hit_map)
-                             for thread in self.threads.values()]
+                             for thread in threads]
         return result
 
 
@@ -131,6 +131,7 @@ class ThreadScope(object):
         self.tid = tid
         self.name = ''
         self.event_count = 0
+        self.sample_count = 0
         self.libs = {}  # map from lib_id to LibScope
         self.call_graph = CallNode(-1)
         self.reverse_call_graph = CallNode(-1)
@@ -189,6 +190,7 @@ class ThreadScope(object):
         result = {}
         result['tid'] = self.tid
         result['eventCount'] = self.event_count
+        result['sampleCount'] = self.sample_count
         result['libs'] = [lib.gen_sample_info(gen_addr_hit_map)
                           for lib in self.libs.values()]
         result['g'] = self.call_graph.gen_sample_info()
@@ -276,7 +278,7 @@ class CallNode(object):
         self.event_count = 0
         self.subtree_event_count = 0
         self.func_id = func_id
-        self.children = {}  # map from func_id to CallNode
+        self.children = collections.OrderedDict()  # map from func_id to CallNode
 
     def get_child(self, func_id):
         child = self.children.get(func_id)
@@ -508,6 +510,7 @@ class RecordData(object):
                 threadInfo = {
                     tid
                     eventCount
+                    sampleCount
                     libs: [libInfo],
                     g: callGraph,
                     rg: reverseCallgraph
@@ -596,6 +599,7 @@ class RecordData(object):
             process.event_count += raw_sample.period
             thread = process.get_thread(raw_sample.tid, raw_sample.thread_comm)
             thread.event_count += raw_sample.period
+            thread.sample_count += 1
 
             lib_id = self.libs.get_lib_id(symbol.dso_name)
             func_id = self.functions.get_func_id(lib_id, symbol)
@@ -834,9 +838,6 @@ class ReportGenerator(object):
         self.hw.add(json.dumps(record_data))
         self.hw.close_tag()
 
-    def write_flamegraph(self, flamegraph):
-        self.hw.add(flamegraph)
-
     def write_script(self):
         self.hw.open_tag('script').add_file('report_html.js').close_tag()
 
@@ -844,21 +845,6 @@ class ReportGenerator(object):
         self.hw.close_tag('body')
         self.hw.close_tag('html')
         self.hw.close()
-
-
-def gen_flamegraph(record_file, show_art_frames):
-    fd, flamegraph_path = tempfile.mkstemp()
-    os.close(fd)
-    inferno_script_path = os.path.join(get_script_dir(), 'inferno', 'inferno.py')
-    args = [sys.executable, inferno_script_path, '-sc', '-o', flamegraph_path,
-            '--record_file', record_file, '--embedded_flamegraph', '--no_browser']
-    if show_art_frames:
-        args.append('--show_art_frames')
-    subprocess.check_call(args)
-    with open(flamegraph_path, 'r') as fh:
-        data = fh.read()
-    remove(flamegraph_path)
-    return data
 
 
 def main():
@@ -915,11 +901,6 @@ def main():
     report_generator.write_content_div()
     report_generator.write_record_data(record_data.gen_record_info())
     report_generator.write_script()
-    # TODO: support multiple perf.data in flamegraph.
-    if len(args.record_file) > 1:
-        log_warning('flamegraph will only be shown for %s' % args.record_file[0])
-    flamegraph = gen_flamegraph(args.record_file[0], args.show_art_frames)
-    report_generator.write_flamegraph(flamegraph)
     report_generator.finish()
 
     if not args.no_browser:
