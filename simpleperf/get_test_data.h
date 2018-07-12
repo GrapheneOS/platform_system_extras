@@ -133,4 +133,6 @@ static const std::string PERF_DATA_WITH_KERNEL_SYMBOLS_AVAILABLE_FALSE = "perf_w
 
 static const std::string PERF_DATA_WITH_INTERPRETER_FRAMES = "perf_with_interpreter_frames.data";
 
+static const std::string PERF_DATA_WITH_IP_ZERO_IN_CALLCHAIN = "perf_with_ip_zero_in_callchain.data";
+
 #endif  // SIMPLE_PERF_GET_TEST_DATA_H_
