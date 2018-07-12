@@ -1141,7 +1141,7 @@ bool RecordCommand::SaveRecordAfterUnwinding(Record* record) {
     }
     // ExcludeKernelCallChain() should go after UnwindRecord() to notice the generated user call
     // chain.
-    if (r.InKernel() && exclude_kernel_callchain_ && r.ExcludeKernelCallChain() == 0u) {
+    if (r.InKernel() && exclude_kernel_callchain_ && !r.ExcludeKernelCallChain()) {
       // If current record contains no user callchain, skip it.
       return true;
     }
@@ -1160,7 +1160,7 @@ bool RecordCommand::SaveRecordWithoutUnwinding(Record* record) {
     if (fp_callchain_sampling_ || dwarf_callchain_sampling_) {
       r.AdjustCallChainGeneratedByKernel();
     }
-    if (r.InKernel() && exclude_kernel_callchain_ && r.ExcludeKernelCallChain() == 0u) {
+    if (r.InKernel() && exclude_kernel_callchain_ && !r.ExcludeKernelCallChain()) {
       // If current record contains no user callchain, skip it.
       return true;
     }
