@@ -234,20 +234,6 @@ bool RecordFileReader::ReadRecord(std::unique_ptr<Record>& record) {
     }
     if (record->type() == SIMPLE_PERF_RECORD_EVENT_ID) {
       ProcessEventIdRecord(*static_cast<EventIdRecord*>(record.get()));
-    } else if (record->type() == PERF_RECORD_SAMPLE) {
-      SampleRecord* r = static_cast<SampleRecord*>(record.get());
-      // Although we have removed ip == 0 callchains when recording dwarf based callgraph,
-      // stack frame based callgraph can also generate ip == 0 callchains. Remove them here
-      // to avoid caller's effort.
-      if (r->sample_type & PERF_SAMPLE_CALLCHAIN) {
-        size_t i;
-        for (i = 0; i < r->callchain_data.ip_nr; ++i) {
-          if (r->callchain_data.ips[i] == 0) {
-            break;
-          }
-        }
-        r->callchain_data.ip_nr = i;
-      }
     }
   }
   return true;

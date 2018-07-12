@@ -581,29 +581,31 @@ void SampleRecord::ReplaceRegAndStackWithCallChain(const std::vector<uint64_t>& 
   BuildBinaryWithNewCallChain(new_size, ips);
 }
 
-size_t SampleRecord::ExcludeKernelCallChain() {
-  size_t user_callchain_length = 0u;
-  if (sample_type & PERF_SAMPLE_CALLCHAIN) {
-    size_t i;
-    for (i = 0; i < callchain_data.ip_nr; ++i) {
-      if (callchain_data.ips[i] == PERF_CONTEXT_USER) {
-        i++;
-        if (i < callchain_data.ip_nr) {
-          ip_data.ip = callchain_data.ips[i];
-          if (sample_type & PERF_SAMPLE_IP) {
-            *reinterpret_cast<uint64_t*>(binary_ + header_size()) = ip_data.ip;
-          }
-          header.misc = (header.misc & ~PERF_RECORD_MISC_KERNEL) | PERF_RECORD_MISC_USER;
-          reinterpret_cast<perf_event_header*>(binary_)->misc = header.misc;
-        }
-        break;
-      } else {
-        callchain_data.ips[i] = PERF_CONTEXT_USER;
-      }
-    }
-    user_callchain_length = callchain_data.ip_nr - i;
+bool SampleRecord::ExcludeKernelCallChain() {
+  if (!(sample_type & PERF_SAMPLE_CALLCHAIN)) {
+    return true;
   }
-  return user_callchain_length;
+  size_t i;
+  for (i = 0; i < callchain_data.ip_nr; ++i) {
+    if (callchain_data.ips[i] == PERF_CONTEXT_USER) {
+      break;
+    }
+    // Erase kernel callchain.
+    callchain_data.ips[i] = PERF_CONTEXT_USER;
+  }
+  while (++i < callchain_data.ip_nr) {
+    if (callchain_data.ips[i] < PERF_CONTEXT_MAX) {
+      // Change the sample to make it hit the user space ip address.
+      ip_data.ip = callchain_data.ips[i];
+      if (sample_type & PERF_SAMPLE_IP) {
+        *reinterpret_cast<uint64_t*>(binary_ + header_size()) = ip_data.ip;
+      }
+      header.misc = (header.misc & ~PERF_RECORD_MISC_CPUMODE_MASK) | PERF_RECORD_MISC_USER;
+      reinterpret_cast<perf_event_header*>(binary_)->misc = header.misc;
+      return true;
+    }
+  }
+  return false;
 }
 
 bool SampleRecord::HasUserCallChain() const {
@@ -687,7 +689,8 @@ void SampleRecord::BuildBinaryWithNewCallChain(uint32_t new_size,
   callchain_data.ips = p64;
   callchain_data.ip_nr += 1 + ips.size();
   *--p64 = callchain_data.ip_nr;
-  CHECK_EQ(callchain_pos, static_cast<size_t>(reinterpret_cast<char*>(p64) - new_binary));
+  CHECK_EQ(callchain_pos, static_cast<size_t>(reinterpret_cast<char*>(p64) - new_binary))
+    << "record time " << time_data.time;
   if (new_binary != binary_) {
     UpdateBinary(new_binary);
   }
@@ -778,24 +781,33 @@ void SampleRecord::AdjustCallChainGeneratedByKernel() {
   // The kernel stores return addrs in the callchain, but we want the addrs of call instructions
   // along the callchain.
   uint64_t* ips = callchain_data.ips;
+  uint64_t context = header.misc == PERF_RECORD_MISC_KERNEL ? PERF_CONTEXT_KERNEL
+                                                            : PERF_CONTEXT_USER;
   bool first_frame = true;
-  for (uint64_t i = 0; i < callchain_data.ip_nr; ++i) {
-    if (ips[i] > 0 && ips[i] < PERF_CONTEXT_MAX) {
+  for (size_t i = 0; i < callchain_data.ip_nr; ++i) {
+    if (ips[i] < PERF_CONTEXT_MAX) {
       if (first_frame) {
         first_frame = false;
       } else {
-        // Here we want to change the return addr to the addr of the previous instruction. We don't
-        // need to find the exact start addr of the previous instruction. A location in
+        if (ips[i] < 2) {
+          // A wrong ip address, erase it.
+          ips[i] = context;
+        } else {
+          // Here we want to change the return addr to the addr of the previous instruction. We
+          // don't need to find the exact start addr of the previous instruction. A location in
         // [start_addr_of_call_inst, start_addr_of_next_inst) is enough.
 #if defined(__arm__) || defined(__aarch64__)
-        // If we are built for arm/aarch64, this may be a callchain of thumb code. For thumb code,
-        // the real instruction addr is (ip & ~1), and ip - 2 can used to hit the address range
-        // of the previous instruction. For non thumb code, any addr in [ip - 4, ip - 1] is fine.
-        ips[i] -= 2;
+          // If we are built for arm/aarch64, this may be a callchain of thumb code. For thumb code,
+          // the real instruction addr is (ip & ~1), and ip - 2 can used to hit the address range
+          // of the previous instruction. For non thumb code, any addr in [ip - 4, ip - 1] is fine.
+          ips[i] -= 2;
 #else
-        ips[i]--;
+          ips[i]--;
 #endif
+        }
       }
+    } else {
+      context = ips[i];
     }
   }
 }

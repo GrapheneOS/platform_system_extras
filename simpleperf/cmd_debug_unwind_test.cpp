@@ -65,3 +65,12 @@ TEST(cmd_debug_unwind, symfs_option) {
   ASSERT_TRUE(reader->ReadMetaInfoFeature(&info_map));
   ASSERT_EQ(info_map["debug_unwind"], "true");
 }
+
+TEST(cmd_debug_unwind, unwind_with_ip_zero_in_callchain) {
+  TemporaryFile tmp_file;
+  CaptureStdout capture;
+  ASSERT_TRUE(capture.Start());
+  ASSERT_TRUE(DebugUnwindCmd()->Run({"-i", GetTestData(PERF_DATA_WITH_IP_ZERO_IN_CALLCHAIN),
+                                     "-o", tmp_file.path}));
+  ASSERT_NE(capture.Finish().find("Unwinding sample count: 1"), std::string::npos);
+}

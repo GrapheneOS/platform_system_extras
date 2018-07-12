@@ -229,7 +229,6 @@ bool DebugUnwindCommand::ProcessRecord(Record* record) {
     if (selected_time_ != 0u && r.Timestamp() != selected_time_) {
       return true;
     }
-    r.AdjustCallChainGeneratedByKernel();
     uint64_t need_type = PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER;
     if ((r.sample_type & need_type) == need_type && r.regs_user_data.reg_mask != 0 &&
         r.GetValidStackSize() > 0) {
