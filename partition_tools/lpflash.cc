@@ -19,8 +19,7 @@
 
 #include <string>
 
-#include <liblp/reader.h>
-#include <liblp/writer.h>
+#include <liblp/liblp.h>
 
 using namespace android;
 using namespace android::fs_mgr;
