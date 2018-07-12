@@ -25,7 +25,7 @@
 #include <string>
 
 #include <android-base/parseint.h>
-#include <liblp/reader.h>
+#include <liblp/liblp.h>
 
 using namespace android;
 using namespace android::fs_mgr;
