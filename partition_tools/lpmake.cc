@@ -24,7 +24,7 @@
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
 #include <liblp/builder.h>
-#include <liblp/writer.h>
+#include <liblp/liblp.h>
 
 using namespace android;
 using namespace android::fs_mgr;
