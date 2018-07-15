@@ -24,6 +24,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <android-base/logging.h>
@@ -264,10 +265,12 @@ class RecordCommand : public Command {
       const std::string& filename);
   bool DumpKernelSymbol();
   bool DumpTracingData();
-  bool DumpKernelAndModuleMmaps(const perf_event_attr& attr, uint64_t event_id);
-  bool DumpThreadCommAndMmaps(const perf_event_attr& attr, uint64_t event_id);
+  bool DumpKernelMaps();
+  bool DumpUserSpaceMaps();
+  bool DumpProcessMaps(pid_t pid, const std::unordered_set<pid_t>& tids);
   bool ProcessRecord(Record* record);
   bool ShouldOmitRecord(Record* record);
+  bool DumpMapsForRecord(Record* record);
   bool SaveRecordForPostUnwinding(Record* record);
   bool SaveRecordAfterUnwinding(Record* record);
   bool SaveRecordWithoutUnwinding(Record* record);
@@ -324,6 +327,9 @@ class RecordCommand : public Command {
   std::unique_ptr<JITDebugReader> jit_debug_reader_;
   uint64_t last_record_timestamp_;  // used to insert Mmap2Records for JIT debug info
   TimeStat time_stat_;
+  EventAttrWithId dumping_attr_id_;
+  // In system wide recording, record if we have dumped map info for a process.
+  std::unordered_set<pid_t> dumped_processes_;
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
@@ -910,20 +916,8 @@ bool RecordCommand::CreateAndInitRecordFile() {
     return false;
   }
   // Use first perf_event_attr and first event id to dump mmap and comm records.
-  EventAttrWithId attr_id = event_selection_set_.GetEventAttrWithId()[0];
-  if (!DumpKernelSymbol()) {
-    return false;
-  }
-  if (!DumpTracingData()) {
-    return false;
-  }
-  if (!DumpKernelAndModuleMmaps(*attr_id.attr, attr_id.ids[0])) {
-    return false;
-  }
-  if (!DumpThreadCommAndMmaps(*attr_id.attr, attr_id.ids[0])) {
-    return false;
-  }
-  return true;
+  dumping_attr_id_ = event_selection_set_.GetEventAttrWithId()[0];
+  return DumpKernelSymbol() && DumpTracingData() && DumpKernelMaps() && DumpUserSpaceMaps();
 }
 
 std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(
@@ -975,20 +969,19 @@ bool RecordCommand::DumpTracingData() {
   return true;
 }
 
-bool RecordCommand::DumpKernelAndModuleMmaps(const perf_event_attr& attr,
-                                             uint64_t event_id) {
+bool RecordCommand::DumpKernelMaps() {
   KernelMmap kernel_mmap;
   std::vector<KernelMmap> module_mmaps;
   GetKernelAndModuleMmaps(&kernel_mmap, &module_mmaps);
 
-  MmapRecord mmap_record(attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
-                         kernel_mmap.len, 0, kernel_mmap.filepath, event_id);
+  MmapRecord mmap_record(*dumping_attr_id_.attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
+                         kernel_mmap.len, 0, kernel_mmap.filepath, dumping_attr_id_.ids[0]);
   if (!ProcessRecord(&mmap_record)) {
     return false;
   }
   for (auto& module_mmap : module_mmaps) {
-    MmapRecord mmap_record(attr, true, UINT_MAX, 0, module_mmap.start_addr,
-                           module_mmap.len, 0, module_mmap.filepath, event_id);
+    MmapRecord mmap_record(*dumping_attr_id_.attr, true, UINT_MAX, 0, module_mmap.start_addr,
+                           module_mmap.len, 0, module_mmap.filepath, dumping_attr_id_.ids[0]);
     if (!ProcessRecord(&mmap_record)) {
       return false;
     }
@@ -996,77 +989,67 @@ bool RecordCommand::DumpKernelAndModuleMmaps(const perf_event_attr& attr,
   return true;
 }
 
-bool RecordCommand::DumpThreadCommAndMmaps(const perf_event_attr& attr,
-                                           uint64_t event_id) {
-  // Decide which processes and threads to dump.
-  // For system_wide profiling, dump all threads.
-  // For non system wide profiling, build dump_threads.
-  bool all_threads = system_wide_collection_;
-  std::set<pid_t> dump_threads = event_selection_set_.GetMonitoredThreads();
-  for (const auto& pid : event_selection_set_.GetMonitoredProcesses()) {
+bool RecordCommand::DumpUserSpaceMaps() {
+  // For system_wide profiling, maps of a process is dumped when needed (first time a sample hits
+  // that process).
+  if (system_wide_collection_) {
+    return true;
+  }
+  // Map from process id to a set of thread ids in that process.
+  std::unordered_map<pid_t, std::unordered_set<pid_t>> process_map;
+  for (pid_t pid : event_selection_set_.GetMonitoredProcesses()) {
     std::vector<pid_t> tids = GetThreadsInProcess(pid);
-    dump_threads.insert(tids.begin(), tids.end());
+    process_map[pid].insert(tids.begin(), tids.end());
   }
-
-  // Collect processes to dump.
-  std::vector<pid_t> processes;
-  if (all_threads) {
-    processes = GetAllProcesses();
-  } else {
-    std::set<pid_t> process_set;
-    for (const auto& tid : dump_threads) {
-      pid_t pid;
-      if (!GetProcessForThread(tid, &pid)) {
-        continue;
-      }
-      process_set.insert(pid);
+  for (pid_t tid : event_selection_set_.GetMonitoredThreads()) {
+    pid_t pid;
+    if (GetProcessForThread(tid, &pid)) {
+      process_map[pid].insert(tid);
     }
-    processes.insert(processes.end(), process_set.begin(), process_set.end());
   }
 
-  // Dump each process and its threads.
-  for (auto& pid : processes) {
-    // Dump mmap records.
-    std::vector<ThreadMmap> thread_mmaps;
-    if (!GetThreadMmapsInProcess(pid, &thread_mmaps)) {
-      // The process may exit before we get its info.
+  // Dump each process.
+  for (auto& pair : process_map) {
+    if (!DumpProcessMaps(pair.first, pair.second)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool RecordCommand::DumpProcessMaps(pid_t pid, const std::unordered_set<pid_t>& tids) {
+  // Dump mmap records.
+  std::vector<ThreadMmap> thread_mmaps;
+  if (!GetThreadMmapsInProcess(pid, &thread_mmaps)) {
+    // The process may exit before we get its info.
+    return true;
+  }
+  const perf_event_attr& attr = *dumping_attr_id_.attr;
+  uint64_t event_id = dumping_attr_id_.ids[0];
+  for (const auto& map : thread_mmaps) {
+    if (map.executable == 0 && !event_selection_set_.RecordNotExecutableMaps()) {
       continue;
     }
-    for (const auto& map : thread_mmaps) {
-      if (map.executable == 0 && !event_selection_set_.RecordNotExecutableMaps()) {
-        continue;
-      }
-      MmapRecord record(attr, false, pid, pid, map.start_addr, map.len,
-                        map.pgoff, map.name, event_id);
-      if (!ProcessRecord(&record)) {
-        return false;
-      }
+    MmapRecord record(attr, false, pid, pid, map.start_addr, map.len,
+                      map.pgoff, map.name, event_id, last_record_timestamp_);
+    if (!ProcessRecord(&record)) {
+      return false;
     }
-    // Dump process name.
-    std::string name;
-    if (GetThreadName(pid, &name)) {
-      CommRecord record(attr, pid, pid, name, event_id, 0);
-      if (!ProcessRecord(&record)) {
-        return false;
-      }
+  }
+  // Dump process name.
+  std::string name;
+  if (GetThreadName(pid, &name)) {
+    CommRecord record(attr, pid, pid, name, event_id, last_record_timestamp_);
+    if (!ProcessRecord(&record)) {
+      return false;
     }
-    // Dump thread info.
-    std::vector<pid_t> threads = GetThreadsInProcess(pid);
-    for (const auto& tid : threads) {
-      if (tid == pid) {
-        continue;
-      }
-      if (all_threads || dump_threads.find(tid) != dump_threads.end()) {
-        ForkRecord fork_record(attr, pid, tid, pid, pid, event_id);
-        if (!ProcessRecord(&fork_record)) {
-          return false;
-        }
-        if (GetThreadName(tid, &name)) {
-          CommRecord comm_record(attr, pid, tid, name, event_id, 0);
-          if (!ProcessRecord(&comm_record)) {
-            return false;
-          }
-        }
+  }
+  // Dump thread info.
+  for (const auto& tid : tids) {
+    if (tid != pid && GetThreadName(tid, &name)) {
+      CommRecord comm_record(attr, pid, tid, name, event_id, last_record_timestamp_);
+      if (!ProcessRecord(&comm_record)) {
+        return false;
       }
     }
   }
@@ -1087,6 +1070,10 @@ bool RecordCommand::ProcessRecord(Record* record) {
     return false;
   }
   last_record_timestamp_ = std::max(last_record_timestamp_, record->Timestamp());
+  // In system wide recording, maps are dumped when they are needed by records.
+  if (system_wide_collection_ && !DumpMapsForRecord(record)) {
+    return false;
+  }
   if (unwind_dwarf_callchain_) {
     if (post_unwind_) {
       return SaveRecordForPostUnwinding(record);
@@ -1121,6 +1108,22 @@ bool RecordCommand::ShouldOmitRecord(Record* record) {
   return false;
 }
 
+bool RecordCommand::DumpMapsForRecord(Record* record) {
+  if (record->type() == PERF_RECORD_SAMPLE) {
+    pid_t pid = static_cast<SampleRecord*>(record)->tid_data.pid;
+    if (dumped_processes_.find(pid) == dumped_processes_.end()) {
+      // Dump map info and all thread names for that process.
+      std::vector<pid_t> tids = GetThreadsInProcess(pid);
+      if (!tids.empty() &&
+          !DumpProcessMaps(pid, std::unordered_set<pid_t>(tids.begin(), tids.end()))) {
+        return false;
+      }
+      dumped_processes_.insert(pid);
+    }
+  }
+  return true;
+}
+
 bool RecordCommand::SaveRecordForPostUnwinding(Record* record) {
   if (!record_file_writer_->WriteRecord(*record)) {
     LOG(ERROR) << "If there isn't enough space for storing profiling data, consider using "
@@ -1141,7 +1144,7 @@ bool RecordCommand::SaveRecordAfterUnwinding(Record* record) {
     }
     // ExcludeKernelCallChain() should go after UnwindRecord() to notice the generated user call
     // chain.
-    if (r.InKernel() && exclude_kernel_callchain_ && r.ExcludeKernelCallChain() == 0u) {
+    if (r.InKernel() && exclude_kernel_callchain_ && !r.ExcludeKernelCallChain()) {
       // If current record contains no user callchain, skip it.
       return true;
     }
@@ -1160,7 +1163,7 @@ bool RecordCommand::SaveRecordWithoutUnwinding(Record* record) {
     if (fp_callchain_sampling_ || dwarf_callchain_sampling_) {
       r.AdjustCallChainGeneratedByKernel();
     }
-    if (r.InKernel() && exclude_kernel_callchain_ && r.ExcludeKernelCallChain() == 0u) {
+    if (r.InKernel() && exclude_kernel_callchain_ && !r.ExcludeKernelCallChain()) {
       // If current record contains no user callchain, skip it.
       return true;
     }
