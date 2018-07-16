@@ -628,6 +628,12 @@ void CommonInit(uint32_t use_fixed_seed, const char* dest_dir) {
   common_initialized = true;
 }
 
+void GlobalInit(const std::string& perf_path) {
+  if (!android::perfprofd::FindSupportedPerfCounters(perf_path)) {
+    LOG(WARNING) << "Could not read supported perf counters.";
+  }
+}
+
 bool IsDebugBuild() {
   CHECK(common_initialized);
   return is_debug_build;
