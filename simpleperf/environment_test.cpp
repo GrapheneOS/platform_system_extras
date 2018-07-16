@@ -51,3 +51,14 @@ TEST(environment, GetHardwareFromCpuInfo) {
   ASSERT_EQ("Symbol i.MX6 Freeport_Plat Quad/DualLite (Device Tree)",
             GetHardwareFromCpuInfo(cpu_info));
 }
+
+TEST(environment, MappedFileOnlyExistInMemory) {
+  ASSERT_TRUE(MappedFileOnlyExistInMemory(""));
+  ASSERT_TRUE(MappedFileOnlyExistInMemory("[stack]"));
+  ASSERT_TRUE(MappedFileOnlyExistInMemory("[anon:.bss]"));
+  ASSERT_FALSE(MappedFileOnlyExistInMemory("[vdso]"));
+  ASSERT_TRUE(MappedFileOnlyExistInMemory("/dev/__properties__/u:object_r"));
+  ASSERT_TRUE(MappedFileOnlyExistInMemory("//anon"));
+  ASSERT_FALSE(MappedFileOnlyExistInMemory("./TemporaryFile-12345"));
+  ASSERT_FALSE(MappedFileOnlyExistInMemory("/system/lib64/libc.so"));
+}
