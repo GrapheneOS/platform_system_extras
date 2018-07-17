@@ -68,7 +68,10 @@ cc_binary_host {
 
 cc_binary_host {
     name: "build_verity_tree",
-    srcs: ["build_verity_tree.cpp"],
+    srcs: [
+        "hash_tree_builder.cpp",
+        "build_verity_tree.cpp"
+    ],
 
     static_libs: [
         "libsparse",

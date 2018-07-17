@@ -1,12 +1,11 @@
 /*
- *
- * Copyright 2018, The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,19 +14,15 @@
  * limitations under the License.
  */
 
-#ifndef SYSTEM_EXTRAS_PERFPROFD_PERFPROFD_COUNTERS_H_
-#define SYSTEM_EXTRAS_PERFPROFD_PERFPROFD_COUNTERS_H_
+#ifndef __BUILD_VERITY_TREE_UTILS_H__
+#define __BUILD_VERITY_TREE_UTILS_H__
 
-#include <vector>
+#include <inttypes.h>
+#include <stddef.h>
 
-namespace android {
-namespace perfprofd {
+inline uint64_t div_round_up(uint64_t x, uint64_t y) { return (x + y - 1) / y; }
 
-class CounterSet;
+size_t verity_tree_blocks(uint64_t data_size, size_t block_size,
+                          size_t hash_size, size_t level);
 
-std::vector<const char*> GenerateEventsString(const CounterSet& counter_set);
-
-}  // namespace perfprofd
-}  // namespace android
-
-#endif  // SYSTEM_EXTRAS_PERFPROFD_PERFPROFD_COUNTERS_H_
+#endif  // __BUILD_VERITY_TREE_UTILS_H__

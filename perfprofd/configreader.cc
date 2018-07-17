@@ -35,8 +35,6 @@
 
 #include "perfprofd_config.pb.h"
 
-#include "perfprofd_counters.h"
-
 using android::base::StringPrintf;
 
 //
@@ -490,24 +488,20 @@ void ConfigReader::ProtoToConfig(const android::perfprofd::ProfilingConfig& in, 
 
   // Convert counters.
   for (const auto& event_config : in.event_config()) {
-    if (event_config.has_counter_set()) {
-      Config::PerfCounterConfigElem config_elem;
-      std::vector<const char*> counters_char = android::perfprofd::GenerateEventsString(
-          event_config.counter_set());
-      if (counters_char.empty()) {
-        LOG(WARNING) << "Could not generate counter names for config element";
-        continue;
-      }
-      config_elem.events.resize(counters_char.size());
-      std::transform(counters_char.begin(),
-                     counters_char.end(),
-                     config_elem.events.begin(),
-                     [](const char* in) -> std::string { return in; });
-      config_elem.group = event_config.has_as_group() ? event_config.as_group() : false;
-      config_elem.sampling_period = event_config.has_sampling_period()
-                                              ? event_config.sampling_period()
-                                                  : 0;
-      out->event_config.push_back(std::move(config_elem));
+    Config::PerfCounterConfigElem config_elem;
+
+    if (event_config.counters_size() == 0) {
+      LOG(WARNING) << "Missing counters.";
+      continue;
     }
+    config_elem.events.reserve(event_config.counters_size());
+    for (const std::string& str : event_config.counters()) {
+      config_elem.events.push_back(str);
+    }
+    config_elem.group = event_config.has_as_group() ? event_config.as_group() : false;
+    config_elem.sampling_period = event_config.has_sampling_period()
+                                      ? event_config.sampling_period()
+                                      : 0;
+    out->event_config.push_back(std::move(config_elem));
   }
 }

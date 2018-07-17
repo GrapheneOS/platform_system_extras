@@ -45,6 +45,7 @@ static int usage(int /* argc */, char* argv[]) {
             "  -o,--output=FILE              Output file.\n"
             "  --alignment-offset=N          Alignment offset in bytes to device parent.\n"
             "  --alignment=N                 Optimal partition alignment in bytes.\n"
+            "  --sparse                      Output a sparse image for fastboot.\n"
             "\n"
             "Partition format:\n"
             "  <name>:<guid>:<attributes>:<size>\n"
@@ -63,6 +64,7 @@ int main(int argc, char* argv[]) {
         { "help", no_argument, nullptr, 'h' },
         { "alignment-offset", required_argument, nullptr, 'O' },
         { "alignment", required_argument, nullptr, 'a' },
+        { "sparse", no_argument, nullptr, 'S' },
         { nullptr, 0, nullptr, 0 },
     };
 
@@ -73,6 +75,7 @@ int main(int argc, char* argv[]) {
     uint32_t alignment = kDefaultPartitionAlignment;
     std::string output_path;
     std::vector<std::string> partitions;
+    bool output_sparse = false;
 
     int rv;
     int index;
@@ -115,6 +118,9 @@ int main(int argc, char* argv[]) {
                     fprintf(stderr, "Invalid argument to --alignment.\n");
                     return EX_USAGE;
                 }
+                break;
+            case 'S':
+                output_sparse = true;
                 break;
             default:
                 break;
@@ -190,9 +196,12 @@ int main(int argc, char* argv[]) {
     }
 
     std::unique_ptr<LpMetadata> metadata = builder->Export();
-    if (!WriteToImageFile(output_path.c_str(), *metadata.get())) {
+    if (output_sparse) {
+        if (!WriteToSparseFile(output_path.c_str(), *metadata.get())) {
+            return EX_CANTCREAT;
+        }
+    } else if (!WriteToImageFile(output_path.c_str(), *metadata.get())) {
         return EX_CANTCREAT;
     }
-
     return EX_OK;
 }
