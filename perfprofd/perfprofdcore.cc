@@ -43,6 +43,10 @@
 #include <android-base/properties.h>
 #endif
 
+#ifdef __ANDROID__
+#include <healthhalutils/HealthHalUtils.h>
+#endif
+
 #include "perfprofd_record.pb.h"
 
 #include "config.h"
@@ -290,30 +294,37 @@ bool get_camera_active()
 
 bool get_charging()
 {
-  std::string psdir("/sys/class/power_supply");
-  DIR* dir = opendir(psdir.c_str());
-  if (dir == NULL) {
-    PLOG(ERROR) << "Failed to open dir " << psdir;
+#ifdef __ANDROID__
+  using android::hardware::Return;
+  using android::hardware::health::V1_0::BatteryStatus;
+  using android::hardware::health::V2_0::Result;
+  using android::hardware::health::V2_0::IHealth;
+  using android::hardware::health::V2_0::get_health_service;
+  using android::sp;
+
+  sp<IHealth> service = get_health_service();
+  if (service == nullptr) {
+    PLOG(ERROR) << "Failed to get health HAL";
     return false;
   }
-  struct dirent* e;
-  bool result = false;
-  while ((e = readdir(dir)) != 0) {
-    if (e->d_name[0] != '.') {
-      std::string online_path = psdir + "/" + e->d_name + "/online";
-      std::string contents;
-      int value = 0;
-      if (android::base::ReadFileToString(online_path.c_str(), &contents) &&
-          sscanf(contents.c_str(), "%d", &value) == 1) {
-        if (value) {
-          result = true;
-          break;
-        }
-      }
-    }
+  Result res = Result::UNKNOWN;
+  BatteryStatus val = BatteryStatus::UNKNOWN;
+  Return<void> ret = service->getChargeStatus([&](Result out_res, BatteryStatus out_val) {
+    res = out_res;
+    val = out_val;
+  });
+  if (!ret.isOk()) {
+    PLOG(ERROR) << "Failed to call getChargeStatus on health HAL: " << ret.description();
+    return false;
   }
-  closedir(dir);
-  return result;
+  if (res != Result::SUCCESS) {
+    PLOG(ERROR) << "Failed to retrieve charge status from health HAL: " << toString(res);
+    return false;
+  }
+  return val == BatteryStatus::CHARGING;
+#else
+  return false;
+#endif
 }
 
 static bool postprocess_proc_stat_contents(const std::string &pscontents,

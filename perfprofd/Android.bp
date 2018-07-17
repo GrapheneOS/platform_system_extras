@@ -175,6 +175,18 @@ cc_defaults {
     ],
 
     export_include_dirs: ["."],
+
+    target: {
+        android: {
+            static_libs: [
+                "libhealthhalutils",
+            ],
+            shared_libs: [
+                "android.hardware.health@2.0",
+                "libhidlbase",
+            ],
+        }
+    }
 }
 
 cc_library_static {
@@ -208,6 +220,7 @@ cc_binary {
     ],
 
     static_libs: [
+        "libhealthhalutils",
         "libperfprofdcore",
         "libperfprofd_binder",
         "libperfprofd_proto_config",
@@ -216,10 +229,12 @@ cc_binary {
     group_static_libs: true,
 
     shared_libs: [
+        "android.hardware.health@2.0",
         "liblog",
         "libprotobuf-cpp-lite",
         "libbase",
         "libbinder",
+        "libhidlbase",
         "libservices",
         "libutils",
     ],
