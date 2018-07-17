@@ -158,7 +158,7 @@ class EventSelectionSet {
   };
   typedef std::vector<EventSelection> EventSelectionGroup;
 
-  bool BuildAndCheckEventSelection(const std::string& event_name,
+  bool BuildAndCheckEventSelection(const std::string& event_name, bool first_event,
                                    EventSelection* selection);
   void UnionSampleType();
   bool IsUserSpaceSamplerGroup(EventSelectionGroup& group);
@@ -196,5 +196,6 @@ bool IsBranchSamplingSupported();
 bool IsDwarfCallChainSamplingSupported();
 bool IsDumpingRegsForTracepointEventsSupported();
 bool IsSettingClockIdSupported();
+bool IsMmap2Supported();
 
 #endif  // SIMPLE_PERF_EVENT_SELECTION_SET_H_
