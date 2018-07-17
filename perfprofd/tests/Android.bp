@@ -46,8 +46,13 @@ cc_test {
             required: [
                 "simpleperf",
             ],
+            static_libs: [
+                "libhealthhalutils",
+            ],
             shared_libs: [
+                "android.hardware.health@2.0",
                 "libbinder",
+                "libhidlbase",
                 "libservices",
                 "libutils",
             ],
