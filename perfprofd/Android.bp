@@ -127,7 +127,6 @@ cc_library_static {
         "libprotobuf-cpp-lite",
     ],
     srcs: [
-        "perfprofd_counters.cc",
         ":perfprofd_config_proto",
     ],
 

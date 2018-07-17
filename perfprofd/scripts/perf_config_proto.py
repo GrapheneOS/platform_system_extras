@@ -106,7 +106,7 @@ def read_message(msg_descriptor, indent):
                 print('Not a valid input! (%s, %s)' % (sel, str(sys.exc_info()[0])))
                 continue
 
-#    # 1) Non-message-type fields. Assume they are not repeated.
+#    # 1) Non-message-type fields.
     if len(primitive_fields) > 1:
         print('%s(Primitives)' % (istr))
 
@@ -131,13 +131,16 @@ def read_message(msg_descriptor, indent):
                 except:
                     print('Could not parse input as integer!')
                     return True
-            setattr(instance, field.name, set_val)
+            if field.label == FieldDescriptor.LABEL_REPEATED:
+                getattr(instance, field.name).extend([set_val])
+            else:
+                setattr(instance, field.name, set_val)
             return True
 
         if not table_loop(primitive_fields, primitive_fn):
             return (instance, False)
 
-    # 2) Message-type fields. These may be repeated.
+    # 2) Message-type fields.
     if len(message_fields) > 1:
         print('%s(Nested messages)' % (istr))
 
