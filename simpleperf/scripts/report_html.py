@@ -621,7 +621,7 @@ class RecordData(object):
             min_limit = event.event_count * min_func_percent * 0.01
             for process in event.processes.values():
                 to_del_threads = []
-                for thread in event.threads:
+                for thread in process.threads.values():
                     if thread.call_graph.subtree_event_count < min_limit:
                         to_del_threads.append(thread.tid)
                     else:
@@ -795,6 +795,16 @@ class RecordData(object):
             file_list.append(file_data)
         return file_list
 
+URLS = {
+    'jquery': 'https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js',
+    'jquery-ui': 'https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js',
+    'jquery-ui-css':
+        'https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/themes/smoothness/jquery-ui.css',
+    'dataTable': 'https://cdn.datatables.net/1.10.16/js/jquery.dataTables.min.js',
+    'dataTable-jqueryui': 'https://cdn.datatables.net/1.10.16/js/dataTables.jqueryui.min.js',
+    'dataTable-css': 'https://cdn.datatables.net/1.10.16/css/jquery.dataTables.min.css',
+    'gstatic-charts': 'https://www.gstatic.com/charts/loader.js',
+}
 
 class ReportGenerator(object):
 
@@ -802,24 +812,13 @@ class ReportGenerator(object):
         self.hw = HtmlWriter(html_path)
         self.hw.open_tag('html')
         self.hw.open_tag('head')
-        self.hw.open_tag('link', rel='stylesheet', type='text/css',
-                         href='https://code.jquery.com/ui/1.12.0/themes/smoothness/jquery-ui.css'
-                        ).close_tag()
+        for css in ['jquery-ui-css', 'dataTable-css']:
+            self.hw.open_tag('link', rel='stylesheet', type='text/css', href=URLS[css]).close_tag()
+        for js in ['jquery', 'jquery-ui', 'dataTable', 'dataTable-jqueryui', 'gstatic-charts']:
+            self.hw.open_tag('script', src=URLS[js]).close_tag()
 
-        self.hw.open_tag('link', rel='stylesheet', type='text/css',
-                         href='https://cdn.datatables.net/1.10.16/css/jquery.dataTables.min.css'
-                        ).close_tag()
-        self.hw.open_tag('script', src='https://www.gstatic.com/charts/loader.js').close_tag()
         self.hw.open_tag('script').add(
             "google.charts.load('current', {'packages': ['corechart', 'table']});").close_tag()
-        self.hw.open_tag('script', src='https://code.jquery.com/jquery-3.2.1.js').close_tag()
-        self.hw.open_tag('script', src='https://code.jquery.com/ui/1.12.1/jquery-ui.js').close_tag()
-        self.hw.open_tag('script',
-                         src='https://cdn.datatables.net/1.10.16/js/jquery.dataTables.min.js'
-                        ).close_tag()
-        self.hw.open_tag('script',
-                         src='https://cdn.datatables.net/1.10.16/js/dataTables.jqueryui.min.js'
-                        ).close_tag()
         self.hw.open_tag('style', type='text/css').add("""
             .colForLine { width: 50px; }
             .colForCount { width: 100px; }
@@ -898,9 +897,9 @@ def main():
 
     # 3. Generate report html.
     report_generator = ReportGenerator(args.report_path)
+    report_generator.write_script()
     report_generator.write_content_div()
     report_generator.write_record_data(record_data.gen_record_info())
-    report_generator.write_script()
     report_generator.finish()
 
     if not args.no_browser:
