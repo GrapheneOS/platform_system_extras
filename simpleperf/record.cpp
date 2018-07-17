@@ -306,7 +306,7 @@ void Mmap2Record::DumpData(size_t indent) const {
                         ", ino_generation %" PRIu64 "\n",
                 data->pgoff, data->maj, data->min, data->ino,
                 data->ino_generation);
-  PrintIndented(indent, "prot %u, flags %u, filenames %s\n", data->prot,
+  PrintIndented(indent, "prot %u, flags %u, filename %s\n", data->prot,
                 data->flags, filename);
 }
 
