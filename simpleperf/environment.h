@@ -52,10 +52,10 @@ struct ThreadMmap {
   uint64_t len;
   uint64_t pgoff;
   std::string name;
-  bool executable;
+  uint32_t prot;
   ThreadMmap() {}
-  ThreadMmap(uint64_t start, uint64_t len, uint64_t pgoff, const char* name, bool executable)
-      : start_addr(start), len(len), pgoff(pgoff), name(name), executable(executable) {}
+  ThreadMmap(uint64_t start, uint64_t len, uint64_t pgoff, const char* name, uint32_t prot)
+      : start_addr(start), len(len), pgoff(pgoff), name(name), prot(prot) {}
 };
 
 bool GetThreadMmapsInProcess(pid_t pid, std::vector<ThreadMmap>* thread_mmaps);
@@ -126,5 +126,7 @@ int GetAndroidVersion();
 constexpr int kAndroidVersionP = 9;
 
 std::string GetHardwareFromCpuInfo(const std::string& cpu_info);
+
+bool MappedFileOnlyExistInMemory(const char* filename);
 
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_
