@@ -16,7 +16,23 @@
 'use strict';
 
 // Use IIFE to avoid leaking names to other scripts.
-$(document).ready(function() {
+(function () {
+
+function getTimeInMs() {
+    return new Date().getTime();
+}
+
+class TimeLog {
+    constructor() {
+        this.start = getTimeInMs();
+    }
+
+    log(name) {
+        let end = getTimeInMs();
+        console.log(name, end - this.start, 'ms');
+        this.start = end;
+    }
+}
 
 function openHtml(name, attrs={}) {
     let s = `<${name} `;
@@ -117,7 +133,7 @@ class TabManager {
 
     addTab(title, tabObj) {
         let id = createId();
-        let tabDiv = $('<div>', {id: id});
+        let tabDiv = $('<div>', {id: id, 'data-name':title});
         tabDiv.appendTo(this.div);
         this.div.children().first().append(
             getHtml('li', {text: getHtml('a', {href: '#' + id, text: title})}));
@@ -505,50 +521,39 @@ class SampleTableView {
         // Draw a table of 'Total', 'Self', 'Samples', 'Process', 'Thread', 'Library', 'Function'.
         this.div.empty();
         let eventInfo = this.eventInfo;
+        this.getSampleWeight = getSampleWeight;
         let sampleWeight = getSampleWeight(eventInfo.eventCount);
         this.div.append(getHtml('p', {text: `Sample table for event ${eventInfo.eventName}, ` +
                 `total count ${sampleWeight}${sampleWeightSuffix}`}));
-        let tableId = 'sampleTable_' + this.id;
+
         let valueSuffix = sampleWeightSuffix.length > 0 ? `(in${sampleWeightSuffix})` : '';
         let titles = ['Total' + valueSuffix, 'Self' + valueSuffix, 'Samples',
-                      'Process', 'Thread', 'Library', 'Function'];
-        let tableStr = openHtml('table', {id: tableId, cellspacing: '0', width: '100%'}) +
-                        getHtml('thead', {text: getTableRow(titles, 'th')}) +
-                        getHtml('tfoot', {text: getTableRow(titles, 'th')}) +
-                        openHtml('tbody');
-        for (let i = 0; i < eventInfo.processes.length; ++i) {
-            let processInfo = eventInfo.processes[i];
-            let processName = getProcessName(processInfo.pid);
-            for (let j = 0; j < processInfo.threads.length; ++j) {
-                let threadInfo = processInfo.threads[j];
-                let threadName = getThreadName(threadInfo.tid);
-                for (let k = 0; k < threadInfo.libs.length; ++k) {
-                    let lib = threadInfo.libs[k];
-                    let libName = getLibName(lib.libId);
-                    for (let t = 0; t < lib.functions.length; ++t) {
-                        let func = lib.functions[t];
-                        let key = [i, j, k, t].join('_');
-                        let totalValue = getSampleWeight(func.c[2]);
-                        let selfValue = getSampleWeight(func.c[1]);
-                        tableStr += getTableRow([totalValue, selfValue, func.c[0],
-                                                 processName, threadName, libName,
-                                                 getFuncName(func.f)], 'td', {key: key});
-                    }
-                }
-            }
-        }
-        tableStr += closeHtml('tbody') + closeHtml('table');
-        this.div.append(tableStr);
-        let table = this.div.find(`table#${tableId}`).dataTable({
+                      'Process', 'Thread', 'Library', 'Function', 'HideKey'];
+        this.div.append(`
+            <table cellspacing="0" width="100%">
+                <thead>${getTableRow(titles, 'th')}</thead>
+                <tbody></tbody>
+                <tfoot>${getTableRow(titles, 'th')}</tfoot>
+            </table>
+        `);
+
+        let table = this.div.find('table');
+        this.dataTable = table.DataTable({
             lengthMenu: [10, 20, 50, 100, -1],
-            processing: true,
             order: [0, 'desc'],
             responsive: true,
         });
+        this.dataTable.column(7).visible(false);
 
         table.find('tr').css('cursor', 'pointer');
+        let dataTable = this.dataTable;
         table.on('click', 'tr', function() {
-            let key = this.getAttribute('key');
+            let data = dataTable.row(this).data();
+            if (!data) {
+                // A row in header or footer.
+                return;
+            }
+            let key = data[7];
             if (!key) {
                 return;
             }
@@ -559,6 +564,46 @@ class SampleTableView {
             let func = lib.functions[indexes[3]];
             FunctionTab.showFunction(eventInfo, processInfo, threadInfo, lib, func);
         });
+        this.drawPos = [0, 0, 0, 0]
+        setTimeout(() => this.drawDetailsInIdleTime(), 0);
+    }
+
+    drawDetailsInIdleTime() {
+        let firstProcess = true;
+        let firstThread = true;
+        let firstLib = true;
+        let count = 0;
+        let dataTable = this.dataTable;
+        for (let i = this.drawPos[0]; i < this.eventInfo.processes.length; ++i) {
+            let process = this.eventInfo.processes[i];
+            let processName = getProcessName(process.pid);
+            for (let j = firstProcess ? this.drawPos[1] : 0; j < process.threads.length; ++j) {
+                let thread = process.threads[j];
+                let threadName = getThreadName(thread.tid);
+                for (let k = firstThread ? this.drawPos[2] : 0; k < thread.libs.length; ++k) {
+                    let lib = thread.libs[k];
+                    let libName = getLibName(lib.libId);
+                    for (let t = firstLib ? this.drawPos[3] : 0; t < lib.functions.length; ++t) {
+                        if (count++ == 1000) {
+                            dataTable.draw();
+                            this.drawPos = [i, j, k, t];
+                            setTimeout(() => this.drawDetailsInIdleTime(), 0);
+                            return;
+                        }
+                        let func = lib.functions[t];
+                        let totalValue = this.getSampleWeight(func.c[2]);
+                        let selfValue = this.getSampleWeight(func.c[1]);
+                        let key = [i, j, k, t].join('_');
+                        dataTable.row.add([totalValue, selfValue, func.c[0], processName,
+                            threadName, libName, getFuncName(func.f), key]);
+                    }
+                    firstLib = false;
+                }
+                firstThread = false;
+            }
+            firstProcess = false;
+        }
+        dataTable.draw();
     }
 }
 
@@ -593,11 +638,15 @@ class FlameGraphTab {
 }
 
 // Show FlameGraphs for samples in an event type, used in FlameGraphTab.
+// 1. Draw 10 FlameGraphs at one time, and use a "More" button to show more FlameGraphs.
+// 2. First draw background of Flamegraphs, then draw details in setTimeout(0) callback.
 class FlameGraphViewList {
     constructor(divContainer, divId, eventInfo) {
-        this.div = $('<div>', {id: divId});
-        this.div.appendTo(divContainer);
+        this.div = $('<div>', {id: divId}).appendTo(divContainer);
         this.eventInfo = eventInfo;
+        this.flamegraphs = [];
+        this.drawDetailsPos = 0;
+        this.moreButton = null;
     }
 
     draw() {
@@ -605,30 +654,71 @@ class FlameGraphViewList {
         this.selectorView = new SampleWeightSelectorView(this.div, this.eventInfo,
                                                          () => this.onSampleWeightChange());
         this.selectorView.draw();
-        this.flamegraphs = [];
-        for (let process of this.eventInfo.processes) {
-            for (let thread of process.threads) {
+        this.flamegraphDiv = $('<div>').appendTo(this.div);
+        this._drawMoreFlameGraphs(10);
+    }
+
+    _drawMoreFlameGraphs(moreCount) {
+        if (this.moreButton) {
+            this.moreButton.hide();
+        }
+        let pId = 0;
+        let tId = 0;
+        let newFlamegraphs = [];
+        let newCount = this.flamegraphs.length + moreCount;
+        for (let i = 0; i < newCount; ++i) {
+            if (pId == this.eventInfo.processes.length) {
+                break;
+            }
+            let process = this.eventInfo.processes[pId];
+            let thread = process.threads[tId];
+            if (i >= this.flamegraphs.length) {
                 let title = `Process ${getProcessName(process.pid)} ` +
-                    `Thread ${getThreadName(thread.tid)} ` +
-                    `(Samples: ${thread.sampleCount})`;
-                let flamegraphView = new FlameGraphView(this.div, title, thread.g.c, false);
-                this.flamegraphs.push(flamegraphView);
+                            `Thread ${getThreadName(thread.tid)} ` +
+                            `(Samples: ${thread.sampleCount})`;
+                let totalCount = {countForProcess: process.eventCount,
+                                  countForThread: thread.eventCount};
+                let flamegraph = new FlameGraphView(this.flamegraphDiv, title, totalCount,
+                                                    thread.g.c, false);
+                flamegraph.draw();
+                newFlamegraphs.push(flamegraph);
+            }
+            tId++;
+            if (tId == process.threads.length) {
+                pId++;
+                tId = 0;
             }
         }
-        this.onSampleWeightChange();
+        if (pId < this.eventInfo.processes.length) {
+            // Show "More" Button.
+            if (!this.moreButton) {
+                this.div.append('<div style="text-align:center"><button>More</button></div>');
+                this.moreButton = this.div.children().last().find('button');
+                this.moreButton.button().click(() => this._drawMoreFlameGraphs(10));
+                this.moreButton.hide();
+            }
+        } else if (this.moreButton) {
+            this.moreButton.remove();
+            this.moreButton = null;
+        }
+        for (let flamegraph of newFlamegraphs) {
+            this.flamegraphs.push(flamegraph);
+        }
+        setTimeout(() => this.drawDetailsInIdleTime(), 0);
     }
 
     onSampleWeightChange() {
-        let sampleWeightFunction = this.selectorView.getSampleWeightFunction();
-        let totalCount = {};
-        let graphId = 0;
-        for (let process of this.eventInfo.processes) {
-            totalCount.countForProcess = process.eventCount;
-            for (let thread of process.threads) {
-                totalCount.countForThread = thread.eventCount;
-                this.flamegraphs[graphId++].draw(
-                    (eventCount) => sampleWeightFunction(eventCount, totalCount));
-            }
+        this.drawDetailsPos = 0;
+        setTimeout(() => this.drawDetailsInIdleTime(), 0);
+    }
+
+    drawDetailsInIdleTime() {
+        if (this.drawDetailsPos < this.flamegraphs.length) {
+            let flamegraph = this.flamegraphs[this.drawDetailsPos++];
+            flamegraph.drawDetails(this.selectorView.getSampleWeightFunction());
+            setTimeout(() => this.drawDetailsInIdleTime(), 0);
+        } else if (this.moreButton) {
+            this.moreButton.show();
         }
     }
 }
@@ -697,9 +787,13 @@ class FunctionTab {
             recursiveFn(root);
             return nodes;
         }
+        let totalCount = {countForProcess: this.processInfo.eventCount,
+                          countForThread: this.threadInfo.eventCount};
         this.callgraphView = new FlameGraphView(this.div, `Functions called by ${funcName}`,
+                                                totalCount,
                                                 getNodesMatchingFuncId(this.threadInfo.g), false);
         this.reverseCallgraphView = new FlameGraphView(this.div, `Functions calling ${funcName}`,
+                                                       totalCount,
                                                        getNodesMatchingFuncId(this.threadInfo.rg),
                                                        true);
         let sourceFiles = collectSourceFilesForFunction(this.func);
@@ -760,10 +854,12 @@ class FunctionTab {
         };
         let sampleWeightFunction = (eventCount) => rawSampleWeightFunction(eventCount, totalCount);
         if (this.callgraphView) {
-            this.callgraphView.draw(sampleWeightFunction);
+            this.callgraphView.draw();
+            this.callgraphView.drawDetails(sampleWeightFunction);
         }
         if (this.reverseCallgraphView) {
-            this.reverseCallgraphView.draw(sampleWeightFunction);
+            this.reverseCallgraphView.draw();
+            this.reverseCallgraphView.drawDetails(sampleWeightFunction);
         }
         if (this.sourceCodeView) {
             this.sourceCodeView.draw(sampleWeightFunction);
@@ -864,12 +960,13 @@ class SampleWeightSelectorView {
 
 // Given a callgraph, show the flamegraph.
 class FlameGraphView {
-    constructor(divContainer, title, initNodes, reverseOrder) {
+    constructor(divContainer, title, totalCount, initNodes, reverseOrder) {
         this.id = createId();
         this.div = $('<div>', {id: this.id,
                                style: 'font-family: Monospace; font-size: 12px'});
         this.div.appendTo(divContainer);
         this.title = title;
+        this.totalCount = totalCount;
         this.reverseOrder = reverseOrder;
         this.sampleWeightFunction = null;
         this.svgNodeHeight = 17;
@@ -892,28 +989,31 @@ class FlameGraphView {
         this.svgHeight = this.svgNodeHeight * (this.maxDepth + 3);
     }
 
-    draw(sampleWeightFunction) {
-        this.sampleWeightFunction = sampleWeightFunction;
+    draw() {
+        // Only draw skeleton.
         this.div.empty();
         this.div.append(`<p><b>${this.title}</b></p>`);
-        let svgDiv = $('<div>').appendTo(this.div);
-        this.div.append('<br/><br/>');
-        svgDiv.css('width', '100%').css('height', this.svgHeight + 'px');
-        let svgStr = '<svg xmlns="http://www.w3.org/2000/svg" \
-        xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" \
-        width="100%" height="100%" style="border: 1px solid black; "> \
-        </svg>';
-        svgDiv.append(svgStr);
-        this.svg = svgDiv.find('svg');
+        this.svgStr = [];
         this._renderBackground();
-        this._renderSvgNodes(this.initNodes);
+        this.svgStr.push('</svg></div>');
+        this.div.append(this.svgStr.join(''));
+        this.svgDiv = this.div.children().last();
+        this.div.append('<br/><br/>');
+    }
+
+    drawDetails(sampleWeightFunction) {
+        this.sampleWeightFunction = sampleWeightFunction;
+        this.svgStr = [];
+        this._renderBackground();
+        this._renderSvgNodes();
         this._renderUnzoomNode();
         this._renderInfoNode();
         this._renderPercentNode();
         this._renderSearchNode();
-        // Make the added nodes in the svg visible.
-        svgDiv.html(svgDiv.html());
-        this.svg = svgDiv.find('svg');
+        // It is much faster to add html content to svgStr than adding it directly to svgDiv.
+        this.svgDiv.html(this.svgStr.join(''));
+        this.svgStr = [];
+        this.svg = this.svgDiv.find('svg');
         this._adjustTextSize();
         this._enableZoom();
         this._enableInfo();
@@ -922,13 +1022,17 @@ class FlameGraphView {
     }
 
     _renderBackground() {
-        this.svg.append(`<defs > <linearGradient id="background_gradient_${this.id}"
-                                  y1="0" y2="1" x1="0" x2="0" > \
-                                  <stop stop-color="#eeeeee" offset="5%" /> \
-                                  <stop stop-color="#efefb1" offset="90%" /> \
-                                  </linearGradient> \
-                         </defs> \
-                         <rect x="0" y="0" width="100%" height="100%" \
+        this.svgStr.push(`
+            <div style="width: 100%; height: ${this.svgHeight}px;">
+                <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+                    version="1.1" width="100%" height="100%" style="border: 1px solid black; ">
+                        <defs > <linearGradient id="background_gradient_${this.id}"
+                                  y1="0" y2="1" x1="0" x2="0" >
+                                  <stop stop-color="#eeeeee" offset="5%" />
+                                  <stop stop-color="#efefb1" offset="90%" />
+                                  </linearGradient>
+                         </defs>
+                         <rect x="0" y="0" width="100%" height="100%"
                            fill="url(#background_gradient_${this.id})" />`);
     }
 
@@ -1006,14 +1110,14 @@ class FlameGraphView {
         }
         let funcName = getFuncName(funcId);
         let libName = getLibNameOfFunction(funcId);
-        let sampleWeight = this.sampleWeightFunction(sumCount);
+        let sampleWeight = this.sampleWeightFunction(sumCount, this.totalCount);
         let title = funcName + ' | ' + libName + ' (' + sumCount + ' events: ' +
                     sampleWeight + ')';
-        this.svg.append(`<g> <title>${title}</title> <rect x="${x}%" y="${y}" ox="${x}" \
-                        depth="${depth}" width="${width}%" owidth="${width}" height="15.0" \
-                        ofill="rgb(${color.r},${color.g},${color.b})" \
-                        fill="rgb(${color.r},${color.g},${color.b})" \
-                        style="stroke:rgb(${borderColor.r},${borderColor.g},${borderColor.b})"/> \
+        this.svgStr.push(`<g><title>${title}</title> <rect x="${x}%" y="${y}" ox="${x}"
+                        depth="${depth}" width="${width}%" owidth="${width}" height="15.0"
+                        ofill="rgb(${color.r},${color.g},${color.b})"
+                        fill="rgb(${color.r},${color.g},${color.b})"
+                        style="stroke:rgb(${borderColor.r},${borderColor.g},${borderColor.b})"/>
                         <text x="${x}%" y="${y + 12}"></text></g>`);
 
         let children = isArray ? this._splitChildrenForNodes(nodes) : nodes.c;
@@ -1025,36 +1129,36 @@ class FlameGraphView {
     }
 
     _renderUnzoomNode() {
-        this.svg.append(`<rect id="zoom_rect_${this.id}" style="display:none;stroke:rgb(0,0,0);" \
-        rx="10" ry="10" x="10" y="10" width="80" height="30" \
-        fill="rgb(255,255,255)"/> \
+        this.svgStr.push(`<rect id="zoom_rect_${this.id}" style="display:none;stroke:rgb(0,0,0);"
+        rx="10" ry="10" x="10" y="10" width="80" height="30"
+        fill="rgb(255,255,255)"/>
          <text id="zoom_text_${this.id}" x="19" y="30" style="display:none">Zoom out</text>`);
     }
 
     _renderInfoNode() {
-        this.svg.append(`<clipPath id="info_clip_path_${this.id}"> \
-                         <rect style="stroke:rgb(0,0,0);" rx="10" ry="10" x="120" y="10" \
-                         width="789" height="30" fill="rgb(255,255,255)"/> \
-                         </clipPath> \
-                         <rect style="stroke:rgb(0,0,0);" rx="10" ry="10" x="120" y="10" \
-                         width="799" height="30" fill="rgb(255,255,255)"/> \
-                         <text clip-path="url(#info_clip_path_${this.id})" \
+        this.svgStr.push(`<clipPath id="info_clip_path_${this.id}">
+                         <rect style="stroke:rgb(0,0,0);" rx="10" ry="10" x="120" y="10"
+                         width="789" height="30" fill="rgb(255,255,255)"/>
+                         </clipPath>
+                         <rect style="stroke:rgb(0,0,0);" rx="10" ry="10" x="120" y="10"
+                         width="799" height="30" fill="rgb(255,255,255)"/>
+                         <text clip-path="url(#info_clip_path_${this.id})"
                          id="info_text_${this.id}" x="128" y="30"></text>`);
     }
 
     _renderPercentNode() {
-        this.svg.append(`<rect style="stroke:rgb(0,0,0);" rx="10" ry="10" \
-                         x="934" y="10" width="150" height="30" \
-                         fill="rgb(255,255,255)"/> \
-                         <text id="percent_text_${this.id}" text-anchor="end" \
+        this.svgStr.push(`<rect style="stroke:rgb(0,0,0);" rx="10" ry="10"
+                         x="934" y="10" width="150" height="30"
+                         fill="rgb(255,255,255)"/>
+                         <text id="percent_text_${this.id}" text-anchor="end"
                          x="1074" y="30"></text>`);
     }
 
     _renderSearchNode() {
-        this.svg.append('<rect style="stroke:rgb(0,0,0); rx="10" ry="10" \
-                         x="1150" y="10" width="80" height="30" \
-                         fill="rgb(255,255,255)" class="search"/> \
-                         <text x="1160" y="30" class="search">Search</text>');
+        this.svgStr.push(`<rect style="stroke:rgb(0,0,0); rx="10" ry="10"
+                         x="1150" y="10" width="80" height="30"
+                         fill="rgb(255,255,255)" class="search"/>
+                         <text x="1160" y="30" class="search">Search</text>`);
     }
 
     _adjustTextSizeForNode(g) {
@@ -1469,7 +1573,13 @@ let gFunctionMap;
 let gSampleInfo;
 let gSourceFiles;
 
-initGlobalObjects();
-createTabs();
-
+let timeLog = new TimeLog();
+$(document).ready(() => {
+    timeLog.log('loadHtmlTime');
+    initGlobalObjects();
+    timeLog.log('loadJsonTime')
+    createTabs();
+    timeLog.log('createTabsTime');
 });
+
+})();
