@@ -19,6 +19,7 @@ Optional arguments:
 * `--alignment=N` - By default, lpmake will align partitions to 1MiB boundaries. However, an alternate alignment can be specified if desired. This is useful for devices with a minimum I/O request size where mis-aligned partition boundaries could be a performance issue.
 * `--alignment-offset=N` - In some cases, the "super" partition is misaligned within its parent block device. This offset can be used to correct for that.
 * `--sparse` - If set, the output image will be in sparse format for flashing with fastboot. Otherwise, by default, the image will be a minimal format usable with lpdump and lpflash.
+* `-b,--block-size=N` - When writing sparse files, the device may require a specific block size. That block size can be specified here. The alignment must be a multiple of the block size. By default the block size is 4096.
 
 Example usage. This specifies a 10GB super partition for an A/B device, with a single 64MiB "cache" partition.
 
