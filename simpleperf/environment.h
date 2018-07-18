@@ -129,4 +129,6 @@ std::string GetHardwareFromCpuInfo(const std::string& cpu_info);
 
 bool MappedFileOnlyExistInMemory(const char* filename);
 
+std::string GetCompleteProcessName(pid_t pid);
+
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_

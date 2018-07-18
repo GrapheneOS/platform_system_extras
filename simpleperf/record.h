@@ -327,6 +327,8 @@ struct CommRecord : public Record {
   CommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
              const std::string& comm, uint64_t event_id, uint64_t time);
 
+  void SetCommandName(const std::string& name);
+
  protected:
   void DumpData(size_t indent) const override;
 };
