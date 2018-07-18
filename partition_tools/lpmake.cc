@@ -43,11 +43,13 @@ static int usage(int /* argc */, char* argv[]) {
             "  -s,--metadata-slots=COUNT     Number of slots to store metadata copies.\n"
             "  -p,--partition=DATA           Add a partition given the data, see below.\n"
             "  -o,--output=FILE              Output file.\n"
-            "  --alignment-offset=N          Alignment offset in bytes to device parent.\n"
-            "  --alignment=N                 Optimal partition alignment in bytes.\n"
-            "  --sparse                      Output a sparse image for fastboot.\n"
             "\n"
-            "Partition format:\n"
+            "Optional:\n"
+            "  -a,--alignment=N              Optimal partition alignment in bytes.\n"
+            "  -O,--alignment-offset=N       Alignment offset in bytes to device parent.\n"
+            "  -S,--sparse                   Output a sparse image for fastboot.\n"
+            "\n"
+            "Partition data format:\n"
             "  <name>:<guid>:<attributes>:<size>\n"
             "  Attrs must be 'none' or 'readonly'.\n",
             argv[0], argv[0]);
