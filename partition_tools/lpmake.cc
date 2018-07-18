@@ -45,6 +45,7 @@ static int usage(int /* argc */, char* argv[]) {
             "  -o,--output=FILE              Output file.\n"
             "\n"
             "Optional:\n"
+            "  -b,--block-size=SIZE          Physical block size, defaults to 4096.\n"
             "  -a,--alignment=N              Optimal partition alignment in bytes.\n"
             "  -O,--alignment-offset=N       Alignment offset in bytes to device parent.\n"
             "  -S,--sparse                   Output a sparse image for fastboot.\n"
@@ -67,6 +68,7 @@ int main(int argc, char* argv[]) {
         { "alignment-offset", required_argument, nullptr, 'O' },
         { "alignment", required_argument, nullptr, 'a' },
         { "sparse", no_argument, nullptr, 'S' },
+        { "block-size", required_argument, nullptr, 'b' },
         { nullptr, 0, nullptr, 0 },
     };
 
@@ -75,6 +77,7 @@ int main(int argc, char* argv[]) {
     uint32_t metadata_slots = 0;
     uint32_t alignment_offset = 0;
     uint32_t alignment = kDefaultPartitionAlignment;
+    uint32_t block_size = 4096;
     std::string output_path;
     std::vector<std::string> partitions;
     bool output_sparse = false;
@@ -123,6 +126,12 @@ int main(int argc, char* argv[]) {
                 break;
             case 'S':
                 output_sparse = true;
+                break;
+            case 'b':
+                if (!android::base::ParseUint(optarg, &block_size) || !block_size) {
+                    fprintf(stderr, "Invalid argument to --block-size.\n");
+                    return EX_USAGE;
+                }
                 break;
             default:
                 break;
@@ -199,7 +208,7 @@ int main(int argc, char* argv[]) {
 
     std::unique_ptr<LpMetadata> metadata = builder->Export();
     if (output_sparse) {
-        if (!WriteToSparseFile(output_path.c_str(), *metadata.get())) {
+        if (!WriteToSparseFile(output_path.c_str(), *metadata.get(), block_size)) {
             return EX_CANTCREAT;
         }
     } else if (!WriteToImageFile(output_path.c_str(), *metadata.get())) {
