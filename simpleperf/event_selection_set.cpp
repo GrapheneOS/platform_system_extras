@@ -116,13 +116,23 @@ bool IsSettingClockIdSupported() {
   return IsEventAttrSupported(attr);
 }
 
+bool IsMmap2Supported() {
+  const EventType* type = FindEventTypeByName("cpu-cycles");
+  if (type == nullptr) {
+    return false;
+  }
+  perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
+  attr.mmap2 = 1;
+  return IsEventAttrSupported(attr);
+}
+
 EventSelectionSet::EventSelectionSet(bool for_stat_cmd)
     : for_stat_cmd_(for_stat_cmd), loop_(new IOEventLoop) {}
 
 EventSelectionSet::~EventSelectionSet() {}
 
-bool EventSelectionSet::BuildAndCheckEventSelection(
-    const std::string& event_name, EventSelection* selection) {
+bool EventSelectionSet::BuildAndCheckEventSelection(const std::string& event_name, bool first_event,
+                                                    EventSelection* selection) {
   std::unique_ptr<EventTypeAndModifier> event_type = ParseEventType(event_name);
   if (event_type == nullptr) {
     return false;
@@ -159,6 +169,15 @@ bool EventSelectionSet::BuildAndCheckEventSelection(
       }
       selection->event_attr.sample_freq = freq;
     }
+    // We only need to dump mmap and comm records for the first event type. Because all event types
+    // are monitoring the same processes.
+    if (first_event) {
+      selection->event_attr.mmap = 1;
+      selection->event_attr.comm = 1;
+      if (IsMmap2Supported()) {
+        selection->event_attr.mmap2 = 1;
+      }
+    }
   }
   if (!IsEventAttrSupported(selection->event_attr)) {
     LOG(ERROR) << "Event type '" << event_type->name
@@ -186,11 +205,13 @@ bool EventSelectionSet::AddEventType(const std::string& event_name, size_t* grou
 bool EventSelectionSet::AddEventGroup(
     const std::vector<std::string>& event_names, size_t* group_id) {
   EventSelectionGroup group;
+  bool first_event = groups_.empty();
   for (const auto& event_name : event_names) {
     EventSelection selection;
-    if (!BuildAndCheckEventSelection(event_name, &selection)) {
+    if (!BuildAndCheckEventSelection(event_name, first_event, &selection)) {
       return false;
     }
+    first_event = false;
     group.push_back(std::move(selection));
   }
   groups_.push_back(std::move(group));
@@ -415,11 +436,8 @@ bool EventSelectionSet::NeedKernelSymbol() const {
 }
 
 void EventSelectionSet::SetRecordNotExecutableMaps(bool record) {
-  for (auto& group : groups_) {
-    for (auto& selection : group) {
-      selection.event_attr.mmap_data = record ? 1 : 0;
-    }
-  }
+  // We only need to dump non-executable mmap records for the first event type.
+  groups_[0][0].event_attr.mmap_data = record ? 1 : 0;
 }
 
 bool EventSelectionSet::RecordNotExecutableMaps() const {

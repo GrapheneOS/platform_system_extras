@@ -1027,11 +1027,11 @@ bool RecordCommand::DumpProcessMaps(pid_t pid, const std::unordered_set<pid_t>& 
   const perf_event_attr& attr = *dumping_attr_id_.attr;
   uint64_t event_id = dumping_attr_id_.ids[0];
   for (const auto& map : thread_mmaps) {
-    if (map.executable == 0 && !event_selection_set_.RecordNotExecutableMaps()) {
+    if (!(map.prot & PROT_EXEC) && !event_selection_set_.RecordNotExecutableMaps()) {
       continue;
     }
-    MmapRecord record(attr, false, pid, pid, map.start_addr, map.len,
-                      map.pgoff, map.name, event_id, last_record_timestamp_);
+    Mmap2Record record(attr, false, pid, pid, map.start_addr, map.len,
+                      map.pgoff, map.prot, map.name, event_id, last_record_timestamp_);
     if (!ProcessRecord(&record)) {
       return false;
     }
@@ -1084,11 +1084,8 @@ bool RecordCommand::ProcessRecord(Record* record) {
 }
 
 template <typename MmapRecordType>
-bool IsMappingOnlyExistInMemory(MmapRecordType* record) {
-  return !(record->InKernel() ||
-      strcmp(record->filename, "[vdso]") == 0 ||
-      strstr(record->filename, "!/") != nullptr ||
-      IsRegularFile(record->filename));
+bool MapOnlyExistInMemory(MmapRecordType* record) {
+  return !record->InKernel() && MappedFileOnlyExistInMemory(record->filename);
 }
 
 bool RecordCommand::ShouldOmitRecord(Record* record) {
@@ -1100,9 +1097,9 @@ bool RecordCommand::ShouldOmitRecord(Record* record) {
     // dalvik-jit-code-cache and other maps that only exist in memory.
     switch (record->type()) {
       case PERF_RECORD_MMAP:
-        return IsMappingOnlyExistInMemory(static_cast<MmapRecord*>(record));
+        return MapOnlyExistInMemory(static_cast<MmapRecord*>(record));
       case PERF_RECORD_MMAP2:
-        return IsMappingOnlyExistInMemory(static_cast<Mmap2Record*>(record));
+        return MapOnlyExistInMemory(static_cast<Mmap2Record*>(record));
     }
   }
   return false;
@@ -1200,8 +1197,7 @@ bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITSymFile>& jit_symfi
 }
 
 template <class RecordType>
-void UpdateMmapRecordForEmbeddedPath(RecordType* record) {
-  RecordType& r = *record;
+void UpdateMmapRecordForEmbeddedPath(RecordType& r, bool has_prot, uint32_t prot) {
   if (r.InKernel()) {
     return;
   }
@@ -1213,7 +1209,7 @@ void UpdateMmapRecordForEmbeddedPath(RecordType* record) {
     filename.resize(filename.size() - 10);
     name_changed = true;
   }
-  if (r.data->pgoff != 0) {
+  if (r.data->pgoff != 0 && (!has_prot || (prot & PROT_EXEC))) {
     // For the case of a shared library "foobar.so" embedded
     // inside an APK, we rewrite the original MMAP from
     // ["path.apk" offset=X] to ["path.apk!/foobar.so" offset=W]
@@ -1247,9 +1243,10 @@ void UpdateMmapRecordForEmbeddedPath(RecordType* record) {
 
 void RecordCommand::UpdateRecordForEmbeddedPath(Record* record) {
   if (record->type() == PERF_RECORD_MMAP) {
-    UpdateMmapRecordForEmbeddedPath(static_cast<MmapRecord*>(record));
+    UpdateMmapRecordForEmbeddedPath(*static_cast<MmapRecord*>(record), false, 0);
   } else if (record->type() == PERF_RECORD_MMAP2) {
-    UpdateMmapRecordForEmbeddedPath(static_cast<Mmap2Record*>(record));
+    auto r = static_cast<Mmap2Record*>(record);
+    UpdateMmapRecordForEmbeddedPath(*r, true, r->data->prot);
   }
 }
 

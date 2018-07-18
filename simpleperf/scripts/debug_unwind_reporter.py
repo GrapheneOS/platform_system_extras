@@ -349,7 +349,7 @@ def parse_callchain_record(lines, i, chain_type, process_maps):
             else:
                 break_pos = line.rfind('(')
             if break_pos > 0:
-                m = re.match(r'(.+)\[\+(\w+)\]\)', line[break_pos + 1:])
+                m = re.match(r'(.*)\[\+(\w+)\]\)', line[break_pos + 1:])
                 if m:
                     function_names.append(line[:break_pos].strip())
                     filenames.append(m.group(1))
@@ -389,7 +389,7 @@ def build_unwinding_result_report(args):
     lines = stdoutdata.split('\n')
     i = 0
     while i < len(lines):
-        if lines[i].startswith('record mmap:'):
+        if lines[i].startswith('record mmap:') or lines[i].startswith('record mmap2:'):
             i += 1
             pid = None
             start = None
@@ -402,7 +402,7 @@ def build_unwinding_result_report(args):
                         pid = int(m.group(1))
                         start = int(m.group(2), 16)
                         end = start + int(m.group(3), 16)
-                elif lines[i].startswith('  pgoff'):
+                elif 'filename' in lines[i]:
                     pos = lines[i].find('filename') + len('filename')
                     filename = lines[i][pos:].strip()
                 i += 1

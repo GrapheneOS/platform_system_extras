@@ -297,7 +297,7 @@ bool JITDebugReader::InitializeProcess(Process& process) {
   std::string art_lib_path;
   uint64_t min_vaddr_in_memory;
   for (auto& map : thread_mmaps) {
-    if (map.executable && IsArtLib(map.name)) {
+    if ((map.prot & PROT_EXEC) && IsArtLib(map.name)) {
       art_lib_path = map.name;
       min_vaddr_in_memory = map.start_addr;
       break;
