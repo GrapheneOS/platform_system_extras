@@ -754,3 +754,17 @@ bool MappedFileOnlyExistInMemory(const char* filename) {
             strncmp(filename, "//", 2) == 0 ||
             strncmp(filename, "/dev/", 5) == 0;
 }
+
+std::string GetCompleteProcessName(pid_t pid) {
+  std::string s;
+  if (!android::base::ReadFileToString(android::base::StringPrintf("/proc/%d/cmdline", pid), &s)) {
+    s.clear();
+  }
+  for (size_t i = 0; i < s.size(); ++i) {
+    if (isspace(s[i])) {
+      s.resize(i);
+      break;
+    }
+  }
+  return s;
+}
