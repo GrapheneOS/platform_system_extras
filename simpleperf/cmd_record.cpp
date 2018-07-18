@@ -277,7 +277,7 @@ class RecordCommand : public Command {
   bool ProcessJITDebugInfo(const std::vector<JITSymFile>& jit_symfiles,
                            const std::vector<DexSymFile>& dex_symfiles, bool sync_kernel_records);
 
-  void UpdateRecordForEmbeddedPath(Record* record);
+  void UpdateRecord(Record* record);
   bool UnwindRecord(SampleRecord& r);
   bool PostUnwindRecords();
   bool JoinCallChains();
@@ -1037,8 +1037,8 @@ bool RecordCommand::DumpProcessMaps(pid_t pid, const std::unordered_set<pid_t>& 
     }
   }
   // Dump process name.
-  std::string name;
-  if (GetThreadName(pid, &name)) {
+  std::string name = GetCompleteProcessName(pid);
+  if (!name.empty()) {
     CommRecord record(attr, pid, pid, name, event_id, last_record_timestamp_);
     if (!ProcessRecord(&record)) {
       return false;
@@ -1057,7 +1057,7 @@ bool RecordCommand::DumpProcessMaps(pid_t pid, const std::unordered_set<pid_t>& 
 }
 
 bool RecordCommand::ProcessRecord(Record* record) {
-  UpdateRecordForEmbeddedPath(record);
+  UpdateRecord(record);
   if (ShouldOmitRecord(record)) {
     return true;
   }
@@ -1241,12 +1241,20 @@ void UpdateMmapRecordForEmbeddedPath(RecordType& r, bool has_prot, uint32_t prot
   }
 }
 
-void RecordCommand::UpdateRecordForEmbeddedPath(Record* record) {
+void RecordCommand::UpdateRecord(Record* record) {
   if (record->type() == PERF_RECORD_MMAP) {
     UpdateMmapRecordForEmbeddedPath(*static_cast<MmapRecord*>(record), false, 0);
   } else if (record->type() == PERF_RECORD_MMAP2) {
     auto r = static_cast<Mmap2Record*>(record);
     UpdateMmapRecordForEmbeddedPath(*r, true, r->data->prot);
+  } else if (record->type() == PERF_RECORD_COMM) {
+    auto r = static_cast<CommRecord*>(record);
+    if (r->data->pid == r->data->tid) {
+      std::string s = GetCompleteProcessName(r->data->pid);
+      if (!s.empty()) {
+        r->SetCommandName(s);
+      }
+    }
   }
 }
 

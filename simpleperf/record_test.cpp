@@ -131,3 +131,17 @@ TEST_F(RecordTest, SampleRecord_AdjustCallChainGeneratedByKernel) {
   expected.header.misc = PERF_RECORD_MISC_KERNEL;
   CheckRecordEqual(r, expected);
 }
+
+TEST_F(RecordTest, CommRecord) {
+  CommRecord r(event_attr, 1, 2, "init_name", 3, 4);
+  size_t record_size = r.size();
+  std::string new_name = "a_much_longer_name";
+  r.SetCommandName(new_name);
+  ASSERT_EQ(r.size(), record_size + 8);
+  ASSERT_EQ(std::string(r.comm), new_name);
+  ASSERT_EQ(r.data->pid, 1u);
+  ASSERT_EQ(r.data->tid, 2u);
+  ASSERT_EQ(r.sample_id.id_data.id, 3u);
+  ASSERT_EQ(r.sample_id.time_data.time, 4u);
+  CheckRecordMatchBinary(r);
+}
