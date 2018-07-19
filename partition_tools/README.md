@@ -19,7 +19,8 @@ Optional arguments:
 * `--alignment=N` - By default, lpmake will align partitions to 1MiB boundaries. However, an alternate alignment can be specified if desired. This is useful for devices with a minimum I/O request size where mis-aligned partition boundaries could be a performance issue.
 * `--alignment-offset=N` - In some cases, the "super" partition is misaligned within its parent block device. This offset can be used to correct for that.
 * `--sparse` - If set, the output image will be in sparse format for flashing with fastboot. Otherwise, by default, the image will be a minimal format usable with lpdump and lpflash.
-* `-b,--block-size=N` - When writing sparse files, the device may require a specific block size. That block size can be specified here. The alignment must be a multiple of the block size. By default the block size is 4096.
+* `-b,--block-size=N` - When writing a sparse image, the device may require a specific block size. That block size can be specified here. The alignment must be a multiple of the block size. By default the block size is 4096.
+* `-i,--image=[NAME=FILE]` - When writing a sparse image, include the contents of FILE as the data for the partition named NAME. The file can be a normal file or a sparse image, but the destination size must be less than or equal to the partition size. This option is only available when creating sparse images.
 
 Example usage. This specifies a 10GB super partition for an A/B device, with a single 64MiB "cache" partition.
 
@@ -28,7 +29,8 @@ lpmake --device-size 10240000000 \
        --metadata-size 65536     \
        --metadata-slots 2        \
        -o /tmp/super.img         \
-       -p "cache:2da85788-f0e1-4fda-9ee7-e5177eab184b:none:67108864"
+       -p "cache:2da85788-f0e1-4fda-9ee7-e5177eab184b:none:67108864" \
+       -i "cache=out/target/hikey960/cache.img"
 ```
 
 ## lpdump
