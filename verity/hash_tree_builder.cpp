@@ -18,6 +18,7 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
 
 #include "build_verity_tree_utils.h"
@@ -28,6 +29,29 @@ HashTreeBuilder::HashTreeBuilder(size_t block_size)
 
   hash_size_ = EVP_MD_size(md_);
   CHECK_LT(hash_size_ * 2, block_size_);
+}
+
+std::string HashTreeBuilder::BytesArrayToString(
+    const std::vector<unsigned char>& bytes) {
+  std::string result;
+  for (const auto& c : bytes) {
+    result += android::base::StringPrintf("%02x", c);
+  }
+  return result;
+}
+
+uint64_t HashTreeBuilder::CalculateSize(uint64_t input_size) const {
+  size_t verity_blocks = 0;
+  size_t level_blocks;
+  size_t levels = 0;
+  do {
+    level_blocks =
+        verity_tree_blocks(input_size, block_size_, hash_size_, levels);
+    levels++;
+    verity_blocks += level_blocks;
+  } while (level_blocks > 1);
+
+  return verity_blocks * block_size_;
 }
 
 bool HashTreeBuilder::Initialize(int64_t expected_data_size,
@@ -149,11 +173,16 @@ bool HashTreeBuilder::WriteHashTreeToFile(const std::string& output) const {
     return false;
   }
 
-  return WriteHashTreeToFd(output_fd);
+  return WriteHashTreeToFd(output_fd, 0);
 }
 
-bool HashTreeBuilder::WriteHashTreeToFd(int fd) const {
+bool HashTreeBuilder::WriteHashTreeToFd(int fd, off_t offset) const {
   CHECK(!verity_tree_.empty());
+
+  if (lseek(fd, offset, SEEK_SET) != offset) {
+    PLOG(ERROR) << "Failed to seek the output fd, offset: " << offset;
+    return false;
+  }
 
   // Reads reversely to output the verity tree top-down.
   for (size_t i = verity_tree_.size(); i > 0; i--) {
