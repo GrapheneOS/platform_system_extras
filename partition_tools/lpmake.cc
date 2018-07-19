@@ -49,6 +49,9 @@ static int usage(int /* argc */, char* argv[]) {
             "  -a,--alignment=N              Optimal partition alignment in bytes.\n"
             "  -O,--alignment-offset=N       Alignment offset in bytes to device parent.\n"
             "  -S,--sparse                   Output a sparse image for fastboot.\n"
+            "  -i,--image=PARTITION=FILE     If building a sparse image for fastboot, include\n"
+            "                                the given file (or sparse file) as initial data for\n"
+            "                                the named partition.\n"
             "\n"
             "Partition data format:\n"
             "  <name>:<guid>:<attributes>:<size>\n"
@@ -69,6 +72,7 @@ int main(int argc, char* argv[]) {
         { "alignment", required_argument, nullptr, 'a' },
         { "sparse", no_argument, nullptr, 'S' },
         { "block-size", required_argument, nullptr, 'b' },
+        { "image", required_argument, nullptr, 'i' },
         { nullptr, 0, nullptr, 0 },
     };
 
@@ -80,6 +84,7 @@ int main(int argc, char* argv[]) {
     uint32_t block_size = 4096;
     std::string output_path;
     std::vector<std::string> partitions;
+    std::map<std::string, std::string> images;
     bool output_sparse = false;
 
     int rv;
@@ -133,6 +138,20 @@ int main(int argc, char* argv[]) {
                     return EX_USAGE;
                 }
                 break;
+            case 'i':
+            {
+                char* separator = strchr(optarg, '=');
+                if (!separator || separator == optarg || !strlen(separator + 1)) {
+                    fprintf(stderr, "Expected PARTITION=FILE.\n");
+                    return EX_USAGE;
+                }
+                *separator = '\0';
+
+                std::string partition_name(optarg);
+                std::string file(separator + 1);
+                images[partition_name] = file;
+                break;
+            }
             default:
                 break;
         }
@@ -162,6 +181,10 @@ int main(int argc, char* argv[]) {
     }
     if (partitions.empty()) {
         fprintf(stderr, "Partition table must have at least one entry.\n");
+        return EX_USAGE;
+    }
+    if (!images.empty() && !output_sparse) {
+        fprintf(stderr, "Cannot write partition data for non-sparse images.\n");
         return EX_USAGE;
     }
 
@@ -208,7 +231,7 @@ int main(int argc, char* argv[]) {
 
     std::unique_ptr<LpMetadata> metadata = builder->Export();
     if (output_sparse) {
-        if (!WriteToSparseFile(output_path.c_str(), *metadata.get(), block_size)) {
+        if (!WriteToSparseFile(output_path.c_str(), *metadata.get(), block_size, images)) {
             return EX_CANTCREAT;
         }
     } else if (!WriteToImageFile(output_path.c_str(), *metadata.get())) {
