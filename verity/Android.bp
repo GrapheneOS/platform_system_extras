@@ -66,12 +66,15 @@ cc_binary_host {
     ],
 }
 
-cc_binary_host {
-    name: "build_verity_tree",
+cc_library_static {
+    name: "libverity_tree",
     srcs: [
+        "build_verity_tree.cpp",
+        "build_verity_tree_utils.cpp",
         "hash_tree_builder.cpp",
-        "build_verity_tree.cpp"
     ],
+
+    host_supported: true,
 
     static_libs: [
         "libsparse",
@@ -82,6 +85,29 @@ cc_binary_host {
         "libbase",
     ],
     cflags: [
+        "-D_FILE_OFFSET_BITS=64",
+        "-Wall",
+        "-Werror",
+    ],
+}
+
+cc_binary_host {
+    name: "build_verity_tree",
+    srcs: [
+        "build_verity_tree_main.cpp"
+    ],
+
+    static_libs: [
+        "libverity_tree",
+        "libsparse",
+        "libz",
+    ],
+    shared_libs: [
+        "libcrypto",
+        "libbase",
+    ],
+    cflags: [
+        "-D_FILE_OFFSET_BITS=64",
         "-Wall",
         "-Werror",
     ],
