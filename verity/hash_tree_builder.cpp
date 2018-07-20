@@ -41,7 +41,7 @@ std::string HashTreeBuilder::BytesArrayToString(
 }
 
 uint64_t HashTreeBuilder::CalculateSize(uint64_t input_size) const {
-  size_t verity_blocks = 0;
+  uint64_t verity_blocks = 0;
   size_t level_blocks;
   size_t levels = 0;
   do {
