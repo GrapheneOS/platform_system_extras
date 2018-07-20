@@ -1215,7 +1215,7 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf_Events)
   runner.addToConfig("compress=0");
 
   // Set event set.
-  runner.addToConfig("-e_cpu-cycles,page-faults@100000=dummy");
+  runner.addToConfig("-e_cpu-cycles,page-faults=100000");
 
   // Create semaphore file
   runner.create_semaphore_file();
@@ -1277,7 +1277,7 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf_EventsGroup)
   runner.addToConfig("compress=0");
 
   // Set event set.
-  runner.addToConfig("-g_cpu-cycles,page-faults@100000=dummy");
+  runner.addToConfig("-g_cpu-cycles,page-faults=100000");
 
   // Create semaphore file
   runner.create_semaphore_file();
