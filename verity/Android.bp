@@ -66,49 +66,65 @@ cc_binary_host {
     ],
 }
 
+cc_defaults {
+    name: "verity_tree_defaults",
+    cflags: [
+        "-D_FILE_OFFSET_BITS=64",
+        "-Wall",
+        "-Werror",
+    ],
+
+    static_libs: [
+        "libsparse",
+        "libz",
+    ],
+    shared_libs: [
+        "libcrypto",
+        "libbase",
+    ],
+
+    host_supported: true,
+}
+
 cc_library_static {
     name: "libverity_tree",
+    defaults: [
+        "verity_tree_defaults",
+    ],
+
     srcs: [
         "build_verity_tree.cpp",
         "build_verity_tree_utils.cpp",
         "hash_tree_builder.cpp",
     ],
-
-    host_supported: true,
-
-    static_libs: [
-        "libsparse",
-        "libz",
-    ],
-    shared_libs: [
-        "libcrypto",
-        "libbase",
-    ],
-    cflags: [
-        "-D_FILE_OFFSET_BITS=64",
-        "-Wall",
-        "-Werror",
-    ],
 }
 
 cc_binary_host {
     name: "build_verity_tree",
+    defaults: [
+        "verity_tree_defaults",
+    ],
+
     srcs: [
-        "build_verity_tree_main.cpp"
+        "build_verity_tree_main.cpp",
     ],
 
     static_libs: [
         "libverity_tree",
-        "libsparse",
-        "libz",
     ],
-    shared_libs: [
-        "libcrypto",
-        "libbase",
+}
+
+cc_test {
+    name: "build_verity_tree_test",
+    defaults: [
+        "verity_tree_defaults",
     ],
-    cflags: [
-        "-D_FILE_OFFSET_BITS=64",
-        "-Wall",
-        "-Werror",
+
+    srcs: [
+        "build_verity_tree_test.cpp",
+    ],
+
+    static_libs: [
+        "libverity_tree",
     ],
 }
