@@ -31,10 +31,13 @@ namespace {
 
 void AddSymbolInfo(PerfprofdRecord* record,
                    ::quipper::PerfParser& perf_parser,
-                   ::perfprofd::Symbolizer* symbolizer) {
+                   ::perfprofd::Symbolizer* symbolizer,
+                   bool symbolize_everything) {
   std::unordered_set<std::string> filenames_w_build_id;
-  for (auto& perf_build_id : record->build_ids()) {
-    filenames_w_build_id.insert(perf_build_id.filename());
+  if (!symbolize_everything) {
+    for (auto& perf_build_id : record->build_ids()) {
+      filenames_w_build_id.insert(perf_build_id.filename());
+    }
   }
 
   std::unordered_set<std::string> files_wo_build_id;
@@ -161,7 +164,8 @@ void AddSymbolInfo(PerfprofdRecord* record,
 
 PerfprofdRecord*
 RawPerfDataToAndroidPerfProfile(const string &perf_file,
-                                ::perfprofd::Symbolizer* symbolizer) {
+                                ::perfprofd::Symbolizer* symbolizer,
+                                 bool symbolize_everything) {
   std::unique_ptr<PerfprofdRecord> ret(new PerfprofdRecord());
   ret->SetExtension(::quipper::id, 0);  // TODO.
 
@@ -183,7 +187,7 @@ RawPerfDataToAndroidPerfProfile(const string &perf_file,
 
   // TODO: Symbolization.
   if (symbolizer != nullptr) {
-    AddSymbolInfo(ret.get(), parser, symbolizer);
+    AddSymbolInfo(ret.get(), parser, symbolizer, symbolize_everything);
   }
 
   return ret.release();
