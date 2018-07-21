@@ -32,6 +32,7 @@ enum PerfResult {
   kOK,
   kForkFailed,
   kRecordFailed,
+  kUnsupportedEvent,
 };
 
 //
