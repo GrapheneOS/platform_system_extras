@@ -343,6 +343,15 @@ status_t PerfProfdNativeService::onTransact(uint32_t _aidl_code,
 }  // namespace
 
 int Main() {
+  {
+    struct DummyConfig : public Config {
+      void Sleep(size_t seconds) override {}
+      bool IsProfilingEnabled() const override { return false; }
+    };
+    DummyConfig config;
+    GlobalInit(config.perf_path);
+  }
+
   android::status_t ret;
   if ((ret = PerfProfdNativeService::start()) != android::OK) {
     LOG(ERROR) << "Unable to start InstalldNativeService: %d" << ret;
