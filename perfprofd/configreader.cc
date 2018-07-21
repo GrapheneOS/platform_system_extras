@@ -172,6 +172,9 @@ void ConfigReader::addDefaultEntries()
   // The pid of the process to profile. May be negative, in which case
   // the whole system will be profiled.
   addUnsignedEntry("process", static_cast<uint32_t>(-1), 0, UINT32_MAX);
+
+  // Whether to fail or strip unsupported events.
+  addUnsignedEntry("fail_on_unsupported_events", config.fail_on_unsupported_events ? 1 : 0, 0, 1);
 }
 
 void ConfigReader::addUnsignedEntry(const char *key,
@@ -445,6 +448,7 @@ void ConfigReader::FillConfig(Config* config) {
   config->use_elf_symbolizer = getBoolValue("use_elf_symbolizer");
   config->compress = getBoolValue("compress");
   config->send_to_dropbox = getBoolValue("dropbox");
+  config->fail_on_unsupported_events = getBoolValue("fail_on_unsupported_events");
 
   config->event_config.clear();
   for (auto event : data_->e_entries) {
@@ -484,6 +488,7 @@ void ConfigReader::ProtoToConfig(const android::perfprofd::ProfilingConfig& in, 
   CHECK_AND_COPY_FROM_PROTO(use_elf_symbolizer)
   CHECK_AND_COPY_FROM_PROTO(send_to_dropbox)
   CHECK_AND_COPY_FROM_PROTO(compress)
+  CHECK_AND_COPY_FROM_PROTO(fail_on_unsupported_events)
 #undef CHECK_AND_COPY_FROM_PROTO
 
   // Convert counters.

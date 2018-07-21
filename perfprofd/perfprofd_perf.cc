@@ -87,9 +87,31 @@ PerfResult InvokePerf(Config& config,
     }
 
     if (!config.event_config.empty()) {
+      const std::unordered_set<std::string>& supported = GetSupportedPerfCountersInternal();
       for (const auto& event_set : config.event_config) {
         if (event_set.events.empty()) {
           LOG(WARNING) << "Unexpected empty event set";
+          continue;
+        }
+
+        std::ostringstream event_str;
+        bool added = false;
+        for (const std::string& event : event_set.events) {
+          if (supported.find(event) == supported.end()) {
+            LOG(WARNING) << "Event " << event << " is unsupported.";
+            if (config.fail_on_unsupported_events) {
+              return PerfResult::kUnsupportedEvent;
+            }
+            continue;
+          }
+          if (added) {
+            event_str << ',';
+          }
+          event_str << event;
+          added = true;
+        }
+
+        if (!added) {
           continue;
         }
 
@@ -98,8 +120,7 @@ PerfResult InvokePerf(Config& config,
           add(std::to_string(event_set.sampling_period));
         }
         add(event_set.group ? "--group" : "-e");
-
-        add(android::base::Join(event_set.events, ','));
+        add(event_str.str());
       }
     }
 
