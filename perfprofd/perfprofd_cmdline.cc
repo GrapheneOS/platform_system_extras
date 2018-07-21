@@ -199,6 +199,7 @@ int perfprofd_main(int argc, char** argv, Config* config)
     init(config_reader);
     config_reader.FillConfig(config);
   }
+  GlobalInit(config->perf_path);
 
   if (!perf_file_to_convert.empty()) {
     std::string encoded_path = perf_file_to_convert + ".encoded";
