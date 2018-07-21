@@ -87,5 +87,8 @@ message ProfilingConfig {
   // If true, use libz to compress the output proto.
   optional bool compress = 21;
 
+  // Whether to fail or strip unsupported events.
+  optional bool fail_on_unsupported_events = 24;
+
   repeated PerfConfigElement event_config = 23;
 };
