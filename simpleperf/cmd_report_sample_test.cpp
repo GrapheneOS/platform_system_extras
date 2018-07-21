@@ -152,3 +152,12 @@ TEST(cmd_report_sample, show_symbols_before_and_after_demangle) {
   ASSERT_NE(data.find("mangled_symbol: _ZN7android8hardware14IPCThreadState14talkWithDriverEb"),
             std::string::npos);
 }
+
+TEST(cmd_report_sample, symdir_option) {
+  std::string data;
+  GetProtobufReport(PERF_DATA_FOR_BUILD_ID_CHECK, &data);
+  ASSERT_EQ(data.find("symbol: main"), std::string::npos);
+  GetProtobufReport(PERF_DATA_FOR_BUILD_ID_CHECK, &data,
+                    {"--symdir", GetTestDataDir() + CORRECT_SYMFS_FOR_BUILD_ID_CHECK});
+  ASSERT_NE(data.find("symbol: main"), std::string::npos);
+}
