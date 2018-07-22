@@ -18,7 +18,7 @@
 #include "perfprofd_perf.h"
 
 
-#include <assert.h>
+#include <inttypes.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -34,11 +34,21 @@
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <android-base/unique_fd.h>
 
 #include "config.h"
 
 namespace android {
 namespace perfprofd {
+
+namespace {
+
+std::unordered_set<std::string>& GetSupportedPerfCountersInternal() {
+  static std::unordered_set<std::string>& vec = *new std::unordered_set<std::string>();
+  return vec;
+}
+
+}  // namespace
 
 //
 // Invoke "perf record". Return value is OK_PROFILE_COLLECTION for
@@ -77,9 +87,31 @@ PerfResult InvokePerf(Config& config,
     }
 
     if (!config.event_config.empty()) {
+      const std::unordered_set<std::string>& supported = GetSupportedPerfCountersInternal();
       for (const auto& event_set : config.event_config) {
         if (event_set.events.empty()) {
           LOG(WARNING) << "Unexpected empty event set";
+          continue;
+        }
+
+        std::ostringstream event_str;
+        bool added = false;
+        for (const std::string& event : event_set.events) {
+          if (supported.find(event) == supported.end()) {
+            LOG(WARNING) << "Event " << event << " is unsupported.";
+            if (config.fail_on_unsupported_events) {
+              return PerfResult::kUnsupportedEvent;
+            }
+            continue;
+          }
+          if (added) {
+            event_str << ',';
+          }
+          event_str << event;
+          added = true;
+        }
+
+        if (!added) {
           continue;
         }
 
@@ -88,8 +120,7 @@ PerfResult InvokePerf(Config& config,
           add(std::to_string(event_set.sampling_period));
         }
         add(event_set.group ? "--group" : "-e");
-
-        add(android::base::Join(event_set.events, ','));
+        add(event_str.str());
       }
     }
 
@@ -200,6 +231,97 @@ PerfResult InvokePerf(Config& config,
   }
 
   return PerfResult::kRecordFailed;
+}
+
+bool FindSupportedPerfCounters(const std::string& perf_path) {
+  const char* argv[] = { perf_path.c_str(), "list", nullptr };
+
+  base::unique_fd link[2];
+  {
+    int link_fd[2];
+
+    if (pipe(link_fd) == -1) {
+      PLOG(ERROR) << "Pipe failed";
+      return false;
+    }
+    link[0].reset(link_fd[0]);
+    link[1].reset(link_fd[1]);
+  }
+
+  pid_t pid = fork();
+
+  if (pid == -1) {
+    PLOG(ERROR) << "Fork failed";
+    return PerfResult::kForkFailed;
+  }
+
+  if (pid == 0) {
+    // Child
+
+    // Redirect stdout and stderr.
+    dup2(link[1].get(), STDOUT_FILENO);
+    dup2(link[1].get(), STDERR_FILENO);
+
+    link[0].reset();
+    link[1].reset();
+
+    // exec
+    execvp(argv[0], const_cast<char* const*>(argv));
+    PLOG(WARNING) << "exec failed";
+    exit(1);
+    __builtin_unreachable();
+  }
+
+  link[1].reset();
+
+  std::string result;
+  if (!android::base::ReadFdToString(link[0].get(), &result)) {
+    PLOG(WARNING) << perf_path << " list reading failed.";
+  }
+
+  link[0].reset();
+
+  int status_code;
+  if (waitpid(pid, &status_code, 0) == -1) {
+    LOG(WARNING) << "Failed to wait for " << perf_path << " list";
+    return false;
+  }
+
+  if (!WIFEXITED(status_code) || WEXITSTATUS(status_code) != 0) {
+    LOG(WARNING) << perf_path << " list did not exit normally.";
+    return false;
+  }
+
+  std::unordered_set<std::string>& supported = GetSupportedPerfCountersInternal();
+  supported.clear();
+
+  // Could implement something with less memory requirements. But for now this is good
+  // enough.
+  std::vector<std::string> lines = base::Split(result, "\n");
+  for (const std::string& line : lines) {
+    if (line.length() < 2 || line.compare(0, 2, "  ") != 0) {
+      continue;
+    }
+    const size_t comment = line.find('#');
+    const size_t space = line.find(' ', 2);
+    size_t end = std::min(space, comment);
+    if (end != std::string::npos) {
+      // Scan backwards.
+      --end;
+      while (end > 2 && isspace(line[end])) {
+        end--;
+      }
+    }
+    if (end > 2) {
+      supported.insert(line.substr(2, end - 2));
+    }
+  }
+
+  return true;
+}
+
+const std::unordered_set<std::string>& GetSupportedPerfCounters() {
+  return GetSupportedPerfCountersInternal();
 }
 
 }  // namespace perfprofd

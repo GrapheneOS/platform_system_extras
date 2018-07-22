@@ -101,6 +101,9 @@ struct Config {
   // If true, send the proto to dropbox instead to a file.
   bool send_to_dropbox = false;
 
+  // Whether to fail or strip unsupported events.
+  bool fail_on_unsupported_events = false;
+
   struct PerfCounterConfigElem {
     std::vector<std::string> events;
     bool group;
