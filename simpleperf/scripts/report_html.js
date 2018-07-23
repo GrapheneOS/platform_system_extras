@@ -34,6 +34,77 @@ class TimeLog {
     }
 }
 
+class ProgressBar {
+    constructor() {
+        let str = `
+            <div class="modal" tabindex="-1" role="dialog">
+                <div class="modal-dialog" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header"><h5 class="modal-title">Loading page...</h5></div>
+                        <div class="modal-body">
+                            <div class="progress">
+                                <div class="progress-bar" role="progressbar"
+                                    style="width: 0%" aria-valuenow="0" aria-valuemin="0"
+                                    aria-valuemax="100">0%</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        this.modal = $(str).appendTo($('body'));
+        this.progress = 0;
+        this.shownCallback = null;
+        this.modal.on('shown.bs.modal', () => this._onShown());
+        // Shorten progress bar update time.
+        this.modal.find('.progress-bar').css('transition-duration', '0ms');
+        this.shown = false;
+    }
+
+    // progress is [0-100]. Return a Promise resolved when the update is shown.
+    updateAsync(text, progress) {
+        progress = parseInt(progress);  // Truncate float number to integer.
+        return this.showAsync().then(() => {
+            if (text) {
+                this.modal.find('.modal-title').text(text);
+            }
+            this.progress = progress;
+            this.modal.find('.progress-bar').css('width', progress + '%')
+                    .attr('aria-valuenow', progress).text(progress + '%');
+            // Leave 100ms for the progess bar to update.
+            return createPromise((resolve) => setTimeout(resolve, 100));
+        });
+    }
+
+    showAsync() {
+        if (this.shown) {
+            return createPromise();
+        }
+        return createPromise((resolve) => {
+            this.shownCallback = resolve;
+            this.modal.modal({
+                show: true,
+                keyboard: false,
+                backdrop: false,
+            });
+        });
+    }
+
+    _onShown() {
+        this.shown = true;
+        if (this.shownCallback) {
+            let callback = this.shownCallback;
+            this.shownCallback = null;
+            callback();
+        }
+    }
+
+    hide() {
+        this.shown = false;
+        this.modal.modal('hide');
+    }
+}
+
 function openHtml(name, attrs={}) {
     let s = `<${name} `;
     for (let key in attrs) {
@@ -125,54 +196,112 @@ let createId = function() {
 
 class TabManager {
     constructor(divContainer) {
-        this.div = $('<div>').appendTo(divContainer);
-        this.div.append(getHtml('ul'));
-        this.tabs = [];
-        this.isDrawCalled = false;
+        let id = createId();
+        divContainer.append(`<ul class="nav nav-pills mb-3 mt-3 ml-3" id="${id}" role="tablist">
+            </ul><hr/><div class="tab-content" id="${id}Content"></div>`);
+        this.ul = divContainer.find(`#${id}`);
+        this.content = divContainer.find(`#${id}Content`);
+        // Map from title to [tabObj, drawn=false|true].
+        this.tabs = new Map();
+        this.tabActiveCallback = null;
     }
 
     addTab(title, tabObj) {
         let id = createId();
-        let tabDiv = $('<div>', {id: id, 'data-name':title});
-        tabDiv.appendTo(this.div);
-        this.div.children().first().append(
-            getHtml('li', {text: getHtml('a', {href: '#' + id, text: title})}));
-        tabObj.init(tabDiv);
-        this.tabs.push(tabObj);
-        if (this.isDrawCalled) {
-            this.div.tabs('refresh');
-        }
+        this.content.append(`<div class="tab-pane" id="${id}" role="tabpanel"
+            aria-labelledby="${id}-tab"></div>`);
+        this.ul.append(`
+            <li class="nav-item">
+                <a class="nav-link" id="${id}-tab" data-toggle="pill" href="#${id}" role="tab"
+                    aria-controls="${id}" aria-selected="false">${title}</a>
+            </li>`);
+        tabObj.init(this.content.find(`#${id}`));
+        this.tabs.set(title, [tabObj, false]);
+        this.ul.find(`#${id}-tab`).on('shown.bs.tab', () => this.onTabActive(title));
         return tabObj;
     }
 
+    setActiveAsync(title) {
+        let tabObj = this.findTab(title);
+        return createPromise((resolve) => {
+            this.tabActiveCallback = resolve;
+            let id = tabObj.div.attr('id') + '-tab';
+            this.ul.find(`#${id}`).tab('show');
+        });
+    }
+
+    onTabActive(title) {
+        let array = this.tabs.get(title);
+        let tabObj = array[0];
+        let drawn = array[1];
+        if (!drawn) {
+            tabObj.draw();
+            array[1] = true;
+        }
+        if (this.tabActiveCallback) {
+            let callback = this.tabActiveCallback;
+            this.tabActiveCallback = null;
+            callback();
+        }
+    }
+
     findTab(title) {
-        let links = this.div.find('li a');
-        for (let i = 0; i < links.length; ++i) {
-            if (links.eq(i).text() == title) {
-                return this.tabs[i];
-            }
-        }
-        return null;
+        let array = this.tabs.get(title);
+        return array ? array[0] : null;
     }
+}
 
-    draw() {
-        this.div.tabs({
-            active: 0,
-        });
-        this.tabs.forEach(function(tab) {
-            tab.draw();
-        });
-        this.isDrawCalled = true;
+function createEventTabs(id) {
+    let ul = `<ul class="nav nav-pills mb-3 mt-3 ml-3" id="${id}" role="tablist">`;
+    let content = `<div class="tab-content" id="${id}Content">`;
+    for (let i = 0; i < gSampleInfo.length; ++i) {
+        let subId = id + '_' + i;
+        let title = gSampleInfo[i].eventName;
+        ul += `
+            <li class="nav-item">
+                <a class="nav-link" id="${subId}-tab" data-toggle="pill" href="#${subId}" role="tab"
+                aria-controls="${subId}" aria-selected="${i == 0 ? "true" : "false"}">${title}</a>
+            </li>`;
+        content += `
+            <div class="tab-pane" id="${subId}" role="tabpanel" aria-labelledby="${subId}-tab">
+            </div>`;
     }
+    ul += '</ul>';
+    content += '</div>';
+    return ul + content;
+}
 
-    setActive(tabObj) {
-        for (let i = 0; i < this.tabs.length; ++i) {
-            if (this.tabs[i] == tabObj) {
-                this.div.tabs('option', 'active', i);
-                break;
-            }
+function createViewsForEvents(div, createViewCallback) {
+    let views = [];
+    if (gSampleInfo.length == 1) {
+        views.push(createViewCallback(div, gSampleInfo[0]));
+    } else if (gSampleInfo.length > 1) {
+        // If more than one event, draw them in tabs.
+        let id = createId();
+        div.append(createEventTabs(id));
+        for (let i = 0; i < gSampleInfo.length; ++i) {
+            let subId = id + '_' + i;
+            views.push(createViewCallback(div.find(`#${subId}`), gSampleInfo[i]));
         }
+        div.find(`#${id}_0-tab`).tab('show');
     }
+    return views;
+}
+
+// Return a promise to draw views.
+function drawViewsAsync(views, totalProgress, drawViewCallback) {
+    if (views.length == 0) {
+        return createPromise();
+    }
+    let drawPos = 0;
+    let eachProgress = totalProgress / views.length;
+    function drawAsync() {
+        if (drawPos == views.length) {
+            return createPromise();
+        }
+        return drawViewCallback(views[drawPos++], eachProgress).then(drawAsync);
+    }
+    return drawAsync();
 }
 
 // Show global information retrieved from the record file, including:
@@ -337,9 +466,8 @@ class ChartView {
             },
         });
         if (this._getState() != this.states.SHOW_EVENT_INFO) {
-            let button = $('<button>', {text: 'Back'});
-            button.appendTo(this.div);
-            button.button().click(() => this._goBack());
+            $('<button type="button" class="btn btn-primary">Back</button>').appendTo(this.div)
+                .click(() => this._goBack());
         }
     }
 
@@ -408,17 +536,15 @@ class ChartView {
 class ChartStatTab {
     init(div) {
         this.div = div;
-        this.recordFileView = new RecordFileView(this.div);
-        this.chartViews = [];
-        for (let eventInfo of gSampleInfo) {
-            this.chartViews.push(new ChartView(this.div, eventInfo));
-        }
     }
 
     draw() {
-        this.recordFileView.draw();
-        for (let charView of this.chartViews) {
-            charView.draw();
+        new RecordFileView(this.div).draw();
+        let views = createViewsForEvents(this.div, (div, eventInfo) => {
+            return new ChartView(div, eventInfo);
+        });
+        for (let view of views) {
+            view.draw();
         }
     }
 }
@@ -427,27 +553,20 @@ class ChartStatTab {
 class SampleTableTab {
     init(div) {
         this.div = div;
-        this.selectorView = null;
-        this.sampleTableViews = [];
     }
 
     draw() {
-        this.selectorView = new SampleTableWeightSelectorView(this.div, gSampleInfo[0],
-                                                              () => this.onSampleWeightChange());
-        this.selectorView.draw();
-        for (let eventInfo of gSampleInfo) {
-            this.div.append(getHtml('hr'));
-            this.sampleTableViews.push(new SampleTableView(this.div, eventInfo));
-        }
-        this.onSampleWeightChange();
-    }
-
-    onSampleWeightChange() {
-        for (let i = 0; i < gSampleInfo.length; ++i) {
-            let sampleWeightFunction = this.selectorView.getSampleWeightFunction(gSampleInfo[i]);
-            let sampleWeightSuffix = this.selectorView.getSampleWeightSuffix(gSampleInfo[i]);
-            this.sampleTableViews[i].draw(sampleWeightFunction, sampleWeightSuffix);
-        }
+        let views = [];
+        createPromise()
+            .then(updateProgress('Draw SampleTable...', 0))
+            .then(wait(() => {
+                this.div.empty();
+                views = createViewsForEvents(this.div, (div, eventInfo) => {
+                    return new SampleTableView(div, eventInfo);
+                });
+            }))
+            .then(() => drawViewsAsync(views, 100, (view, progress) => view.drawAsync(progress)))
+            .then(hideProgress());
     }
 }
 
@@ -455,54 +574,57 @@ class SampleTableTab {
 // 1. Show percentage of event count.
 // 2. Show event count (For cpu-clock and task-clock events, it is time in ms).
 class SampleTableWeightSelectorView {
-    constructor(divContainer, firstEventInfo, onSelectChange) {
-        this.div = $('<div>');
-        this.div.appendTo(divContainer);
-        this.onSelectChange = onSelectChange;
-        this.options = {
-            SHOW_PERCENT: 0,
-            SHOW_EVENT_COUNT: 1,
-        };
-        if (isClockEvent(firstEventInfo)) {
-            this.curOption = this.options.SHOW_EVENT_COUNT;
-        } else {
-            this.curOption = this.options.SHOW_PERCENT;
+    constructor(divContainer, eventInfo, onSelectChange) {
+        let options = new Map();
+        options.set('percent', 'Show percentage of event count');
+        options.set('event_count', 'Show event count');
+        if (isClockEvent(eventInfo)) {
+            options.set('event_count_in_ms', 'Show event count in milliseconds');
         }
-    }
-
-    draw() {
-        let options = ['Show percentage of event count', 'Show event count'];
-        let optionStr = '';
-        for (let i = 0; i < options.length; ++i) {
-            optionStr += getHtml('option', {value: i, text: options[i]});
-        }
-        this.div.append(getHtml('select', {text: optionStr}));
-        let selectMenu = this.div.children().last();
-        selectMenu.children().eq(this.curOption).attr('selected', 'selected');
-        let thisObj = this;
-        selectMenu.selectmenu({
-            change: function() {
-                thisObj.curOption = this.value;
-                thisObj.onSelectChange();
-            },
-            width: '100%',
+        let buttons = [];
+        options.forEach((value, key) => {
+            buttons.push(`<button type="button" class="dropdown-item" key="${key}">${value}
+                          </button>`);
+        });
+        this.curOption = 'percent';
+        this.eventCount = eventInfo.eventCount;
+        let id = createId();
+        let str = `
+            <div class="dropdown">
+                <button type="button" class="btn btn-primary dropdown-toggle" id="${id}"
+                    data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"
+                    >${options.get(this.curOption)}</button>
+                <div class="dropdown-menu" aria-labelledby="${id}">${buttons.join('')}</div>
+            </div>
+        `;
+        divContainer.append(str);
+        divContainer.children().last().on('hidden.bs.dropdown', (e) => {
+            if (e.clickEvent) {
+                let button = $(e.clickEvent.target);
+                let newOption = button.attr('key');
+                if (this.curOption != newOption) {
+                    this.curOption = newOption;
+                    divContainer.find(`#${id}`).text(options.get(this.curOption));
+                    onSelectChange();
+                }
+            }
         });
     }
 
-    getSampleWeightFunction(eventInfo) {
-        if (this.curOption == this.options.SHOW_PERCENT) {
-            return function(eventCount) {
-                return (eventCount * 100.0 / eventInfo.eventCount).toFixed(2) + '%';
-            };
+    getSampleWeightFunction() {
+        if (this.curOption == 'percent') {
+            return (eventCount) => (eventCount * 100.0 / this.eventCount).toFixed(2) + '%';
         }
-        if (isClockEvent(eventInfo)) {
+        if (this.curOption == 'event_count') {
+            return (eventCount) => '' + eventCount;
+        }
+        if (this.curOption == 'event_count_in_ms') {
             return (eventCount) => (eventCount / 1000000.0).toFixed(3);
         }
-        return (eventCount) => '' + eventCount;
     }
 
-    getSampleWeightSuffix(eventInfo) {
-        if (this.curOption == this.options.SHOW_EVENT_COUNT && isClockEvent(eventInfo)) {
+    getSampleWeightSuffix() {
+        if (this.curOption == 'event_count_in_ms') {
             return ' ms';
         }
         return '';
@@ -515,95 +637,95 @@ class SampleTableView {
         this.id = createId();
         this.div = $('<div>', {id: this.id}).appendTo(divContainer);
         this.eventInfo = eventInfo;
+        this.selectorView = null;
+        this.tableView = null;
     }
 
-    draw(getSampleWeight, sampleWeightSuffix) {
-        // Draw a table of 'Total', 'Self', 'Samples', 'Process', 'Thread', 'Library', 'Function'.
-        this.div.empty();
+    drawAsync(totalProgress) {
+        return createPromise()
+            .then(wait(() => {
+                this.div.empty();
+                this.selectorView = new SampleTableWeightSelectorView(
+                    this.div, this.eventInfo, () => this.onSampleWeightChange());
+            }))
+            .then(() => this._drawSampleTable(totalProgress));
+    }
+
+    // Return a promise to draw SampleTable.
+    _drawSampleTable(totalProgress) {
         let eventInfo = this.eventInfo;
-        this.getSampleWeight = getSampleWeight;
-        let sampleWeight = getSampleWeight(eventInfo.eventCount);
-        this.div.append(getHtml('p', {text: `Sample table for event ${eventInfo.eventName}, ` +
-                `total count ${sampleWeight}${sampleWeightSuffix}`}));
+        let data = [];
+        return createPromise()
+            .then(wait(() => {
+                this.div.find('table').remove();
+                let getSampleWeight = this.selectorView.getSampleWeightFunction();
+                let sampleWeightSuffix = this.selectorView.getSampleWeightSuffix();
+                // Draw a table of 'Total', 'Self', 'Samples', 'Process', 'Thread', 'Library',
+                // 'Function'.
+                let valueSuffix = sampleWeightSuffix.length > 0 ? `(in${sampleWeightSuffix})` : '';
+                let titles = ['Total' + valueSuffix, 'Self' + valueSuffix, 'Samples', 'Process',
+                              'Thread', 'Library', 'Function', 'HideKey'];
+                this.div.append(`
+                    <table cellspacing="0" class="table table-striped table-bordered"
+                        style="width:100%">
+                        <thead>${getTableRow(titles, 'th')}</thead>
+                        <tbody></tbody>
+                        <tfoot>${getTableRow(titles, 'th')}</tfoot>
+                    </table>`);
+                for (let [i, process] of eventInfo.processes.entries()) {
+                    let processName = getProcessName(process.pid);
+                    for (let [j, thread] of process.threads.entries()) {
+                        let threadName = getThreadName(thread.tid);
+                        for (let [k, lib] of thread.libs.entries()) {
+                            let libName = getLibName(lib.libId);
+                            for (let [t, func] of lib.functions.entries()) {
+                                let totalValue = getSampleWeight(func.c[2]);
+                                let selfValue = getSampleWeight(func.c[1]);
+                                let key = [i, j, k, t].join('_');
+                                data.push([totalValue, selfValue, func.c[0], processName,
+                                           threadName, libName, getFuncName(func.f), key])
+                           }
+                        }
+                    }
+                }
+            }))
+            .then(addProgress(totalProgress / 2))
+            .then(wait(() => {
+                let table = this.div.find('table');
+                let dataTable = table.DataTable({
+                    lengthMenu: [10, 20, 50, 100, -1],
+                    order: [0, 'desc'],
+                    data: data,
+                    responsive: true,
+                });
+                dataTable.column(7).visible(false);
 
-        let valueSuffix = sampleWeightSuffix.length > 0 ? `(in${sampleWeightSuffix})` : '';
-        let titles = ['Total' + valueSuffix, 'Self' + valueSuffix, 'Samples',
-                      'Process', 'Thread', 'Library', 'Function', 'HideKey'];
-        this.div.append(`
-            <table cellspacing="0" width="100%">
-                <thead>${getTableRow(titles, 'th')}</thead>
-                <tbody></tbody>
-                <tfoot>${getTableRow(titles, 'th')}</tfoot>
-            </table>
-        `);
-
-        let table = this.div.find('table');
-        this.dataTable = table.DataTable({
-            lengthMenu: [10, 20, 50, 100, -1],
-            order: [0, 'desc'],
-            responsive: true,
-        });
-        this.dataTable.column(7).visible(false);
-
-        table.find('tr').css('cursor', 'pointer');
-        let dataTable = this.dataTable;
-        table.on('click', 'tr', function() {
-            let data = dataTable.row(this).data();
-            if (!data) {
-                // A row in header or footer.
-                return;
-            }
-            let key = data[7];
-            if (!key) {
-                return;
-            }
-            let indexes = key.split('_');
-            let processInfo = eventInfo.processes[indexes[0]];
-            let threadInfo = processInfo.threads[indexes[1]];
-            let lib = threadInfo.libs[indexes[2]];
-            let func = lib.functions[indexes[3]];
-            FunctionTab.showFunction(eventInfo, processInfo, threadInfo, lib, func);
-        });
-        this.drawPos = [0, 0, 0, 0]
-        setTimeout(() => this.drawDetailsInIdleTime(), 0);
+                table.find('tr').css('cursor', 'pointer');
+                table.on('click', 'tr', function() {
+                    let data = dataTable.row(this).data();
+                    if (!data) {
+                        // A row in header or footer.
+                        return;
+                    }
+                    let key = data[7];
+                    if (!key) {
+                        return;
+                    }
+                    let indexes = key.split('_');
+                    let processInfo = eventInfo.processes[indexes[0]];
+                    let threadInfo = processInfo.threads[indexes[1]];
+                    let lib = threadInfo.libs[indexes[2]];
+                    let func = lib.functions[indexes[3]];
+                    FunctionTab.showFunction(eventInfo, processInfo, threadInfo, lib, func);
+                });
+            }));
     }
 
-    drawDetailsInIdleTime() {
-        let firstProcess = true;
-        let firstThread = true;
-        let firstLib = true;
-        let count = 0;
-        let dataTable = this.dataTable;
-        for (let i = this.drawPos[0]; i < this.eventInfo.processes.length; ++i) {
-            let process = this.eventInfo.processes[i];
-            let processName = getProcessName(process.pid);
-            for (let j = firstProcess ? this.drawPos[1] : 0; j < process.threads.length; ++j) {
-                let thread = process.threads[j];
-                let threadName = getThreadName(thread.tid);
-                for (let k = firstThread ? this.drawPos[2] : 0; k < thread.libs.length; ++k) {
-                    let lib = thread.libs[k];
-                    let libName = getLibName(lib.libId);
-                    for (let t = firstLib ? this.drawPos[3] : 0; t < lib.functions.length; ++t) {
-                        if (count++ == 1000) {
-                            dataTable.draw();
-                            this.drawPos = [i, j, k, t];
-                            setTimeout(() => this.drawDetailsInIdleTime(), 0);
-                            return;
-                        }
-                        let func = lib.functions[t];
-                        let totalValue = this.getSampleWeight(func.c[2]);
-                        let selfValue = this.getSampleWeight(func.c[1]);
-                        let key = [i, j, k, t].join('_');
-                        dataTable.row.add([totalValue, selfValue, func.c[0], processName,
-                            threadName, libName, getFuncName(func.f), key]);
-                    }
-                    firstLib = false;
-                }
-                firstThread = false;
-            }
-            firstProcess = false;
-        }
-        dataTable.draw();
+    onSampleWeightChange() {
+        createPromise()
+            .then(updateProgress('Draw SampleTable...', 0))
+            .then(() => this._drawSampleTable(100))
+            .then(hideProgress());
     }
 }
 
@@ -615,111 +737,121 @@ class FlameGraphTab {
     }
 
     draw() {
-        this.div.empty();
-        if (gSampleInfo.length == 0) {
-            return;
-        }
-        let id = this.div.attr('id');
-        if (gSampleInfo.length == 1) {
-            new FlameGraphViewList(this.div, `${id}_0`, gSampleInfo[0]).draw();
-        } else {
-            // If more than one event, draw them in tabs.
-            this.div.append(getHtml('ul'));
-            let ul = this.div.children().first();
-            for (let i = 0; i < gSampleInfo.length; ++i) {
-                let subId = id + '_' + i;
-                let title = gSampleInfo[i].eventName;
-                ul.append(getHtml('li', {text: getHtml('a', {href: '#' + subId, text: title})}));
-                new FlameGraphViewList(this.div, subId, gSampleInfo[i]).draw();
-            }
-            this.div.tabs({active: 0});
-        }
+        let views = [];
+        createPromise()
+            .then(updateProgress('Draw Flamegraph...', 0))
+            .then(wait(() => {
+                this.div.empty();
+                views = createViewsForEvents(this.div, (div, eventInfo) => {
+                    return new FlameGraphViewList(div, eventInfo);
+                });
+            }))
+            .then(() => drawViewsAsync(views, 100, (view, progress) => view.drawAsync(progress)))
+            .then(hideProgress());
     }
 }
 
 // Show FlameGraphs for samples in an event type, used in FlameGraphTab.
 // 1. Draw 10 FlameGraphs at one time, and use a "More" button to show more FlameGraphs.
-// 2. First draw background of Flamegraphs, then draw details in setTimeout(0) callback.
+// 2. First draw background of Flamegraphs, then draw details in idle time.
 class FlameGraphViewList {
-    constructor(divContainer, divId, eventInfo) {
-        this.div = $('<div>', {id: divId}).appendTo(divContainer);
+    constructor(div, eventInfo) {
+        this.div = div;
         this.eventInfo = eventInfo;
+        this.selectorView = null;
+        this.flamegraphDiv = null;
         this.flamegraphs = [];
-        this.drawDetailsPos = 0;
         this.moreButton = null;
     }
 
-    draw() {
+    drawAsync(totalProgress) {
         this.div.empty();
         this.selectorView = new SampleWeightSelectorView(this.div, this.eventInfo,
                                                          () => this.onSampleWeightChange());
-        this.selectorView.draw();
         this.flamegraphDiv = $('<div>').appendTo(this.div);
-        this._drawMoreFlameGraphs(10);
+        return this._drawMoreFlameGraphs(10, totalProgress);
     }
 
-    _drawMoreFlameGraphs(moreCount) {
-        if (this.moreButton) {
-            this.moreButton.hide();
-        }
-        let pId = 0;
-        let tId = 0;
+    // Return a promise to draw flamegraphs.
+    _drawMoreFlameGraphs(moreCount, progress) {
+        let initProgress = progress / (1 + moreCount);
         let newFlamegraphs = [];
-        let newCount = this.flamegraphs.length + moreCount;
-        for (let i = 0; i < newCount; ++i) {
-            if (pId == this.eventInfo.processes.length) {
-                break;
-            }
-            let process = this.eventInfo.processes[pId];
-            let thread = process.threads[tId];
-            if (i >= this.flamegraphs.length) {
-                let title = `Process ${getProcessName(process.pid)} ` +
-                            `Thread ${getThreadName(thread.tid)} ` +
-                            `(Samples: ${thread.sampleCount})`;
-                let totalCount = {countForProcess: process.eventCount,
-                                  countForThread: thread.eventCount};
-                let flamegraph = new FlameGraphView(this.flamegraphDiv, title, totalCount,
-                                                    thread.g.c, false);
-                flamegraph.draw();
-                newFlamegraphs.push(flamegraph);
-            }
-            tId++;
-            if (tId == process.threads.length) {
-                pId++;
-                tId = 0;
-            }
-        }
-        if (pId < this.eventInfo.processes.length) {
-            // Show "More" Button.
-            if (!this.moreButton) {
-                this.div.append('<div style="text-align:center"><button>More</button></div>');
-                this.moreButton = this.div.children().last().find('button');
-                this.moreButton.button().click(() => this._drawMoreFlameGraphs(10));
+        return createPromise()
+        .then(wait(() => {
+            if (this.moreButton) {
                 this.moreButton.hide();
             }
-        } else if (this.moreButton) {
-            this.moreButton.remove();
-            this.moreButton = null;
-        }
-        for (let flamegraph of newFlamegraphs) {
-            this.flamegraphs.push(flamegraph);
-        }
-        setTimeout(() => this.drawDetailsInIdleTime(), 0);
+            let pId = 0;
+            let tId = 0;
+            let newCount = this.flamegraphs.length + moreCount;
+            for (let i = 0; i < newCount; ++i) {
+                if (pId == this.eventInfo.processes.length) {
+                    break;
+                }
+                let process = this.eventInfo.processes[pId];
+                let thread = process.threads[tId];
+                if (i >= this.flamegraphs.length) {
+                    let title = `Process ${getProcessName(process.pid)} ` +
+                                `Thread ${getThreadName(thread.tid)} ` +
+                                `(Samples: ${thread.sampleCount})`;
+                    let totalCount = {countForProcess: process.eventCount,
+                                      countForThread: thread.eventCount};
+                    let flamegraph = new FlameGraphView(this.flamegraphDiv, title, totalCount,
+                                                        thread.g.c, false);
+                    flamegraph.draw();
+                    newFlamegraphs.push(flamegraph);
+                }
+                tId++;
+                if (tId == process.threads.length) {
+                    pId++;
+                    tId = 0;
+                }
+            }
+            if (pId < this.eventInfo.processes.length) {
+                // Show "More" Button.
+                if (!this.moreButton) {
+                    this.div.append(`
+                        <div style="text-align:center">
+                            <button type="button" class="btn btn-primary">More</button>
+                        </div>`);
+                    this.moreButton = this.div.children().last().find('button');
+                    this.moreButton.click(() => {
+                        createPromise().then(updateProgress('Draw FlameGraph...', 0))
+                            .then(() => this._drawMoreFlameGraphs(10, 100))
+                            .then(hideProgress());
+                    });
+                    this.moreButton.hide();
+                }
+            } else if (this.moreButton) {
+                this.moreButton.remove();
+                this.moreButton = null;
+            }
+            for (let flamegraph of newFlamegraphs) {
+                this.flamegraphs.push(flamegraph);
+            }
+        }))
+        .then(addProgress(initProgress))
+        .then(() => this.drawDetails(newFlamegraphs, progress - initProgress));
+    }
+
+    drawDetails(flamegraphs, totalProgress) {
+        return createPromise()
+            .then(() => drawViewsAsync(flamegraphs, totalProgress, (view, progress) => {
+                return createPromise()
+                    .then(wait(() => view.drawDetails(this.selectorView.getSampleWeightFunction())))
+                    .then(addProgress(progress));
+            }))
+            .then(wait(() => {
+               if (this.moreButton) {
+                   this.moreButton.show();
+               }
+            }));
     }
 
     onSampleWeightChange() {
-        this.drawDetailsPos = 0;
-        setTimeout(() => this.drawDetailsInIdleTime(), 0);
-    }
-
-    drawDetailsInIdleTime() {
-        if (this.drawDetailsPos < this.flamegraphs.length) {
-            let flamegraph = this.flamegraphs[this.drawDetailsPos++];
-            flamegraph.drawDetails(this.selectorView.getSampleWeightFunction());
-            setTimeout(() => this.drawDetailsInIdleTime(), 0);
-        } else if (this.moreButton) {
-            this.moreButton.show();
-        }
+        createPromise().then(updateProgress('Draw FlameGraph...', 0))
+            .then(() => this.drawDetails(this.flamegraphs, 100))
+            .then(hideProgress());
     }
 }
 
@@ -733,7 +865,8 @@ class FunctionTab {
         if (!tab) {
             tab = gTabs.addTab(title, new FunctionTab());
         }
-        tab.setFunction(eventInfo, processInfo, threadInfo, lib, func);
+        gTabs.setActiveAsync(title)
+            .then(() => tab.setFunction(eventInfo, processInfo, threadInfo, lib, func));
     }
 
     constructor() {
@@ -752,66 +885,70 @@ class FunctionTab {
         this.lib = lib;
         this.func = func;
         this.selectorView = null;
-        this.callgraphView = null;
-        this.reverseCallgraphView = null;
-        this.sourceCodeView = null;
-        this.disassemblyView = null;
-        this.draw();
-        gTabs.setActive(this);
+        this.views = [];
+        this.redraw();
     }
 
-    draw() {
+    redraw() {
         if (!this.func) {
             return;
         }
-        this.div.empty();
-        this._drawTitle();
+        createPromise()
+            .then(updateProgress("Draw Function...", 0))
+            .then(wait(() => {
+                this.div.empty();
+                this._drawTitle();
 
-        this.selectorView = new SampleWeightSelectorView(this.div, this.eventInfo,
-                                                         () => this.onSampleWeightChange());
-        this.selectorView.draw();
-
-        let funcId = this.func.f;
-        let funcName = getFuncName(funcId);
-        function getNodesMatchingFuncId(root) {
-            let nodes = [];
-            function recursiveFn(node) {
-                if (node.f == funcId) {
-                    nodes.push(node);
-                } else {
-                    for (let child of node.c) {
-                        recursiveFn(child);
+                this.selectorView = new SampleWeightSelectorView(this.div, this.eventInfo,
+                                                                 () => this.onSampleWeightChange());
+                let funcId = this.func.f;
+                let funcName = getFuncName(funcId);
+                function getNodesMatchingFuncId(root) {
+                    let nodes = [];
+                    function recursiveFn(node) {
+                        if (node.f == funcId) {
+                            nodes.push(node);
+                        } else {
+                            for (let child of node.c) {
+                                recursiveFn(child);
+                            }
+                        }
                     }
+                    recursiveFn(root);
+                    return nodes;
                 }
-            }
-            recursiveFn(root);
-            return nodes;
-        }
-        let totalCount = {countForProcess: this.processInfo.eventCount,
-                          countForThread: this.threadInfo.eventCount};
-        this.callgraphView = new FlameGraphView(this.div, `Functions called by ${funcName}`,
-                                                totalCount,
-                                                getNodesMatchingFuncId(this.threadInfo.g), false);
-        this.reverseCallgraphView = new FlameGraphView(this.div, `Functions calling ${funcName}`,
-                                                       totalCount,
-                                                       getNodesMatchingFuncId(this.threadInfo.rg),
-                                                       true);
-        let sourceFiles = collectSourceFilesForFunction(this.func);
-        if (sourceFiles) {
-            this.div.append(getHtml('hr'));
-            this.div.append(getHtml('b', {text: 'SourceCode:'}) + '<br/>');
-            this.sourceCodeView = new SourceCodeView(this.div, sourceFiles);
-        }
+                let totalCount = {countForProcess: this.processInfo.eventCount,
+                                  countForThread: this.threadInfo.eventCount};
+                let callgraphView = new FlameGraphView(
+                    this.div, `Functions called by ${funcName}`, totalCount,
+                    getNodesMatchingFuncId(this.threadInfo.g), false);
+                callgraphView.draw();
+                this.views.push(callgraphView);
+                let reverseCallgraphView = new FlameGraphView(
+                    this.div, `Functions calling ${funcName}`, totalCount,
+                    getNodesMatchingFuncId(this.threadInfo.rg), true);
+                reverseCallgraphView.draw();
+                this.views.push(reverseCallgraphView);
+                let sourceFiles = collectSourceFilesForFunction(this.func);
+                if (sourceFiles) {
+                    this.div.append(getHtml('hr'));
+                    this.div.append(getHtml('b', {text: 'SourceCode:'}) + '<br/>');
+                    this.views.push(new SourceCodeView(this.div, sourceFiles, totalCount));
+                }
 
-        let disassembly = collectDisassemblyForFunction(this.func);
-        if (disassembly) {
-            this.div.append(getHtml('hr'));
-            this.div.append(getHtml('b', {text: 'Disassembly:'}) + '<br/>');
-            this.disassemblyView = new DisassemblyView(this.div, disassembly);
-        }
-
-        this.onSampleWeightChange();  // Manually set sample weight function for the first time.
+                let disassembly = collectDisassemblyForFunction(this.func);
+                if (disassembly) {
+                    this.div.append(getHtml('hr'));
+                    this.div.append(getHtml('b', {text: 'Disassembly:'}) + '<br/>');
+                    this.views.push(new DisassemblyView(this.div, disassembly, totalCount));
+                }
+            }))
+            .then(addProgress(25))
+            .then(() => this.drawDetails(75))
+            .then(hideProgress());
     }
+
+    draw() {}
 
     _drawTitle() {
         let eventName = this.eventInfo.eventName;
@@ -847,26 +984,19 @@ class FunctionTab {
     }
 
     onSampleWeightChange() {
-        let rawSampleWeightFunction = this.selectorView.getSampleWeightFunction();
-        let totalCount = {
-            countForProcess: this.processInfo.eventCount,
-            countForThread: this.threadInfo.eventCount,
-        };
-        let sampleWeightFunction = (eventCount) => rawSampleWeightFunction(eventCount, totalCount);
-        if (this.callgraphView) {
-            this.callgraphView.draw();
-            this.callgraphView.drawDetails(sampleWeightFunction);
-        }
-        if (this.reverseCallgraphView) {
-            this.reverseCallgraphView.draw();
-            this.reverseCallgraphView.drawDetails(sampleWeightFunction);
-        }
-        if (this.sourceCodeView) {
-            this.sourceCodeView.draw(sampleWeightFunction);
-        }
-        if (this.disassemblyView) {
-            this.disassemblyView.draw(sampleWeightFunction);
-        }
+        createPromise()
+            .then(updateProgress("Draw Function...", 0))
+            .then(() => this.drawDetails(100))
+            .then(hideProgress());
+    }
+
+    drawDetails(totalProgress) {
+        let sampleWeightFunction = this.selectorView.getSampleWeightFunction();
+        return drawViewsAsync(this.views, totalProgress, (view, progress) => {
+            return createPromise()
+                .then(wait(() => view.drawDetails(sampleWeightFunction)))
+                .then(addProgress(progress));
+        });
     }
 }
 
@@ -879,77 +1009,72 @@ class FunctionTab {
 // 5. Show event count in milliseconds, only possible for cpu-clock or task-clock events.
 class SampleWeightSelectorView {
     constructor(divContainer, eventInfo, onSelectChange) {
-        this.div = $('<div>');
-        this.div.appendTo(divContainer);
-        this.countForAllProcesses = eventInfo.eventCount;
-        this.onSelectChange = onSelectChange;
-        this.options = {
-            PERCENT_TO_ALL_PROCESSES: 0,
-            PERCENT_TO_CUR_PROCESS: 1,
-            PERCENT_TO_CUR_THREAD: 2,
-            RAW_EVENT_COUNT: 3,
-            EVENT_COUNT_IN_TIME: 4,
-        };
-        this.supportEventCountInTime = isClockEvent(eventInfo);
-        if (this.supportEventCountInTime) {
-            this.curOption = this.options.EVENT_COUNT_IN_TIME;
-        } else {
-            this.curOption = this.options.PERCENT_TO_CUR_THREAD;
+        let options = new Map();
+        options.set('percent_to_all', 'Show percentage of event count relative to all processes');
+        options.set('percent_to_process',
+                    'Show percentage of event count relative to the current process');
+        options.set('percent_to_thread',
+                    'Show percentage of event count relative to the current thread');
+        options.set('event_count', 'Show event count');
+        if (isClockEvent(eventInfo)) {
+            options.set('event_count_in_ms', 'Show event count in milliseconds');
         }
-    }
-
-    draw() {
-        let options = [];
-        options.push('Show percentage of event count relative to all processes.');
-        options.push('Show percentage of event count relative to the current process.');
-        options.push('Show percentage of event count relative to the current thread.');
-        options.push('Show event count.');
-        if (this.supportEventCountInTime) {
-            options.push('Show event count in milliseconds.');
-        }
-        let optionStr = '';
-        for (let i = 0; i < options.length; ++i) {
-            optionStr += getHtml('option', {value: i, text: options[i]});
-        }
-        this.div.append(getHtml('select', {text: optionStr}));
-        let selectMenu = this.div.children().last();
-        selectMenu.children().eq(this.curOption).attr('selected', 'selected');
-        let thisObj = this;
-        selectMenu.selectmenu({
-            change: function() {
-                thisObj.curOption = this.value;
-                thisObj.onSelectChange();
-            },
-            width: '100%',
+        let buttons = [];
+        options.forEach((value, key) => {
+            buttons.push(`<button type="button" class="dropdown-item" key="${key}">${value}
+                          </button>`);
         });
+        this.curOption = 'percent_to_all';
+        let id = createId();
+        let str = `
+            <div class="dropdown">
+                <button type="button" class="btn btn-primary dropdown-toggle" id="${id}"
+                    data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"
+                    >${options.get(this.curOption)}</button>
+                <div class="dropdown-menu" aria-labelledby="${id}">${buttons.join('')}</div>
+            </div>
+        `;
+        divContainer.append(str);
+        divContainer.children().last().on('hidden.bs.dropdown', (e) => {
+            if (e.clickEvent) {
+                let button = $(e.clickEvent.target);
+                let newOption = button.attr('key');
+                if (this.curOption != newOption) {
+                    this.curOption = newOption;
+                    divContainer.find(`#${id}`).text(options.get(this.curOption));
+                    onSelectChange();
+                }
+            }
+        });
+        this.countForAllProcesses = eventInfo.eventCount;
     }
 
     getSampleWeightFunction() {
-        if (this.curOption == this.options.PERCENT_TO_ALL_PROCESSES) {
+        if (this.curOption == 'percent_to_all') {
             let countForAllProcesses = this.countForAllProcesses;
             return function(eventCount, _) {
                 let percent = eventCount * 100.0 / countForAllProcesses;
                 return percent.toFixed(2) + '%';
             };
         }
-        if (this.curOption == this.options.PERCENT_TO_CUR_PROCESS) {
+        if (this.curOption == 'percent_to_process') {
             return function(eventCount, totalCount) {
                 let percent = eventCount * 100.0 / totalCount.countForProcess;
                 return percent.toFixed(2) + '%';
             };
         }
-        if (this.curOption == this.options.PERCENT_TO_CUR_THREAD) {
+        if (this.curOption == 'percent_to_thread') {
             return function(eventCount, totalCount) {
                 let percent = eventCount * 100.0 / totalCount.countForThread;
                 return percent.toFixed(2) + '%';
             };
         }
-        if (this.curOption == this.options.RAW_EVENT_COUNT) {
+        if (this.curOption == 'event_count') {
             return function(eventCount, _) {
                 return '' + eventCount;
             };
         }
-        if (this.curOption == this.options.EVENT_COUNT_IN_TIME) {
+        if (this.curOption == 'event_count_in_ms') {
             return function(eventCount, _) {
                 let timeInMs = eventCount / 1000000.0;
                 return timeInMs.toFixed(3) + ' ms';
@@ -987,6 +1112,9 @@ class FlameGraphView {
             this.maxDepth = Math.max(this.maxDepth, getMaxDepth(node));
         }
         this.svgHeight = this.svgNodeHeight * (this.maxDepth + 3);
+        this.svgStr = null;
+        this.svgDiv = null;
+        this.svg = null;
     }
 
     draw() {
@@ -1191,7 +1319,7 @@ class FlameGraphView {
     }
 
     _enableZoom() {
-        this.zoomStack = [this.svg.find('g').first().get(0)];
+        this.zoomStack = [null];
         this.svg.find('g').css('cursor', 'pointer').click(zoom);
         this.svg.find(`#zoom_rect_${this.id}`).css('cursor', 'pointer').click(unzoom);
         this.svg.find(`#zoom_text_${this.id}`).css('cursor', 'pointer').click(unzoom);
@@ -1216,12 +1344,18 @@ class FlameGraphView {
         }
 
         function displayFromElement(g) {
-            g = $(g);
-            let clickedRect = g.find('rect');
-            let clickedOriginX = parseFloat(clickedRect.attr('ox'));
-            let clickedDepth = parseInt(clickedRect.attr('depth'));
-            let clickedOriginWidth = parseFloat(clickedRect.attr('owidth'));
-            let scaleFactor = 100.0 / clickedOriginWidth;
+            let clickedOriginX = 0;
+            let clickedDepth = 0;
+            let clickedOriginWidth = 100;
+            let scaleFactor = 1;
+            if (g) {
+                g = $(g);
+                let clickedRect = g.find('rect');
+                clickedOriginX = parseFloat(clickedRect.attr('ox'));
+                clickedDepth = parseInt(clickedRect.attr('depth'));
+                clickedOriginWidth = parseFloat(clickedRect.attr('owidth'));
+                scaleFactor = 100.0 / clickedOriginWidth;
+            }
             thisObj.svg.find('g').each(function(_, g) {
                 g = $(g);
                 let text = g.find('text');
@@ -1396,13 +1530,14 @@ function collectSourceFilesForFunction(func) {
 // Show annotated source code of a function.
 class SourceCodeView {
 
-    constructor(divContainer, sourceFiles) {
+    constructor(divContainer, sourceFiles, totalCount) {
         this.div = $('<div>');
         this.div.appendTo(divContainer);
         this.sourceFiles = sourceFiles;
+        this.totalCount = totalCount;
     }
 
-    draw(sampleWeightFunction) {
+    drawDetails(sampleWeightFunction) {
         google.charts.setOnLoadCallback(() => this.realDraw(sampleWeightFunction));
     }
 
@@ -1419,8 +1554,8 @@ class SourceCodeView {
                 let totalValue = '';
                 let selfValue = '';
                 if (countInfo.subtreeEventCount != 0) {
-                    totalValue = sampleWeightFunction(countInfo.subtreeEventCount);
-                    selfValue = sampleWeightFunction(countInfo.eventCount);
+                    totalValue = sampleWeightFunction(countInfo.subtreeEventCount, this.totalCount);
+                    selfValue = sampleWeightFunction(countInfo.eventCount, this.totalCount);
                 }
                 rows.push([lineNumber, totalValue, selfValue, code]);
             }
@@ -1498,13 +1633,14 @@ function collectDisassemblyForFunction(func) {
 // Show annotated disassembly of a function.
 class DisassemblyView {
 
-    constructor(divContainer, disassembly) {
+    constructor(divContainer, disassembly, totalCount) {
         this.div = $('<div>');
         this.div.appendTo(divContainer);
         this.disassembly = disassembly;
+        this.totalCount = totalCount;
     }
 
-    draw(sampleWeightFunction) {
+    drawDetails(sampleWeightFunction) {
         google.charts.setOnLoadCallback(() => this.realDraw(sampleWeightFunction));
     }
 
@@ -1517,8 +1653,8 @@ class DisassemblyView {
             let totalValue = '';
             let selfValue = '';
             if (line.subtreeEventCount != 0) {
-                totalValue = sampleWeightFunction(line.subtreeEventCount);
-                selfValue = sampleWeightFunction(line.eventCount);
+                totalValue = sampleWeightFunction(line.subtreeEventCount, this.totalCount);
+                selfValue = sampleWeightFunction(line.eventCount, this.totalCount);
             }
             rows.push([totalValue, selfValue, code]);
         }
@@ -1546,7 +1682,6 @@ class DisassemblyView {
 
 
 function initGlobalObjects() {
-    gTabs = new TabManager($('div#report_content'));
     let recordData = $('#record_data').text();
     gRecordInfo = JSON.parse(recordData);
     gProcesses = gRecordInfo.processNames;
@@ -1558,13 +1693,17 @@ function initGlobalObjects() {
 }
 
 function createTabs() {
+    gTabs = new TabManager($('div#report_content'));
     gTabs.addTab('Chart Statistics', new ChartStatTab());
     gTabs.addTab('Sample Table', new SampleTableTab());
     gTabs.addTab('Flamegraph', new FlameGraphTab());
-    gTabs.draw();
 }
 
+// Global draw objects
 let gTabs;
+let gProgressBar = new ProgressBar();
+
+// Gobal Json Data
 let gRecordInfo;
 let gProcesses;
 let gThreads;
@@ -1573,13 +1712,45 @@ let gFunctionMap;
 let gSampleInfo;
 let gSourceFiles;
 
-let timeLog = new TimeLog();
-$(document).ready(() => {
-    timeLog.log('loadHtmlTime');
-    initGlobalObjects();
-    timeLog.log('loadJsonTime')
-    createTabs();
-    timeLog.log('createTabsTime');
-});
+function updateProgress(text, progress) {
+    return () => gProgressBar.updateAsync(text, progress);
+}
 
+function addProgress(progress) {
+    return () => gProgressBar.updateAsync(null, gProgressBar.progress + progress);
+}
+
+function hideProgress() {
+    return () => gProgressBar.hide();
+}
+
+function createPromise(callback) {
+    if (callback) {
+        return new Promise((resolve, _) => callback(resolve));
+    }
+    return new Promise((resolve,_) => resolve());
+}
+
+function waitDocumentReady() {
+    return createPromise((resolve) => $(document).ready(resolve));
+}
+
+function wait(functionCall) {
+    return () => {
+        functionCall();
+        return createPromise();
+    };
+}
+
+createPromise()
+    .then(updateProgress('Load page...', 0))
+    .then(waitDocumentReady)
+    .then(updateProgress('Parse Json data...', 20))
+    .then(wait(initGlobalObjects))
+    .then(updateProgress('Create tabs...', 30))
+    .then(wait(createTabs))
+    .then(updateProgress('Draw ChartStat...', 40))
+    .then(() => gTabs.setActiveAsync('Chart Statistics'))
+    .then(updateProgress(null, 100))
+    .then(hideProgress());
 })();
