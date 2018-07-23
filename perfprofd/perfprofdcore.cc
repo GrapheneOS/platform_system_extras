@@ -426,7 +426,9 @@ static ProtoUniquePtr encode_to_proto(const std::string &data_file_path,
   // Open and read perf.data file
   //
   ProtoUniquePtr encodedProfile(
-      android::perfprofd::RawPerfDataToAndroidPerfProfile(data_file_path, symbolizer));
+      android::perfprofd::RawPerfDataToAndroidPerfProfile(data_file_path,
+                                                          symbolizer,
+                                                          config.symbolize_everything));
   if (encodedProfile == nullptr) {
     return nullptr;
   }
