@@ -977,83 +977,138 @@ TEST_F(BasicRunWithCannedPerf, Compressed)
   VerifyBasicCannedProfile(encodedProfile);
 }
 
-TEST_F(BasicRunWithCannedPerf, WithSymbolizer)
-{
-  //
-  // Verify the portion of the daemon that reads and encodes
-  // perf.data files. Here we run the encoder on a canned perf.data
-  // file and verify that the resulting protobuf contains what
-  // we think it should contain.
-  //
-  std::string input_perf_data(test_dir);
-  input_perf_data += "/canned.perf.data";
+class BasicRunWithCannedPerfWithSymbolizer : public BasicRunWithCannedPerf {
+ protected:
+  std::vector<::testing::AssertionResult> Run(bool symbolize_everything, size_t expected_count) {
+    //
+    // Verify the portion of the daemon that reads and encodes
+    // perf.data files. Here we run the encoder on a canned perf.data
+    // file and verify that the resulting protobuf contains what
+    // we think it should contain.
+    //
+    std::string input_perf_data(test_dir);
+    input_perf_data += "/canned.perf.data";
 
-  // Set up config to avoid these annotations (they are tested elsewhere)
-  ConfigReader config_reader;
-  config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
-  config_reader.overrideUnsignedEntry("collect_charging_state", 0);
-  config_reader.overrideUnsignedEntry("collect_camera_active", 0);
+    // Set up config to avoid these annotations (they are tested elsewhere)
+    ConfigReader config_reader;
+    config_reader.overrideUnsignedEntry("collect_cpu_utilization", 0);
+    config_reader.overrideUnsignedEntry("collect_charging_state", 0);
+    config_reader.overrideUnsignedEntry("collect_camera_active", 0);
 
-  // Disable compression.
-  config_reader.overrideUnsignedEntry("compress", 0);
+    // Disable compression.
+    config_reader.overrideUnsignedEntry("compress", 0);
 
-  PerfProfdRunner::LoggingConfig config;
-  config_reader.FillConfig(&config);
-
-  // Kick off encoder and check return code
-  struct TestSymbolizer : public perfprofd::Symbolizer {
-    std::string Decode(const std::string& dso, uint64_t address) override {
-      return dso + "@" + std::to_string(address);
+    if (symbolize_everything) {
+      config_reader.overrideUnsignedEntry("symbolize_everything", 1);
     }
-    bool GetMinExecutableVAddr(const std::string& dso, uint64_t* addr) override {
-      *addr = 4096;
-      return true;
-    }
-  };
-  TestSymbolizer test_symbolizer;
-  PROFILE_RESULT result =
-      encode_to_proto(input_perf_data,
-                      encoded_file_path(dest_dir, 0).c_str(),
-                      config,
-                      0,
-                      &test_symbolizer);
-  ASSERT_EQ(OK_PROFILE_COLLECTION, result);
 
-  // Read and decode the resulting perf.data.encoded file
-  android::perfprofd::PerfprofdRecord encodedProfile;
-  readEncodedProfile(dest_dir, false, encodedProfile);
+    PerfProfdRunner::LoggingConfig config;
+    config_reader.FillConfig(&config);
 
-  VerifyBasicCannedProfile(encodedProfile);
-
-  auto find_symbol = [&](const std::string& filename) -> const quipper::SymbolInfo* {
-    const size_t size = encodedProfile.ExtensionSize(quipper::symbol_info);
-    for (size_t i = 0; i != size; ++i) {
-      auto& symbol_info = encodedProfile.GetExtension(quipper::symbol_info, i);
-      if (symbol_info.filename() == filename) {
-        return &symbol_info;
+    // Kick off encoder and check return code
+    struct TestSymbolizer : public perfprofd::Symbolizer {
+      std::string Decode(const std::string& dso, uint64_t address) override {
+        return dso + "@" + std::to_string(address);
       }
+      bool GetMinExecutableVAddr(const std::string& dso, uint64_t* addr) override {
+        *addr = 4096;
+        return true;
+      }
+    };
+    TestSymbolizer test_symbolizer;
+    PROFILE_RESULT result =
+        encode_to_proto(input_perf_data,
+                        encoded_file_path(dest_dir, 0).c_str(),
+                        config,
+                        0,
+                        &test_symbolizer);
+    if (result != OK_PROFILE_COLLECTION) {
+      return { ::testing::AssertionFailure() << "Profile collection failed: " << result };
     }
-    return nullptr;
-  };
-  auto all_filenames = [&]() {
-    std::ostringstream oss;
-    const size_t size = encodedProfile.ExtensionSize(quipper::symbol_info);
-    for (size_t i = 0; i != size; ++i) {
-      auto& symbol_info = encodedProfile.GetExtension(quipper::symbol_info, i);
-      oss << " " << symbol_info.filename();
-    }
-    return oss.str();
-  };
 
-  EXPECT_TRUE(find_symbol("/data/app/com.google.android.apps.plus-1/lib/arm/libcronet.so")
-                  != nullptr) << all_filenames() << test_logger.JoinTestLog("\n");
-  EXPECT_TRUE(find_symbol("/data/dalvik-cache/arm/system@framework@wifi-service.jar@classes.dex")
-                  != nullptr) << all_filenames();
-  EXPECT_TRUE(find_symbol("/data/dalvik-cache/arm/data@app@com.google.android.gms-2@base.apk@"
-                          "classes.dex")
-                  != nullptr) << all_filenames();
-  EXPECT_TRUE(find_symbol("/data/dalvik-cache/arm/system@framework@boot.oat") != nullptr)
-      << all_filenames();
+    std::vector<::testing::AssertionResult> ret;
+
+    // Read and decode the resulting perf.data.encoded file
+    android::perfprofd::PerfprofdRecord encodedProfile;
+    readEncodedProfile(dest_dir, false, encodedProfile);
+
+    VerifyBasicCannedProfile(encodedProfile);
+
+    auto find_symbol = [&](const std::string& filename) -> const quipper::SymbolInfo* {
+      const size_t size = encodedProfile.ExtensionSize(quipper::symbol_info);
+      for (size_t i = 0; i != size; ++i) {
+        auto& symbol_info = encodedProfile.GetExtension(quipper::symbol_info, i);
+        if (symbol_info.filename() == filename) {
+          return &symbol_info;
+        }
+      }
+      return nullptr;
+    };
+    auto all_filenames = [&]() {
+      std::ostringstream oss;
+      const size_t size = encodedProfile.ExtensionSize(quipper::symbol_info);
+      for (size_t i = 0; i != size; ++i) {
+        auto& symbol_info = encodedProfile.GetExtension(quipper::symbol_info, i);
+        oss << " " << symbol_info.filename();
+      }
+      return oss.str();
+    };
+
+    auto check_dsos = [&](const char* const* dsos, const size_t len) {
+      bool failed = false;
+      for (size_t i = 0; i != len; ++i) {
+        if (find_symbol(dsos[i]) == nullptr) {
+          failed = true;
+          ret.push_back(::testing::AssertionFailure() << "Did not find " << dsos[i]);
+        }
+      }
+      return failed;
+    };
+
+    bool failed = false;
+
+    constexpr const char* kDSOs[] = {
+        "/data/app/com.google.android.apps.plus-1/lib/arm/libcronet.so",
+        "/data/dalvik-cache/arm/system@framework@wifi-service.jar@classes.dex",
+        "/data/dalvik-cache/arm/data@app@com.google.android.gms-2@base.apk@classes.dex",
+        "/data/dalvik-cache/arm/system@framework@boot.oat",
+    };
+    failed |= check_dsos(kDSOs, arraysize(kDSOs));
+
+    if (symbolize_everything) {
+      constexpr const char* kDSOsWithBuildIDs[] = {
+          "/system/lib/libz.so", "/system/lib/libutils.so",
+      };
+      failed |= check_dsos(kDSOsWithBuildIDs, arraysize(kDSOsWithBuildIDs));
+    }
+
+    if (failed) {
+      ret.push_back(::testing::AssertionFailure() << "Found: " << all_filenames());
+    }
+
+    if (encodedProfile.ExtensionSize(quipper::symbol_info) != expected_count) {
+      ret.push_back(
+          ::testing::AssertionFailure() << "Expected " << expected_count
+                                        << " symbolized libraries, found "
+                                        << encodedProfile.ExtensionSize(quipper::symbol_info));
+    }
+
+    return ret;
+  }
+};
+
+TEST_F(BasicRunWithCannedPerfWithSymbolizer, Default) {
+  auto result = Run(false, 5);
+  for (const auto& result_component : result) {
+    EXPECT_TRUE(result_component);
+  }
+}
+
+TEST_F(BasicRunWithCannedPerfWithSymbolizer, Everything) {
+  auto result = Run(true, 26);
+  for (const auto& result_component : result) {
+    EXPECT_TRUE(result_component);
+  }
 }
 
 TEST_F(PerfProfdTest, CallchainRunWithCannedPerf)

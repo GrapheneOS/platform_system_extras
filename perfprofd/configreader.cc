@@ -162,6 +162,8 @@ void ConfigReader::addDefaultEntries()
 
   // If true, use an ELF symbolizer to on-device symbolize.
   addUnsignedEntry("use_elf_symbolizer", config.use_elf_symbolizer ? 1 : 0, 0, 1);
+  // Whether to symbolize everything. If false, objects with build ID will be skipped.
+  addUnsignedEntry("symbolize_everything", config.symbolize_everything ? 1 : 0, 0, 1);
 
   // If true, use libz to compress the output proto.
   addUnsignedEntry("compress", config.compress ? 1 : 0, 0, 1);
@@ -446,6 +448,7 @@ void ConfigReader::FillConfig(Config* config) {
 
   config->process = static_cast<int32_t>(getUnsignedValue("process"));
   config->use_elf_symbolizer = getBoolValue("use_elf_symbolizer");
+  config->symbolize_everything = getBoolValue("symbolize_everything");
   config->compress = getBoolValue("compress");
   config->send_to_dropbox = getBoolValue("dropbox");
   config->fail_on_unsupported_events = getBoolValue("fail_on_unsupported_events");
@@ -486,6 +489,7 @@ void ConfigReader::ProtoToConfig(const android::perfprofd::ProfilingConfig& in, 
   CHECK_AND_COPY_FROM_PROTO(collect_camera_active)
   CHECK_AND_COPY_FROM_PROTO(process)
   CHECK_AND_COPY_FROM_PROTO(use_elf_symbolizer)
+  CHECK_AND_COPY_FROM_PROTO(symbolize_everything)
   CHECK_AND_COPY_FROM_PROTO(send_to_dropbox)
   CHECK_AND_COPY_FROM_PROTO(compress)
   CHECK_AND_COPY_FROM_PROTO(fail_on_unsupported_events)
