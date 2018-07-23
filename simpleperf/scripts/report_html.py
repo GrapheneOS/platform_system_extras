@@ -797,12 +797,13 @@ class RecordData(object):
 
 URLS = {
     'jquery': 'https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js',
-    'jquery-ui': 'https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js',
-    'jquery-ui-css':
-        'https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/themes/smoothness/jquery-ui.css',
-    'dataTable': 'https://cdn.datatables.net/1.10.16/js/jquery.dataTables.min.js',
-    'dataTable-jqueryui': 'https://cdn.datatables.net/1.10.16/js/dataTables.jqueryui.min.js',
-    'dataTable-css': 'https://cdn.datatables.net/1.10.16/css/jquery.dataTables.min.css',
+    'bootstrap4-css': 'https://stackpath.bootstrapcdn.com/bootstrap/4.1.2/css/bootstrap.min.css',
+    'bootstrap4-popper':
+        'https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js',
+    'bootstrap4': 'https://stackpath.bootstrapcdn.com/bootstrap/4.1.2/js/bootstrap.min.js',
+    'dataTable': 'https://cdn.datatables.net/1.10.19/js/jquery.dataTables.min.js',
+    'dataTable-bootstrap4': 'https://cdn.datatables.net/1.10.19/js/dataTables.bootstrap4.min.js',
+    'dataTable-css': 'https://cdn.datatables.net/1.10.19/css/dataTables.bootstrap4.min.css',
     'gstatic-charts': 'https://www.gstatic.com/charts/loader.js',
 }
 
@@ -812,9 +813,10 @@ class ReportGenerator(object):
         self.hw = HtmlWriter(html_path)
         self.hw.open_tag('html')
         self.hw.open_tag('head')
-        for css in ['jquery-ui-css', 'dataTable-css']:
+        for css in ['bootstrap4-css', 'dataTable-css']:
             self.hw.open_tag('link', rel='stylesheet', type='text/css', href=URLS[css]).close_tag()
-        for js in ['jquery', 'jquery-ui', 'dataTable', 'dataTable-jqueryui', 'gstatic-charts']:
+        for js in ['jquery', 'bootstrap4-popper', 'bootstrap4', 'dataTable', 'dataTable-bootstrap4',
+                   'gstatic-charts']:
             self.hw.open_tag('script', src=URLS[js]).close_tag()
 
         self.hw.open_tag('script').add(
