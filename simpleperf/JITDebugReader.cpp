@@ -17,6 +17,7 @@
 #include "JITDebugReader.h"
 
 #include <inttypes.h>
+#include <sys/mman.h>
 #include <sys/uio.h>
 
 #include <algorithm>
