@@ -16,18 +16,45 @@
 
 #include "hash_tree_builder.h"
 
+#include <algorithm>
+
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <android-base/unique_fd.h>
 
 #include "build_verity_tree_utils.h"
 
-HashTreeBuilder::HashTreeBuilder(size_t block_size)
-    : block_size_(block_size), data_size_(0), md_(EVP_sha256()) {
+const EVP_MD* HashTreeBuilder::HashFunction(const std::string& hash_name) {
+  if (android::base::EqualsIgnoreCase(hash_name, "sha1")) {
+    return EVP_sha1();
+  }
+  if (android::base::EqualsIgnoreCase(hash_name, "sha256")) {
+    return EVP_sha256();
+  }
+  if (android::base::EqualsIgnoreCase(hash_name, "sha384")) {
+    return EVP_sha384();
+  }
+  if (android::base::EqualsIgnoreCase(hash_name, "sha512")) {
+    return EVP_sha512();
+  }
+
+  LOG(ERROR) << "Unsupported hash algorithm " << hash_name;
+  return nullptr;
+}
+
+HashTreeBuilder::HashTreeBuilder(size_t block_size, const EVP_MD* md)
+    : block_size_(block_size), data_size_(0), md_(md) {
   CHECK(md_ != nullptr) << "Failed to initialize md";
 
-  hash_size_ = EVP_MD_size(md_);
+  hash_size_raw_ = EVP_MD_size(md_);
+
+  // Round up the hash size to the next power of 2.
+  hash_size_ = 1;
+  while (hash_size_ < hash_size_raw_) {
+    hash_size_ = hash_size_ << 1;
+  }
   CHECK_LT(hash_size_ * 2, block_size_);
 }
 
@@ -94,7 +121,9 @@ bool HashTreeBuilder::HashBlock(const unsigned char* block,
   EVP_MD_CTX_destroy(mdctx);
 
   CHECK_EQ(1, ret);
-  CHECK_EQ(hash_size_, s);
+  CHECK_EQ(hash_size_raw_, s);
+  std::fill(out + s, out + hash_size_, 0);
+
   return true;
 }
 
