@@ -21,16 +21,6 @@
 #include "environment.h"
 #include "OfflineUnwinder.h"
 
-namespace simpleperf {
-OfflineUnwinder::OfflineUnwinder(bool collect_stat) : collect_stat_(collect_stat) {
-}
-
-bool OfflineUnwinder::UnwindCallChain(const ThreadEntry&, const RegSet&, const char*, size_t,
-                     std::vector<uint64_t>*, std::vector<uint64_t>*) {
-  return false;
-}
-}  // namespace simpleperf
-
 bool GetKernelBuildId(BuildId*) {
   return false;
 }
