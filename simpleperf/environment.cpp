@@ -761,7 +761,8 @@ std::string GetCompleteProcessName(pid_t pid) {
     s.clear();
   }
   for (size_t i = 0; i < s.size(); ++i) {
-    if (isspace(s[i])) {
+    // /proc/pid/cmdline uses 0 to separate arguments.
+    if (isspace(s[i]) || s[i] == 0) {
       s.resize(i);
       break;
     }
