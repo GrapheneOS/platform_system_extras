@@ -346,7 +346,7 @@ static void * process(void *cookie)
 {
     image_proc_ctx *ctx = (image_proc_ctx *)cookie;
     ctx->func(ctx);
-    return NULL;
+    return nullptr;
 }
 
 bool image_process(image_proc_func func, image *ctx)
@@ -417,7 +417,7 @@ bool image_process(image_proc_func func, image *ctx)
         assert(args[i].start < args[i].end);
         assert((args[i].end - args[i].start) % ctx->rs_n == 0);
 
-        if (pthread_create(&pthreads[i], NULL, process, &args[i]) != 0) {
+        if (pthread_create(&pthreads[i], nullptr, process, &args[i]) != 0) {
             FATAL("failed to create thread %d\n", i);
         }
 
@@ -427,7 +427,7 @@ bool image_process(image_proc_func func, image *ctx)
     ctx->rv = 0;
 
     for (int i = 0; i < threads; ++i) {
-        if (pthread_join(pthreads[i], NULL) != 0) {
+        if (pthread_join(pthreads[i], nullptr) != 0) {
             FATAL("failed to join thread %d: %s\n", i, strerror(errno));
         }
 
@@ -435,7 +435,7 @@ bool image_process(image_proc_func func, image *ctx)
 
         if (args[i].rs) {
             free_rs_char(args[i].rs);
-            args[i].rs = NULL;
+            args[i].rs = nullptr;
         }
     }
 
