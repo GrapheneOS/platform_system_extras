@@ -55,18 +55,44 @@ bool DebugElfFileFinder::SetSymFsDir(const std::string& symfs_dir) {
     }
   }
   symfs_dir_ = dirname;
-  build_id_to_file_map_.clear();
   std::string build_id_list_file = symfs_dir_ + "build_id_list";
   std::string build_id_list;
   if (android::base::ReadFileToString(build_id_list_file, &build_id_list)) {
     for (auto& line : android::base::Split(build_id_list, "\n")) {
       std::vector<std::string> items = android::base::Split(line, "=");
       if (items.size() == 2u) {
-        build_id_to_file_map_[items[0]] = items[1];
+        build_id_to_file_map_[items[0]] = symfs_dir_ + items[1];
       }
     }
   }
   return true;
+}
+
+bool DebugElfFileFinder::AddSymbolDir(const std::string& symbol_dir) {
+  if (!IsDir(symbol_dir)) {
+    LOG(ERROR) << "Invalid symbol dir " << symbol_dir;
+    return false;
+  }
+  std::string dir = symbol_dir;
+  if (dir.size() > 1 && dir.back() == '/') {
+    dir.pop_back();
+  }
+  CollectBuildIdInDir(dir);
+  return true;
+}
+
+void DebugElfFileFinder::CollectBuildIdInDir(const std::string& dir) {
+  for (const std::string& entry : GetEntriesInDir(dir)) {
+    std::string path = dir + "/" + entry;
+    if (IsDir(path)) {
+      CollectBuildIdInDir(path);
+    } else {
+      BuildId build_id;
+      if (GetBuildIdFromElfFile(path, &build_id) == ElfStatus::NO_ERROR) {
+        build_id_to_file_map_[build_id.ToString()] = path;
+      }
+    }
+  }
 }
 
 void DebugElfFileFinder::SetVdsoFile(const std::string& vdso_file, bool is_64bit) {
@@ -85,35 +111,36 @@ std::string DebugElfFileFinder::FindDebugFile(const std::string& dso_path, bool 
     } else if (!force_64bit && !vdso_32bit_.empty()) {
       return vdso_32bit_;
     }
-  } else if (!symfs_dir_.empty()) {
+  }
+  // 1. Try build_id_to_file_map.
+  if (!build_id_to_file_map_.empty()) {
     if (!build_id.IsEmpty() || GetBuildIdFromDsoPath(dso_path, &build_id)) {
-      std::string result;
-      auto check_path = [&](const std::string& path) {
-        BuildId debug_build_id;
-        if (GetBuildIdFromDsoPath(path, &debug_build_id) && debug_build_id == build_id) {
-          result = path;
-          return true;
-        }
-        return false;
-      };
-
-      // 1. Try build_id_to_file_map.
       auto it = build_id_to_file_map_.find(build_id.ToString());
       if (it != build_id_to_file_map_.end()) {
-        if (check_path(symfs_dir_ + it->second)) {
-          return result;
-        }
-      }
-      // 2. Try concatenating symfs_dir and dso_path.
-      if (check_path(symfs_dir_ + dso_path)) {
-        return result;
-      }
-      // 3. Try concatenating /usr/lib/debug and dso_path.
-      // Linux host can store debug shared libraries in /usr/lib/debug.
-      if (check_path("/usr/lib/debug" + dso_path)) {
-        return result;
+        return it->second;
       }
     }
+  }
+  auto check_path = [&](const std::string& path) {
+    BuildId debug_build_id;
+    if (GetBuildIdFromDsoPath(path, &debug_build_id)) {
+      if (!build_id.IsEmpty() || GetBuildIdFromDsoPath(dso_path, &build_id)) {
+        if (build_id == debug_build_id) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  // 2. Try concatenating symfs_dir and dso_path.
+  if (!symfs_dir_.empty() && check_path(symfs_dir_ + dso_path)) {
+    return symfs_dir_ + dso_path;
+  }
+  // 3. Try concatenating /usr/lib/debug and dso_path.
+  // Linux host can store debug shared libraries in /usr/lib/debug.
+  if (check_path("/usr/lib/debug" + dso_path)) {
+    return "/usr/lib/debug" + dso_path;
   }
   return dso_path;
 }
@@ -182,6 +209,10 @@ std::string Dso::Demangle(const std::string& name) {
 
 bool Dso::SetSymFsDir(const std::string& symfs_dir) {
   return debug_elf_file_finder_.SetSymFsDir(symfs_dir);
+}
+
+bool Dso::AddSymbolDir(const std::string& symbol_dir) {
+  return debug_elf_file_finder_.AddSymbolDir(symbol_dir);
 }
 
 void Dso::SetVmlinux(const std::string& vmlinux) { vmlinux_ = vmlinux; }
