@@ -16,9 +16,9 @@
 
 #include "OfflineUnwinder.h"
 
+#include <sys/mman.h>
+
 #include <android-base/logging.h>
-#include <backtrace/Backtrace.h>
-#include <backtrace/BacktraceMap.h>
 #include <unwindstack/MachineArm.h>
 #include <unwindstack/MachineArm64.h>
 #include <unwindstack/MachineX86.h>
@@ -29,6 +29,7 @@
 #include <unwindstack/RegsArm64.h>
 #include <unwindstack/RegsX86.h>
 #include <unwindstack/RegsX86_64.h>
+#include <unwindstack/Unwinder.h>
 #include <unwindstack/UserArm.h>
 #include <unwindstack/UserArm64.h>
 #include <unwindstack/UserX86.h>
@@ -39,11 +40,13 @@
 #include "read_apk.h"
 #include "thread_tree.h"
 
-static_assert(simpleperf::map_flags::PROT_JIT_SYMFILE_MAP == PROT_JIT_SYMFILE_MAP, "");
 static_assert(simpleperf::map_flags::PROT_JIT_SYMFILE_MAP ==
               unwindstack::MAPS_FLAGS_JIT_SYMFILE_MAP, "");
 
 namespace simpleperf {
+
+// Max frames seen so far is 463, in http://b/110923759.
+static constexpr size_t MAX_UNWINDING_FRAMES = 512;
 
 static unwindstack::Regs* GetBacktraceRegs(const RegSet& regs) {
   switch (regs.arch) {
@@ -113,8 +116,73 @@ static unwindstack::Regs* GetBacktraceRegs(const RegSet& regs) {
   }
 }
 
+static unwindstack::MapInfo* CreateMapInfo(const MapEntry* entry) {
+  const char* name = entry->dso->GetDebugFilePath().c_str();
+  uint64_t pgoff = entry->pgoff;
+  if (entry->pgoff == 0) {
+    auto tuple = SplitUrlInApk(entry->dso->GetDebugFilePath());
+    if (std::get<0>(tuple)) {
+      // The unwinder does not understand the ! format, so change back to
+      // the previous format (apk, offset).
+      EmbeddedElf* elf = ApkInspector::FindElfInApkByName(std::get<1>(tuple), std::get<2>(tuple));
+      if (elf != nullptr) {
+        name = elf->filepath().c_str();
+        pgoff = elf->entry_offset();
+      }
+    }
+  }
+  return new unwindstack::MapInfo(entry->start_addr, entry->get_end_addr(), pgoff,
+                                  PROT_READ | PROT_EXEC | entry->flags, name);
+}
+
+void UnwindMaps::UpdateMaps(const MapSet& map_set) {
+  if (version_ == map_set.version) {
+    return;
+  }
+  version_ = map_set.version;
+  size_t i = 0;
+  size_t old_size = entries_.size();
+  for (auto it = map_set.maps.begin(); it != map_set.maps.end();) {
+    const MapEntry* entry = it->second;
+    if (i < old_size && entry == entries_[i]) {
+      i++;
+      ++it;
+    } else if (i == old_size || entry->start_addr <= entries_[i]->start_addr) {
+      // Add an entry.
+      entries_.push_back(entry);
+      maps_.push_back(CreateMapInfo(entry));
+      ++it;
+    } else {
+      // Remove an entry.
+      entries_[i] = nullptr;
+      delete maps_[i];
+      maps_[i++] = nullptr;
+    }
+  }
+  while (i < old_size) {
+    entries_[i] = nullptr;
+    delete maps_[i];
+    maps_[i++] = nullptr;
+  }
+  std::sort(entries_.begin(), entries_.end(), [](const MapEntry* e1, const MapEntry* e2) {
+    if (e1 == nullptr || e2 == nullptr) {
+      return e1 != nullptr;
+    }
+    return e1->start_addr < e2->start_addr;
+  });
+  std::sort(maps_.begin(), maps_.end(),
+            [](const unwindstack::MapInfo* m1, const unwindstack::MapInfo* m2) {
+    if (m1 == nullptr || m2 == nullptr) {
+      return m1 != nullptr;
+    }
+    return m1->start < m2->start;
+  });
+  entries_.resize(map_set.maps.size());
+  maps_.resize(map_set.maps.size());
+}
+
 OfflineUnwinder::OfflineUnwinder(bool collect_stat) : collect_stat_(collect_stat) {
-  Backtrace::SetGlobalElfCache(true);
+  unwindstack::Elf::SetCachingEnabled(true);
 }
 
 bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& regs,
@@ -132,72 +200,33 @@ bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& r
   }
   uint64_t stack_addr = sp_reg_value;
 
-  // Create map only if the maps have changed since the last unwind.
-  auto map_it = cached_maps_.find(thread.pid);
-  CachedMap& cached_map = (map_it == cached_maps_.end() ? cached_maps_[thread.pid]
-                                                        : map_it->second);
-  if (!cached_map.map || cached_map.version < thread.maps->version) {
-    std::vector<backtrace_map_t> bt_maps(thread.maps->maps.size());
-    size_t map_index = 0;
-    for (auto& pair : thread.maps->maps) {
-      const MapEntry* map = pair.second;
-      backtrace_map_t& bt_map = bt_maps[map_index++];
-      bt_map.start = map->start_addr;
-      bt_map.end = map->start_addr + map->len;
-      bt_map.offset = map->pgoff;
-      bt_map.name = map->dso->GetDebugFilePath();
-      if (bt_map.offset == 0) {
-        auto tuple = SplitUrlInApk(bt_map.name);
-        if (std::get<0>(tuple)) {
-          // The unwinder does not understand the ! format, so change back to
-          // the previous format (apk, offset).
-          EmbeddedElf* elf = ApkInspector::FindElfInApkByName(std::get<1>(tuple),
-                                                              std::get<2>(tuple));
-          if (elf != nullptr) {
-            bt_map.name = elf->filepath();
-            bt_map.offset = elf->entry_offset();
-          }
-        }
-      }
-      bt_map.flags = PROT_READ | PROT_EXEC | map->flags;
-    }
-    cached_map.map.reset(BacktraceMap::CreateOffline(thread.pid, bt_maps));
-    if (!cached_map.map) {
-      return false;
-    }
-    // Disable the resolving of names, this data is not used.
-    cached_map.map->SetResolveNames(false);
-    cached_map.version = thread.maps->version;
-  }
-
-  backtrace_stackinfo_t stack_info;
-  stack_info.start = stack_addr;
-  stack_info.end = stack_addr + stack_size;
-  stack_info.data = reinterpret_cast<const uint8_t*>(stack);
-
+  UnwindMaps& cached_map = cached_maps_[thread.pid];
+  cached_map.UpdateMaps(*thread.maps);
+  std::shared_ptr<unwindstack::MemoryOfflineBuffer> stack_memory(
+      new unwindstack::MemoryOfflineBuffer(reinterpret_cast<const uint8_t*>(stack),
+                                           stack_addr, stack_addr + stack_size));
   std::unique_ptr<unwindstack::Regs> unwind_regs(GetBacktraceRegs(regs));
   if (!unwind_regs) {
     return false;
   }
-  std::vector<backtrace_frame_data_t> frames;
-  BacktraceUnwindError error;
-  if (Backtrace::UnwindOffline(unwind_regs.get(), cached_map.map.get(), stack_info, &frames,
-                               &error)) {
-    for (auto& frame : frames) {
-      // Unwinding in arm architecture can return 0 pc address.
+  unwindstack::Unwinder unwinder(MAX_UNWINDING_FRAMES, &cached_map, unwind_regs.get(),
+                                 stack_memory);
+  unwinder.SetResolveNames(false);
+  unwinder.Unwind();
+  for (auto& frame : unwinder.frames()) {
+    // Unwinding in arm architecture can return 0 pc address.
 
-      // If frame.map.start == 0, this frame doesn't hit any map, it could be:
-      // 1. In an executable map not backed by a file. Note that RecordCommand::ShouldOmitRecord()
-      //    may omit maps only exist memory.
-      // 2. An incorrectly unwound frame. Like caused by invalid stack data, as in
-      //    SampleRecord::GetValidStackSize().
-      // We want to remove this frame and callchains following it in either case.
-      if (frame.pc == 0 || frame.map.start == 0) {
-        break;
-      }
-      ips->push_back(frame.pc);
-      sps->push_back(frame.sp);
+    // If frame.map.start == 0, this frame doesn't hit any map, it could be:
+    // 1. In an executable map not backed by a file. Note that RecordCommand::ShouldOmitRecord()
+    //    may omit maps only exist memory.
+    // 2. An incorrectly unwound frame. Like caused by invalid stack data, as in
+    //    SampleRecord::GetValidStackSize().
+    // We want to remove this frame and callchains following it in either case.
+    if (frame.pc == 0 || frame.map_start == 0) {
+      break;
     }
+    ips->push_back(frame.pc);
+    sps->push_back(frame.sp);
   }
 
   uint64_t ip_reg_value;
@@ -214,40 +243,31 @@ bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& r
   }
   if (collect_stat_) {
     unwinding_result_.used_time = GetSystemClock() - start_time;
-    switch (error.error_code) {
-      case BACKTRACE_UNWIND_ERROR_EXCEED_MAX_FRAMES_LIMIT:
+    switch (unwinder.LastErrorCode()) {
+      case unwindstack::ERROR_MAX_FRAMES_EXCEEDED:
         unwinding_result_.stop_reason = UnwindingResult::EXCEED_MAX_FRAMES_LIMIT;
         break;
-      case BACKTRACE_UNWIND_ERROR_ACCESS_REG_FAILED:
-        unwinding_result_.stop_reason = UnwindingResult::ACCESS_REG_FAILED;
-        unwinding_result_.stop_info.regno = error.error_info.regno;
-        break;
-      case BACKTRACE_UNWIND_ERROR_ACCESS_MEM_FAILED:
+      case unwindstack::ERROR_MEMORY_INVALID: {
+        uint64_t addr = unwinder.LastErrorAddress();
         // Because we don't have precise stack range here, just guess an addr is in stack
         // if sp - 128K <= addr <= sp.
-        if (error.error_info.addr <= stack_addr &&
-            error.error_info.addr >= stack_addr - 128 * 1024) {
+        if (addr <= stack_addr && addr >= stack_addr - 128 * 1024) {
           unwinding_result_.stop_reason = UnwindingResult::ACCESS_STACK_FAILED;
         } else {
           unwinding_result_.stop_reason = UnwindingResult::ACCESS_MEM_FAILED;
         }
-        unwinding_result_.stop_info.addr = error.error_info.addr;
+        unwinding_result_.stop_info.addr = addr;
         break;
-      case BACKTRACE_UNWIND_ERROR_FIND_PROC_INFO_FAILED:
-        unwinding_result_.stop_reason = UnwindingResult::FIND_PROC_INFO_FAILED;
-        break;
-      case BACKTRACE_UNWIND_ERROR_EXECUTE_DWARF_INSTRUCTION_FAILED:
-        unwinding_result_.stop_reason = UnwindingResult::EXECUTE_DWARF_INSTRUCTION_FAILED;
-        break;
-      case BACKTRACE_UNWIND_ERROR_MAP_MISSING:
+      }
+      case unwindstack::ERROR_INVALID_MAP:
         unwinding_result_.stop_reason = UnwindingResult::MAP_MISSING;
         break;
       default:
         unwinding_result_.stop_reason = UnwindingResult::UNKNOWN_REASON;
         break;
     }
-    unwinding_result_.stack_start = stack_info.start;
-    unwinding_result_.stack_end = stack_info.end;
+    unwinding_result_.stack_start = stack_addr;
+    unwinding_result_.stack_end = stack_addr + stack_size;
   }
   return true;
 }
