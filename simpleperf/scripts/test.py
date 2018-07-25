@@ -577,6 +577,8 @@ class TestExampleWithNative(TestExampleBase):
 
     def test_report_html(self):
         self.common_test_report_html()
+        self.run_cmd(['report_html.py', '--add_source_code', '--source_dirs', 'testdata',
+                      '--add_disassembly', '--binary_filter', "libnative-lib.so"])
 
 
 class TestExampleWithNativeRoot(TestExampleBase):
@@ -1063,11 +1065,12 @@ class TestTools(unittest.TestCase):
         }
         objdump = Objdump(None, binary_cache_path)
         for dso_path in test_map:
-            dso_info = test_map[dso_path]
-            disassemble_code = objdump.disassemble_code(dso_path, dso_info['start_addr'],
-                                                        dso_info['len'])
+            dso = test_map[dso_path]
+            dso_info = objdump.get_dso_info(dso_path)
+            self.assertIsNotNone(dso_info)
+            disassemble_code = objdump.disassemble_code(dso_info, dso['start_addr'], dso['len'])
             self.assertTrue(disassemble_code)
-            for item in dso_info['expected_items']:
+            for item in dso['expected_items']:
                 self.assertTrue(item in disassemble_code)
 
     def test_readelf(self):

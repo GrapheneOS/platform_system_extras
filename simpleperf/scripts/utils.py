@@ -354,6 +354,13 @@ def open_report_in_browser(report_path):
         # webbrowser.get() doesn't work well on darwin/windows.
         webbrowser.open_new_tab(report_path)
 
+def is_elf_file(path):
+    if os.path.isfile(path):
+        with open(path, 'rb') as fh:
+            data = fh.read(4)
+            if len(data) == 4 and bytes_to_str(data) == '\x7fELF':
+                return True
+    return False
 
 def find_real_dso_path(dso_path_in_record_file, binary_cache_path):
     """ Given the path of a shared library in perf.data, find its real path in the file system. """
@@ -361,9 +368,9 @@ def find_real_dso_path(dso_path_in_record_file, binary_cache_path):
         return None
     if binary_cache_path:
         tmp_path = os.path.join(binary_cache_path, dso_path_in_record_file[1:])
-        if os.path.isfile(tmp_path):
+        if is_elf_file(tmp_path):
             return tmp_path
-    if os.path.isfile(dso_path_in_record_file):
+    if is_elf_file(dso_path_in_record_file):
         return dso_path_in_record_file
     return None
 
@@ -559,19 +566,20 @@ class Objdump(object):
         self.readelf = ReadElf(ndk_path)
         self.objdump_paths = {}
 
-    def disassemble_code(self, dso_path, start_addr, addr_len):
-        """ Disassemble [start_addr, start_addr + addr_len] of dso_path.
-            Return a list of pair (disassemble_code_line, addr).
-        """
-        # 1. Find real path.
+    def get_dso_info(self, dso_path):
         real_path = find_real_dso_path(dso_path, self.binary_cache_path)
-        if real_path is None:
+        if not real_path:
             return None
-
-        # 2. Get path of objdump.
         arch = self.readelf.get_arch(real_path)
         if arch == 'unknown':
             return None
+        return (real_path, arch)
+
+    def disassemble_code(self, dso_info, start_addr, addr_len):
+        """ Disassemble [start_addr, start_addr + addr_len] of dso_path.
+            Return a list of pair (disassemble_code_line, addr).
+        """
+        real_path, arch = dso_info
         objdump_path = self.objdump_paths.get(arch)
         if not objdump_path:
             objdump_path = find_tool_path('objdump', self.ndk_path, arch)
@@ -614,53 +622,57 @@ class ReadElf(object):
 
     def get_arch(self, elf_file_path):
         """ Get arch of an elf file. """
-        try:
-            output = subprocess.check_output([self.readelf_path, '-h', elf_file_path])
-            if output.find('AArch64') != -1:
-                return 'arm64'
-            if output.find('ARM') != -1:
-                return 'arm'
-            if output.find('X86-64') != -1:
-                return 'x86_64'
-            if output.find('80386') != -1:
-                return 'x86'
-        except subprocess.CalledProcessError:
-            pass
+        if is_elf_file(elf_file_path):
+            try:
+                output = subprocess.check_output([self.readelf_path, '-h', elf_file_path])
+                output = bytes_to_str(output)
+                if output.find('AArch64') != -1:
+                    return 'arm64'
+                if output.find('ARM') != -1:
+                    return 'arm'
+                if output.find('X86-64') != -1:
+                    return 'x86_64'
+                if output.find('80386') != -1:
+                    return 'x86'
+            except subprocess.CalledProcessError:
+                pass
         return 'unknown'
 
     def get_build_id(self, elf_file_path):
         """ Get build id of an elf file. """
-        try:
-            output = subprocess.check_output([self.readelf_path, '-n', elf_file_path])
-            output = bytes_to_str(output)
-            result = re.search(r'Build ID:\s*(\S+)', output)
-            if result:
-                build_id = result.group(1)
-                if len(build_id) < 40:
-                    build_id += '0' * (40 - len(build_id))
-                else:
-                    build_id = build_id[:40]
-                build_id = '0x' + build_id
-                return build_id
-        except subprocess.CalledProcessError:
-            pass
+        if is_elf_file(elf_file_path):
+            try:
+                output = subprocess.check_output([self.readelf_path, '-n', elf_file_path])
+                output = bytes_to_str(output)
+                result = re.search(r'Build ID:\s*(\S+)', output)
+                if result:
+                    build_id = result.group(1)
+                    if len(build_id) < 40:
+                        build_id += '0' * (40 - len(build_id))
+                    else:
+                        build_id = build_id[:40]
+                    build_id = '0x' + build_id
+                    return build_id
+            except subprocess.CalledProcessError:
+                pass
         return ""
 
     def get_sections(self, elf_file_path):
         """ Get sections of an elf file. """
         section_names = []
-        try:
-            output = subprocess.check_output([self.readelf_path, '-SW', elf_file_path])
-            output = bytes_to_str(output)
-            for line in output.split('\n'):
-                # Parse line like:" [ 1] .note.android.ident NOTE  0000000000400190 ...".
-                result = re.search(r'^\s+\[\s*\d+\]\s(.+?)\s', line)
-                if result:
-                    section_name = result.group(1).strip()
-                    if section_name:
-                        section_names.append(section_name)
-        except subprocess.CalledProcessError:
-            pass
+        if is_elf_file(elf_file_path):
+            try:
+                output = subprocess.check_output([self.readelf_path, '-SW', elf_file_path])
+                output = bytes_to_str(output)
+                for line in output.split('\n'):
+                    # Parse line like:" [ 1] .note.android.ident NOTE  0000000000400190 ...".
+                    result = re.search(r'^\s+\[\s*\d+\]\s(.+?)\s', line)
+                    if result:
+                        section_name = result.group(1).strip()
+                        if section_name:
+                            section_names.append(section_name)
+            except subprocess.CalledProcessError:
+                pass
         return section_names
 
 def extant_dir(arg):
