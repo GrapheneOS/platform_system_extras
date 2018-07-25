@@ -55,7 +55,10 @@ class HashTreeBuilder {
   // Converts |bytes| to string for hexdump.
   static std::string BytesArrayToString(
       const std::vector<unsigned char>& bytes);
-
+  // Inverse of the above function. It parses the input hex string and stores
+  // the result in |bytes|.
+  static bool ParseBytesArrayFromString(const std::string& str,
+                                        std::vector<unsigned char>* bytes);
   // Returns the hash function given the name of the hash algorithm. Returns
   // nullptr if the algorithm is unrecongnized or not supported.
   static const EVP_MD* HashFunction(const std::string& hash_name);

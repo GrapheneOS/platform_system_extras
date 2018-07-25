@@ -25,7 +25,7 @@
 #include <openssl/evp.h>
 
 #include "build_verity_tree_utils.h"
-#include "hash_tree_builder.h"
+#include "verity/hash_tree_builder.h"
 
 // The hex string we are using in build_image.py
 // aee087a5be3b982978c923f566a94613496b417f2af592639bc80d141e34dfe7
