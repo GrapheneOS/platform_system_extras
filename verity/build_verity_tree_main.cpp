@@ -29,9 +29,8 @@
 #include <android-base/logging.h>
 #include <android-base/parseint.h>
 #include <android-base/unique_fd.h>
-#include <openssl/bn.h>
 
-#include "build_verity_tree.h"
+#include "verity/build_verity_tree.h"
 
 static void usage(void) {
   printf(
@@ -75,19 +74,11 @@ int main(int argc, char** argv) {
         salt.clear();
         salt.insert(salt.end(), optarg, &optarg[strlen(optarg)]);
         break;
-      case 'A': {
-        BIGNUM* bn = nullptr;
-        if (!BN_hex2bn(&bn, optarg)) {
-          LOG(ERROR) << "Failed to convert salt from hex";
+      case 'A':
+        if (!HashTreeBuilder::ParseBytesArrayFromString(optarg, &salt)) {
           return 1;
         }
-        size_t salt_size = BN_num_bytes(bn);
-        salt.resize(salt_size);
-        if (BN_bn2bin(bn, salt.data()) != salt_size) {
-          LOG(ERROR) << "Failed to convert salt to bytes";
-          return 1;
-        }
-      } break;
+        break;
       case 'h':
         usage();
         return 1;

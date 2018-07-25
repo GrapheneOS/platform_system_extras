@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "build_verity_tree.h"
+#include "verity/build_verity_tree.h"
 
 #include <android-base/logging.h>
 #include <android-base/unique_fd.h>
