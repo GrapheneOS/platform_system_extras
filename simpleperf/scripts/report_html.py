@@ -635,7 +635,7 @@ class RecordData(object):
             self.events[event_name] = EventScope(event_name)
         return self.events[event_name]
 
-    def add_source_code(self, source_dirs):
+    def add_source_code(self, source_dirs, filter_lib):
         """ Collect source code information:
             1. Find line ranges for each function in FunctionSet.
             2. Find line for each addr in FunctionScope.addr_hit_map.
@@ -647,17 +647,19 @@ class RecordData(object):
             if function.func_name == 'unknown':
                 continue
             lib_name = self.libs.get_lib_name(function.lib_id)
-            addr2line.add_addr(lib_name, function.start_addr, function.start_addr)
-            addr2line.add_addr(lib_name, function.start_addr,
-                               function.start_addr + function.addr_len - 1)
+            if filter_lib(lib_name):
+                addr2line.add_addr(lib_name, function.start_addr, function.start_addr)
+                addr2line.add_addr(lib_name, function.start_addr,
+                                   function.start_addr + function.addr_len - 1)
         # Request line for each addr in FunctionScope.addr_hit_map.
         for event in self.events.values():
             for lib in event.libraries:
                 lib_name = self.libs.get_lib_name(lib.lib_id)
-                for function in lib.functions.values():
-                    func_addr = self.functions.id_to_func[function.func_id].start_addr
-                    for addr in function.addr_hit_map:
-                        addr2line.add_addr(lib_name, func_addr, addr)
+                if filter_lib(lib_name):
+                    for function in lib.functions.values():
+                        func_addr = self.functions.id_to_func[function.func_id].start_addr
+                        for addr in function.addr_hit_map:
+                            addr2line.add_addr(lib_name, func_addr, addr)
         addr2line.convert_addrs_to_lines()
 
         # Set line range for each function.
@@ -665,6 +667,8 @@ class RecordData(object):
             if function.func_name == 'unknown':
                 continue
             dso = addr2line.get_dso(self.libs.get_lib_name(function.lib_id))
+            if not dso:
+                continue
             start_source = addr2line.get_addr_source(dso, function.start_addr)
             end_source = addr2line.get_addr_source(dso, function.start_addr + function.addr_len - 1)
             if not start_source or not end_source:
@@ -681,6 +685,8 @@ class RecordData(object):
         for event in self.events.values():
             for lib in event.libraries:
                 dso = addr2line.get_dso(self.libs.get_lib_name(lib.lib_id))
+                if not dso:
+                    continue
                 for function in lib.functions.values():
                     for addr in function.addr_hit_map:
                         source = addr2line.get_addr_source(dso, addr)
@@ -697,18 +703,29 @@ class RecordData(object):
         # Collect needed source code in SourceFileSet.
         self.source_files.load_source_code(source_dirs)
 
-    def add_disassembly(self):
+    def add_disassembly(self, filter_lib):
         """ Collect disassembly information:
             1. Use objdump to collect disassembly for each function in FunctionSet.
             2. Set flag to dump addr_hit_map when generating record info.
         """
         objdump = Objdump(self.ndk_path, self.binary_cache_path)
-        for function in self.functions.id_to_func.values():
+        cur_lib_name = None
+        dso_info = None
+        for function in sorted(self.functions.id_to_func.values(), key=lambda a: a.lib_id):
             if function.func_name == 'unknown':
                 continue
             lib_name = self.libs.get_lib_name(function.lib_id)
-            code = objdump.disassemble_code(lib_name, function.start_addr, function.addr_len)
-            function.disassembly = code
+            if lib_name != cur_lib_name:
+                cur_lib_name = lib_name
+                if filter_lib(lib_name):
+                    dso_info = objdump.get_dso_info(lib_name)
+                else:
+                    dso_info = None
+                if dso_info:
+                    log_info('Disassemble %s' % dso_info[0])
+            if dso_info:
+                code = objdump.disassemble_code(dso_info, function.start_addr, function.addr_len)
+                function.disassembly = code
 
         self.gen_addr_hit_map_in_record_info = True
 
@@ -866,6 +883,8 @@ def main():
     parser.add_argument('--add_source_code', action='store_true', help='Add source code.')
     parser.add_argument('--source_dirs', nargs='+', help='Source code directories.')
     parser.add_argument('--add_disassembly', action='store_true', help='Add disassembled code.')
+    parser.add_argument('--binary_filter', nargs='+', help="""Annotate source code and disassembly
+                        only for selected binaries.""")
     parser.add_argument('--ndk_path', nargs=1, help='Find tools in the ndk path.')
     parser.add_argument('--no_browser', action='store_true', help="Don't open report in browser.")
     parser.add_argument('--show_art_frames', action='store_true',
@@ -892,10 +911,18 @@ def main():
     for record_file in args.record_file:
         record_data.load_record_file(record_file, args.show_art_frames)
     record_data.limit_percents(args.min_func_percent, args.min_callchain_percent)
+
+    def filter_lib(lib_name):
+        if not args.binary_filter:
+            return True
+        for binary in args.binary_filter:
+            if binary in lib_name:
+                return True
+        return False
     if args.add_source_code:
-        record_data.add_source_code(args.source_dirs)
+        record_data.add_source_code(args.source_dirs, filter_lib)
     if args.add_disassembly:
-        record_data.add_disassembly()
+        record_data.add_disassembly(filter_lib)
 
     # 3. Generate report html.
     report_generator = ReportGenerator(args.report_path)

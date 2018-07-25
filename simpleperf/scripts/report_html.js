@@ -602,7 +602,7 @@ class SampleTableWeightSelectorView {
             if (e.clickEvent) {
                 let button = $(e.clickEvent.target);
                 let newOption = button.attr('key');
-                if (this.curOption != newOption) {
+                if (newOption && this.curOption != newOption) {
                     this.curOption = newOption;
                     divContainer.find(`#${id}`).text(options.get(this.curOption));
                     onSelectChange();
@@ -638,7 +638,7 @@ class SampleTableView {
         this.div = $('<div>', {id: this.id}).appendTo(divContainer);
         this.eventInfo = eventInfo;
         this.selectorView = null;
-        this.tableView = null;
+        this.tableDiv = null;
     }
 
     drawAsync(totalProgress) {
@@ -647,6 +647,7 @@ class SampleTableView {
                 this.div.empty();
                 this.selectorView = new SampleTableWeightSelectorView(
                     this.div, this.eventInfo, () => this.onSampleWeightChange());
+                this.tableDiv = $('<div>').appendTo(this.div);
             }))
             .then(() => this._drawSampleTable(totalProgress));
     }
@@ -657,7 +658,7 @@ class SampleTableView {
         let data = [];
         return createPromise()
             .then(wait(() => {
-                this.div.find('table').remove();
+                this.tableDiv.empty();
                 let getSampleWeight = this.selectorView.getSampleWeightFunction();
                 let sampleWeightSuffix = this.selectorView.getSampleWeightSuffix();
                 // Draw a table of 'Total', 'Self', 'Samples', 'Process', 'Thread', 'Library',
@@ -665,7 +666,7 @@ class SampleTableView {
                 let valueSuffix = sampleWeightSuffix.length > 0 ? `(in${sampleWeightSuffix})` : '';
                 let titles = ['Total' + valueSuffix, 'Self' + valueSuffix, 'Samples', 'Process',
                               'Thread', 'Library', 'Function', 'HideKey'];
-                this.div.append(`
+                this.tableDiv.append(`
                     <table cellspacing="0" class="table table-striped table-bordered"
                         style="width:100%">
                         <thead>${getTableRow(titles, 'th')}</thead>
@@ -691,7 +692,7 @@ class SampleTableView {
             }))
             .then(addProgress(totalProgress / 2))
             .then(wait(() => {
-                let table = this.div.find('table');
+                let table = this.tableDiv.find('table');
                 let dataTable = table.DataTable({
                     lengthMenu: [10, 20, 50, 100, -1],
                     order: [0, 'desc'],
@@ -1039,7 +1040,7 @@ class SampleWeightSelectorView {
             if (e.clickEvent) {
                 let button = $(e.clickEvent.target);
                 let newOption = button.attr('key');
-                if (this.curOption != newOption) {
+                if (newOption && this.curOption != newOption) {
                     this.curOption = newOption;
                     divContainer.find(`#${id}`).text(options.get(this.curOption));
                     onSelectChange();
