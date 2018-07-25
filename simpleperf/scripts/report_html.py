@@ -20,11 +20,13 @@ import collections
 import datetime
 import json
 import os
+import sys
 
 from simpleperf_report_lib import ReportLib
 from utils import log_info, log_exit
 from utils import Addr2Nearestline, get_script_dir, Objdump, open_report_in_browser
 
+MAX_CALLSTACK_LENGTH = 750
 
 class HtmlWriter(object):
 
@@ -609,6 +611,8 @@ class RecordData(object):
                 lib_id = self.libs.get_lib_id(symbol.dso_name)
                 func_id = self.functions.get_func_id(lib_id, symbol)
                 callstack.append((lib_id, func_id, symbol.vaddr_in_file))
+            if len(callstack) > MAX_CALLSTACK_LENGTH:
+                callstack = callstack[:MAX_CALLSTACK_LENGTH]
             thread.add_callstack(raw_sample.period, callstack, self.build_addr_hit_map)
 
         for event in self.events.values():
@@ -866,6 +870,7 @@ class ReportGenerator(object):
 
 
 def main():
+    sys.setrecursionlimit(MAX_CALLSTACK_LENGTH * 2 + 50)
     parser = argparse.ArgumentParser(description='report profiling data')
     parser.add_argument('-i', '--record_file', nargs='+', default=['perf.data'], help="""
                         Set profiling data file to report. Default is perf.data.""")
