@@ -17,6 +17,7 @@
 #include <inttypes.h>
 #include <libgen.h>
 #include <signal.h>
+#include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/utsname.h>
 #include <time.h>

@@ -52,17 +52,20 @@ int main(int argc, char** argv) {
   bool sparse = false;
   uint64_t calculate_size = 0;
   bool verbose = false;
+  std::string hash_algorithm;
 
   while (1) {
     constexpr struct option long_options[] = {
-        {"salt-str", required_argument, 0, 'a'},
-        {"salt-hex", required_argument, 0, 'A'},
-        {"help", no_argument, 0, 'h'},
-        {"sparse", no_argument, 0, 'S'},
-        {"verity-size", required_argument, 0, 's'},
-        {"verbose", no_argument, 0, 'v'},
-        {nullptr, 0, 0, 0}};
-    int c = getopt_long(argc, argv, "a:A:hSs:v", long_options, nullptr);
+        {"salt-str", required_argument, nullptr, 'a'},
+        {"salt-hex", required_argument, nullptr, 'A'},
+        {"help", no_argument, nullptr, 'h'},
+        {"sparse", no_argument, nullptr, 'S'},
+        {"verity-size", required_argument, nullptr, 's'},
+        {"verbose", no_argument, nullptr, 'v'},
+        {"hash-algorithm", required_argument, nullptr, 0},
+        {nullptr, 0, nullptr, 0}};
+    int option_index;
+    int c = getopt_long(argc, argv, "a:A:hSs:v", long_options, &option_index);
     if (c < 0) {
       break;
     }
@@ -102,6 +105,12 @@ int main(int argc, char** argv) {
       case 'v':
         verbose = true;
         break;
+      case 0: {
+        std::string option = long_options[option_index].name;
+        if (option == "hash-algorithm") {
+          hash_algorithm = optarg;
+        }
+      } break;
       case '?':
         usage();
         return 1;
@@ -113,7 +122,13 @@ int main(int argc, char** argv) {
   argc -= optind;
   argv += optind;
 
-  HashTreeBuilder builder(kBlockSize);
+  auto hash_function = hash_algorithm.empty()
+                           ? EVP_sha256()
+                           : HashTreeBuilder::HashFunction(hash_algorithm);
+  if (hash_function == nullptr) {
+    return 1;
+  }
+  HashTreeBuilder builder(kBlockSize, hash_function);
 
   if (calculate_size) {
     if (argc != 0) {

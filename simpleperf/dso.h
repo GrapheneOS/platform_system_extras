@@ -36,11 +36,14 @@ class DebugElfFileFinder {
  public:
   void Reset();
   bool SetSymFsDir(const std::string& symfs_dir);
+  bool AddSymbolDir(const std::string& symbol_dir);
   void SetVdsoFile(const std::string& vdso_file, bool is_64bit);
   std::string FindDebugFile(const std::string& dso_path, bool force_64bit,
                             BuildId& build_id);
 
  private:
+  void CollectBuildIdInDir(const std::string& dir);
+
   std::string vdso_64bit_;
   std::string vdso_32bit_;
   std::string symfs_dir_;
@@ -110,7 +113,13 @@ class Dso {
  public:
   static void SetDemangle(bool demangle);
   static std::string Demangle(const std::string& name);
+  // SymFsDir is used to provide an alternative root directory looking for files with symbols.
+  // For example, if we are searching symbols for /system/lib/libc.so and SymFsDir is /data/symbols,
+  // then we will also search file /data/symbols/system/lib/libc.so.
   static bool SetSymFsDir(const std::string& symfs_dir);
+  // SymbolDir is used to add a directory containing files with symbols. Each file under it will
+  // be searched recursively to build a build_id_map.
+  static bool AddSymbolDir(const std::string& symbol_dir);
   static void SetVmlinux(const std::string& vmlinux);
   static void SetKallsyms(std::string kallsyms) {
     if (!kallsyms.empty()) {

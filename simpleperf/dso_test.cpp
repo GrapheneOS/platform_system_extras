@@ -67,6 +67,15 @@ TEST(DebugElfFileFinder, use_vdso) {
   ASSERT_EQ(finder.FindDebugFile("[vdso]", true, build_id), fake_vdso64);
 }
 
+TEST(DebugElfFileFinder, add_symbol_dir) {
+  DebugElfFileFinder finder;
+  ASSERT_FALSE(finder.AddSymbolDir(GetTestDataDir() + "dir_not_exist"));
+  ASSERT_EQ(finder.FindDebugFile("elf", false, CHECK_ELF_FILE_BUILD_ID), "elf");
+  ASSERT_TRUE(finder.AddSymbolDir(GetTestDataDir() + CORRECT_SYMFS_FOR_BUILD_ID_CHECK));
+  ASSERT_EQ(finder.FindDebugFile("elf", false, CHECK_ELF_FILE_BUILD_ID),
+            GetTestDataDir() + CORRECT_SYMFS_FOR_BUILD_ID_CHECK + "/elf_for_build_id_check");
+}
+
 TEST(dso, dex_file_dso) {
 #if defined(__linux__)
   for (DsoType dso_type : {DSO_DEX_FILE, DSO_ELF_FILE}) {
