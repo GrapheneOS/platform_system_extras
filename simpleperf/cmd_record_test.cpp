@@ -629,17 +629,16 @@ TEST(record_cmd, exit_with_parent_option) {
 
 TEST(record_cmd, clockid_option) {
   TEST_REQUIRE_HW_COUNTER();
-  if (!IsSettingClockIdSupported()) {
-    ASSERT_FALSE(RunRecordCmd({"--clockid", "monotonic"}));
-  } else {
-    TemporaryFile tmpfile;
-    ASSERT_TRUE(RunRecordCmd({"--clockid", "monotonic"}, tmpfile.path));
-    std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
-    ASSERT_TRUE(reader);
-    std::unordered_map<std::string, std::string> info_map;
-    ASSERT_TRUE(reader->ReadMetaInfoFeature(&info_map));
-    ASSERT_EQ(info_map["clockid"], "monotonic");
-  }
+  // clockid is supported in kernel >= 4.1. If not supported, please cherry pick kernel patch:
+  //   34f439278cef7b perf: Add per event clockid support
+  ASSERT_TRUE(IsSettingClockIdSupported());
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({"--clockid", "monotonic"}, tmpfile.path));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader);
+  std::unordered_map<std::string, std::string> info_map;
+  ASSERT_TRUE(reader->ReadMetaInfoFeature(&info_map));
+  ASSERT_EQ(info_map["clockid"], "monotonic");
 }
 
 TEST(record_cmd, generate_samples_by_hw_counters) {
