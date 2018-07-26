@@ -1159,6 +1159,11 @@ class TestNativeLibDownloader(unittest.TestCase):
         adb.run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
 
 
+class TestReportHtml(TestBase):
+    def test_long_callchain(self):
+        self.run_cmd(['report_html.py', '-i', 'testdata/perf_with_long_callchain.data'])
+
+
 def list_tests():
     tests = []
     for name, value in globals().items():

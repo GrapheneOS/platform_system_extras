@@ -14,15 +14,17 @@
  * limitations under the License.
  */
 
-#include "hash_tree_builder.h"
+#include "verity/hash_tree_builder.h"
 
 #include <algorithm>
+#include <memory>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
+#include <openssl/bn.h>
 
 #include "build_verity_tree_utils.h"
 
@@ -65,6 +67,29 @@ std::string HashTreeBuilder::BytesArrayToString(
     result += android::base::StringPrintf("%02x", c);
   }
   return result;
+}
+
+bool HashTreeBuilder::ParseBytesArrayFromString(
+    const std::string& hex_string, std::vector<unsigned char>* bytes) {
+  if (hex_string.size() % 2 != 0) {
+    LOG(ERROR) << "Hex string size must be even number " << hex_string;
+    return false;
+  }
+
+  BIGNUM* bn = nullptr;
+  if (!BN_hex2bn(&bn, hex_string.c_str())) {
+    LOG(ERROR) << "Failed to parse hex in " << hex_string;
+    return false;
+  }
+  std::unique_ptr<BIGNUM, decltype(&BN_free)> guard(bn, BN_free);
+
+  size_t bytes_size = BN_num_bytes(bn);
+  bytes->resize(bytes_size);
+  if (BN_bn2bin(bn, bytes->data()) != bytes_size) {
+    LOG(ERROR) << "Failed to convert hex to bytes " << hex_string;
+    return false;
+  }
+  return true;
 }
 
 uint64_t HashTreeBuilder::CalculateSize(uint64_t input_size) const {

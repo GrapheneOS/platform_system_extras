@@ -92,6 +92,7 @@ cc_library_static {
         "verity_tree_defaults",
     ],
 
+    export_include_dirs: ["include"],
     srcs: [
         "build_verity_tree.cpp",
         "build_verity_tree_utils.cpp",
