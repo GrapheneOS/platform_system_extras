@@ -31,10 +31,8 @@ cc_binary {
     name: "lpdump",
     defaults: ["lp_defaults"],
     host_supported: true,
-    static_libs: [
+    shared_libs: [
         "libbase",
-        "libcrypto",
-        "libcrypto_utils",
         "liblog",
         "liblp",
     ],
@@ -47,10 +45,8 @@ cc_binary {
     name: "lpmake",
     defaults: ["lp_defaults"],
     host_supported: true,
-    static_libs: [
+    shared_libs: [
         "libbase",
-        "libcrypto",
-        "libcrypto_utils",
         "liblog",
         "liblp",
     ],
@@ -63,10 +59,8 @@ cc_binary {
     name: "lpflash",
     defaults: ["lp_defaults"],
     host_supported: true,
-    static_libs: [
+    shared_libs: [
         "libbase",
-        "libcrypto",
-        "libcrypto_utils",
         "liblog",
         "liblp",
     ],
