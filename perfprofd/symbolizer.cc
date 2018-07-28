@@ -68,10 +68,15 @@ struct SimpleperfSymbolizer : public Symbolizer {
   void LoadDso(const std::string& dso) {
     SymbolMap data;
     auto callback = [&data](const ElfFileSymbol& sym) {
-      Symbol symbol;
-      symbol.name = sym.name;
-      symbol.length = sym.len;
-      data.emplace(sym.vaddr, std::move(symbol));
+      if (sym.is_func) {
+        Symbol symbol;
+        symbol.name = sym.name;
+        symbol.length = sym.len;
+        if (sym.len == 0) {
+          LOG(ERROR) << "Symbol size is zero for " << sym.name;
+        }
+        data.emplace(sym.vaddr, std::move(symbol));
+      }
     };
     ElfStatus status = ParseSymbolsFromElfFile(dso, BuildId(), callback);
     if (status != ElfStatus::NO_ERROR) {
