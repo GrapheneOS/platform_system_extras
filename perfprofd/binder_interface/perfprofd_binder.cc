@@ -108,7 +108,15 @@ status_t PerfProfdNativeService::start() {
 
 status_t PerfProfdNativeService::dump(int fd, const Vector<String16> &args) {
   auto out = std::fstream(base::StringPrintf("/proc/self/fd/%d", fd));
-  out << "Nothing to log, yet!" << std::endl;
+  auto print_config = [&out](bool is_profiling, const Config* config) {
+    if (is_profiling) {
+      out << "Profiling with config: " << ConfigReader::ConfigToString(*config);
+    } else {
+      out << "Not actively profiling.";
+    }
+  };
+  RunOnConfig(print_config);
+  out << std::endl;
 
   return NO_ERROR;
 }
