@@ -328,9 +328,10 @@ static int load_verity(fec_handle *f)
 
     /* legacy format after the file system, but not at the end */
     int rc = get_fs_size(f, &offset);
-
     if (rc == 0) {
         debug("file system size = %" PRIu64, offset);
+        /* Jump over the verity tree appended to the filesystem */
+        offset += verity_get_size(offset, NULL, NULL);
         rc = verity_parse_header(f, offset);
 
         if (rc == 0) {
