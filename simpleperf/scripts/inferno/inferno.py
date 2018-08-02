@@ -263,6 +263,8 @@ def main():
                               Like -np surfaceflinger.""")
     record_group.add_argument('-p', '--app', help="""Profile an Android app, given the package
                               name. Like -p com.example.android.myapp.""")
+    record_group.add_argument('--pid', type=int, default=-1, help="""Profile a native program
+                              with given pid, the pid should exist on the device.""")
     record_group.add_argument('--record_file', default='perf.data', help='Default is perf.data.')
     record_group.add_argument('-sc', '--skip_collection', action='store_true', help="""Skip data
                               collection""")
@@ -300,6 +302,15 @@ def main():
     process = Process("", 0)
 
     if not args.skip_collection:
+        if args.pid != -1:
+            result, output = AdbHelper().run_and_return_output(['shell', 'ps', '-p',
+                                                                str(args.pid), '-o', 'comm='])
+            if result:
+                try:
+                    args.native_program = output.replace('\n', '')
+                except:
+                    log_warning("Could not find native app for pid '%d'." % process.pid)
+
         process.name = args.app or args.native_program
         log_info("Starting data collection stage for process '%s'." % process.name)
         if not collect_data(args):
