@@ -222,7 +222,7 @@ int main(int argc, char* argv[]) {
         }
 
         Partition* partition = builder->AddPartition(name, parts[1], attribute_flags);
-        if (!builder->GrowPartition(partition, size)) {
+        if (!builder->ResizePartition(partition, size)) {
             fprintf(stderr, "Not enough space on device for partition %s with size %" PRIu64 "\n",
                     name.c_str(), size);
             return EX_SOFTWARE;
