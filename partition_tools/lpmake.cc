@@ -188,7 +188,9 @@ int main(int argc, char* argv[]) {
         return EX_USAGE;
     }
 
-    BlockDeviceInfo device_info(blockdevice_size, alignment, alignment_offset);
+    // Note that we take the block_size to mean both the logical block size and
+    // the block size for libsparse.
+    BlockDeviceInfo device_info(blockdevice_size, alignment, alignment_offset, block_size);
 
     std::unique_ptr<MetadataBuilder> builder =
             MetadataBuilder::New(device_info, metadata_size, metadata_slots);
