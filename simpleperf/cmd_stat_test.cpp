@@ -256,3 +256,45 @@ TEST(stat_cmd, calculating_cpu_frequency) {
   // Accept error up to 1e-3. Because the stat cmd print values with precision 1e-6.
   ASSERT_NEAR(cpu_frequency, calculated_frequency, 1e-3);
 }
+
+TEST(stat_cmd, set_comm_in_another_thread) {
+  // Test a kernel bug which was fixed in 3.15. If kernel panic happens, please cherry pick kernel
+  // patch: e041e328c4b41e perf: Fix perf_event_comm() vs. exec() assumption
+  TEST_REQUIRE_HW_COUNTER();
+
+  for (size_t loop = 0; loop < 3; ++loop) {
+    std::atomic<int> child_tid(0);
+    std::atomic<bool> stop_child(false);
+    std::thread child([&]() {
+      child_tid = gettid();
+      // stay on a cpu to make the monitored events of the child thread on that cpu.
+      while (!stop_child) {}
+    });
+
+    while (child_tid == 0) {}
+
+    {
+      EventSelectionSet set(true);
+      ASSERT_TRUE(set.AddEventType("cpu-cycles"));
+      set.AddMonitoredThreads({child_tid});
+      ASSERT_TRUE(set.OpenEventFiles({-1}));
+
+      EventSelectionSet set2(true);
+      ASSERT_TRUE(set2.AddEventType("instructions"));
+      set2.AddMonitoredThreads({gettid()});
+      ASSERT_TRUE(set2.OpenEventFiles({-1}));
+
+      // For kernels with the bug, setting comm will make the monitored events of the child thread
+      // on the cpu of the current thread.
+      ASSERT_TRUE(android::base::WriteStringToFile("child",
+                                                   "/proc/" + std::to_string(child_tid) + "/comm"));
+      // Release monitored events. For kernels with the bug, the events still exist on the cpu of
+      // the child thread.
+    }
+
+    stop_child = true;
+    child.join();
+    // Sleep 1s to enter and exit cpu idle, which may abort the kernel.
+    sleep(1);
+  }
+}
