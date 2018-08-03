@@ -60,6 +60,7 @@ class ConfigReader {
   void overrideUnsignedEntry(const char *key, unsigned new_value);
 
   void FillConfig(Config* config);
+  static std::string ConfigToString(const Config& config);
 
   static void ProtoToConfig(const android::perfprofd::ProfilingConfig& in, Config* out);
 

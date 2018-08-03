@@ -712,6 +712,59 @@ TEST_F(PerfProfdTest, ConfigFileParsing_Events) {
   }
 }
 
+
+TEST_F(PerfProfdTest, ConfigDump) {
+  constexpr const char* kConfigElems[] = {
+      "collection_interval=14400",
+      "use_fixed_seed=1",
+      "main_loop_iterations=2",
+      "destination_directory=/does/not/exist",
+      "config_directory=a",
+      "perf_path=/system/xbin/simpleperf2",
+      "sampling_period=3",
+      "sampling_frequency=4",
+      "sample_duration=5",
+      "only_debug_build=1",
+      "hardwire_cpus=1",
+      "hardwire_cpus_max_duration=6",
+      "max_unprocessed_profiles=7",
+      "stack_profile=1",
+      "trace_config_read=1",
+      "collect_cpu_utilization=1",
+      "collect_charging_state=1",
+      "collect_booting=1",
+      "collect_camera_active=1",
+      "process=8",
+      "use_elf_symbolizer=1",
+      "symbolize_everything=1",
+      "compress=1",
+      "dropbox=1",
+      "fail_on_unsupported_events=1",
+      "-e_hello,world=1",
+      "-g_foo,bar=2",
+      "-e_abc,xyz=3",
+      "-g_ftrace:test,ftrace:test2=4",
+  };
+
+  std::string input;
+  for (const char* elem : kConfigElems) {
+    input.append(elem);
+    input.append("\n");
+  }
+
+  ConfigReader reader;
+  std::string error_msg;
+  ASSERT_TRUE(reader.Read(input, false, &error_msg)) << error_msg;
+
+  PerfProfdRunner::LoggingConfig config;
+  reader.FillConfig(&config);
+
+  std::string output = ConfigReader::ConfigToString(config);
+  for (const char* elem : kConfigElems) {
+    EXPECT_TRUE(output.find(elem) != std::string::npos) << elem << " not in " << output;
+  }
+}
+
 TEST_F(PerfProfdTest, ProfileCollectionAnnotations)
 {
   unsigned util1 = collect_cpu_utilization();
