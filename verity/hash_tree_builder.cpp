@@ -230,7 +230,7 @@ bool HashTreeBuilder::WriteHashTreeToFile(const std::string& output) const {
   return WriteHashTreeToFd(output_fd, 0);
 }
 
-bool HashTreeBuilder::WriteHashTreeToFd(int fd, off_t offset) const {
+bool HashTreeBuilder::WriteHashTreeToFd(int fd, uint64_t offset) const {
   CHECK(!verity_tree_.empty());
 
   if (lseek(fd, offset, SEEK_SET) != offset) {
