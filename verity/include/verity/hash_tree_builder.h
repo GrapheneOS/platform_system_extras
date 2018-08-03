@@ -48,7 +48,7 @@ class HashTreeBuilder {
   bool BuildHashTree();
   // Writes the computed hash tree top-down to |output|.
   bool WriteHashTreeToFile(const std::string& output) const;
-  bool WriteHashTreeToFd(int fd, off_t offset) const;
+  bool WriteHashTreeToFd(int fd, uint64_t offset) const;
 
   size_t hash_size() const { return hash_size_; }
   const std::vector<unsigned char>& root_hash() const { return root_hash_; }
