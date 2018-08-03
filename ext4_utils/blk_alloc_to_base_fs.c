@@ -55,7 +55,7 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
     if (fscanf(blk_alloc_file, "Base EXT4 version %" ___STRING(MAX_FILE_VERSION) "s", file_version) > 0) {
-        char c;
+        int c;
         printf("%s is already in *.base_fs format, just copying into %s...\n", argv[1], argv[2]);
         rewind(blk_alloc_file);
         while ((c = fgetc(blk_alloc_file)) != EOF) {
