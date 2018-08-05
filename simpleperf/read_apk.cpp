@@ -120,7 +120,6 @@ std::unique_ptr<EmbeddedElf> ApkInspector::FindElfInApkByNameWithoutCache(
     return nullptr;
   }
   if (zentry.method != kCompressStored || zentry.compressed_length != zentry.uncompressed_length) {
-    LOG(ERROR) << "shared library " << entry_name << " in " << apk_path << " is compressed";
     return nullptr;
   }
   return std::unique_ptr<EmbeddedElf>(new EmbeddedElf(apk_path, entry_name, zentry.offset,

@@ -463,6 +463,109 @@ void ConfigReader::FillConfig(Config* config) {
   }
 }
 
+namespace {
+
+template <typename T>
+struct OssFormatter {
+};
+
+template <>
+struct OssFormatter<std::string> {
+  void Add(std::ostream& os, const std::string& val) {
+    os << val;
+  }
+};
+
+template <>
+struct OssFormatter<uint32_t> {
+  void Add(std::ostream& os, const uint32_t& val) {
+    os << val;
+  }
+};
+
+template <>
+struct OssFormatter<int32_t> {
+  void Add(std::ostream& os, const int32_t& val) {
+    os << val;
+  }
+};
+
+template <>
+struct OssFormatter<bool> {
+  void Add(std::ostream& os, const bool& val) {
+    os << (val ? 1 : 0);
+  }
+};
+
+
+}  // namespace
+
+std::string ConfigReader::ConfigToString(const Config& config) {
+  std::ostringstream oss;
+
+  auto add = [&oss](const char* str, auto val) {
+    if (oss.tellp() != 0) {
+      oss << ' ';
+    }
+    oss << str << '=';
+    OssFormatter<decltype(val)> fmt;
+    fmt.Add(oss, val);
+  };
+
+  add("collection_interval", config.collection_interval_in_s);
+  add("use_fixed_seed", config.use_fixed_seed);
+  add("main_loop_iterations", config.main_loop_iterations);
+
+  add("destination_directory", config.destination_directory);  // TODO: Escape.
+  add("config_directory", config.config_directory);            // TODO: Escape.
+  add("perf_path", config.perf_path);                          // TODO: Escape.
+
+  add("sampling_period", config.sampling_period);
+  add("sampling_frequency", config.sampling_frequency);
+
+  add("sample_duration", config.sample_duration_in_s);
+
+  add("only_debug_build", config.only_debug_build);
+
+  add("hardwire_cpus", config.hardwire_cpus);
+
+  add("hardwire_cpus_max_duration", config.hardwire_cpus_max_duration_in_s);
+
+  add("max_unprocessed_profiles", config.max_unprocessed_profiles);
+
+  add("stack_profile", config.stack_profile);
+
+  add("trace_config_read", config.trace_config_read);
+
+  add("collect_cpu_utilization", config.collect_cpu_utilization);
+  add("collect_charging_state", config.collect_charging_state);
+  add("collect_booting", config.collect_booting);
+  add("collect_camera_active", config.collect_camera_active);
+
+  add("process", config.process);
+  add("use_elf_symbolizer", config.use_elf_symbolizer);
+  add("symbolize_everything", config.symbolize_everything);
+  add("compress", config.compress);
+  add("dropbox", config.send_to_dropbox);
+  add("fail_on_unsupported_events", config.fail_on_unsupported_events);
+
+  for (const auto& elem : config.event_config) {
+    std::ostringstream oss_elem;
+    oss_elem << '-' << (elem.group ? 'g' : 'e') << '_';
+    bool first = true;
+    for (const auto& event : elem.events) {
+      if (!first) {
+        oss_elem << ',';
+      }
+      oss_elem << event;
+      first = false;
+    }
+    add(oss_elem.str().c_str(), elem.sampling_period);
+  }
+
+  return oss.str();
+}
+
 void ConfigReader::ProtoToConfig(const android::perfprofd::ProfilingConfig& in, Config* out) {
   // Copy base proto values.
 #define CHECK_AND_COPY_FROM_PROTO(name)      \
