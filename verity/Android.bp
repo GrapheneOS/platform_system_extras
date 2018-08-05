@@ -20,7 +20,7 @@ java_library_host {
     ],
     manifest: "VeritySigner.mf",
 
-    static_libs: ["bouncycastle"],
+    static_libs: ["bouncycastle-unbundled"],
 }
 
 java_library_host {
@@ -32,7 +32,7 @@ java_library_host {
     ],
     manifest: "BootSignature.mf",
 
-    static_libs: ["bouncycastle"],
+    static_libs: ["bouncycastle-unbundled"],
 }
 
 cc_binary_host {
