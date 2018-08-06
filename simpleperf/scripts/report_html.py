@@ -25,6 +25,7 @@ import sys
 from simpleperf_report_lib import ReportLib
 from utils import log_info, log_exit
 from utils import Addr2Nearestline, get_script_dir, Objdump, open_report_in_browser
+from utils import SourceFileSearcher
 
 MAX_CALLSTACK_LENGTH = 750
 
@@ -415,68 +416,6 @@ class SourceFileSet(object):
                 source_file.add_source_code(real_path)
 
 
-class SourceFileSearcher(object):
-    """ Find source file paths in the file system.
-        The file paths reported by addr2line are the paths stored in debug sections
-        of shared libraries. And we need to convert them to file paths in the file
-        system. It is done in below steps:
-        1. Collect all file paths under the provided source_dirs. The suffix of a
-           source file should contain one of below:
-            h: for C/C++ header files.
-            c: for C/C++ source files.
-            java: for Java source files.
-            kt: for Kotlin source files.
-        2. Given an abstract_path reported by addr2line, select the best real path
-           as below:
-           2.1 Find all real paths with the same file name as the abstract path.
-           2.2 Select the real path having the longest common suffix with the abstract path.
-    """
-
-    SOURCE_FILE_EXTS = {'.h', '.hh', '.H', '.hxx', '.hpp', '.h++',
-                        '.c', '.cc', '.C', '.cxx', '.cpp', '.c++',
-                        '.java', '.kt'}
-
-    @classmethod
-    def is_source_filename(cls, filename):
-        ext = os.path.splitext(filename)[1]
-        return ext in cls.SOURCE_FILE_EXTS
-
-    def __init__(self, source_dirs):
-        # Map from filename to a list of reversed directory path containing filename.
-        self.filename_to_rparents = {}
-        self._collect_paths(source_dirs)
-
-    def _collect_paths(self, source_dirs):
-        for source_dir in source_dirs:
-            for parent, _, file_names in os.walk(source_dir):
-                rparent = None
-                for file_name in file_names:
-                    if self.is_source_filename(file_name):
-                        rparents = self.filename_to_rparents.get(file_name)
-                        if rparents is None:
-                            rparents = self.filename_to_rparents[file_name] = []
-                        if rparent is None:
-                            rparent = parent[::-1]
-                        rparents.append(rparent)
-
-    def get_real_path(self, abstract_path):
-        abstract_path = abstract_path.replace('/', os.sep)
-        abstract_parent, file_name = os.path.split(abstract_path)
-        abstract_rparent = abstract_parent[::-1]
-        real_rparents = self.filename_to_rparents.get(file_name)
-        if real_rparents is None:
-            return None
-        best_matched_rparent = None
-        best_common_length = -1
-        for real_rparent in real_rparents:
-            length = len(os.path.commonprefix((real_rparent, abstract_rparent)))
-            if length > best_common_length:
-                best_common_length = length
-                best_matched_rparent = real_rparent
-        if best_matched_rparent is None:
-            return None
-        return os.path.join(best_matched_rparent[::-1], file_name)
-
 
 class RecordData(object):
 
@@ -645,7 +584,7 @@ class RecordData(object):
             2. Find line for each addr in FunctionScope.addr_hit_map.
             3. Collect needed source code in SourceFileSet.
         """
-        addr2line = Addr2Nearestline(self.ndk_path, self.binary_cache_path)
+        addr2line = Addr2Nearestline(self.ndk_path, self.binary_cache_path, False)
         # Request line range for each function.
         for function in self.functions.id_to_func.values():
             if function.func_name == 'unknown':
