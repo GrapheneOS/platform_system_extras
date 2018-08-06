@@ -692,5 +692,31 @@ TEST(record_cmd, support_mmap2) {
   // patches:
   //   13d7a2410fa637 perf: Add attr->mmap2 attribute to an event
   //   f972eb63b1003f perf: Pass protection and flags bits through mmap2 interface.
+  TEST_REQUIRE_HW_COUNTER();
   ASSERT_TRUE(IsMmap2Supported());
+}
+
+TEST(record_cmd, kernel_bug_making_zero_dyn_size) {
+  // Test a kernel bug that makes zero dyn_size in kernel < 3.13. If it fails, please cherry pick
+  // below kernel patch: 0a196848ca365e perf: Fix arch_perf_out_copy_user default
+  TEST_REQUIRE_HW_COUNTER();
+  std::vector<std::unique_ptr<Workload>> workloads;
+  CreateProcesses(1, &workloads);
+  std::string pid = std::to_string(workloads[0]->GetPid());
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "-p", pid, "--call-graph", "dwarf,8",
+                                "--no-unwind", "--duration", "1"}));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader);
+  bool has_sample = false;
+  ASSERT_TRUE(reader->ReadDataSection([&](std::unique_ptr<Record> r) {
+    if (r->type() == PERF_RECORD_SAMPLE && !r->InKernel()) {
+      SampleRecord* sr = static_cast<SampleRecord*>(r.get());
+      if (sr->stack_user_data.dyn_size == 0) {
+        return false;
+      }
+      has_sample = true;
+    }
+    return true;
+  }));
 }
