@@ -419,17 +419,20 @@ class Addr2Nearestline(object):
             self.func_addr = func_addr
             self.source_lines = None
 
-    def __init__(self, ndk_path, binary_cache_path):
+    def __init__(self, ndk_path, binary_cache_path, with_function_name):
         self.addr2line_path = find_tool_path('addr2line', ndk_path)
         if not self.addr2line_path:
             log_exit("Can't find addr2line. Please set ndk path with --ndk_path option.")
         self.readelf = ReadElf(ndk_path)
         self.dso_map = {}  # map from dso_path to Dso.
         self.binary_cache_path = binary_cache_path
+        self.with_function_name = with_function_name
         # Saving file names for each addr takes a lot of memory. So we store file ids in Addr,
         # and provide data structures connecting file id and file name here.
         self.file_name_to_id = {}
         self.file_id_to_name = []
+        self.func_name_to_id = {}
+        self.func_id_to_name = []
 
     def add_addr(self, dso_path, func_addr, addr):
         dso = self.dso_map.get(dso_path)
@@ -490,7 +493,8 @@ class Addr2Nearestline(object):
 
         # 2. Use addr2line to collect line info.
         try:
-            subproc = subprocess.Popen([self.addr2line_path, '-ai', '-e', real_path],
+            option = '-ai' + ('fC' if self.with_function_name else '')
+            subproc = subprocess.Popen([self.addr2line_path, option, '-e', real_path],
                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             (stdoutdata, _) = subproc.communicate(str_to_bytes(addr_request))
             stdoutdata = bytes_to_str(stdoutdata)
@@ -498,11 +502,17 @@ class Addr2Nearestline(object):
             return
         addr_map = {}
         cur_line_list = None
+        need_function_name = self.with_function_name
+        cur_function_name = None
         for line in stdoutdata.strip().split('\n'):
             if line[:2] == '0x':
                 # a new address
                 cur_line_list = addr_map[int(line, 16)] = []
+            elif need_function_name:
+                cur_function_name = line.strip()
+                need_function_name = False
             else:
+                need_function_name = self.with_function_name
                 # a file:line.
                 if cur_line_list is None:
                     continue
@@ -525,7 +535,11 @@ class Addr2Nearestline(object):
                 except ValueError:
                     continue
                 file_id = self._get_file_id(file_path)
-                cur_line_list.append((file_id, line_number))
+                if self.with_function_name:
+                    func_id = self._get_func_id(cur_function_name)
+                    cur_line_list.append((file_id, line_number, func_id))
+                else:
+                    cur_line_list.append((file_id, line_number))
 
         # 3. Fill line info in dso.addrs.
         for addr in dso.addrs:
@@ -548,6 +562,13 @@ class Addr2Nearestline(object):
             self.file_id_to_name.append(file_path)
         return file_id
 
+    def _get_func_id(self, func_name):
+        func_id = self.func_name_to_id.get(func_name)
+        if func_id is None:
+            func_id = self.func_name_to_id[func_name] = len(self.func_id_to_name)
+            self.func_id_to_name.append(func_name)
+        return func_id
+
     def get_dso(self, dso_path):
         return self.dso_map.get(dso_path)
 
@@ -555,7 +576,73 @@ class Addr2Nearestline(object):
         source = dso.addrs[addr].source_lines
         if source is None:
             return None
+        if self.with_function_name:
+            return [(self.file_id_to_name[file_id], line, self.func_id_to_name[func_id])
+                    for (file_id, line, func_id) in source]
         return [(self.file_id_to_name[file_id], line) for (file_id, line) in source]
+
+
+class SourceFileSearcher(object):
+    """ Find source file paths in the file system.
+        The file paths reported by addr2line are the paths stored in debug sections
+        of shared libraries. And we need to convert them to file paths in the file
+        system. It is done in below steps:
+        1. Collect all file paths under the provided source_dirs. The suffix of a
+           source file should contain one of below:
+            h: for C/C++ header files.
+            c: for C/C++ source files.
+            java: for Java source files.
+            kt: for Kotlin source files.
+        2. Given an abstract_path reported by addr2line, select the best real path
+           as below:
+           2.1 Find all real paths with the same file name as the abstract path.
+           2.2 Select the real path having the longest common suffix with the abstract path.
+    """
+
+    SOURCE_FILE_EXTS = {'.h', '.hh', '.H', '.hxx', '.hpp', '.h++',
+                        '.c', '.cc', '.C', '.cxx', '.cpp', '.c++',
+                        '.java', '.kt'}
+
+    @classmethod
+    def is_source_filename(cls, filename):
+        ext = os.path.splitext(filename)[1]
+        return ext in cls.SOURCE_FILE_EXTS
+
+    def __init__(self, source_dirs):
+        # Map from filename to a list of reversed directory path containing filename.
+        self.filename_to_rparents = {}
+        self._collect_paths(source_dirs)
+
+    def _collect_paths(self, source_dirs):
+        for source_dir in source_dirs:
+            for parent, _, file_names in os.walk(source_dir):
+                rparent = None
+                for file_name in file_names:
+                    if self.is_source_filename(file_name):
+                        rparents = self.filename_to_rparents.get(file_name)
+                        if rparents is None:
+                            rparents = self.filename_to_rparents[file_name] = []
+                        if rparent is None:
+                            rparent = parent[::-1]
+                        rparents.append(rparent)
+
+    def get_real_path(self, abstract_path):
+        abstract_path = abstract_path.replace('/', os.sep)
+        abstract_parent, file_name = os.path.split(abstract_path)
+        abstract_rparent = abstract_parent[::-1]
+        real_rparents = self.filename_to_rparents.get(file_name)
+        if real_rparents is None:
+            return None
+        best_matched_rparent = None
+        best_common_length = -1
+        for real_rparent in real_rparents:
+            length = len(os.path.commonprefix((real_rparent, abstract_rparent)))
+            if length > best_common_length:
+                best_common_length = length
+                best_matched_rparent = real_rparent
+        if best_matched_rparent is None:
+            return None
+        return os.path.join(best_matched_rparent[::-1], file_name)
 
 
 class Objdump(object):
