@@ -29,10 +29,9 @@ import argparse
 import os
 import os.path
 
-from annotate import Addr2Line
 from simpleperf_report_lib import ReportLib
 from utils import log_info, log_exit
-from utils import extant_dir, find_tool_path, flatten_arg_list
+from utils import Addr2Nearestline, extant_dir, find_tool_path, flatten_arg_list
 try:
     import profile_pb2
 except ImportError:
@@ -443,53 +442,62 @@ class PprofProfileGenerator(object):
         if not find_tool_path('addr2line', self.config['ndk_path']):
             log_info("Can't generate line information because can't find addr2line.")
             return
-        addr2line = Addr2Line(self.config['ndk_path'], self.config['binary_cache_dir'])
+        addr2line = Addr2Nearestline(self.config['ndk_path'], self.config['binary_cache_dir'], True)
 
         # 2. Put all needed addresses to it.
         for location in self.location_list:
             mapping = self.get_mapping(location.mapping_id)
             dso_name = self.get_string(mapping.filename_id)
-            addr2line.add_addr(dso_name, location.vaddr_in_dso)
+            if location.lines:
+                function = self.get_function(location.lines[0].function_id)
+                addr2line.add_addr(dso_name, function.vaddr_in_dso, location.vaddr_in_dso)
         for function in self.function_list:
             dso_name = self.get_string(function.dso_name_id)
-            addr2line.add_addr(dso_name, function.vaddr_in_dso)
+            addr2line.add_addr(dso_name, function.vaddr_in_dso, function.vaddr_in_dso)
 
         # 3. Generate source lines.
         addr2line.convert_addrs_to_lines()
 
         # 4. Annotate locations and functions.
         for location in self.location_list:
+            if not location.lines:
+                continue
             mapping = self.get_mapping(location.mapping_id)
             dso_name = self.get_string(mapping.filename_id)
-            sources = addr2line.get_sources(dso_name, location.vaddr_in_dso)
-            source_id = 0
-            for source in sources:
-                if source.file and source.function and source.line:
-                    function_id = self.get_function_id(source.function, dso_name, 0)
-                    if function_id == 0:
-                        continue
-                    if source_id == 0:
-                        # Clear default line info
-                        location.lines = []
-                    location.lines.append(self.add_line(source, function_id))
-                    source_id += 1
+            dso = addr2line.get_dso(dso_name)
+            if not dso:
+                continue
+            sources = addr2line.get_addr_source(dso, location.vaddr_in_dso)
+            if not sources:
+                continue
+            for (source_id, source) in enumerate(sources):
+                source_file, source_line, function_name = source
+                function_id = self.get_function_id(function_name, dso_name, 0)
+                if function_id == 0:
+                    continue
+                if source_id == 0:
+                    # Clear default line info
+                    location.lines = []
+                location.lines.append(self.add_line(source_file, source_line, function_id))
 
         for function in self.function_list:
             dso_name = self.get_string(function.dso_name_id)
             if function.vaddr_in_dso:
-                sources = addr2line.get_sources(dso_name, function.vaddr_in_dso)
-                source = sources[0] if sources else None
-                if source and source.file:
-                    function.source_filename_id = self.get_string_id(source.file)
-                    if source.line:
-                        function.start_line = source.line
+                dso = addr2line.get_dso(dso_name)
+                if not dso:
+                    continue
+                sources = addr2line.get_addr_source(dso, function.vaddr_in_dso)
+                if sources:
+                    source_file, source_line, _ = sources[0]
+                    function.source_filename_id = self.get_string_id(source_file)
+                    function.start_line = source_line
 
-    def add_line(self, source, function_id):
+    def add_line(self, source_file, source_line, function_id):
         line = Line()
         function = self.get_function(function_id)
-        function.source_filename_id = self.get_string_id(source.file)
+        function.source_filename_id = self.get_string_id(source_file)
         line.function_id = function_id
-        line.line = source.line
+        line.line = source_line
         return line
 
     def gen_profile_sample(self, sample):
