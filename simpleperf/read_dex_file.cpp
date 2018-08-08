@@ -27,6 +27,7 @@
 #include <android-base/logging.h>
 #include <android-base/unique_fd.h>
 
+#include <dex/class_accessor-inl.h>
 #include <dex/code_item_accessors-inl.h>
 #include <dex/dex_file_loader.h>
 #include <dex/dex_file.h>
@@ -62,21 +63,9 @@ bool ReadSymbolsFromDexFileInMemory(void* addr, uint64_t size,
                                     const std::vector<uint64_t>& dex_file_offsets,
                                     std::vector<DexFileSymbol>* symbols) {
   auto dexfile_callback = [&](const art::DexFile& dex_file, uint64_t dex_file_offset) {
-    for (uint32_t i = 0; i < dex_file.NumClassDefs(); ++i) {
-      const art::DexFile::ClassDef& class_def = dex_file.GetClassDef(i);
-      const uint8_t* class_data = dex_file.GetClassData(class_def);
-      if (class_data == nullptr) {
-        continue;
-      }
-      for (art::ClassDataItemIterator it(dex_file, class_data); it.HasNext(); it.Next()) {
-        if (!it.IsAtMethod()) {
-          continue;
-        }
-        const art::DexFile::CodeItem* code_item = it.GetMethodCodeItem();
-        if (code_item == nullptr) {
-          continue;
-        }
-        art::CodeItemInstructionAccessor code(dex_file, code_item);
+    for (art::ClassAccessor accessor : dex_file.GetClasses()) {
+      for (const art::ClassAccessor::Method& method : accessor.GetMethods()) {
+        art::CodeItemInstructionAccessor code = method.GetInstructions();
         if (!code.HasCodeItem()) {
           continue;
         }
@@ -84,8 +73,8 @@ bool ReadSymbolsFromDexFileInMemory(void* addr, uint64_t size,
         DexFileSymbol& symbol = symbols->back();
         symbol.offset = reinterpret_cast<const uint8_t*>(code.Insns()) - dex_file.Begin() +
             dex_file_offset;
-        symbol.len = code.InsnsSizeInCodeUnits() * sizeof(uint16_t);
-        symbol.name = dex_file.PrettyMethod(it.GetMemberIndex(), false);
+        symbol.len = code.InsnsSizeInBytes();
+        symbol.name = dex_file.PrettyMethod(method.GetIndex(), false);
       }
     }
   };
