@@ -304,7 +304,7 @@ bool get_charging()
 
   sp<IHealth> service = get_health_service();
   if (service == nullptr) {
-    PLOG(ERROR) << "Failed to get health HAL";
+    LOG(ERROR) << "Failed to get health HAL";
     return false;
   }
   Result res = Result::UNKNOWN;
@@ -314,14 +314,15 @@ bool get_charging()
     val = out_val;
   });
   if (!ret.isOk()) {
-    PLOG(ERROR) << "Failed to call getChargeStatus on health HAL: " << ret.description();
+    LOG(ERROR) << "Failed to call getChargeStatus on health HAL: " << ret.description();
     return false;
   }
-  if (res != Result::SUCCESS) {
-    PLOG(ERROR) << "Failed to retrieve charge status from health HAL: " << toString(res);
+  if (res != Result::SUCCESS || val == BatteryStatus::UNKNOWN) {
+    LOG(ERROR) << "Failed to retrieve charge status from health HAL: result = " << toString(res)
+                << ", status = " << toString(val);
     return false;
   }
-  return val == BatteryStatus::CHARGING;
+  return val == BatteryStatus::CHARGING || val == BatteryStatus::FULL;
 #else
   return false;
 #endif
