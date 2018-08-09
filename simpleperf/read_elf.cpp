@@ -271,7 +271,8 @@ bool IsArmMappingSymbol(const char* name) {
 void ReadSymbolTable(llvm::object::symbol_iterator sym_begin,
                      llvm::object::symbol_iterator sym_end,
                      const std::function<void(const ElfFileSymbol&)>& callback,
-                     bool is_arm) {
+                     bool is_arm,
+                     const llvm::object::section_iterator& section_end) {
   for (; sym_begin != sym_end; ++sym_begin) {
     ElfFileSymbol symbol;
     auto symbol_ref = static_cast<const llvm::object::ELFSymbolRef*>(&*sym_begin);
@@ -279,14 +280,17 @@ void ReadSymbolTable(llvm::object::symbol_iterator sym_begin,
     if (!section_it_or_err) {
       continue;
     }
+    // Symbols in .dynsym section don't have associated section.
+    if (section_it_or_err.get() != section_end) {
+      llvm::StringRef section_name;
+      if (section_it_or_err.get()->getName(section_name) || section_name.empty()) {
+        continue;
+      }
+      if (section_name == ".text") {
+        symbol.is_in_text_section = true;
+      }
+    }
 
-    llvm::StringRef section_name;
-    if (section_it_or_err.get()->getName(section_name) || section_name.empty()) {
-      continue;
-    }
-    if (section_name == ".text") {
-      symbol.is_in_text_section = true;
-    }
     llvm::Expected<llvm::StringRef> symbol_name_or_err = symbol_ref->getName();
     if (!symbol_name_or_err || symbol_name_or_err.get().empty()) {
       continue;
@@ -385,11 +389,12 @@ ElfStatus ParseSymbolsFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf,
   bool has_dynsym;
   CheckSymbolSections(elf, &has_symtab, &has_dynsym);
   if (has_symtab && elf->symbol_begin() != elf->symbol_end()) {
-    ReadSymbolTable(elf->symbol_begin(), elf->symbol_end(), callback, is_arm);
+    ReadSymbolTable(elf->symbol_begin(), elf->symbol_end(), callback, is_arm, elf->section_end());
     return ElfStatus::NO_ERROR;
   } else if (has_dynsym &&
       elf->dynamic_symbol_begin()->getRawDataRefImpl() != llvm::object::DataRefImpl()) {
-    ReadSymbolTable(elf->dynamic_symbol_begin(), elf->dynamic_symbol_end(), callback, is_arm);
+    ReadSymbolTable(elf->dynamic_symbol_begin(), elf->dynamic_symbol_end(), callback, is_arm,
+                    elf->section_end());
   }
   std::string debugdata;
   ElfStatus result = ReadSectionFromELFFile(elf, ".gnu_debugdata", &debugdata);
@@ -480,7 +485,8 @@ ElfStatus ParseDynamicSymbolsFromELFFile(const llvm::object::ELFObjectFile<ELFT>
                                          const std::function<void(const ElfFileSymbol&)>& callback) {
   auto machine = elf->getELFFile()->getHeader()->e_machine;
   bool is_arm = (machine == llvm::ELF::EM_ARM || machine == llvm::ELF::EM_AARCH64);
-  ReadSymbolTable(elf->dynamic_symbol_begin(), elf->dynamic_symbol_end(), callback, is_arm);
+  ReadSymbolTable(elf->dynamic_symbol_begin(), elf->dynamic_symbol_end(), callback, is_arm,
+                  elf->section_end());
   return ElfStatus::NO_ERROR;
 }
 
