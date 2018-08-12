@@ -33,6 +33,7 @@ cc_library {
         android: {
             srcs: [
                 "ext4_crypt.cpp",
+                "ext4_crypt_init_extensions.cpp",
             ],
             shared_libs: [
                 "libbase",
@@ -41,14 +42,6 @@ cc_library {
                 "libselinux",
             ],
 
-            static: {
-                srcs: [
-                    "ext4_crypt_init_extensions.cpp",
-                ],
-                static_libs: [
-                    "liblogwrap",
-                ]
-            },
             shared: {
                 cflags: ["-DREAL_UUID"],
                 shared_libs: [
