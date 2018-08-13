@@ -120,7 +120,7 @@ TracingFile::TracingFile() {
   memcpy(magic, TRACING_INFO_MAGIC, sizeof(TRACING_INFO_MAGIC));
   version = "0.5";
   endian = 0;
-  size_of_long = static_cast<int>(sizeof(long));
+  size_of_long = static_cast<int>(sizeof(long)); // NOLINT(google-runtime-int)
   page_size = static_cast<uint32_t>(::GetPageSize());
 }
 
