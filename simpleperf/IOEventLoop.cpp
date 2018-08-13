@@ -92,7 +92,7 @@ bool IOEventLoop::EnsureInit() {
   return true;
 }
 
-void IOEventLoop::EventCallbackFn(int, short, void* arg) {
+void IOEventLoop::EventCallbackFn(int, int16_t, void* arg) {
   IOEvent* e = static_cast<IOEvent*>(arg);
   if (!e->callback()) {
     e->loop->has_error_ = true;
@@ -144,7 +144,7 @@ IOEventRef IOEventLoop::AddPeriodicEvent(timeval duration, const std::function<b
   return AddEvent(-1, EV_PERSIST, &duration, callback);
 }
 
-IOEventRef IOEventLoop::AddEvent(int fd_or_sig, short events, timeval* timeout,
+IOEventRef IOEventLoop::AddEvent(int fd_or_sig, int16_t events, timeval* timeout,
                                  const std::function<bool()>& callback) {
   if (!EnsureInit()) {
     return nullptr;
