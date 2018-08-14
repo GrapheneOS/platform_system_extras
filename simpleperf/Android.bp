@@ -21,6 +21,7 @@ cc_defaults {
         "-Wall",
         "-Wextra",
         "-Werror",
+        "-Wimplicit-fallthrough",
 
         // Try some more extreme warnings.
         "-Wpedantic",
