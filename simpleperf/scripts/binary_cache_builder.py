@@ -28,6 +28,8 @@ import shutil
 from simpleperf_report_lib import ReportLib
 from utils import AdbHelper, flatten_arg_list, log_info, log_warning, log_exit, ReadElf
 
+def is_jit_symfile(dso_name):
+    return dso_name.split('/')[-1].startswith('TemporaryFile')
 
 class BinaryCacheBuilder(object):
     """Collect all binaries needed by perf.data in binary_cache."""
@@ -79,6 +81,8 @@ class BinaryCacheBuilder(object):
             for symbol in symbols:
                 dso_name = symbol.dso_name
                 if dso_name not in binaries:
+                    if is_jit_symfile(dso_name):
+                        continue
                     binaries[dso_name] = lib.GetBuildIdForPath(dso_name)
         self.binaries = binaries
 
