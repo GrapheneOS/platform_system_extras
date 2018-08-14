@@ -62,3 +62,38 @@ TEST(environment, MappedFileOnlyExistInMemory) {
   ASSERT_FALSE(MappedFileOnlyExistInMemory("./TemporaryFile-12345"));
   ASSERT_FALSE(MappedFileOnlyExistInMemory("/system/lib64/libc.so"));
 }
+
+TEST(environment, SetPerfEventLimits) {
+#if defined(__ANDROID__)
+  if (GetAndroidVersion() <= kAndroidVersionP) {
+    return;
+  }
+  uint64_t orig_freq = 100000;
+  size_t orig_percent = 25;
+  uint64_t orig_mlock_kb = 516;
+  bool has_freq = GetMaxSampleFrequency(&orig_freq);
+  bool has_percent = GetCpuTimeMaxPercent(&orig_percent);
+  bool has_mlock_kb = GetPerfEventMlockKb(&orig_mlock_kb);
+
+  ASSERT_TRUE(SetPerfEventLimits(orig_freq + 1, orig_percent + 1, orig_mlock_kb + 1));
+  if (has_freq) {
+    uint64_t value;
+    ASSERT_TRUE(GetMaxSampleFrequency(&value));
+    ASSERT_EQ(value, orig_freq + 1);
+  }
+  if (has_percent) {
+    size_t value;
+    ASSERT_TRUE(GetCpuTimeMaxPercent(&value));
+    ASSERT_EQ(value, orig_percent + 1);
+  }
+  if (has_mlock_kb) {
+    uint64_t value;
+    ASSERT_TRUE(GetPerfEventMlockKb(&value));
+    ASSERT_EQ(value, orig_mlock_kb + 1);
+  }
+  // Restore the environment.
+  ASSERT_TRUE(SetPerfEventLimits(orig_freq, orig_percent, orig_mlock_kb));
+#else  // !defined(__ANDROID__)
+  GTEST_LOG_(INFO) << "This test tests setting properties on Android.";
+#endif
+}
