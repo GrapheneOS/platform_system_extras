@@ -107,7 +107,7 @@ TEST(record_cmd, freq_option) {
   CheckEventType(tmpfile.path, "cpu-cycles", 0, 99u);
   ASSERT_TRUE(RunRecordCmd({"-e", "cpu-clock", "-f", "99"}, tmpfile.path));
   CheckEventType(tmpfile.path, "cpu-clock", 0, 99u);
-  ASSERT_TRUE(RunRecordCmd({"-f", std::to_string(UINT_MAX)}));
+  ASSERT_FALSE(RunRecordCmd({"-f", std::to_string(UINT_MAX)}));
 }
 
 TEST(record_cmd, multiple_freq_or_sample_period_option) {
@@ -719,4 +719,11 @@ TEST(record_cmd, kernel_bug_making_zero_dyn_size) {
     }
     return true;
   }));
+}
+
+TEST(record_cmd, cpu_percent_option) {
+  TEST_REQUIRE_HW_COUNTER();
+  ASSERT_TRUE(RunRecordCmd({"--cpu-percent", "50"}));
+  ASSERT_FALSE(RunRecordCmd({"--cpu-percent", "0"}));
+  ASSERT_FALSE(RunRecordCmd({"--cpu-percent", "101"}));
 }

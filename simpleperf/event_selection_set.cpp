@@ -30,9 +30,6 @@
 #include "utils.h"
 #include "RecordReadThread.h"
 
-constexpr uint64_t DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT = 4000;
-constexpr uint64_t DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT = 1;
-
 bool IsBranchSamplingSupported() {
   const EventType* type = FindEventTypeByName("cpu-cycles");
   if (type == nullptr) {
@@ -162,12 +159,7 @@ bool EventSelectionSet::BuildAndCheckEventSelection(const std::string& event_nam
       selection->event_attr.sample_period = DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT;
     } else {
       selection->event_attr.freq = 1;
-      uint64_t freq = DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT;
-      uint64_t max_freq;
-      if (GetMaxSampleFrequency(&max_freq)) {
-        freq = std::min(freq, max_freq);
-      }
-      selection->event_attr.sample_freq = freq;
+      selection->event_attr.sample_freq = DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT;
     }
     // We only need to dump mmap and comm records for the first event type. Because all event types
     // are monitoring the same processes.
