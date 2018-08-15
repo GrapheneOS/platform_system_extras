@@ -512,7 +512,7 @@ bool ReportSampleCommand::ProcessSampleRecord(const SampleRecord& r) {
     }
     if (!show_art_frames_) {
       // Remove interpreter frames both before and after the Java frame.
-      if (entry.dso->type() == DSO_DEX_FILE) {
+      if (entry.dso->IsForJavaMethod()) {
         near_java_method = true;
         while (!entries.empty() && is_entry_for_interpreter(entries.back())) {
           entries.pop_back();
