@@ -34,18 +34,18 @@ int pm_kernel_create(pm_kernel_t **ker_out) {
     
     ker = calloc(1, sizeof(*ker));
     if (!ker)
-        return errno;
+        return -errno;
 
     ker->kpagecount_fd = open("/proc/kpagecount", O_RDONLY);
     if (ker->kpagecount_fd < 0) {
-        error = errno;
+        error = -errno;
         free(ker);
         return error;
     }
 
     ker->kpageflags_fd = open("/proc/kpageflags", O_RDONLY);
     if (ker->kpageflags_fd < 0) {
-        error = errno;
+        error = -errno;
         close(ker->kpagecount_fd);
         free(ker);
         return error;
@@ -68,12 +68,12 @@ int pm_kernel_pids(pm_kernel_t *ker, pid_t **pids_out, size_t *len) {
 
     proc = opendir("/proc");
     if (!proc)
-        return errno;
+        return -errno;
 
     pids = malloc(INIT_PIDS * sizeof(pid_t));
     if (!pids) {
         closedir(proc);
-        return errno;
+        return -errno;
     }
     pids_count = 0; pids_size = INIT_PIDS;
 
@@ -84,7 +84,7 @@ int pm_kernel_pids(pm_kernel_t *ker, pid_t **pids_out, size_t *len) {
         if (pids_count >= pids_size) {
             new_pids = realloc(pids, 2 * pids_size * sizeof(pid_t));
             if (!new_pids) {
-                error = errno;
+                error = -errno;
                 free(pids);
                 closedir(proc);
                 return error;
@@ -102,7 +102,7 @@ int pm_kernel_pids(pm_kernel_t *ker, pid_t **pids_out, size_t *len) {
     
     new_pids = realloc(pids, pids_count * sizeof(pid_t));
     if (!new_pids) {
-        error = errno;
+        error = -errno;
         free(pids);
         return error;
     }
@@ -121,10 +121,10 @@ int pm_kernel_count(pm_kernel_t *ker, uint64_t pfn, uint64_t *count_out) {
 
     off = lseek64(ker->kpagecount_fd, pfn * sizeof(uint64_t), SEEK_SET);
     if (off == (off_t)-1)
-        return errno;
+        return -errno;
     if (read(ker->kpagecount_fd, count_out, sizeof(uint64_t)) <
         (ssize_t)sizeof(uint64_t))
-        return errno;
+        return -errno;
 
     return 0;
 }
@@ -137,10 +137,10 @@ int pm_kernel_flags(pm_kernel_t *ker, uint64_t pfn, uint64_t *flags_out) {
 
     off = lseek64(ker->kpageflags_fd, pfn * sizeof(uint64_t), SEEK_SET);
     if (off == (off_t)-1)
-        return errno;
+        return -errno;
     if (read(ker->kpageflags_fd, flags_out, sizeof(uint64_t)) <
         (ssize_t)sizeof(uint64_t))
-        return errno;
+        return -errno;
 
     return 0;
 }
