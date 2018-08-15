@@ -807,21 +807,37 @@ class TestExampleOfKotlinTraceOffCpu(TestExampleBase):
             (function_prefix + 'SleepFunction', 20)])
 
 
-class TestProfilingCmd(TestBase):
-    def test_smoke(self):
-        remove("perf.data")
+class TestNativeProfiling(TestBase):
+    def setUp(self):
+        self.adb = AdbHelper()
+        self.is_rooted_device = self.adb.switch_to_root()
+
+    def test_profile_cmd(self):
         self.run_cmd(["app_profiler.py", "-cmd", "pm -l", "--disable_adb_root"])
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
 
+    def test_profile_native_program(self):
+        if not self.is_rooted_device:
+            return
+        self.run_cmd(["app_profiler.py", "-np", "surfaceflinger"])
+        self.run_cmd(["report.py", "-g", "-o", "report.txt"])
+        self.run_cmd([INFERNO_SCRIPT, "-sc"])
+        self.run_cmd([INFERNO_SCRIPT, "-np", "surfaceflinger"])
 
-class TestProfilingNativeProgram(TestBase):
-    def test_smoke(self):
-        adb = AdbHelper()
-        if adb.switch_to_root():
-            self.run_cmd(["app_profiler.py", "-np", "surfaceflinger"])
-            self.run_cmd(["report.py", "-g", "-o", "report.txt"])
-            self.run_cmd([INFERNO_SCRIPT, "-sc"])
-            self.run_cmd([INFERNO_SCRIPT, "-np", "surfaceflinger"])
+    def test_profile_pids(self):
+        if not self.is_rooted_device:
+            return
+        pid = int(self.adb.check_run_and_return_output(['shell', 'pidof', 'system_server']))
+        self.run_cmd(['app_profiler.py', '--pid', str(pid), '-r', '--duration 1'])
+        self.run_cmd(['app_profiler.py', '--pid', str(pid), str(pid), '-r', '--duration 1'])
+        self.run_cmd(['app_profiler.py', '--tid', str(pid), '-r', '--duration 1'])
+        self.run_cmd(['app_profiler.py', '--tid', str(pid), str(pid), '-r', '--duration 1'])
+        self.run_cmd([INFERNO_SCRIPT, '--pid', str(pid), '-t', '1'])
+
+    def test_profile_system_wide(self):
+        if not self.is_rooted_device:
+            return
+        self.run_cmd(['app_profiler.py', '--system_wide', '-r', '--duration 1'])
 
 
 class TestReportLib(unittest.TestCase):
