@@ -326,13 +326,13 @@ class NativeCommandProfiler(ProfilerBase):
 
 
 class NativeProcessProfiler(ProfilerBase):
-    """Profile processes given pids."""
+    """Profile processes given their pids."""
     def start(self):
         self.start_profiling(['-p', ','.join(self.args.pid)])
 
 
 class NativeThreadProfiler(ProfilerBase):
-    """Profile threads given tids."""
+    """Profile threads given their tids."""
     def start(self):
         self.start_profiling(['-t', ','.join(self.args.tid)])
 
@@ -359,10 +359,10 @@ def main():
                               Like `-cmd "pm -l"`.""")
 
     target_group.add_argument('--pid', nargs='+', help="""Profile native processes running on device
-                              given process ids.""")
+                              given their process ids.""")
 
     target_group.add_argument('--tid', nargs='+', help="""Profile native threads running on device
-                              given thread ids.""")
+                              given their thread ids.""")
 
     target_group.add_argument('--system_wide', action='store_true', help="""Profile system wide.""")
 
