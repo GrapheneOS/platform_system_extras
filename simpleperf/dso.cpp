@@ -317,6 +317,20 @@ void Dso::AddUnknownSymbol(uint64_t vaddr_in_dso, const std::string& name) {
   unknown_symbols_.insert(std::make_pair(vaddr_in_dso, Symbol(name, vaddr_in_dso, 1)));
 }
 
+bool Dso::IsForJavaMethod() {
+  if (type_ == DSO_DEX_FILE) {
+    return true;
+  }
+  if (type_ == DSO_ELF_FILE) {
+    // JIT symfiles for JITed Java methods are dumped as temporary files, whose name are in format
+    // "TemporaryFile-XXXXXX".
+    size_t pos = path_.rfind('/');
+    pos = (pos == std::string::npos) ? 0 : pos + 1;
+    return strncmp(&path_[pos], "TemporaryFile", strlen("TemporaryFile")) == 0;
+  }
+  return false;
+}
+
 void Dso::Load() {
   is_loaded_ = true;
   std::vector<Symbol> symbols = LoadSymbols();
