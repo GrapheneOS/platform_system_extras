@@ -81,6 +81,7 @@ typedef struct pm_map      pm_map_t;
 struct pm_kernel {
     int kpagecount_fd;
     int kpageflags_fd;
+    int pageidle_fd;
 
     int pagesize;
 };
@@ -115,6 +116,45 @@ struct pm_map {
 int pm_kernel_create(pm_kernel_t **ker_out);
 
 #define pm_kernel_pagesize(ker) ((ker)->pagesize)
+
+#define pfn_to_page_idle_offset(x) ((x >> 6) << 3)
+
+/* Sets up the interaction with kernel's idle page tracking support
+ * by opening /sys/kernel/mm/page_idle/bitmap
+ *
+ * Return:
+ * 0 on success -errno on failure.
+ */
+int pm_kernel_init_page_idle(pm_kernel_t* ker);
+
+/* Checks if the kernel idle page tracking interface has been initialized.
+ * Return:
+ * 0 if not initialized or failed to initialize.
+ * 1 if we are ready to talk to page_idle/bitmap.
+ */
+int pm_kernel_has_page_idle(pm_kernel_t* ker);
+
+/* Get idle status of given page frame number.
+ * Returns:
+ *  0 if not idle i.e. page frame was accessed by the process.
+ *  1 if page frame continues to be idle since last time idle flag was set.
+ *  -errno on failure
+ */
+int pm_kernel_get_page_idle(pm_kernel_t* ker, uint64_t pfn);
+
+/* Mark page frames idle.
+ * Return:
+ * 0 on success -errno on failure.
+ */
+int pm_kernel_mark_page_idle(pm_kernel_t* ker, uint64_t* pfn, int n);
+
+/* Determines if the page frame has been accessed by user space since
+ * the working set was last reset
+ * 0 If page frame wasn't accessed.
+ * 1 If page frame was accessed.
+ * -errno on failure.
+ */
+int pm_kernel_page_is_accessed(pm_kernel_t* ker, uint64_t pfn, uint64_t* flags);
 
 /* Get a list of probably-existing PIDs (returned through *pids_out).
  * Length of the array (in sizeof(pid_t) units) is returned through *len.
@@ -193,6 +233,9 @@ int pm_process_destroy(pm_process_t *proc);
  * Array of PFNs is returned through *pagemap_out, and should be freed by the
  * caller. */
 int pm_map_pagemap(pm_map_t *map, uint64_t **pagemap_out, size_t *len);
+
+/* Mark all the present pages in process's VM as idle */
+int pm_map_mark_idle(pm_map_t* map);
 
 /* Get the memory usage of this map alone. */
 int pm_map_usage(pm_map_t *map, pm_memusage_t *usage_out);

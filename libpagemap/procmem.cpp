@@ -70,6 +70,9 @@ int main(int argc, char *argv[]) {
     int (*compfn)(const void *a, const void *b);
     int hide_zeros;
 
+    /* Use kernel's idle page tracking interface for working set determination */
+    int use_pageidle;
+
     /* temporary variables */
     size_t i, j;
     char *endptr;
@@ -83,9 +86,14 @@ int main(int argc, char *argv[]) {
     ws = WS_OFF;
     compfn = NULL;
     hide_zeros = 0;
+    use_pageidle = 0;
     for (i = 1; i < (size_t)(argc - 1); i++) {
         if (!strcmp(argv[i], "-w")) { ws = WS_ONLY; continue; }
         if (!strcmp(argv[i], "-W")) { ws = WS_RESET; continue; }
+        if (!strcmp(argv[i], "-i")) {
+            use_pageidle = 1;
+            continue;
+        }
         if (!strcmp(argv[i], "-m")) { compfn = NULL; continue; }
         if (!strcmp(argv[i], "-p")) { compfn = &comp_pss; continue; }
         if (!strcmp(argv[i], "-h")) { hide_zeros = 1; continue; }
@@ -105,6 +113,16 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "error creating kernel interface -- "
                         "does this kernel have pagemap?\n");
         exit(EXIT_FAILURE);
+    }
+
+    if (ws != WS_OFF && use_pageidle) {
+        error = pm_kernel_init_page_idle(ker);
+        if (error) {
+            fprintf(stderr,
+                    "error initalizing idle page tracking -- "
+                    "enable CONFIG_IDLE_PAGE_TRACKING in kernel.\n");
+            exit(EXIT_FAILURE);
+        }
     }
 
     pagesize = pm_kernel_pagesize(ker);
@@ -206,7 +224,8 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "error getting flags for frame.\n");
                 }
 
-                if ((ws != WS_ONLY) || (flags & (1 << KPF_REFERENCED))) {
+                if ((ws != WS_ONLY) ||
+                    pm_kernel_page_is_accessed(ker, PM_PAGEMAP_PFN(mapentry), &flags)) {
                     if (count > 1) {
                         if (flags & (1 << KPF_DIRTY)) {
                             mi->shared_dirty++;
@@ -304,13 +323,15 @@ int main(int argc, char *argv[]) {
 }
 
 static void usage(const char *cmd) {
-    fprintf(stderr, "Usage: %s [ -w | -W ] [ -p | -m ] [ -h ] pid\n"
-                    "    -w  Displays statistics for the working set only.\n"
-                    "    -W  Resets the working set of the process.\n"
-                    "    -p  Sort by PSS.\n"
-                    "    -m  Sort by mapping order (as read from /proc).\n"
-                    "    -h  Hide maps with no RSS.\n",
-        cmd);
+    fprintf(stderr,
+            "Usage: %s [-i] [ -w | -W ] [ -p | -m ] [ -h ] pid\n"
+            "    -i  Uses idle page tracking for working set statistics.\n"
+            "    -w  Displays statistics for the working set only.\n"
+            "    -W  Resets the working set of the process.\n"
+            "    -p  Sort by PSS.\n"
+            "    -m  Sort by mapping order (as read from /proc).\n"
+            "    -h  Hide maps with no RSS.\n",
+            cmd);
 }
 
 int comp_pss(const void *a, const void *b) {
