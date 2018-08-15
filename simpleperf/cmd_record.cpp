@@ -179,6 +179,8 @@ class RecordCommand : public Command {
 "                the kernel. It should be a power of 2. If not set, the max\n"
 "                possible value <= 1024 will be used.\n"
 "--no-inherit  Don't record created child threads/processes.\n"
+"--cpu-percent <percent>  Set the max percent of cpu time used for recording.\n"
+"                         percent is in range [1-100], default is 25.\n"
 "\n"
 "Dwarf unwinding options:\n"
 "--post-unwind=(yes|no) If `--call-graph dwarf` option is used, then the user's\n"
@@ -256,6 +258,7 @@ class RecordCommand : public Command {
  private:
   bool ParseOptions(const std::vector<std::string>& args,
                     std::vector<std::string>* non_option_args);
+  bool AdjustPerfEventLimit();
   bool PrepareRecording(Workload* workload);
   bool DoRecording(Workload* workload);
   bool PostProcessRecording(const std::vector<std::string>& args);
@@ -319,6 +322,8 @@ class RecordCommand : public Command {
   bool trace_offcpu_;
   bool exclude_kernel_callchain_;
   uint64_t size_limit_in_bytes_ = 0;
+  uint64_t max_sample_freq_ = DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT;
+  size_t cpu_time_max_percent_ = 25;
 
   // For CallChainJoiner
   bool allow_callchain_joiner_;
@@ -342,6 +347,9 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
 
   std::vector<std::string> workload_args;
   if (!ParseOptions(args, &workload_args)) {
+    return false;
+  }
+  if (!AdjustPerfEventLimit()) {
     return false;
   }
   ScopedTempFiles scoped_temp_files(android::base::Dirname(record_filename_));
@@ -622,7 +630,12 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       if (args[i-1] == "-c") {
         sample_speed_.reset(new SampleSpeed(0, value));
       } else {
+        if (value >= INT_MAX) {
+          LOG(ERROR) << "sample freq can't be bigger than INT_MAX.";
+          return false;
+        }
         sample_speed_.reset(new SampleSpeed(value, 0));
+        max_sample_freq_ = std::max(max_sample_freq_, value);
       }
       for (auto group_id : wait_setting_speed_event_groups_) {
         event_selection_set_.SetSampleSpeed(group_id, *sample_speed_);
@@ -684,6 +697,10 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       cpus_ = GetCpusFromString(args[i]);
+    } else if (args[i] == "--cpu-percent") {
+      if (!GetUintOption(args, &i, &cpu_time_max_percent_, 1, 100)) {
+        return false;
+      }
     } else if (args[i] == "--duration") {
       if (!GetDoubleOption(args, &i, &duration_in_sec_, 1e-9)) {
         return false;
@@ -869,6 +886,35 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   non_option_args->clear();
   for (; i < args.size(); ++i) {
     non_option_args->push_back(args[i]);
+  }
+  return true;
+}
+
+bool RecordCommand::AdjustPerfEventLimit() {
+  bool set_prop = false;
+  // 1. Adjust max_sample_rate.
+  uint64_t cur_max_freq;
+  if (GetMaxSampleFrequency(&cur_max_freq) && cur_max_freq < max_sample_freq_ &&
+      !SetMaxSampleFrequency(max_sample_freq_)) {
+    set_prop = true;
+  }
+  // 2. Adjust perf_cpu_time_max_percent.
+  size_t cur_percent;
+  if (GetCpuTimeMaxPercent(&cur_percent) && cur_percent != cpu_time_max_percent_ &&
+      !SetCpuTimeMaxPercent(cpu_time_max_percent_)) {
+    set_prop = true;
+  }
+  // 3. Adjust perf_event_mlock_kb.
+  uint64_t mlock_kb = sysconf(_SC_NPROCESSORS_CONF) * (mmap_page_range_.second + 1) * 4;
+  uint64_t cur_mlock_kb;
+  if (GetPerfEventMlockKb(&cur_mlock_kb) && cur_mlock_kb < mlock_kb &&
+      !SetPerfEventMlockKb(mlock_kb)) {
+    set_prop = true;
+  }
+
+  if (GetAndroidVersion() >= kAndroidVersionP + 1 && set_prop) {
+    return SetPerfEventLimits(std::max(max_sample_freq_, cur_max_freq), cpu_time_max_percent_,
+                              std::max(mlock_kb, cur_mlock_kb));
   }
   return true;
 }
