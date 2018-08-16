@@ -30,8 +30,8 @@ import os
 import os.path
 
 from simpleperf_report_lib import ReportLib
-from utils import log_info, log_exit
-from utils import Addr2Nearestline, extant_dir, find_tool_path, flatten_arg_list
+from utils import Addr2Nearestline, bytes_to_str, extant_dir, find_tool_path, flatten_arg_list
+from utils import log_info, log_exit, str_to_bytes
 try:
     import profile_pb2
 except ImportError:
@@ -40,13 +40,13 @@ except ImportError:
 def load_pprof_profile(filename):
     profile = profile_pb2.Profile()
     with open(filename, "rb") as f:
-        profile.ParseFromString(f.read())
+        profile.ParseFromString(bytes_to_str(f.read()))
     return profile
 
 
 def store_pprof_profile(filename, profile):
     with open(filename, 'wb') as f:
-        f.write(profile.SerializeToString())
+        f.write(str_to_bytes(profile.SerializeToString()))
 
 
 class PprofProfilePrinter(object):
