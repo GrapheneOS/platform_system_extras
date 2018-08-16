@@ -177,6 +177,7 @@ class Dso {
   // Create a symbol for a virtual address which can't find a corresponding
   // symbol in symbol table.
   void AddUnknownSymbol(uint64_t vaddr_in_dso, const std::string& name);
+  bool IsForJavaMethod();
 
  protected:
   static bool demangle_;

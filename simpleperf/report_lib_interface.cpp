@@ -309,7 +309,7 @@ void ReportLib::SetCurrentSample() {
     const MapEntry* map = thread_tree_.FindMap(current_thread_, ips[i], i < kernel_ip_count);
     if (!show_art_frames_) {
       // Remove interpreter frames both before and after the Java frame.
-      if (map->dso->type() == DSO_DEX_FILE) {
+      if (map->dso->IsForJavaMethod()) {
         near_java_method = true;
         while (!ip_maps.empty() && is_map_for_interpreter(ip_maps.back().second)) {
           ip_maps.pop_back();
