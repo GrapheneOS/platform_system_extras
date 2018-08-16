@@ -134,13 +134,22 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    if (ws == WS_RESET) {
-        error = pm_process_workingset(proc, NULL, 1);
-        if (error) {
-            fprintf(stderr, "error resetting working set for process.\n");
-            exit(EXIT_FAILURE);
+    if (ws != WS_OFF) {
+        /*
+         * The idle page tracking interface will update the PageIdle flags
+         * upon writing. So, even if we are called only to read the *current*
+         * working set, we need to reset the bitmap to make sure we get
+         * the updated page idle flags. This is not true with the 'clear_refs'
+         * implementation.
+         */
+        if (ws == WS_RESET || use_pageidle) {
+            error = pm_process_workingset(proc, NULL, 1);
+            if (error) {
+                fprintf(stderr, "error resetting working set for process.\n");
+                exit(EXIT_FAILURE);
+            }
         }
-        exit(EXIT_SUCCESS);
+        if (ws == WS_RESET) exit(EXIT_SUCCESS);
     }
 
     /* get maps, and allocate our map_info array */
