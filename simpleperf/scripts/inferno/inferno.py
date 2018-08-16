@@ -53,8 +53,10 @@ def collect_data(args):
         app_profiler_args += ["-p", args.app]
     elif args.native_program:
         app_profiler_args += ["-np", args.native_program]
+    elif args.pid != -1:
+        app_profiler_args += ['--pid', str(args.pid)]
     else:
-        log_exit("Please set profiling target with -p or -np option.")
+        log_exit("Please set profiling target with -p, -np or --pid option.")
     if args.compile_java_code:
         app_profiler_args.append("--compile_java_code")
     if args.disable_adb_root:
@@ -304,24 +306,20 @@ def main():
 
     if not args.skip_collection:
         if args.pid != -1:
-            result, output = AdbHelper().run_and_return_output(['shell', 'ps', '-p',
-                                                                str(args.pid), '-o', 'comm='])
-            if result:
-                try:
-                    args.native_program = output.replace('\n', '')
-                except:
-                    log_warning("Could not find native app for pid '%d'." % process.pid)
+            process.pid = args.pid
+            args.native_program = ''
 
-        process.name = args.app or args.native_program
+        process.name = args.app or args.native_program or ('Process %d' % args.pid)
         log_info("Starting data collection stage for process '%s'." % process.name)
         if not collect_data(args):
             log_exit("Unable to collect data.")
-        result, output = AdbHelper().run_and_return_output(['shell', 'pidof', process.name])
-        if result:
-            try:
-                process.pid = int(output)
-            except ValueError:
-                process.pid = 0
+        if process.pid == 0:
+            result, output = AdbHelper().run_and_return_output(['shell', 'pidof', process.name])
+            if result:
+                try:
+                    process.pid = int(output)
+                except ValueError:
+                    process.pid = 0
         collect_machine_info(process)
     else:
         args.capture_duration = 0
