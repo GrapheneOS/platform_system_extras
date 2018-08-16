@@ -36,6 +36,7 @@ Test using both `adb root` and `adb unroot`.
 """
 from __future__ import print_function
 import argparse
+import filecmp
 import fnmatch
 import inspect
 import os
@@ -49,10 +50,11 @@ import types
 import unittest
 
 from app_profiler import NativeLibDownloader
+from binary_cache_builder import BinaryCacheBuilder
 from simpleperf_report_lib import ReportLib
 from utils import log_exit, log_info, log_fatal
-from utils import AdbHelper, Addr2Nearestline, get_script_dir, is_windows, Objdump, ReadElf, remove
-from utils import SourceFileSearcher
+from utils import AdbHelper, Addr2Nearestline, find_tool_path, get_script_dir, is_windows, Objdump
+from utils import ReadElf, remove, SourceFileSearcher
 
 try:
     # pylint: disable=unused-import
@@ -1221,6 +1223,39 @@ class TestReportHtml(TestBase):
         self.run_cmd(['report_html.py', '-i', 'testdata/perf_with_long_callchain.data'])
 
 
+class TestBinaryCacheBuilder(TestBase):
+    def test_copy_binaries_from_symfs_dirs(self):
+        readelf = ReadElf(None)
+        strip = find_tool_path('strip', arch='arm')
+        self.assertIsNotNone(strip)
+        symfs_dir = os.path.join('testdata', 'symfs_dir')
+        remove(symfs_dir)
+        os.mkdir(symfs_dir)
+        filename = 'simpleperf_runtest_two_functions_arm'
+        origin_file = os.path.join('testdata', filename)
+        source_file = os.path.join(symfs_dir, filename)
+        target_file = os.path.join('binary_cache', filename)
+        expected_build_id = readelf.get_build_id(origin_file)
+        binary_cache_builder = BinaryCacheBuilder(None, False)
+        binary_cache_builder.binaries['simpleperf_runtest_two_functions_arm'] = expected_build_id
+
+        # Copy binary if target file doesn't exist.
+        remove(target_file)
+        self.run_cmd([strip, '--strip-all', '-o', source_file, origin_file])
+        binary_cache_builder.copy_binaries_from_symfs_dirs([symfs_dir])
+        self.assertTrue(filecmp.cmp(target_file, source_file))
+
+        # Copy binary if target file doesn't have .symtab and source file has .symtab.
+        self.run_cmd([strip, '--strip-debug', '-o', source_file, origin_file])
+        binary_cache_builder.copy_binaries_from_symfs_dirs([symfs_dir])
+        self.assertTrue(filecmp.cmp(target_file, source_file))
+
+        # Copy binary if target file doesn't have .debug_line and source_files has .debug_line.
+        shutil.copy(origin_file, source_file)
+        binary_cache_builder.copy_binaries_from_symfs_dirs([symfs_dir])
+        self.assertTrue(filecmp.cmp(target_file, source_file))
+
+
 def get_all_tests():
     tests = []
     for name, value in globals().items():
@@ -1255,6 +1290,8 @@ def main():
             if pattern.match(test):
                 new_tests.append(test)
         tests = new_tests
+        if not tests:
+            log_exit('No tests are matched.')
 
     os.chdir(get_script_dir())
     build_testdata()
