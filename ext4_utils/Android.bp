@@ -59,3 +59,27 @@ cc_library {
         },
     },
 }
+
+python_binary_host {
+    name: "mkuserimg_mke2fs",
+    srcs: [
+        "mkuserimg_mke2fs.py",
+    ],
+
+    version: {
+        py2: {
+            enabled: true,
+            embedded_launcher: true,
+        },
+        py3: {
+            enabled: false,
+            embedded_launcher: false,
+        },
+    },
+
+    required: [
+        "mke2fs",
+        "e2fsdroid",
+    ],
+
+}
