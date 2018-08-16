@@ -39,6 +39,9 @@ static void usage(const char *cmd);
 /* qsort compare function to compare maps by PSS */
 int comp_pss(const void *a, const void *b);
 
+/* qsort compare function to compare maps by USS */
+int comp_uss(const void* a, const void* b);
+
 int main(int argc, char *argv[]) {
     pid_t pid;
 
@@ -96,6 +99,10 @@ int main(int argc, char *argv[]) {
         }
         if (!strcmp(argv[i], "-m")) { compfn = NULL; continue; }
         if (!strcmp(argv[i], "-p")) { compfn = &comp_pss; continue; }
+        if (!strcmp(argv[i], "-u")) {
+            compfn = &comp_uss;
+            continue;
+        }
         if (!strcmp(argv[i], "-h")) { hide_zeros = 1; continue; }
         fprintf(stderr, "Invalid argument \"%s\".\n", argv[i]);
         usage(argv[0]);
@@ -331,13 +338,14 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-static void usage(const char *cmd) {
+static void usage(const char* cmd) {
     fprintf(stderr,
             "Usage: %s [-i] [ -w | -W ] [ -p | -m ] [ -h ] pid\n"
             "    -i  Uses idle page tracking for working set statistics.\n"
             "    -w  Displays statistics for the working set only.\n"
             "    -W  Resets the working set of the process.\n"
             "    -p  Sort by PSS.\n"
+            "    -u  Sort by USS.\n"
             "    -m  Sort by mapping order (as read from /proc).\n"
             "    -h  Hide maps with no RSS.\n",
             cmd);
@@ -351,5 +359,16 @@ int comp_pss(const void *a, const void *b) {
 
     if (mb->usage.pss < ma->usage.pss) return -1;
     if (mb->usage.pss > ma->usage.pss) return 1;
+    return 0;
+}
+
+int comp_uss(const void* a, const void* b) {
+    struct map_info *ma, *mb;
+
+    ma = *((struct map_info**)a);
+    mb = *((struct map_info**)b);
+
+    if (mb->usage.uss < ma->usage.uss) return -1;
+    if (mb->usage.uss > ma->usage.uss) return 1;
     return 0;
 }
