@@ -19,6 +19,7 @@
 """
 
 from __future__ import print_function
+import argparse
 import logging
 import os
 import os.path
@@ -145,6 +146,9 @@ EXPECTED_TOOLS = {
         'accept_tool_without_arch': True
     },
     'objdump': {
+        'is_binutils': True,
+    },
+    'strip': {
         'is_binutils': True,
     },
 }
@@ -773,8 +777,21 @@ def extant_dir(arg):
     """
     path = os.path.realpath(arg)
     if not os.path.isdir(path):
-        import argparse
         raise argparse.ArgumentTypeError('{} is not a directory.'.format(path))
+    return path
+
+def extant_file(arg):
+    """ArgumentParser type that only accepts extant files.
+
+    Args:
+        arg: The string argument given on the command line.
+    Returns: The argument as a realpath.
+    Raises:
+        argparse.ArgumentTypeError: The given path isn't a file.
+    """
+    path = os.path.realpath(arg)
+    if not os.path.isfile(path):
+        raise argparse.ArgumentTypeError('{} is not a file.'.format(path))
     return path
 
 logging.getLogger().setLevel(logging.DEBUG)
