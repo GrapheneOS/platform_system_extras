@@ -78,7 +78,7 @@ def str_to_bytes(str_value):
     return str_value.encode('utf-8')
 
 def bytes_to_str(bytes_value):
-    if not is_python3():
+    if not is_python3() or not bytes_value:
         return bytes_value
     return bytes_value.decode('utf-8')
 
@@ -239,10 +239,10 @@ class AdbHelper(object):
         else:
             subproc = subprocess.Popen(adb_args, stdout=subprocess.PIPE)
             (stdoutdata, _) = subproc.communicate()
+            stdoutdata = bytes_to_str(stdoutdata)
             returncode = subproc.returncode
         result = (returncode == 0)
         if stdoutdata and adb_args[1] != 'push' and adb_args[1] != 'pull':
-            stdoutdata = bytes_to_str(stdoutdata)
             if log_output:
                 log_debug(stdoutdata)
         log_debug('run adb cmd: %s  [result %s]' % (adb_args, result))

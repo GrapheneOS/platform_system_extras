@@ -29,8 +29,8 @@ import subprocess
 import sys
 import time
 
-from utils import get_script_dir, log_debug, log_info, log_exit, get_target_binary_path, extant_dir
-from utils import AdbHelper, ReadElf, remove
+from utils import AdbHelper, bytes_to_str, extant_dir, get_script_dir, get_target_binary_path
+from utils import log_debug, log_info, log_exit, ReadElf, remove, str_to_bytes
 
 NATIVE_LIBS_DIR_ON_DEVICE = '/data/local/tmp/native_libs/'
 
@@ -121,7 +121,7 @@ class NativeLibDownloader(object):
         if os.path.exists(self.build_id_list_file):
             with open(self.build_id_list_file, 'rb') as fh:
                 for line in fh.readlines():
-                    line = line.strip()
+                    line = bytes_to_str(line).strip()
                     items = line.split('=')
                     if len(items) == 2:
                         self.device_build_id_map[items[0]] = items[1]
@@ -141,7 +141,8 @@ class NativeLibDownloader(object):
         # Push new build_id_list on device.
         with open(self.build_id_list_file, 'wb') as fh:
             for build_id in self.host_build_id_map:
-                fh.write('%s=%s\n' % (build_id, self.host_build_id_map[build_id].name))
+                s = str_to_bytes('%s=%s\n' % (build_id, self.host_build_id_map[build_id].name))
+                fh.write(s)
         self.adb.check_run(['push', self.build_id_list_file,
                             self.dir_on_device + self.build_id_list_file])
         os.remove(self.build_id_list_file)
