@@ -53,8 +53,8 @@ from app_profiler import NativeLibDownloader
 from binary_cache_builder import BinaryCacheBuilder
 from simpleperf_report_lib import ReportLib
 from utils import log_exit, log_info, log_fatal
-from utils import AdbHelper, Addr2Nearestline, find_tool_path, get_script_dir, is_windows, Objdump
-from utils import ReadElf, remove, SourceFileSearcher
+from utils import AdbHelper, Addr2Nearestline, bytes_to_str, find_tool_path, get_script_dir
+from utils import is_python3, is_windows, Objdump, ReadElf, remove, SourceFileSearcher
 
 try:
     # pylint: disable=unused-import
@@ -114,6 +114,7 @@ class TestBase(unittest.TestCase):
             else:
                 subproc = subprocess.Popen(args, stdout=subprocess.PIPE, shell=use_shell)
                 (output_data, _) = subproc.communicate()
+                output_data = bytes_to_str(output_data)
                 returncode = subproc.returncode
         except OSError:
             returncode = None
@@ -1206,7 +1207,7 @@ class TestNativeLibDownloader(unittest.TestCase):
         downloader.collect_native_libs_on_device()
         self.assertEqual(len(downloader.device_build_id_map), 0)
 
-        lib_list = downloader.host_build_id_map.items()
+        lib_list = list(downloader.host_build_id_map.items())
         for sync_count in [0, 1, 2]:
             build_id_map = {}
             for i in range(sync_count):
@@ -1228,8 +1229,8 @@ class TestNativeLibDownloader(unittest.TestCase):
             if sync_count == 1:
                 adb.run(['pull', '/data/local/tmp/native_libs/build_id_list', 'build_id_list'])
                 with open('build_id_list', 'rb') as fh:
-                    self.assertEqual(fh.read(), '{}={}\n'.format(lib_list[0][0],
-                                                                 lib_list[0][1].name))
+                    self.assertEqual(bytes_to_str(fh.read()),
+                                     '{}={}\n'.format(lib_list[0][0], lib_list[0][1].name))
                 remove('build_id_list')
         adb.run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
 
@@ -1276,16 +1277,27 @@ def get_all_tests():
     tests = []
     for name, value in globals().items():
         if isinstance(value, type) and issubclass(value, unittest.TestCase):
-            test_methods = [x for x, y in inspect.getmembers(value)
-                            if isinstance(y, types.UnboundMethodType) and x.startswith('test')]
-            for method in test_methods:
-                tests.append(name + '.' + method)
+            for member_name, member in inspect.getmembers(value):
+                if isinstance(member, (types.MethodType, types.FunctionType)):
+                    if member_name.startswith('test'):
+                        tests.append(name + '.' + member_name)
     return sorted(tests)
+
+
+def run_tests(tests):
+    os.chdir(get_script_dir())
+    build_testdata()
+    log_info('Run tests with python%d\n%s' % (3 if is_python3() else 2, '\n'.join(tests)))
+    argv = [sys.argv[0]] + tests
+    unittest.main(argv=argv, failfast=True, verbosity=2, exit=False)
+
 
 def main():
     parser = argparse.ArgumentParser(description='Test simpleperf scripts')
     parser.add_argument('--list-tests', action='store_true', help='List all tests.')
     parser.add_argument('--test-from', nargs=1, help='Run left tests from the selected test.')
+    parser.add_argument('--python-version', choices=['2', '3', 'both'], default='both', help="""
+                        Run tests on which python versions.""")
     parser.add_argument('pattern', nargs='*', help='Run tests matching the selected pattern.')
     args = parser.parse_args()
     tests = get_all_tests()
@@ -1309,14 +1321,25 @@ def main():
         if not tests:
             log_exit('No tests are matched.')
 
-    os.chdir(get_script_dir())
-    build_testdata()
     if AdbHelper().get_android_version() < 7:
         log_info("Skip tests on Android version < N.")
         sys.exit(0)
-    log_info('Run tests %s' % ('\n'.join(tests)))
-    argv = [sys.argv[0]] + tests
-    unittest.main(argv=argv, failfast=True, verbosity=2)
+
+    if args.python_version == 'both':
+        python_versions = [2, 3]
+    else:
+        python_versions = [int(args.python_version)]
+    current_version = 3 if is_python3() else 2
+    for version in python_versions:
+        if version != current_version:
+            argv = ['python3' if version == 3 else 'python']
+            argv.append(os.path.join(get_script_dir(), 'test.py'))
+            argv += sys.argv[1:]
+            argv += ['--python-version', str(version)]
+            subprocess.check_call(argv)
+        else:
+            run_tests(tests)
+
 
 if __name__ == '__main__':
     main()
