@@ -21,6 +21,7 @@ The latest document is [here](https://android.googlesource.com/platform/system/e
     - [Record both on CPU time and off CPU time](#record-both-on-cpu-time-and-off-cpu-time)
     - [Profile from launch](#profile-from-launch)
     - [Parse profiling data manually](#parse-profiling-data-manually)
+- [Android platform profiling](#android-platform-profiling)
 - [Executable commands reference](#executable-commands-reference)
     - [How simpleperf works](#how-simpleperf-works)
     - [Commands](#commands)
@@ -405,6 +406,44 @@ We can also write python scripts to parse profiling data manually, by using
 [simpleperf_report_lib.py](#simpleperf_report_lib-py). Examples are report_sample.py,
 report_html.py.
 
+## Android platform profiling
+
+Here are some tips for Android platform developers, who build and flash system images on rooted
+devices:
+1. After running `adb root`, simpleperf can be used to profile any process or system wide.
+2. It is recommended to use the latest simpleperf available in AOSP master, if you are not working
+on the current master branch. Scripts are in `system/extras/simpleperf/scripts`, binaries are in
+`system/extras/simpleperf/scripts/bin/android`.
+3. It is recommended to use `app_profiler.py` for recording, and `report_html.py` for reporting.
+Below is an example.
+
+```sh
+# Record surfaceflinger process for 10 seconds with dwarf based call graph. More examples are in
+# scripts reference in the doc.
+$ python app_profiler.py -np surfaceflinger -r "-g --duration 10"
+
+# Generate html report.
+$ python report_html.py
+```
+
+4. Since Android >= O has symbols for system libraries on device, we don't need to use unstripped
+binaries in `$ANDROID_PRODUCT_OUT/symbols` to report call graphs. However, they are needed to add
+source code and disassembly (with line numbers) in the report. Below is an example.
+
+```sh
+# Doing recording with app_profiler.py or simpleperf on device, and generates perf.data on host.
+$ python app_profiler.py -np surfaceflinger -r "--call-graph fp --duration 10"
+
+# Collect unstripped binaries from $ANDROID_PRODUCT_OUT/symbols to binary_cache/.
+$ python binary_cache_builder.py -lib $ANDROID_PRODUCT_OUT/symbols
+
+# Report source code and disassembly. Disassembling all binaries is slow, so it's better to add
+# --binary_filter option to only disassemble selected binaries.
+$ python report_html.py --add_source_code --source_dirs $ANDROID_BUILD_TOP --add_disassembly \
+  --binary_filter surfaceflinger.so
+```
+
+
 ## Executable commands reference
 
 ### How simpleperf works
@@ -586,7 +625,8 @@ $ simpleperf stat -t 11904,11905 --duration 10
 # Start a child process running `ls`, and stat it.
 $ simpleperf stat ls
 
-# Stat a debuggable Android application.
+# Stat the process of an Android application. This only works for debuggable apps on non-rooted
+# devices.
 $ simpleperf stat --app com.example.simpleperf.simpleperfexamplewithnative
 
 # Stat system wide using -a.
@@ -684,7 +724,8 @@ $ simpleperf record -t 11904,11905 --duration 10
 # Record a child process running `ls`.
 $ simpleperf record ls
 
-# Record a debuggable Android application.
+# Record the process of an Android application. This only works for debuggable apps on non-rooted
+# devices.
 $ simpleperf record --app com.example.simpleperf.simpleperfexamplewithnative
 
 # Record system wide.
@@ -705,6 +746,16 @@ $ simpleperf record -f 1000 -p 11904,11905 --duration 10
 
 # Record with sample period 100000: sample 1 time every 100000 events.
 $ simpleperf record -c 100000 -t 11904,11905 --duration 10
+```
+
+To avoid taking too much time generating samples, kernel >= 3.10 sets the max percent of cpu time
+used for generating samples (default is 25%), and decreases the max allowed sample frequency when
+hitting that limit. Simpleperf uses --cpu-percent option to adjust it, but it needs either root
+privilege or to be on Android >= Q.
+
+```sh
+# Record with sample frequency 10000, with max allowed cpu percent to be 50%.
+$ simpleperf record -f 1000 -p 11904,11905 --duration 10 --cpu-percent 50
 ```
 
 #### Decide how long to record
@@ -776,7 +827,7 @@ $ simpleperf record -p 11904 -g --duration 10
 $ simpleperf record -p 11904 --call-graph fp --duration 10
 ```
 
-[Here](#suggestions-about-recording-call-graphs) are some suggestions about recording call graphs
+[Here](#suggestions-about-recording-call-graphs) are some suggestions about recording call graphs.
 
 <a name="record-both-on-cpu-time-and-off-cpu-time-in-record-cmd"></a>
 #### Record both on CPU time and off CPU time
@@ -896,6 +947,10 @@ $ simpleperf report
 # In this case, when simpleperf wants to read executable binary /A/b, it prefers file in
 # /debug_dir/A/b to file in /A/b.
 $ simpleperf report --symfs /debug_dir
+
+# Read symbols for system libraries built locally. Note that this is not needed since Android O,
+# which ships symbols for system libraries on device.
+$ simpleperf report --symfs $ANDROID_PRODUCT_OUT/symbols
 ```
 
 #### Filter samples
@@ -968,6 +1023,9 @@ $ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -
 
 # Record a native process.
 $ python app_profiler.py -np surfaceflinger
+
+# Record a native process given its pid.
+$ python app_profiler.py --pid 11324
 
 # Record a command.
 $ python app_profiler.py -cmd \
@@ -1086,6 +1144,13 @@ $ python report_html.py --add_source_code --source_dirs path_of_SimpleperfExampl
 
 # Add disassembly.
 $ python report_html.py --add_disassembly
+
+# Adding disassembly for all binaries can cost a lot of time. So we can choose to only add
+# disassembly for selected binaries.
+$ python report_html.py --add_disassembly --binary_filter libgame.so
+
+# report_html.py accepts more than one recording data file.
+$ python report_html.py -i perf1.data perf2.data
 ```
 
 Below is an example of generating html profiling results for SimpleperfExampleWithNative.
