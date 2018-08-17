@@ -105,7 +105,7 @@ class TracingFieldFormatStruct(ct.Structure):
         if self.elem_count > 1 and self.elem_size == 1 and self.is_signed == 0:
             # The field is a string.
             length = 0
-            while length < self.elem_count and data[self.offset + length] != '\x00':
+            while length < self.elem_count and bytes_to_str(data[self.offset + length]) != '\x00':
                 length += 1
             return bytes_to_str(data[self.offset : self.offset + length])
         unpack_key = self._unpack_key_dict.get(self.elem_size)
