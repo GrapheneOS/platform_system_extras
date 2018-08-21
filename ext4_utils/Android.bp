@@ -81,5 +81,10 @@ python_binary_host {
         "mke2fs",
         "e2fsdroid",
     ],
+}
 
+prebuilt_etc {
+    name: "mke2fs.conf",
+    recovery_available: true,
+    src: "mke2fs.conf",
 }
