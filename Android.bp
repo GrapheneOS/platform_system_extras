@@ -5,7 +5,6 @@ cc_defaults {
         "-Werror",
         "-Wno-unused-parameter",
         "-Wno-unused-result",
-        "-Wno-unused-variable",
     ],
     clang_cflags: [
         "-Wno-incompatible-pointer-types-discards-qualifiers",
