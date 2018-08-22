@@ -46,7 +46,7 @@ int main(int argc, char* argv[]) {
         return EX_NOINPUT;
     }
 
-    if (!FlashPartitionTable(argv[1], *pt.get(), 0)) {
+    if (!FlashPartitionTable(argv[1], *pt.get())) {
         printf("Failed to flash partition table.\n");
         return EX_SOFTWARE;
     }
