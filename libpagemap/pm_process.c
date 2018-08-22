@@ -181,7 +181,7 @@ int pm_process_workingset(pm_process_t *proc,
     pm_memusage_t ws, map_ws;
     char filename[MAX_FILENAME];
     int fd;
-    int i, j;
+    int i;
     int error;
 
     if (!proc)

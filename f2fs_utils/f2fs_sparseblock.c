@@ -215,7 +215,7 @@ static struct f2fs_checkpoint *validate_checkpoint(block_t cp_addr,
                                                    unsigned long long *version, int fd)
 {
     unsigned char *cp_block_1, *cp_block_2;
-    struct f2fs_checkpoint *cp_block, *cp_ret;
+    struct f2fs_checkpoint *cp_block;
     uint64_t cp1_version = 0, cp2_version = 0;
 
     cp_block_1 = malloc(F2FS_BLKSIZE);
@@ -261,15 +261,11 @@ invalid_cp1:
 
 int get_valid_checkpoint_info(int fd, struct f2fs_super_block *sb, struct f2fs_checkpoint **cp,  struct f2fs_info *info)
 {
-    struct f2fs_checkpoint *cp_block;
-
     struct f2fs_checkpoint *cp1, *cp2, *cur_cp;
-    int cur_cp_no;
     unsigned long blk_size;
     unsigned long long cp1_version = 0, cp2_version = 0;
     unsigned long long cp1_start_blk_no;
     unsigned long long cp2_start_blk_no;
-    u32 bmp_size;
 
     blk_size = 1U << le32_to_cpu(sb->log_blocksize);
 
@@ -487,11 +483,10 @@ int f2fs_test_bit(unsigned int nr, const char *p)
 }
 
 int run_on_used_blocks(uint64_t startblock, struct f2fs_info *info, int (*func)(uint64_t pos, void *data), void *data) {
-    struct f2fs_sit_block sit_block_cache;
     struct f2fs_sit_entry * sit_entry;
     uint64_t sit_block_num_cur = 0, segnum = 0, block_offset;
     uint64_t block;
-    unsigned int used, found, started = 0, i;
+    unsigned int used, found, i;
 
     block = startblock;
     while (block < info->total_blocks) {
