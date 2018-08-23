@@ -27,6 +27,8 @@
 #include "pm_map.h"
 
 static int read_maps(pm_process_t *proc);
+static int pm_process_clear_refs(pm_process_t* proc);
+static int pm_process_mark_idle(pm_process_t* proc);
 
 #define MAX_FILENAME 64
 
@@ -113,8 +115,9 @@ int pm_process_pagemap_range(pm_process_t *proc,
     off64_t off;
     int error;
 
-    if (!proc || (low > high) || !range_out || !len)
-        return -1;
+    if (!proc || (low > high) || !range_out || !len) {
+        return -EINVAL;
+    }
 
     if (low == high) {
         *range_out = NULL;
@@ -126,12 +129,13 @@ int pm_process_pagemap_range(pm_process_t *proc,
     numpages = (high - low) / proc->ker->pagesize;
 
     range = malloc(numpages * sizeof(uint64_t));
-    if (!range)
-        return errno;
+    if (!range) {
+        return -ENOMEM;
+    }
 
     off = lseek64(proc->pagemap_fd, firstpage * sizeof(uint64_t), SEEK_SET);
     if (off == (off_t)-1) {
-        error = errno;
+        error = -errno;
         free(range);
         return error;
     }
@@ -143,7 +147,7 @@ int pm_process_pagemap_range(pm_process_t *proc,
         *range_out = NULL;
         return 0;
     } else if (error < 0 || (error > 0 && error < (int)(numpages * sizeof(uint64_t)))) {
-        error = (error < 0) ? errno : -1;
+        error = (error < 0) ? -errno : -EIO;
         free(range);
         return error;
     }
@@ -179,8 +183,6 @@ int pm_process_maps(pm_process_t *proc, pm_map_t ***maps_out, size_t *len) {
 int pm_process_workingset(pm_process_t *proc,
                           pm_memusage_t *ws_out, int reset) {
     pm_memusage_t ws, map_ws;
-    char filename[MAX_FILENAME];
-    int fd;
     int i;
     int error;
 
@@ -200,24 +202,12 @@ int pm_process_workingset(pm_process_t *proc,
 
             pm_memusage_add(&ws, &map_ws);
         }
-        
         memcpy(ws_out, &ws, sizeof(ws));
     }
 
     if (reset) {
-        error = snprintf(filename, MAX_FILENAME, "/proc/%d/clear_refs",
-                         proc->pid);
-        if (error < 0 || error >= MAX_FILENAME) {
-            return (error < 0) ? (errno) : (-1);
-        }
-
-        fd = open(filename, O_WRONLY);
-        if (fd < 0)
-            return errno;
-
-        write(fd, "1\n", strlen("1\n"));
-
-        close(fd);
+        return pm_kernel_has_page_idle(proc->ker) ? pm_process_mark_idle(proc)
+                                                  : pm_process_clear_refs(proc);
     }
 
     return 0;
@@ -326,6 +316,52 @@ static int read_maps(pm_process_t *proc) {
 
     proc->maps = new_maps;
     proc->num_maps = maps_count;
+
+    return 0;
+}
+
+static int pm_process_clear_refs(pm_process_t* proc) {
+    int error;
+    char filename[MAX_FILENAME];
+
+    if (!proc) {
+        return -EINVAL;
+    }
+
+    error = snprintf(filename, MAX_FILENAME, "/proc/%d/clear_refs", proc->pid);
+    if (error < 0 || error >= MAX_FILENAME) {
+        return (error < 0) ? -errno : -1;
+    }
+
+    int fd = open(filename, O_WRONLY | O_CLOEXEC);
+    if (fd < 0) {
+        return -errno;
+    }
+
+    const char* cmd = "1\n";
+    size_t cmdlen = strlen(cmd);
+
+    error = TEMP_FAILURE_RETRY(write(fd, cmd, cmdlen));
+    error = (error == cmdlen) ? 0 : -errno;
+
+    close(fd);
+
+    return error;
+}
+
+static int pm_process_mark_idle(pm_process_t* proc) {
+    int error;
+
+    if (!proc) {
+        return -EINVAL;
+    }
+
+    for (int i = 0; i < proc->num_maps; i++) {
+        error = pm_map_mark_idle(proc->maps[i]);
+        if (error) {
+            return error;
+        }
+    }
 
     return 0;
 }
