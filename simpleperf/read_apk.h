@@ -90,7 +90,8 @@ class ApkInspector {
 std::string GetUrlInApk(const std::string& apk_path, const std::string& elf_filename);
 std::tuple<bool, std::string, std::string> SplitUrlInApk(const std::string& path);
 
-// Parse path like "/dev/ashmem/dalvik-classes.dex extracted in memory from /..base.apk (deleted)".
+// Parse path like "[anon:dalvik-classes.dex extracted in memory from /..base.apk] (deleted)",
+// or "/dev/ashmem/dalvik-classes.dex extracted in memory from /..base.apk (deleted)" on Android P.
 bool ParseExtractedInMemoryPath(const std::string& path, std::string* zip_path,
                                 std::string* entry_name);
 

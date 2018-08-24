@@ -1138,7 +1138,7 @@ bool MapOnlyExistInMemory(MmapRecordType* record) {
 bool RecordCommand::ShouldOmitRecord(Record* record) {
   if (jit_debug_reader_) {
     // To profile jitted Java code, we need PROT_JIT_SYMFILE_MAP maps not overlapped by maps for
-    // /dev/ashmem/dalvik-jit-code-cache. To profile interpreted Java code, we record maps that
+    // [anon:dalvik-jit-code-cache]. To profile interpreted Java code, we record maps that
     // are not executable. Some non-exec maps (like those for stack, heap) provide misleading map
     // entries for unwinding, as in http://b/77236599. So it is better to remove
     // dalvik-jit-code-cache and other maps that only exist in memory.

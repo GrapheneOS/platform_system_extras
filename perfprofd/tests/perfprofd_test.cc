@@ -209,7 +209,7 @@ class PerfProfdTest : public testing::Test {
      std::string sqexp = squeezeWhite(expected, "expected");
 
      // Strip out JIT errors.
-     std::regex jit_regex("E: Failed to open ELF file: [^ ]*ashmem/dalvik-jit-code-cache.*");
+     std::regex jit_regex("E: Failed to open ELF file: [^ ]*dalvik-jit-code-cache.*");
      auto strip_jit = [&](const std::string& str) {
        std::smatch jit_match;
        return !std::regex_match(str, jit_match, jit_regex);
