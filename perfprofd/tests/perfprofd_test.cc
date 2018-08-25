@@ -618,6 +618,7 @@ TEST_F(PerfProfdTest, ConfigFileParsing)
 
   // assorted bad syntax
   runner.addToConfig("collection_interval=-1");
+  runner.addToConfig("collection_interval=18446744073709551615");
   runner.addToConfig("nonexistent_key=something");
   runner.addToConfig("no_equals_stmt");
 
@@ -629,9 +630,10 @@ TEST_F(PerfProfdTest, ConfigFileParsing)
 
   // Verify log contents
   const std::string expected = RAW_RESULT(
-      W: line 6: specified value 18446744073709551615 for 'collection_interval' outside permitted range [0 4294967295]
-      W: line 7: unknown option 'nonexistent_key'
-      W: line 8: line malformed (no '=' found)
+      W: line 6: value -1 cannot be parsed
+      W: line 7: specified value 18446744073709551615 for 'collection_interval' outside permitted range [0 4294967295]
+      W: line 8: unknown option 'nonexistent_key'
+      W: line 9: line malformed (no '=' found)
                                           );
 
   // check to make sure log excerpt matches
