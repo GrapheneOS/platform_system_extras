@@ -1101,21 +1101,31 @@ class FlameGraphView {
         for (let node of initNodes) {
             this.sumCount += node.s;
         }
-        function getMaxDepth(node) {
-            let depth = 0;
-            for (let child of node.c) {
-                depth = Math.max(depth, getMaxDepth(child));
-            }
-            return depth + 1;
-        }
-        this.maxDepth = 0;
-        for (let node of this.initNodes) {
-            this.maxDepth = Math.max(this.maxDepth, getMaxDepth(node));
-        }
+        this.maxDepth = this._getMaxDepth(this.initNodes);
         this.svgHeight = this.svgNodeHeight * (this.maxDepth + 3);
         this.svgStr = null;
         this.svgDiv = null;
         this.svg = null;
+    }
+
+    _getMaxDepth(nodes) {
+        let isArray = Array.isArray(nodes);
+        let sumCount;
+        if (isArray) {
+            sumCount = nodes.reduce((acc, cur) => acc + cur.s, 0);
+        } else {
+            sumCount = nodes.s;
+        }
+        let width = this._getWidthPercentage(sumCount);
+        if (width < 0.1) {
+            return 0;
+        }
+        let children = isArray ? this._splitChildrenForNodes(nodes) : nodes.c;
+        let childDepth = 0;
+        for (let child of children) {
+            childDepth = Math.max(childDepth, this._getMaxDepth(child));
+        }
+        return childDepth + 1;
     }
 
     draw() {

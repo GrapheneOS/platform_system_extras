@@ -268,6 +268,7 @@ bool ConfigReader::parseLine(const std::string& key,
     uint64_t conv;
     if (!android::base::ParseUint(value, &conv)) {
       *error_msg = StringPrintf("line %u: value %s cannot be parsed", linecount, value.c_str());
+      return false;
     }
     Data::values vals;
     auto iit = data_->u_info.find(key);

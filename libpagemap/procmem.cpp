@@ -39,6 +39,9 @@ static void usage(const char *cmd);
 /* qsort compare function to compare maps by PSS */
 int comp_pss(const void *a, const void *b);
 
+/* qsort compare function to compare maps by USS */
+int comp_uss(const void* a, const void* b);
+
 int main(int argc, char *argv[]) {
     pid_t pid;
 
@@ -70,6 +73,9 @@ int main(int argc, char *argv[]) {
     int (*compfn)(const void *a, const void *b);
     int hide_zeros;
 
+    /* Use kernel's idle page tracking interface for working set determination */
+    int use_pageidle;
+
     /* temporary variables */
     size_t i, j;
     char *endptr;
@@ -83,11 +89,20 @@ int main(int argc, char *argv[]) {
     ws = WS_OFF;
     compfn = NULL;
     hide_zeros = 0;
+    use_pageidle = 0;
     for (i = 1; i < (size_t)(argc - 1); i++) {
         if (!strcmp(argv[i], "-w")) { ws = WS_ONLY; continue; }
         if (!strcmp(argv[i], "-W")) { ws = WS_RESET; continue; }
+        if (!strcmp(argv[i], "-i")) {
+            use_pageidle = 1;
+            continue;
+        }
         if (!strcmp(argv[i], "-m")) { compfn = NULL; continue; }
         if (!strcmp(argv[i], "-p")) { compfn = &comp_pss; continue; }
+        if (!strcmp(argv[i], "-u")) {
+            compfn = &comp_uss;
+            continue;
+        }
         if (!strcmp(argv[i], "-h")) { hide_zeros = 1; continue; }
         fprintf(stderr, "Invalid argument \"%s\".\n", argv[i]);
         usage(argv[0]);
@@ -107,6 +122,16 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    if (ws != WS_OFF && use_pageidle) {
+        error = pm_kernel_init_page_idle(ker);
+        if (error) {
+            fprintf(stderr,
+                    "error initalizing idle page tracking -- "
+                    "enable CONFIG_IDLE_PAGE_TRACKING in kernel.\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
     pagesize = pm_kernel_pagesize(ker);
 
     error = pm_process_create(ker, pid, &proc);
@@ -116,13 +141,22 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    if (ws == WS_RESET) {
-        error = pm_process_workingset(proc, NULL, 1);
-        if (error) {
-            fprintf(stderr, "error resetting working set for process.\n");
-            exit(EXIT_FAILURE);
+    if (ws != WS_OFF) {
+        /*
+         * The idle page tracking interface will update the PageIdle flags
+         * upon writing. So, even if we are called only to read the *current*
+         * working set, we need to reset the bitmap to make sure we get
+         * the updated page idle flags. This is not true with the 'clear_refs'
+         * implementation.
+         */
+        if (ws == WS_RESET || use_pageidle) {
+            error = pm_process_workingset(proc, NULL, 1);
+            if (error) {
+                fprintf(stderr, "error resetting working set for process.\n");
+                exit(EXIT_FAILURE);
+            }
         }
-        exit(EXIT_SUCCESS);
+        if (ws == WS_RESET) exit(EXIT_SUCCESS);
     }
 
     /* get maps, and allocate our map_info array */
@@ -206,7 +240,8 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "error getting flags for frame.\n");
                 }
 
-                if ((ws != WS_ONLY) || (flags & (1 << KPF_REFERENCED))) {
+                if ((ws != WS_ONLY) ||
+                    pm_kernel_page_is_accessed(ker, PM_PAGEMAP_PFN(mapentry), &flags)) {
                     if (count > 1) {
                         if (flags & (1 << KPF_DIRTY)) {
                             mi->shared_dirty++;
@@ -303,14 +338,17 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-static void usage(const char *cmd) {
-    fprintf(stderr, "Usage: %s [ -w | -W ] [ -p | -m ] [ -h ] pid\n"
-                    "    -w  Displays statistics for the working set only.\n"
-                    "    -W  Resets the working set of the process.\n"
-                    "    -p  Sort by PSS.\n"
-                    "    -m  Sort by mapping order (as read from /proc).\n"
-                    "    -h  Hide maps with no RSS.\n",
-        cmd);
+static void usage(const char* cmd) {
+    fprintf(stderr,
+            "Usage: %s [-i] [ -w | -W ] [ -p | -m ] [ -h ] pid\n"
+            "    -i  Uses idle page tracking for working set statistics.\n"
+            "    -w  Displays statistics for the working set only.\n"
+            "    -W  Resets the working set of the process.\n"
+            "    -p  Sort by PSS.\n"
+            "    -u  Sort by USS.\n"
+            "    -m  Sort by mapping order (as read from /proc).\n"
+            "    -h  Hide maps with no RSS.\n",
+            cmd);
 }
 
 int comp_pss(const void *a, const void *b) {
@@ -321,5 +359,16 @@ int comp_pss(const void *a, const void *b) {
 
     if (mb->usage.pss < ma->usage.pss) return -1;
     if (mb->usage.pss > ma->usage.pss) return 1;
+    return 0;
+}
+
+int comp_uss(const void* a, const void* b) {
+    struct map_info *ma, *mb;
+
+    ma = *((struct map_info**)a);
+    mb = *((struct map_info**)b);
+
+    if (mb->usage.uss < ma->usage.uss) return -1;
+    if (mb->usage.uss > ma->usage.uss) return 1;
     return 0;
 }
