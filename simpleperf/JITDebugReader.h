@@ -21,6 +21,7 @@
 
 #include <functional>
 #include <memory>
+#include <queue>
 #include <stack>
 #include <unordered_map>
 #include <unordered_set>
@@ -34,35 +35,57 @@
 
 namespace simpleperf {
 
-struct JITSymFile {
-  pid_t pid;  // The process having the JITed code
-  uint64_t addr;  // The start addr of the JITed code
-  uint64_t len;  // The length of the JITed code
-  std::string file_path;  // The path of a temporary ELF file storing debug info of the JITed code
+// JITDebugInfo represents the debug info of a JITed Java method or a dex file.
+struct JITDebugInfo {
+  enum {
+    JIT_DEBUG_JIT_CODE,
+    JIT_DEBUG_DEX_FILE,
+  } type;
+  pid_t pid;           // Process of the debug info
+  uint64_t timestamp;  // Monotonic timestamp for the creation of the debug info
+  union {
+    struct {
+      uint64_t jit_code_addr;  // The start addr of the JITed code
+      uint64_t jit_code_len;   // The end addr of the JITed code
+    };
+    uint64_t dex_file_offset;  // The offset of the dex file in the file containing it
+  };
+  // For JITed code, it is the path of a temporary ELF file storing its debug info.
+  // For dex file, it is the path of the file containing the dex file.
+  std::string file_path;
 
-  JITSymFile() {}
-  JITSymFile(pid_t pid, uint64_t addr, uint64_t len, const std::string& file_path)
-      : pid(pid), addr(addr), len(len), file_path(file_path) {}
-};
+  JITDebugInfo(pid_t pid, uint64_t timestamp, uint64_t jit_code_addr, uint64_t jit_code_len,
+               const std::string& file_path)
+      : type(JIT_DEBUG_JIT_CODE), pid(pid), timestamp(timestamp), jit_code_addr(jit_code_addr),
+        jit_code_len(jit_code_len), file_path(file_path) {}
 
-struct DexSymFile {
-  uint64_t dex_file_offset;  // The offset of the dex file in the file containing it
-  std::string file_path;  // The path of file containing the dex file
+  JITDebugInfo(pid_t pid, uint64_t timestamp, uint64_t dex_file_offset,
+               const std::string& file_path)
+      : type(JIT_DEBUG_DEX_FILE), pid(pid), timestamp(timestamp), dex_file_offset(dex_file_offset),
+        file_path(file_path) {}
 
-  DexSymFile() {}
-  DexSymFile(uint64_t dex_file_offset, const std::string& file_path)
-      : dex_file_offset(dex_file_offset), file_path(file_path) {}
+  bool operator>(const JITDebugInfo& other) const {
+    return timestamp > other.timestamp;
+  }
 };
 
 // JITDebugReader reads debug info of JIT code and dex files of processes using ART. The
 // corresponding debug interface in ART is at art/runtime/jit/debugger_interface.cc.
 class JITDebugReader {
  public:
-  JITDebugReader(bool keep_symfiles) : keep_symfiles_(keep_symfiles) {}
+  // keep_symfiles: whether to keep dumped JIT debug info files after recording. Usually they
+  //                are only kept for debug unwinding.
+  // sync_with_records: If true, sync debug info with records based on monotonic timestamp.
+  //                    Otherwise, save debug info whenever they are added.
+  JITDebugReader(bool keep_symfiles, bool sync_with_records)
+      : keep_symfiles_(keep_symfiles), sync_with_records_(sync_with_records) {}
 
-  typedef std::function<bool(const std::vector<JITSymFile>&, const std::vector<DexSymFile>&, bool)>
-      symfile_callback_t;
-  bool RegisterSymFileCallback(IOEventLoop* loop, const symfile_callback_t& callback);
+  bool SyncWithRecords() const {
+    return sync_with_records_;
+  }
+
+  typedef std::function<bool(const std::vector<JITDebugInfo>&, bool)> debug_info_callback_t;
+  bool RegisterDebugInfoCallback(IOEventLoop* loop, const debug_info_callback_t& callback);
 
   // There are two ways to select which processes to monitor. One is using MonitorProcess(), the
   // other is finding all processes having libart.so using records.
@@ -71,6 +94,11 @@ class JITDebugReader {
 
   // Read new debug info from all monitored processes.
   bool ReadAllProcesses();
+  // Read new debug info from one process.
+  bool ReadProcess(pid_t pid);
+
+  // Flush all debug info registered before timestamp.
+  bool FlushDebugInfo(uint64_t timestamp);
 
  private:
 
@@ -116,9 +144,7 @@ class JITDebugReader {
     uint64_t dex_descriptor_offset = 0;
   };
 
-  bool ReadProcess(pid_t pid);
-  void ReadProcess(Process& process, std::vector<JITSymFile>* jit_symfiles,
-                   std::vector<DexSymFile>* dex_symfiles);
+  void ReadProcess(Process& process, std::vector<JITDebugInfo>* debug_info);
   bool InitializeProcess(Process& process);
   const DescriptorsLocation* GetDescriptorsLocation(const std::string& art_lib_path,
                                                     bool is_64bit);
@@ -136,14 +162,16 @@ class JITDebugReader {
                               uint64_t last_action_timestamp, uint32_t read_entry_limit,
                               std::vector<CodeEntry>* new_code_entries);
 
-  void ReadJITSymFiles(Process& process, const std::vector<CodeEntry>& jit_entries,
-                       std::vector<JITSymFile>* jit_symfiles);
-  void ReadDexSymFiles(Process& process, const std::vector<CodeEntry>& dex_entries,
-                       std::vector<DexSymFile>* dex_symfiles);
+  void ReadJITCodeDebugInfo(Process& process, const std::vector<CodeEntry>& jit_entries,
+                       std::vector<JITDebugInfo>* debug_info);
+  void ReadDexFileDebugInfo(Process& process, const std::vector<CodeEntry>& dex_entries,
+                       std::vector<JITDebugInfo>* debug_info);
+  bool AddDebugInfo(const std::vector<JITDebugInfo>& jit_symfiles, bool sync_kernel_records);
 
   bool keep_symfiles_ = false;
+  bool sync_with_records_ = false;
   IOEventRef read_event_ = nullptr;
-  symfile_callback_t symfile_callback_;
+  debug_info_callback_t debug_info_callback_;
 
   // Keys are pids of processes having libart.so, values show whether a process has been monitored.
   std::unordered_map<pid_t, bool> pids_with_art_lib_;
@@ -152,6 +180,9 @@ class JITDebugReader {
   std::unordered_map<pid_t, Process> processes_;
   std::unordered_map<std::string, DescriptorsLocation> descriptors_location_cache_;
   std::vector<char> descriptors_buf_;
+
+  std::priority_queue<JITDebugInfo, std::vector<JITDebugInfo>, std::greater<JITDebugInfo>>
+      debug_info_q_;
 };
 
 }  //namespace simpleperf

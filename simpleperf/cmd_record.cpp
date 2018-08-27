@@ -155,7 +155,8 @@ class RecordCommand : public Command {
 "-g           Same as '--call-graph dwarf'.\n"
 "--clockid clock_id      Generate timestamps of samples using selected clock.\n"
 "                        Possible values are: realtime, monotonic,\n"
-"                        monotonic_raw, boottime, perf. Default is perf.\n"
+"                        monotonic_raw, boottime, perf. If supported, default\n"
+"                        is monotonic, otherwise is perf.\n"
 "--cpu cpu_item1,cpu_item2,...\n"
 "             Collect samples only on the selected cpus. cpu_item can be cpu\n"
 "             number like 1, or cpu range like 0-3.\n"
@@ -232,7 +233,6 @@ class RecordCommand : public Command {
         duration_in_sec_(0),
         can_dump_kernel_symbols_(true),
         dump_symbols_(true),
-        clockid_("perf"),
         event_selection_set_(false),
         mmap_page_range_(std::make_pair(1, DESIRED_PAGES_IN_MAPPED_BUFFER)),
         record_filename_("perf.data"),
@@ -278,8 +278,7 @@ class RecordCommand : public Command {
   bool SaveRecordForPostUnwinding(Record* record);
   bool SaveRecordAfterUnwinding(Record* record);
   bool SaveRecordWithoutUnwinding(Record* record);
-  bool ProcessJITDebugInfo(const std::vector<JITSymFile>& jit_symfiles,
-                           const std::vector<DexSymFile>& dex_symfiles, bool sync_kernel_records);
+  bool ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_info, bool sync_kernel_records);
 
   void UpdateRecord(Record* record);
   bool UnwindRecord(SampleRecord& r);
@@ -447,7 +446,8 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     // `-g --no-unwind` option is used, we want to keep symfiles to support unwinding in
     // the debug-unwind cmd.
     bool keep_symfiles = dwarf_callchain_sampling_ && !unwind_dwarf_callchain_;
-    jit_debug_reader_.reset(new JITDebugReader(keep_symfiles));
+    bool sync_with_records = clockid_ == "monotonic";
+    jit_debug_reader_.reset(new JITDebugReader(keep_symfiles, sync_with_records));
     // To profile java code, need to dump maps containing vdex files, which are not executable.
     event_selection_set_.SetRecordNotExecutableMaps(true);
   }
@@ -497,11 +497,10 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     }
   }
   if (jit_debug_reader_) {
-    auto callback = [this](const std::vector<JITSymFile>& jit_symfiles,
-                           const std::vector<DexSymFile>& dex_symfiles, bool sync_kernel_records) {
-      return ProcessJITDebugInfo(jit_symfiles, dex_symfiles, sync_kernel_records);
+    auto callback = [this](const std::vector<JITDebugInfo>& debug_info, bool sync_kernel_records) {
+      return ProcessJITDebugInfo(debug_info, sync_kernel_records);
     };
-    if (!jit_debug_reader_->RegisterSymFileCallback(loop, callback)) {
+    if (!jit_debug_reader_->RegisterDebugInfoCallback(loop, callback)) {
       return false;
     }
     if (!app_package_name_.empty()) {
@@ -882,6 +881,9 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     // No need to dump kernel symbols as we will dump all required symbols.
     can_dump_kernel_symbols_ = false;
   }
+  if (clockid_.empty()) {
+    clockid_ = IsSettingClockIdSupported() ? "monotonic" : "perf";
+  }
 
   non_option_args->clear();
   for (; i < args.size(); ++i) {
@@ -1218,20 +1220,22 @@ bool RecordCommand::SaveRecordWithoutUnwinding(Record* record) {
   return record_file_writer_->WriteRecord(*record);
 }
 
-bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITSymFile>& jit_symfiles,
-                                        const std::vector<DexSymFile>& dex_symfiles,
+bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_info,
                                         bool sync_kernel_records) {
   EventAttrWithId attr_id = event_selection_set_.GetEventAttrWithId()[0];
-  for (auto& symfile : jit_symfiles) {
-    Mmap2Record record(*attr_id.attr, false, symfile.pid, symfile.pid,
-                       symfile.addr, symfile.len, 0, map_flags::PROT_JIT_SYMFILE_MAP,
-                       symfile.file_path, attr_id.ids[0], last_record_timestamp_);
-    if (!ProcessRecord(&record)) {
-      return false;
+  for (auto& info : debug_info) {
+    if (info.type == JITDebugInfo::JIT_DEBUG_JIT_CODE) {
+      uint64_t timestamp = jit_debug_reader_->SyncWithRecords() ? info.timestamp
+                                                                : last_record_timestamp_;
+      Mmap2Record record(*attr_id.attr, false, info.pid, info.pid,
+                         info.jit_code_addr, info.jit_code_len, 0, map_flags::PROT_JIT_SYMFILE_MAP,
+                         info.file_path, attr_id.ids[0], timestamp);
+      if (!ProcessRecord(&record)) {
+        return false;
+      }
+    } else {
+      thread_tree_.AddDexFileOffset(info.file_path, info.dex_file_offset);
     }
-  }
-  for (auto& symfile : dex_symfiles) {
-    thread_tree_.AddDexFileOffset(symfile.file_path, symfile.dex_file_offset);
   }
   // We want to let samples see the most recent JIT maps generated before them, but no JIT maps
   // generated after them. So process existing samples each time generating new JIT maps. We prefer
@@ -1319,6 +1323,17 @@ bool RecordCommand::UnwindRecord(SampleRecord& r) {
     if (!offline_unwinder_->UnwindCallChain(*thread, regs, r.stack_user_data.data,
                                             r.GetValidStackSize(), &ips, &sps)) {
       return false;
+    }
+    // The unwinding may fail if JIT debug info isn't the latest. In this case, read JIT debug info
+    // from the process and retry unwinding.
+    if (jit_debug_reader_ && !post_unwind_ &&
+        offline_unwinder_->IsCallChainBrokenForIncompleteJITDebugInfo()) {
+      jit_debug_reader_->ReadProcess(r.tid_data.pid);
+      jit_debug_reader_->FlushDebugInfo(r.Timestamp());
+      if (!offline_unwinder_->UnwindCallChain(*thread, regs, r.stack_user_data.data,
+                                              r.GetValidStackSize(), &ips, &sps)) {
+        return false;
+      }
     }
     r.ReplaceRegAndStackWithCallChain(ips);
     if (callchain_joiner_) {
