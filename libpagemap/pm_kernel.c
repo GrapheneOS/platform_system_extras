@@ -75,7 +75,7 @@ int pm_kernel_init_page_idle(pm_kernel_t* ker) {
 }
 
 #define INIT_PIDS 20
-int pm_kernel_pids(pm_kernel_t *ker, pid_t **pids_out, size_t *len) {
+int pm_kernel_pids(pm_kernel_t *ker __unused, pid_t **pids_out, size_t *len) {
     DIR *proc;
     struct dirent *dir;
     pid_t pid, *pids, *new_pids;
