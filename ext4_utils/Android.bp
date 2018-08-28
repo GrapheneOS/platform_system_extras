@@ -2,7 +2,6 @@
 
 cc_library {
     name: "libext4_utils",
-    defaults: ["system-extras-cflags-defaults"],
     host_supported: true,
     recovery_available: true,
     srcs: [
@@ -11,7 +10,7 @@ cc_library {
         "ext4_sb.c",
     ],
     // Various instances of dereferencing a type-punned pointer in extent.c
-    cflags: ["-fno-strict-aliasing"],
+    cflags: ["-Werror", "-fno-strict-aliasing"],
     export_include_dirs: ["include"],
     shared_libs: [
         "libsparse",
