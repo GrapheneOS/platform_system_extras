@@ -14,7 +14,7 @@
 
 cc_library {
     name: "libpagemap",
-    defaults: ["system-extras-cflags-defaults"],
+    cflags: ["-Werror"],
     vendor_available: true,
     vndk: {
         enabled: true,
@@ -31,28 +31,28 @@ cc_library {
 
 cc_binary {
     name: "librank",
-    defaults: ["system-extras-cflags-defaults"],
+    cflags: ["-Werror"],
     srcs: ["librank.cpp"],
     shared_libs: ["libpagemap"],
 }
 
 cc_binary {
     name: "procmem",
-    defaults: ["system-extras-cflags-defaults"],
+    cflags: ["-Werror"],
     srcs: ["procmem.cpp"],
     shared_libs: ["libpagemap"],
 }
 
 cc_binary {
     name: "procrank",
-    defaults: ["system-extras-cflags-defaults"],
+    cflags: ["-Werror"],
     srcs: ["procrank.cpp"],
     shared_libs: ["libpagemap", "libbase"],
 }
 
 cc_test {
     name: "pagemap_test",
-    defaults: ["system-extras-cflags-defaults"],
+    cflags: ["-Werror"],
     srcs: ["pagemap_test.cpp"],
     shared_libs: ["libpagemap"],
     required: ["libpagemap"],
@@ -60,7 +60,7 @@ cc_test {
 
 cc_test {
     name: "pagemap_static_test",
-    defaults: ["system-extras-cflags-defaults"],
+    cflags: ["-Werror"],
     srcs: ["pagemap_test.cpp"],
     static_libs: ["libpagemap"],
 }
