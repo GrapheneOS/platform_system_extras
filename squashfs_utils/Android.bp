@@ -2,7 +2,7 @@
 
 cc_library {
     name: "libsquashfs_utils",
-    defaults: ["system-extras-cflags-defaults"],
+    cflags: ["-Werror"],
     host_supported: true,
     recovery_available: true,
     srcs: [

@@ -221,7 +221,7 @@ u64 get_block_device_size(int fd)
 	return size;
 }
 
-int is_block_device_fd(int fd)
+int is_block_device_fd(int fd __attribute__((unused)))
 {
 #ifdef _WIN32
 	return 0;
