@@ -2,7 +2,7 @@
 
 cc_library_shared {
     name: "libf2fs_sparseblock",
-    defaults: ["system-extras-cflags-defaults"],
+    cflags: ["-Werror"],
 
     srcs: ["f2fs_sparseblock.c"],
 
@@ -21,7 +21,7 @@ cc_library_shared {
 
 cc_binary {
     name: "f2fs_sparseblock",
-    defaults: ["system-extras-cflags-defaults"],
+    cflags: ["-Werror"],
 
     srcs: ["f2fs_sparseblock.c"],
 

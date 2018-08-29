@@ -68,7 +68,7 @@ int wipe_block_device(int fd, s64 len)
 
 #else  /* WIPE_IS_SUPPORTED */
 
-int wipe_block_device(int fd, s64 len)
+int wipe_block_device(int fd __attribute__((unused)), s64 len __attribute__((unused)))
 {
 	/* Wiping is not supported on this platform. */
 	return 1;
