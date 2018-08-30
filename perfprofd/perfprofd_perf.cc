@@ -63,6 +63,8 @@ PerfResult InvokePerf(Config& config,
 {
   std::vector<std::string> argv_backing;
   std::vector<const char*> argv_vector;
+  char paranoid_env[] = "PERFPROFD_DISABLE_PERF_EVENT_PARANOID_CHANGE=1";
+  char* envp[2] = {paranoid_env, nullptr};
 
   {
     auto add = [&argv_backing](auto arg) {
@@ -184,7 +186,7 @@ PerfResult InvokePerf(Config& config,
     fprintf(stderr, "\n");
 
     // exec
-    execvp(argv_vector[0], const_cast<char* const*>(argv_vector.data()));
+    execvpe(argv_vector[0], const_cast<char* const*>(argv_vector.data()), envp);
     fprintf(stderr, "exec failed: %s\n", strerror(errno));
     exit(1);
 
@@ -235,6 +237,8 @@ PerfResult InvokePerf(Config& config,
 
 bool FindSupportedPerfCounters(const std::string& perf_path) {
   const char* argv[] = { perf_path.c_str(), "list", nullptr };
+  char paranoid_env[] = "PERFPROFD_DISABLE_PERF_EVENT_PARANOID_CHANGE=1";
+  char* envp[2] = {paranoid_env, nullptr};
 
   base::unique_fd link[2];
   {
@@ -266,7 +270,7 @@ bool FindSupportedPerfCounters(const std::string& perf_path) {
     link[1].reset();
 
     // exec
-    execvp(argv[0], const_cast<char* const*>(argv));
+    execvpe(argv[0], const_cast<char* const*>(argv), envp);
     PLOG(WARNING) << "exec failed";
     exit(1);
     __builtin_unreachable();
