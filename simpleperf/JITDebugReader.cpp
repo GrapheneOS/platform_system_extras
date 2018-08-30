@@ -119,9 +119,9 @@ static_assert(sizeof(JITCodeEntry32) == 32, "");
 #endif
 static_assert(sizeof(JITCodeEntry64) == 40, "");
 
-bool JITDebugReader::RegisterSymFileCallback(IOEventLoop* loop,
-                                             const symfile_callback_t& callback) {
-  symfile_callback_ = callback;
+bool JITDebugReader::RegisterDebugInfoCallback(IOEventLoop* loop,
+                                             const debug_info_callback_t& callback) {
+  debug_info_callback_ = callback;
   read_event_ = loop->AddPeriodicEvent(SecondToTimeval(kUpdateJITDebugInfoIntervalInMs / 1000.0),
                                        [this]() { return ReadAllProcesses(); });
   return (read_event_ != nullptr && IOEventLoop::DisableEvent(read_event_));
@@ -173,6 +173,20 @@ bool JITDebugReader::UpdateRecord(const Record* record) {
       return ReadProcess(r->tid_data.pid);
     }
   }
+  return FlushDebugInfo(record->Timestamp());
+}
+
+bool JITDebugReader::FlushDebugInfo(uint64_t timestamp) {
+  if (sync_with_records_) {
+    if (!debug_info_q_.empty() && debug_info_q_.top().timestamp < timestamp) {
+      std::vector<JITDebugInfo> debug_info;
+      while (!debug_info_q_.empty() && debug_info_q_.top().timestamp < timestamp) {
+        debug_info.emplace_back(debug_info_q_.top());
+        debug_info_q_.pop();
+      }
+      return debug_info_callback_(debug_info, false);
+    }
+  }
   return true;
 }
 
@@ -180,11 +194,10 @@ bool JITDebugReader::ReadAllProcesses() {
   if (!IOEventLoop::DisableEvent(read_event_)) {
     return false;
   }
-  std::vector<JITSymFile> jit_symfiles;
-  std::vector<DexSymFile> dex_symfiles;
+  std::vector<JITDebugInfo> debug_info;
   for (auto it = processes_.begin(); it != processes_.end();) {
     Process& process = it->second;
-    ReadProcess(process, &jit_symfiles, &dex_symfiles);
+    ReadProcess(process, &debug_info);
     if (process.died) {
       LOG(DEBUG) << "Stop monitoring process " << process.pid;
       it = processes_.erase(it);
@@ -192,10 +205,8 @@ bool JITDebugReader::ReadAllProcesses() {
       ++it;
     }
   }
-  if (!jit_symfiles.empty() || !dex_symfiles.empty()) {
-    if (!symfile_callback_(jit_symfiles, dex_symfiles, true)) {
-      return false;
-    }
+  if (!AddDebugInfo(debug_info, true)) {
+    return false;
   }
   if (!processes_.empty()) {
     return IOEventLoop::EnableEvent(read_event_);
@@ -206,18 +217,14 @@ bool JITDebugReader::ReadAllProcesses() {
 bool JITDebugReader::ReadProcess(pid_t pid) {
   auto it = processes_.find(pid);
   if (it != processes_.end()) {
-    std::vector<JITSymFile> jit_symfiles;
-    std::vector<DexSymFile> dex_symfiles;
-    ReadProcess(it->second, &jit_symfiles, &dex_symfiles);
-    if (!jit_symfiles.empty() || !dex_symfiles.empty()) {
-      return symfile_callback_(jit_symfiles, dex_symfiles, false);
-    }
+    std::vector<JITDebugInfo> debug_info;
+    ReadProcess(it->second, &debug_info);
+    return AddDebugInfo(debug_info, false);
   }
   return true;
 }
 
-void JITDebugReader::ReadProcess(Process& process, std::vector<JITSymFile>* jit_symfiles,
-                                 std::vector<DexSymFile>* dex_symfiles) {
+void JITDebugReader::ReadProcess(Process& process, std::vector<JITDebugInfo>* debug_info) {
   if (process.died || (!process.initialized && !InitializeProcess(process))) {
     return;
   }
@@ -246,8 +253,7 @@ void JITDebugReader::ReadProcess(Process& process, std::vector<JITSymFile>* jit_
       return descriptor.action_seqlock == tmp_dex_descriptor.action_seqlock;
   };
 
-  auto read_new_symfiles = [&](Descriptor& new_descriptor, Descriptor& old_descriptor,
-                               bool is_jit) {
+  auto read_debug_info = [&](Descriptor& new_descriptor, Descriptor& old_descriptor, bool is_jit) {
     bool has_update = new_descriptor.action_seqlock != old_descriptor.action_seqlock &&
                       (new_descriptor.action_seqlock & 1) == 0;
     LOG(DEBUG) << (is_jit ? "JIT" : "Dex") << " symfiles of pid " << process.pid
@@ -274,16 +280,16 @@ void JITDebugReader::ReadProcess(Process& process, std::vector<JITSymFile>* jit_
       return true;
     }
     if (is_jit) {
-      ReadJITSymFiles(process, new_entries, jit_symfiles);
+      ReadJITCodeDebugInfo(process, new_entries, debug_info);
     } else {
-      ReadDexSymFiles(process, new_entries, dex_symfiles);
+      ReadDexFileDebugInfo(process, new_entries, debug_info);
     }
     return true;
   };
-  if (read_new_symfiles(jit_descriptor, process.last_jit_descriptor, true)) {
+  if (read_debug_info(jit_descriptor, process.last_jit_descriptor, true)) {
     process.last_jit_descriptor = jit_descriptor;
   }
-  if (read_new_symfiles(dex_descriptor, process.last_dex_descriptor, false)) {
+  if (read_debug_info(dex_descriptor, process.last_dex_descriptor, false)) {
     process.last_dex_descriptor = dex_descriptor;
   }
 }
@@ -465,6 +471,7 @@ bool JITDebugReader::ReadNewCodeEntriesImpl(Process& process, const Descriptor& 
     code_entry.addr = current_entry_addr;
     code_entry.symfile_addr = entry.symfile_addr;
     code_entry.symfile_size = entry.symfile_size;
+    code_entry.timestamp = entry.register_timestamp;
     new_code_entries->push_back(code_entry);
     entry_addr_set.insert(current_entry_addr);
     prev_entry_addr = current_entry_addr;
@@ -473,8 +480,9 @@ bool JITDebugReader::ReadNewCodeEntriesImpl(Process& process, const Descriptor& 
   return true;
 }
 
-void JITDebugReader::ReadJITSymFiles(Process& process, const std::vector<CodeEntry>& jit_entries,
-                                     std::vector<JITSymFile>* jit_symfiles) {
+void JITDebugReader::ReadJITCodeDebugInfo(Process& process,
+                                          const std::vector<CodeEntry>& jit_entries,
+                                          std::vector<JITDebugInfo>* debug_info) {
   std::vector<char> data;
   for (auto& jit_entry : jit_entries) {
     if (jit_entry.symfile_size > MAX_JIT_SYMFILE_SIZE) {
@@ -509,12 +517,14 @@ void JITDebugReader::ReadJITSymFiles(Process& process, const std::vector<CodeEnt
     if (keep_symfiles_) {
       tmp_file->DoNotRemove();
     }
-    jit_symfiles->emplace_back(process.pid, min_addr, max_addr - min_addr, tmp_file->path);
+    debug_info->emplace_back(process.pid, jit_entry.timestamp, min_addr, max_addr - min_addr,
+                             tmp_file->path);
   }
 }
 
-void JITDebugReader::ReadDexSymFiles(Process& process, const std::vector<CodeEntry>& dex_entries,
-                                     std::vector<DexSymFile>* dex_symfiles) {
+void JITDebugReader::ReadDexFileDebugInfo(Process& process,
+                                          const std::vector<CodeEntry>& dex_entries,
+                                          std::vector<JITDebugInfo>* debug_info) {
   std::vector<ThreadMmap> thread_mmaps;
   if (!GetThreadMmapsInProcess(process.pid, &thread_mmaps)) {
     process.died = true;
@@ -547,11 +557,25 @@ void JITDebugReader::ReadDexSymFiles(Process& process, const std::vector<CodeEnt
     }
     // Offset of dex file in .vdex file or .apk file.
     uint64_t dex_file_offset = dex_entry.symfile_addr - it->start_addr + it->pgoff;
-    dex_symfiles->emplace_back(dex_file_offset, file_path);
+    debug_info->emplace_back(process.pid, dex_entry.timestamp, dex_file_offset, file_path);
     LOG(VERBOSE) << "DexFile " << file_path << "+" << std::hex << dex_file_offset
                  << " in map [" << it->start_addr << " - " << (it->start_addr + it->len)
                  << "] with size " << dex_entry.symfile_size;
   }
+}
+
+bool JITDebugReader::AddDebugInfo(const std::vector<JITDebugInfo>& debug_info,
+                                    bool sync_kernel_records) {
+  if (!debug_info.empty()) {
+    if (sync_with_records_) {
+      for (auto& info : debug_info) {
+        debug_info_q_.push(std::move(info));
+      }
+    } else {
+      return debug_info_callback_(debug_info, sync_kernel_records);
+    }
+  }
+  return true;
 }
 
 }  // namespace simpleperf
