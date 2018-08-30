@@ -101,16 +101,22 @@ bool IsDumpingRegsForTracepointEventsSupported() {
 }
 
 bool IsSettingClockIdSupported() {
-  const EventType* type = FindEventTypeByName("cpu-cycles");
-  if (type == nullptr) {
-    return false;
+  // Do the real check only once and keep the result in a static variable.
+  static int is_supported = -1;
+  if (is_supported == -1) {
+    const EventType* type = FindEventTypeByName("cpu-cycles");
+    if (type == nullptr) {
+      is_supported = 0;
+    } else {
+      // Check if the kernel supports setting clockid, which was added in kernel 4.0. Just check
+      // with one clockid is enough. Because all needed clockids were supported before kernel 4.0.
+      perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
+      attr.use_clockid = 1;
+      attr.clockid = CLOCK_MONOTONIC;
+      is_supported = IsEventAttrSupported(attr) ? 1 : 0;
+    }
   }
-  // Check if the kernel supports setting clockid, which was added in kernel 4.0. Just check with
-  // one clockid is enough. Because all needed clockids were supported before kernel 4.0.
-  perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
-  attr.use_clockid = 1;
-  attr.clockid = CLOCK_MONOTONIC;
-  return IsEventAttrSupported(attr);
+  return is_supported;
 }
 
 bool IsMmap2Supported() {
