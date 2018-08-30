@@ -80,9 +80,14 @@ class OfflineUnwinder {
     return unwinding_result_;
   }
 
+  bool IsCallChainBrokenForIncompleteJITDebugInfo() {
+    return is_callchain_broken_for_incomplete_jit_debug_info_;
+  }
+
  private:
   bool collect_stat_;
   UnwindingResult unwinding_result_;
+  bool is_callchain_broken_for_incomplete_jit_debug_info_;
 
   std::unordered_map<pid_t, UnwindMaps> cached_maps_;
 };
