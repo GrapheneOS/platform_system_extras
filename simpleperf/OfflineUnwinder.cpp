@@ -192,6 +192,9 @@ bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& r
   if (collect_stat_) {
     start_time = GetSystemClock();
   }
+  is_callchain_broken_for_incomplete_jit_debug_info_ = false;
+  ips->clear();
+  sps->clear();
   std::vector<uint64_t> result;
   uint64_t sp_reg_value;
   if (!regs.GetSpRegValue(&sp_reg_value)) {
@@ -213,6 +216,7 @@ bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& r
                                  stack_memory);
   unwinder.SetResolveNames(false);
   unwinder.Unwind();
+  size_t last_jit_method_frame = UINT_MAX;
   for (auto& frame : unwinder.frames()) {
     // Unwinding in arm architecture can return 0 pc address.
 
@@ -220,13 +224,22 @@ bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& r
     // 1. In an executable map not backed by a file. Note that RecordCommand::ShouldOmitRecord()
     //    may omit maps only exist memory.
     // 2. An incorrectly unwound frame. Like caused by invalid stack data, as in
-    //    SampleRecord::GetValidStackSize().
+    //    SampleRecord::GetValidStackSize(). Or caused by incomplete JIT debug info.
     // We want to remove this frame and callchains following it in either case.
     if (frame.pc == 0 || frame.map_start == 0) {
+      is_callchain_broken_for_incomplete_jit_debug_info_ = true;
       break;
+    }
+    if (frame.map_flags & unwindstack::MAPS_FLAGS_JIT_SYMFILE_MAP) {
+      last_jit_method_frame = ips->size();
     }
     ips->push_back(frame.pc);
     sps->push_back(frame.sp);
+  }
+  // If the unwound frames stop near to a JITed method, it may be caused by incomplete JIT debug
+  // info.
+  if (last_jit_method_frame != UINT_MAX && last_jit_method_frame + 3 > ips->size()) {
+    is_callchain_broken_for_incomplete_jit_debug_info_ = true;
   }
 
   uint64_t ip_reg_value;
