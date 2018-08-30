@@ -321,7 +321,7 @@ static bool ReadPerfEventParanoid(int* value) {
 
 bool CanRecordRawData() {
   int value;
-  return IsRoot() || (ReadPerfEventParanoid(&value) && value == -1);
+  return ReadPerfEventParanoid(&value) && value == -1;
 }
 
 static const char* GetLimitLevelDescription(int limit_level) {
@@ -340,8 +340,12 @@ bool CheckPerfEventLimit() {
   // may create child processes not running as root. To make sure the child processes have
   // enough permission to create inherited tracepoint events, write -1 to perf_event_paranoid.
   // See http://b/62230699.
-  if (IsRoot() && android::base::WriteStringToFile("-1", "/proc/sys/kernel/perf_event_paranoid")) {
-    return true;
+  if (IsRoot()) {
+    char* env = getenv("PERFPROFD_DISABLE_PERF_EVENT_PARANOID_CHANGE");
+    if (env != nullptr && strcmp(env, "1") == 0) {
+      return true;
+    }
+    return android::base::WriteStringToFile("-1", "/proc/sys/kernel/perf_event_paranoid");
   }
   int limit_level;
   bool can_read_paranoid = ReadPerfEventParanoid(&limit_level);
