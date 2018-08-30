@@ -139,24 +139,29 @@ std::tuple<bool, std::string, std::string> SplitUrlInApk(const std::string& path
   return std::make_tuple(true, path.substr(0, pos), path.substr(pos + 2));
 }
 
-// Parse path like "/dev/ashmem/dalvik-classes.dex extracted in memory from /..base.apk (deleted)".
+// Parse path like "[anon:dalvik-classes.dex extracted in memory from /..base.apk] (deleted)",
+// or "/dev/ashmem/dalvik-classes.dex extracted in memory from /..base.apk (deleted)" on Android P.
 bool ParseExtractedInMemoryPath(const std::string& path, std::string* zip_path,
                                 std::string* entry_name) {
-  const char* prefix = "/dev/ashmem/dalvik-";
+  const char* prefixes[2] = {"[anon:dalvik-", "/dev/ashmem/dalvik-"};
   const char* key = " extracted in memory from ";
   size_t pos = path.find(key);
-  if (pos != std::string::npos && android::base::StartsWith(path, prefix)) {
-    size_t entry_name_start = strlen(prefix);
-    size_t entry_name_end = pos;
-    size_t zip_path_start = pos + strlen(key);
-    size_t zip_path_end = path.find(' ', zip_path_start);
-    if (zip_path_end == std::string::npos) {
-      zip_path_end = path.size();
-    }
-    if (entry_name_start < entry_name_end && zip_path_start < zip_path_end) {
-      *entry_name = path.substr(entry_name_start, entry_name_end - entry_name_start);
-      *zip_path = path.substr(zip_path_start, zip_path_end - zip_path_start);
-      return true;
+  if (pos != std::string::npos) {
+    for (const char* prefix : prefixes) {
+      if (android::base::StartsWith(path, prefix)) {
+        size_t entry_name_start = strlen(prefix);
+        size_t entry_name_end = pos;
+        size_t zip_path_start = pos + strlen(key);
+        size_t zip_path_end = path.find_first_of(" ]", zip_path_start);
+        if (zip_path_end == std::string::npos) {
+          zip_path_end = path.size();
+        }
+        if (entry_name_start < entry_name_end && zip_path_start < zip_path_end) {
+          *entry_name = path.substr(entry_name_start, entry_name_end - entry_name_start);
+          *zip_path = path.substr(zip_path_start, zip_path_end - zip_path_start);
+          return true;
+        }
+      }
     }
   }
   return false;
