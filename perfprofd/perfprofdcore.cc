@@ -295,12 +295,12 @@ bool get_camera_active()
 bool get_charging()
 {
 #ifdef __ANDROID__
-  using android::hardware::Return;
-  using android::hardware::health::V1_0::BatteryStatus;
-  using android::hardware::health::V2_0::Result;
-  using android::hardware::health::V2_0::IHealth;
-  using android::hardware::health::V2_0::get_health_service;
   using android::sp;
+  using android::hardware::Return;
+  using android::hardware::health::V2_0::get_health_service;
+  using android::hardware::health::V2_0::HealthInfo;
+  using android::hardware::health::V2_0::IHealth;
+  using android::hardware::health::V2_0::Result;
 
   sp<IHealth> service = get_health_service();
   if (service == nullptr) {
@@ -308,21 +308,23 @@ bool get_charging()
     return false;
   }
   Result res = Result::UNKNOWN;
-  BatteryStatus val = BatteryStatus::UNKNOWN;
-  Return<void> ret = service->getChargeStatus([&](Result out_res, BatteryStatus out_val) {
-    res = out_res;
-    val = out_val;
-  });
+  HealthInfo val;
+  Return<void> ret =
+      service->getHealthInfo([&](Result out_res, HealthInfo out_val) {
+        res = out_res;
+        val = out_val;
+      });
   if (!ret.isOk()) {
     LOG(ERROR) << "Failed to call getChargeStatus on health HAL: " << ret.description();
     return false;
   }
-  if (res != Result::SUCCESS || val == BatteryStatus::UNKNOWN) {
-    LOG(ERROR) << "Failed to retrieve charge status from health HAL: result = " << toString(res)
-                << ", status = " << toString(val);
+  if (res != Result::SUCCESS) {
+    LOG(ERROR) << "Failed to retrieve charge status from health HAL: result = "
+               << toString(res);
     return false;
   }
-  return val == BatteryStatus::CHARGING || val == BatteryStatus::FULL;
+  return val.legacy.chargerAcOnline || val.legacy.chargerUsbOnline ||
+         val.legacy.chargerWirelessOnline;
 #else
   return false;
 #endif
