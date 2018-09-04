@@ -46,6 +46,8 @@ class HashTreeBuilder {
   bool Update(const unsigned char* data, size_t len);
   // Computes the upper levels of the hash tree based on the 0th level.
   bool BuildHashTree();
+  // Check the built hash tree against |hash_tree|, return true if they match.
+  bool CheckHashTree(const std::vector<unsigned char>& hash_tree) const;
   // Writes the computed hash tree top-down to |output|.
   bool WriteHashTreeToFile(const std::string& output) const;
   bool WriteHashTreeToFd(int fd, uint64_t offset) const;
