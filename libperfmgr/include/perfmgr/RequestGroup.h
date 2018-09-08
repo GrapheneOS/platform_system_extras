@@ -20,6 +20,7 @@
 #include <chrono>
 #include <map>
 #include <string>
+#include <utility>
 
 namespace android {
 namespace perfmgr {
@@ -35,7 +36,7 @@ using ReqTime = std::chrono::time_point<std::chrono::steady_clock>;
 // that hint.
 class RequestGroup {
   public:
-    RequestGroup(std::string request_value)
+    RequestGroup(std::string request_value)  // NOLINT(runtime/explicit)
         : request_value_(std::move(request_value)) {}
 
     // Remove expired request in the map and return true when request_map_ is
