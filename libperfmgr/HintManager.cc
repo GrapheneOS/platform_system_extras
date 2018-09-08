@@ -175,7 +175,7 @@ std::vector<std::unique_ptr<Node>> HintManager::ParseNodes(
             LOG(ERROR) << "Duplicate Node[" << i << "]'s Path";
             nodes_parsed.clear();
             return nodes_parsed;
-        };
+        }
 
         std::vector<RequestGroup> values_parsed;
         Json::Value values = nodes[i]["Values"];
