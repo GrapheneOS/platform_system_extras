@@ -2,6 +2,7 @@
 time_correction_key: correction
 timings:
   system_server: SystemServerTiming(Async)?\s*:\s*(?P<name>\S+) took to complete:\s(?P<time>[0-9]+)ms
+  system_ui: SystemUIBootTiming?\s*:\s*(?P<name>\S+) took to complete:\s(?P<time>[0-9]+)ms
   fs_shutdown: (?P<name>boot_fs_shutdown),(?P<time>[0-9]+),([0-9]+)
   ueventd_secs: ueventd:\s(?P<name>\S.+)\stook\s(?P<time>[.0-9]+)\sseconds
   init_command_ms: init:\sCommand\s(?P<name>\S.+)\sreturned.*took\s(?P<time>[.0-9]+)ms
