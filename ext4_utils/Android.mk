@@ -22,18 +22,6 @@ include $(BUILD_HOST_EXECUTABLE)
 ifneq ($(HOST_OS),windows)
 
 include $(CLEAR_VARS)
-LOCAL_MODULE := mkuserimg_mke2fs.sh
-LOCAL_SRC_FILES := mkuserimg_mke2fs.sh
-LOCAL_MODULE_CLASS := EXECUTABLES
-LOCAL_REQUIRED_MODULES := mke2fs e2fsdroid
-# We don't need any additional suffix.
-LOCAL_MODULE_SUFFIX :=
-LOCAL_BUILT_MODULE_STEM := $(notdir $(LOCAL_SRC_FILES))
-LOCAL_IS_HOST_MODULE := true
-include $(BUILD_PREBUILT)
-
-
-include $(CLEAR_VARS)
 LOCAL_MODULE := mke2fs.conf
 LOCAL_SRC_FILES := $(LOCAL_MODULE)
 LOCAL_MODULE_CLASS := EXECUTABLES
