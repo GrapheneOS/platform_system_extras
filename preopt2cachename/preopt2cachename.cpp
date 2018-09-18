@@ -89,7 +89,7 @@ static bool SystemBFilenameToCacheFile(const std::string& file_location,
     LOG(ERROR) << "Unable to determine apk name from file name '" << file_location << "'";
     return false;
   }
-  std::string::size_type pos = file_location.find_last_of(".");
+  std::string::size_type pos = file_location.find_last_of('.');
   if (pos == std::string::npos) {
     LOG(ERROR) << "Invalid file location '" << file_location << "'";
     return false;
