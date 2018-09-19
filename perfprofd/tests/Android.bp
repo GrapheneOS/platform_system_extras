@@ -19,6 +19,7 @@ cc_test {
     name: "perfprofd_test",
     defaults: [
         "perfprofd_test_defaults",
+        "libsimpleperf_dex_read_static_reqs_defaults",
         "libsimpleperf_elf_read_static_reqs_defaults",
     ],
     test_suites: ["device-tests"],
@@ -28,6 +29,7 @@ cc_test {
     static_libs: [
         "libperfprofdcored",
         "libperfprofd_proto_config",
+        "libsimpleperf_dex_read",
         "libsimpleperf_elf_read",
         "libbase",
         "libutils",
@@ -35,6 +37,7 @@ cc_test {
         "libprotobuf-cpp-lite",
         "liblog",
     ],
+    shared_libs: ["libart"],
     target: {
         host: {
             host_ldlibs: [
