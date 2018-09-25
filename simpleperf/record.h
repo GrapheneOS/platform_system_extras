@@ -216,7 +216,7 @@ struct Record {
 
   Record() : binary_(nullptr), own_binary_(false) {}
   explicit Record(char* p) : header(p), binary_(p), own_binary_(false) {}
-  Record(Record&& other);
+  Record(Record&& other) noexcept;
 
   virtual ~Record() {
     if (own_binary_) {
