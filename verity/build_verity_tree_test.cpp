@@ -135,6 +135,28 @@ TEST_F(BuildVerityTreeTest, StreamingDataMultipleBlocks) {
             HashTreeBuilder::BytesArrayToString(builder->root_hash()));
 }
 
+TEST_F(BuildVerityTreeTest, StreamingDataPartialBlocks) {
+  std::vector<unsigned char> data(256 * 4096);
+  for (size_t i = 0; i < 256; i++) {
+    std::fill_n(data.begin() + i * 4096, 4096, i);
+  }
+
+  ASSERT_TRUE(builder->Initialize(data.size(), salt_hex));
+
+  size_t offset = 0;
+  while (offset < data.size()) {
+    size_t data_length = std::min<size_t>(rand() % 40960, data.size() - offset);
+    ASSERT_TRUE(builder->Update(data.data() + offset, data_length));
+    offset += data_length;
+  }
+
+  ASSERT_TRUE(builder->BuildHashTree());
+  ASSERT_EQ(2u, verity_tree().size());
+  ASSERT_EQ(2 * 4096u, verity_tree()[0].size());
+  ASSERT_EQ("6e73d59b0b6baf026e921814979a7db02244c95a46b869a17aa1310dad066deb",
+            HashTreeBuilder::BytesArrayToString(builder->root_hash()));
+}
+
 TEST_F(BuildVerityTreeTest, SHA1MultipleBlocks) {
   std::vector<unsigned char> data(128 * 4096, 0xff);
 
