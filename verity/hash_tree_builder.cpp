@@ -182,12 +182,43 @@ bool HashTreeBuilder::HashBlocks(const unsigned char* data, size_t len,
 bool HashTreeBuilder::Update(const unsigned char* data, size_t len) {
   CHECK_GT(data_size_, 0);
 
+  if (!leftover_.empty()) {
+    CHECK_LT(leftover_.size(), block_size_);
+    size_t append_len = std::min(len, block_size_ - leftover_.size());
+    if (data == nullptr) {
+      leftover_.insert(leftover_.end(), append_len, 0);
+    } else {
+      leftover_.insert(leftover_.end(), data, data + append_len);
+    }
+    if (leftover_.size() < block_size_) {
+      return true;
+    }
+    if (!HashBlocks(leftover_.data(), leftover_.size(), &verity_tree_[0])) {
+      return false;
+    }
+    leftover_.clear();
+    data += append_len;
+    len -= append_len;
+  }
+  if (len % block_size_ != 0) {
+    if (data == nullptr) {
+      leftover_.assign(len % block_size_, 0);
+    } else {
+      leftover_.assign(data + len - len % block_size_, data + len);
+    }
+    len -= len % block_size_;
+  }
   return HashBlocks(data, len, &verity_tree_[0]);
 }
 
 bool HashTreeBuilder::BuildHashTree() {
   // Expects only the base level in the verity_tree_.
   CHECK_EQ(1, verity_tree_.size());
+
+  if (!leftover_.empty()) {
+    LOG(ERROR) << leftover_.size() << " bytes data left from last Update().";
+    return false;
+  }
 
   // Expects the base level to have the same size as the total hash size of
   // input data.
