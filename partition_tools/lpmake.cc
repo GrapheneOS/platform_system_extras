@@ -52,6 +52,8 @@ static int usage(int /* argc */, char* argv[]) {
             "  -i,--image=PARTITION=FILE     If building a sparse image for fastboot, include\n"
             "                                the given file (or sparse file) as initial data for\n"
             "                                the named partition.\n"
+            "  -g,--group=GROUP:SIZE         Define a named partition group with the given\n"
+            "                                maximum size.\n"
             "\n"
             "Partition data format:\n"
             "  <name>:<guid>:<attributes>:<size>\n"
@@ -73,6 +75,7 @@ int main(int argc, char* argv[]) {
         { "sparse", no_argument, nullptr, 'S' },
         { "block-size", required_argument, nullptr, 'b' },
         { "image", required_argument, nullptr, 'i' },
+        { "group", required_argument, nullptr, 'g' },
         { nullptr, 0, nullptr, 0 },
     };
 
@@ -84,6 +87,7 @@ int main(int argc, char* argv[]) {
     uint32_t block_size = 4096;
     std::string output_path;
     std::vector<std::string> partitions;
+    std::vector<std::string> groups;
     std::map<std::string, std::string> images;
     bool output_sparse = false;
 
@@ -113,6 +117,9 @@ int main(int argc, char* argv[]) {
                 break;
             case 'p':
                 partitions.push_back(optarg);
+                break;
+            case 'g':
+                groups.push_back(optarg);
                 break;
             case 'o':
                 output_path = optarg;
@@ -195,15 +202,40 @@ int main(int argc, char* argv[]) {
     std::unique_ptr<MetadataBuilder> builder =
             MetadataBuilder::New(device_info, metadata_size, metadata_slots);
 
-    for (const auto& partition_info : partitions) {
-        std::vector<std::string> parts = android::base::Split(partition_info, ":");
-        if (parts.size() != 4) {
+    for (const auto& group_info : groups) {
+        std::vector<std::string> parts = android::base::Split(group_info, ":");
+        if (parts.size() != 2) {
             fprintf(stderr, "Partition info has invalid formatting.\n");
             return EX_USAGE;
         }
 
         std::string name = parts[0];
-        if (!name.length()) {
+        if (name.empty()) {
+            fprintf(stderr, "Partition group must have a valid name.\n");
+            return EX_USAGE;
+        }
+
+        uint64_t size;
+        if (!android::base::ParseUint(parts[1].c_str(), &size)) {
+            fprintf(stderr, "Partition group must have a valid maximum size.\n");
+            return EX_USAGE;
+        }
+
+        if (!builder->AddGroup(name, size)) {
+            fprintf(stderr, "Group name %s already exists.\n", name.c_str());
+            return EX_SOFTWARE;
+        }
+    }
+
+    for (const auto& partition_info : partitions) {
+        std::vector<std::string> parts = android::base::Split(partition_info, ":");
+        if (parts.size() > 5) {
+            fprintf(stderr, "Partition info has invalid formatting.\n");
+            return EX_USAGE;
+        }
+
+        std::string name = parts[0];
+        if (name.empty()) {
             fprintf(stderr, "Partition must have a valid name.\n");
             return EX_USAGE;
         }
@@ -223,7 +255,16 @@ int main(int argc, char* argv[]) {
             return EX_USAGE;
         }
 
-        Partition* partition = builder->AddPartition(name, parts[1], attribute_flags);
+        std::string group_name = "default";
+        if (parts.size() >= 5) {
+            group_name = parts[4];
+        }
+
+        Partition* partition = builder->AddPartition(name, group_name, parts[1], attribute_flags);
+        if (!partition) {
+            fprintf(stderr, "Could not add partition: %s\n", name.c_str());
+            return EX_SOFTWARE;
+        }
         if (!builder->ResizePartition(partition, size)) {
             fprintf(stderr, "Not enough space on device for partition %s with size %" PRIu64 "\n",
                     name.c_str(), size);
