@@ -88,6 +88,7 @@ int e4crypt_set_directory_policy(const char* dir)
         "vendor_ce", "vendor_de",
         "media",
         "data", "user", "user_de",
+        "apex",
     };
     std::string prefix = "/data/";
     for (auto d: directories_to_exclude) {
