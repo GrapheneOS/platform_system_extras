@@ -56,7 +56,7 @@ static int usage(int /* argc */, char* argv[]) {
             "                                maximum size.\n"
             "\n"
             "Partition data format:\n"
-            "  <name>:<guid>:<attributes>:<size>\n"
+            "  <name>:<attributes>:<size>[:group]\n"
             "  Attrs must be 'none' or 'readonly'.\n",
             argv[0], argv[0]);
     return EX_USAGE;
@@ -229,7 +229,7 @@ int main(int argc, char* argv[]) {
 
     for (const auto& partition_info : partitions) {
         std::vector<std::string> parts = android::base::Split(partition_info, ":");
-        if (parts.size() > 5) {
+        if (parts.size() > 4) {
             fprintf(stderr, "Partition info has invalid formatting.\n");
             return EX_USAGE;
         }
@@ -241,13 +241,13 @@ int main(int argc, char* argv[]) {
         }
 
         uint64_t size;
-        if (!android::base::ParseUint(parts[3].c_str(), &size)) {
+        if (!android::base::ParseUint(parts[2].c_str(), &size)) {
             fprintf(stderr, "Partition must have a valid size.\n");
             return EX_USAGE;
         }
 
         uint32_t attribute_flags = 0;
-        std::string attributes = parts[2];
+        std::string attributes = parts[1];
         if (attributes == "readonly") {
             attribute_flags |= LP_PARTITION_ATTR_READONLY;
         } else if (attributes != "none") {
@@ -256,11 +256,11 @@ int main(int argc, char* argv[]) {
         }
 
         std::string group_name = "default";
-        if (parts.size() >= 5) {
-            group_name = parts[4];
+        if (parts.size() >= 4) {
+            group_name = parts[3];
         }
 
-        Partition* partition = builder->AddPartition(name, group_name, parts[1], attribute_flags);
+        Partition* partition = builder->AddPartition(name, group_name, attribute_flags);
         if (!partition) {
             fprintf(stderr, "Could not add partition: %s\n", name.c_str());
             return EX_SOFTWARE;
