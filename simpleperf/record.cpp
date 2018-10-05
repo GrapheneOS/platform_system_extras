@@ -175,7 +175,7 @@ size_t SampleId::Size() const {
   return size;
 }
 
-Record::Record(Record&& other) {
+Record::Record(Record&& other) noexcept {
   header = other.header;
   sample_id = other.sample_id;
   binary_ = other.binary_;
