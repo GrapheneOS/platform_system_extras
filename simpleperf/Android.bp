@@ -94,3 +94,34 @@ cc_library_static {
 
     group_static_libs: true,
 }
+
+cc_defaults {
+    name: "libsimpleperf_dex_read_static_reqs_defaults",
+    defaults: ["libdexfile_static_defaults"],
+}
+
+cc_library_static {
+    name: "libsimpleperf_dex_read",
+    defaults: [
+        "simpleperf_defaults",
+        "libsimpleperf_dex_read_static_reqs_defaults",
+    ],
+    host_supported: true,
+
+    export_include_dirs: [
+        ".",
+    ],
+
+    // TODO: fix or workaround this.
+    cflags: [
+        "-DSIMPLEPERF_REVISION=\"dummy\"",
+    ],
+
+    static_libs: ["libbase"],
+
+    srcs: [
+        "read_dex_file.cpp",
+    ],
+
+    group_static_libs: true,
+}
