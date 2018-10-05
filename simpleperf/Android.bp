@@ -41,10 +41,26 @@ cc_defaults {
     ],
 }
 
+cc_defaults {
+    name: "libsimpleperf_elf_read_static_reqs_defaults",
+    static_libs: [
+        "libLLVMObject",
+        "libLLVMBitReader",
+        "libLLVMMC",
+        "libLLVMMCParser",
+        "libLLVMCore",
+        "libLLVMSupport",
+        "liblzma",
+        "libz",
+        "libziparchive",
+    ],
+}
+
 cc_library_static {
     name: "libsimpleperf_elf_read",
     defaults: [
         "simpleperf_defaults",
+        "libsimpleperf_elf_read_static_reqs_defaults",
     ],
     host_supported: true,
 
@@ -59,19 +75,6 @@ cc_library_static {
 
     static_libs: [
         "libbase",
-    ],
-    // Use whole-static to avoid having to pull this in later.
-    whole_static_libs: [
-        "libLLVMObject",
-        "libLLVMBitReader",
-        "libLLVMMC",
-        "libLLVMMCParser",
-        "libLLVMCore",
-        "libLLVMSupport",
-        "liblog",
-        "liblzma",
-        "libz",
-        "libziparchive",
     ],
 
     target: {

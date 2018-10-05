@@ -19,6 +19,7 @@ cc_test {
     name: "perfprofd_test",
     defaults: [
         "perfprofd_test_defaults",
+        "libsimpleperf_elf_read_static_reqs_defaults",
     ],
     test_suites: ["device-tests"],
     host_supported: true,
