@@ -131,7 +131,7 @@ static unwindstack::MapInfo* CreateMapInfo(const MapEntry* entry) {
       }
     }
   }
-  return new unwindstack::MapInfo(entry->start_addr, entry->get_end_addr(), pgoff,
+  return new unwindstack::MapInfo(nullptr, entry->start_addr, entry->get_end_addr(), pgoff,
                                   PROT_READ | PROT_EXEC | entry->flags, name);
 }
 

@@ -62,14 +62,15 @@ cc_defaults {
         undefined: true,
     },
 
-    target: {
-        // On the host add ASAN.
-        host: {
-            sanitize: {
-                address: true,
-            },
-        },
-    }
+//  TODO: Re-enable when ART's ASAN flags are correctly propagated.
+//    target: {
+//        // On the host add ASAN.
+//        host: {
+//            sanitize: {
+//                address: true,
+//            },
+//        },
+//    }
 }
 
 filegroup {
@@ -153,6 +154,7 @@ cc_defaults {
         "libbase",
         "libperfprofd_proto_config",
         "libprotobuf-cpp-lite",
+        "libsimpleperf_dex_read",
         "libsimpleperf_elf_read",
     ],
     whole_static_libs: [
@@ -160,6 +162,7 @@ cc_defaults {
         "libperfprofd_record_proto",
         "libquipper",
     ],
+    shared_libs: ["libart"],
     srcs: [
         "perf_data_converter.cc",
         "configreader.cc",
@@ -213,6 +216,8 @@ cc_binary {
     name: "perfprofd",
     defaults: [
         "perfprofd_defaults",
+        "libsimpleperf_dex_read_static_reqs_defaults",
+        "libsimpleperf_elf_read_static_reqs_defaults",
     ],
 
     srcs: [
@@ -224,12 +229,14 @@ cc_binary {
         "libperfprofdcore",
         "libperfprofd_binder",
         "libperfprofd_proto_config",
+        "libsimpleperf_dex_read",
         "libsimpleperf_elf_read",
     ],
     group_static_libs: true,
 
     shared_libs: [
         "android.hardware.health@2.0",
+        "libart",
         "liblog",
         "libprotobuf-cpp-lite",
         "libbase",

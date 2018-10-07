@@ -41,10 +41,26 @@ cc_defaults {
     ],
 }
 
+cc_defaults {
+    name: "libsimpleperf_elf_read_static_reqs_defaults",
+    static_libs: [
+        "libLLVMObject",
+        "libLLVMBitReader",
+        "libLLVMMC",
+        "libLLVMMCParser",
+        "libLLVMCore",
+        "libLLVMSupport",
+        "liblzma",
+        "libz",
+        "libziparchive",
+    ],
+}
+
 cc_library_static {
     name: "libsimpleperf_elf_read",
     defaults: [
         "simpleperf_defaults",
+        "libsimpleperf_elf_read_static_reqs_defaults",
     ],
     host_supported: true,
 
@@ -60,19 +76,6 @@ cc_library_static {
     static_libs: [
         "libbase",
     ],
-    // Use whole-static to avoid having to pull this in later.
-    whole_static_libs: [
-        "libLLVMObject",
-        "libLLVMBitReader",
-        "libLLVMMC",
-        "libLLVMMCParser",
-        "libLLVMCore",
-        "libLLVMSupport",
-        "liblog",
-        "liblzma",
-        "libz",
-        "libziparchive",
-    ],
 
     target: {
         // Required for LLVM.
@@ -87,6 +90,37 @@ cc_library_static {
         "read_apk.cpp",
         "read_elf.cpp",
         "utils.cpp",
+    ],
+
+    group_static_libs: true,
+}
+
+cc_defaults {
+    name: "libsimpleperf_dex_read_static_reqs_defaults",
+    defaults: ["libdexfile_static_defaults"],
+}
+
+cc_library_static {
+    name: "libsimpleperf_dex_read",
+    defaults: [
+        "simpleperf_defaults",
+        "libsimpleperf_dex_read_static_reqs_defaults",
+    ],
+    host_supported: true,
+
+    export_include_dirs: [
+        ".",
+    ],
+
+    // TODO: fix or workaround this.
+    cflags: [
+        "-DSIMPLEPERF_REVISION=\"dummy\"",
+    ],
+
+    static_libs: ["libbase"],
+
+    srcs: [
+        "read_dex_file.cpp",
     ],
 
     group_static_libs: true,
