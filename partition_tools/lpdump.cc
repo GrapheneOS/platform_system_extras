@@ -95,7 +95,6 @@ int main(int argc, char* argv[]) {
     printf("Metadata max size: %u bytes\n", pt->geometry.metadata_max_size);
     printf("Metadata slot count: %u\n", pt->geometry.metadata_slot_count);
     printf("First logical sector: %" PRIu64 "\n", pt->geometry.first_logical_sector);
-    printf("Last logical sector: %" PRIu64 "\n", pt->geometry.last_logical_sector);
     printf("Partition table:\n");
     printf("------------------------\n");
 
