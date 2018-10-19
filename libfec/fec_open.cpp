@@ -19,10 +19,7 @@
 #include <sys/stat.h>
 
 #include <ext4_utils/ext4_sb.h>
-
-extern "C" {
-    #include <squashfs_utils.h>
-}
+#include <squashfs_utils.h>
 
 #if defined(__linux__)
     #include <linux/fs.h>
