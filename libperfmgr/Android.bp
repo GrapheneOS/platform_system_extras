@@ -39,6 +39,8 @@ cc_library {
     srcs: [
         "RequestGroup.cc",
         "Node.cc",
+        "FileNode.cc",
+        "PropertyNode.cc",
         "NodeLooperThread.cc",
         "HintManager.cc",
     ]
@@ -50,7 +52,8 @@ cc_test {
     static_libs: ["libperfmgr"],
     srcs: [
         "tests/RequestGroupTest.cc",
-        "tests/NodeTest.cc",
+        "tests/FileNodeTest.cc",
+        "tests/PropertyNodeTest.cc",
         "tests/NodeLooperThreadTest.cc",
         "tests/HintManagerTest.cc",
     ]

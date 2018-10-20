@@ -45,7 +45,7 @@ class RequestGroup {
     // request_map_ is empty.
     bool GetExpireTime(std::chrono::milliseconds* expire_time);
     // Return the request value.
-    std::string GetRequestValue() const;
+    const std::string& GetRequestValue() const;
     // Return true for adding request, false for extending expire time of
     // existing active request on given hint_type.
     bool AddRequest(const std::string& hint_type, ReqTime end_time);
