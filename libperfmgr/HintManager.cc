@@ -16,6 +16,7 @@
 
 #define LOG_TAG "libperfmgr"
 
+#include <algorithm>
 #include <set>
 
 #include <android-base/file.h>
@@ -24,7 +25,9 @@
 #include <json/reader.h>
 #include <json/value.h>
 
+#include "perfmgr/FileNode.h"
 #include "perfmgr/HintManager.h"
+#include "perfmgr/PropertyNode.h"
 
 namespace android {
 namespace perfmgr {
@@ -222,20 +225,44 @@ std::vector<std::unique_ptr<Node>> HintManager::ParseNodes(
         } else {
             reset = nodes[i]["ResetOnInit"].asBool();
         }
-        LOG(VERBOSE) << "Node[" << i << "]'s ResetOnInit: " << reset;
+        LOG(VERBOSE) << "Node[" << i << "]'s ResetOnInit: " << reset ? "true"
+                                                                     : "false";
 
-        bool hold_fd = false;
-        if (nodes[i]["HoldFd"].empty() || !nodes[i]["HoldFd"].isBool()) {
-            LOG(INFO) << "Failed to read Node" << i
-                      << "'s HoldFd, set to 'false'";
+        bool is_file = true;
+        std::string node_type = nodes[i]["Type"].asString();
+        LOG(VERBOSE) << "Node[" << i << "]'s Type: " << node_type;
+        if (node_type.empty()) {
+            LOG(ERROR) << "Failed to read "
+                       << "Node[" << i << "]'s Type, set to File as default";
+        } else if (node_type == "File") {
+            is_file = true;
+        } else if (node_type == "Property") {
+            is_file = false;
         } else {
-            hold_fd = nodes[i]["HoldFd"].asBool();
+            LOG(ERROR) << "Invalid Node[" << i
+                       << "]'s Type: only File and Property supported.";
+            nodes_parsed.clear();
+            return nodes_parsed;
         }
-        LOG(VERBOSE) << "Node[" << i << "]'s HoldFd: " << hold_fd;
 
-        nodes_parsed.emplace_back(std::make_unique<Node>(
-            name, path, values_parsed, static_cast<std::size_t>(default_index),
-            reset, hold_fd));
+        if (is_file) {
+            bool hold_fd = false;
+            if (nodes[i]["HoldFd"].empty() || !nodes[i]["HoldFd"].isBool()) {
+                LOG(INFO) << "Failed to read Node" << i
+                          << "'s HoldFd, set to 'false'";
+            } else {
+                hold_fd = nodes[i]["HoldFd"].asBool();
+            }
+            LOG(VERBOSE) << "Node[" << i << "]'s HoldFd: " << hold_fd;
+
+            nodes_parsed.emplace_back(std::make_unique<FileNode>(
+                name, path, values_parsed,
+                static_cast<std::size_t>(default_index), reset, hold_fd));
+        } else {
+            nodes_parsed.emplace_back(std::make_unique<PropertyNode>(
+                name, path, values_parsed,
+                static_cast<std::size_t>(default_index), reset));
+        }
     }
     LOG(INFO) << nodes_parsed.size() << " Nodes parsed successfully";
     return nodes_parsed;
