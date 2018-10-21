@@ -34,12 +34,7 @@ FileNode::FileNode(std::string name, std::string node_path,
            reset_on_init),
       hold_fd_(hold_fd) {
     if (reset_on_init) {
-        // Assigning an invalid value so the next Update() will update the
-        // FileNode's value to default
-        current_val_index_ = req_sorted_.size();
         Update();
-    } else {
-        current_val_index_ = default_val_index;
     }
 }
 

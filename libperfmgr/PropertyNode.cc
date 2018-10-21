@@ -33,12 +33,7 @@ PropertyNode::PropertyNode(std::string name, std::string node_path,
     : Node(name, node_path, std::move(req_sorted), default_val_index,
            reset_on_init) {
     if (reset_on_init) {
-        // Assigning an invalid value so the next Update() will update the
-        // PropertyNode's value to default
-        current_val_index_ = req_sorted_.size();
         Update();
-    } else {
-        current_val_index_ = default_val_index;
     }
 }
 
