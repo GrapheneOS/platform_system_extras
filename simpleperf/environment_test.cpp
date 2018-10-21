@@ -59,6 +59,7 @@ TEST(environment, MappedFileOnlyExistInMemory) {
   ASSERT_FALSE(MappedFileOnlyExistInMemory("[vdso]"));
   ASSERT_TRUE(MappedFileOnlyExistInMemory("/dev/__properties__/u:object_r"));
   ASSERT_TRUE(MappedFileOnlyExistInMemory("//anon"));
+  ASSERT_TRUE(MappedFileOnlyExistInMemory("/memfd:/jit-cache"));
   ASSERT_FALSE(MappedFileOnlyExistInMemory("./TemporaryFile-12345"));
   ASSERT_FALSE(MappedFileOnlyExistInMemory("/system/lib64/libc.so"));
 }
