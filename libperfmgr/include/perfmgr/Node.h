@@ -81,8 +81,8 @@ class Node {
     // request vector, one entry per possible value, sorted by priority
     std::vector<RequestGroup> req_sorted_;
     const std::size_t default_val_index_;
-    std::size_t current_val_index_;
     const bool reset_on_init_;
+    std::size_t current_val_index_;
 };
 
 }  // namespace perfmgr

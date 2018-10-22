@@ -33,7 +33,11 @@ Node::Node(std::string name, std::string node_path,
       node_path_(node_path),
       req_sorted_(std::move(req_sorted)),
       default_val_index_(default_val_index),
-      reset_on_init_(reset_on_init) {}
+      reset_on_init_(reset_on_init),
+      // Assigning an invalid value so the next Update() will update the
+      // Node's value to default
+      current_val_index_(reset_on_init ? req_sorted_.size()
+                                       : default_val_index) {}
 
 bool Node::AddRequest(std::size_t value_index, const std::string& hint_type,
                       ReqTime end_time) {
