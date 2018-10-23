@@ -377,12 +377,25 @@ TEST_F(HintManagerTest, ParseActionsTest) {
               actions["LAUNCH"][2].timeout_ms.count());
 }
 
-// Test parsing actions with duplicate node
-TEST_F(HintManagerTest, ParseActionDuplicateNodeTest) {
+// Test parsing actions with duplicate File node
+TEST_F(HintManagerTest, ParseActionDuplicateFileNodeTest) {
     std::string from = "\"Node\":\"CPUCluster0MinFreq\"";
     size_t start_pos = json_doc_.find(from);
     json_doc_.replace(start_pos, from.length(),
                       "\"Node\":\"CPUCluster1MinFreq\"");
+    std::vector<std::unique_ptr<Node>> nodes =
+        HintManager::ParseNodes(json_doc_);
+    EXPECT_EQ(3u, nodes.size());
+    std::map<std::string, std::vector<NodeAction>> actions =
+        HintManager::ParseActions(json_doc_, nodes);
+    EXPECT_EQ(0u, actions.size());
+}
+
+// Test parsing actions with duplicate Property node
+TEST_F(HintManagerTest, ParseActionDuplicatePropertyNodeTest) {
+    std::string from = "\"Node\":\"CPUCluster0MinFreq\"";
+    size_t start_pos = json_doc_.find(from);
+    json_doc_.replace(start_pos, from.length(), "\"Node\":\"ModeProperty\"");
     std::vector<std::unique_ptr<Node>> nodes =
         HintManager::ParseNodes(json_doc_);
     EXPECT_EQ(3u, nodes.size());
