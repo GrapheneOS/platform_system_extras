@@ -22,9 +22,10 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/fs.h>
 #include <string.h>
-#include <sys/syscall.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -34,33 +35,11 @@
 #include <logwrap/logwrap.h>
 #include <utils/misc.h>
 
-// TODO Include these definitions from <linux/fs.h>
+#define FS_KEY_DESCRIPTOR_SIZE_HEX (2 * FS_KEY_DESCRIPTOR_SIZE + 1)
 
-#define FS_KEY_DESCRIPTOR_SIZE 8
-#define FS_KEY_DESCRIPTOR_SIZE_HEX 17
-
-struct fscrypt_policy {
-    uint8_t version;
-    uint8_t contents_encryption_mode;
-    uint8_t filenames_encryption_mode;
-    uint8_t flags;
-    uint8_t master_key_descriptor[FS_KEY_DESCRIPTOR_SIZE];
-} __attribute__((__packed__));
-
-#define FS_ENCRYPTION_MODE_AES_256_XTS      1
-#define FS_ENCRYPTION_MODE_AES_256_CTS      4
+/* modes not supported by upstream kernel, so not in <linux/fs.h> */
 #define FS_ENCRYPTION_MODE_AES_256_HEH      126
 #define FS_ENCRYPTION_MODE_PRIVATE          127
-
-#define FS_POLICY_FLAGS_PAD_4         0x00
-#define FS_POLICY_FLAGS_PAD_8         0x01
-#define FS_POLICY_FLAGS_PAD_16        0x02
-#define FS_POLICY_FLAGS_PAD_32        0x03
-#define FS_POLICY_FLAGS_PAD_MASK      0x03
-#define FS_POLICY_FLAGS_VALID         0x03
-
-#define FS_IOC_SET_ENCRYPTION_POLICY _IOR('f', 19, struct fscrypt_policy)
-#define FS_IOC_GET_ENCRYPTION_POLICY _IOW('f', 21, struct fscrypt_policy)
 
 #define HEX_LOOKUP "0123456789abcdef"
 
