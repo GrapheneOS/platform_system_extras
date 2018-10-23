@@ -186,7 +186,7 @@ std::vector<std::unique_ptr<Node>> HintManager::ParseNodes(
             std::string value = values[j].asString();
             LOG(VERBOSE) << "Node[" << i << "]'s Value[" << j << "]: " << value;
             if (value.empty()) {
-                LOG(ERROR) << "Failed to read Node" << i << "'s Value[" << j
+                LOG(ERROR) << "Failed to read Node[" << i << "]'s Value[" << j
                            << "]";
                 nodes_parsed.clear();
                 return nodes_parsed;
@@ -194,7 +194,7 @@ std::vector<std::unique_ptr<Node>> HintManager::ParseNodes(
             values_parsed.emplace_back(value);
         }
         if (values_parsed.size() < 1) {
-            LOG(ERROR) << "Failed to read Node" << i << "'s Values";
+            LOG(ERROR) << "Failed to read Node[" << i << "]'s Values";
             nodes_parsed.clear();
             return nodes_parsed;
         }
@@ -202,15 +202,16 @@ std::vector<std::unique_ptr<Node>> HintManager::ParseNodes(
         Json::UInt64 default_index = values_parsed.size() - 1;
         if (nodes[i]["DefaultIndex"].empty() ||
             !nodes[i]["DefaultIndex"].isUInt64()) {
-            LOG(INFO) << "Failed to read Node" << i
-                      << "'s DefaultIndex, set to last index: " << default_index;
+            LOG(INFO) << "Failed to read Node[" << i
+                      << "]'s DefaultIndex, set to last index: "
+                      << default_index;
         } else {
             default_index = nodes[i]["DefaultIndex"].asUInt64();
         }
         if (default_index > values_parsed.size() - 1) {
             default_index = values_parsed.size() - 1;
-            LOG(ERROR) << "Node" << i
-                       << "'s DefaultIndex out of bound, max value index: "
+            LOG(ERROR) << "Node[" << i
+                       << "]'s DefaultIndex out of bound, max value index: "
                        << default_index;
             nodes_parsed.clear();
             return nodes_parsed;
@@ -220,20 +221,20 @@ std::vector<std::unique_ptr<Node>> HintManager::ParseNodes(
         bool reset = false;
         if (nodes[i]["ResetOnInit"].empty() ||
             !nodes[i]["ResetOnInit"].isBool()) {
-            LOG(INFO) << "Failed to read Node" << i
-                      << "'s ResetOnInit, set to 'false'";
+            LOG(INFO) << "Failed to read Node[" << i
+                      << "]'s ResetOnInit, set to 'false'";
         } else {
             reset = nodes[i]["ResetOnInit"].asBool();
         }
-        LOG(VERBOSE) << "Node[" << i
-                     << "]'s ResetOnInit: " << (reset ? "true" : "false");
+        LOG(VERBOSE) << "Node[" << i << "]'s ResetOnInit: " << std::boolalpha
+                     << reset << std::noboolalpha;
 
         bool is_file = true;
         std::string node_type = nodes[i]["Type"].asString();
         LOG(VERBOSE) << "Node[" << i << "]'s Type: " << node_type;
         if (node_type.empty()) {
             LOG(ERROR) << "Failed to read "
-                       << "Node[" << i << "]'s Type, set to File as default";
+                       << "Node[" << i << "]'s Type, set to 'File' as default";
         } else if (node_type == "File") {
             is_file = true;
         } else if (node_type == "Property") {
@@ -248,8 +249,8 @@ std::vector<std::unique_ptr<Node>> HintManager::ParseNodes(
         if (is_file) {
             bool hold_fd = false;
             if (nodes[i]["HoldFd"].empty() || !nodes[i]["HoldFd"].isBool()) {
-                LOG(INFO) << "Failed to read Node" << i
-                          << "'s HoldFd, set to 'false'";
+                LOG(INFO) << "Failed to read Node[" << i
+                          << "]'s HoldFd, set to 'false'";
             } else {
                 hold_fd = nodes[i]["HoldFd"].asBool();
             }
@@ -305,8 +306,8 @@ std::map<std::string, std::vector<NodeAction>> HintManager::ParseActions(
 
         if (nodes_index.find(node_name) == nodes_index.end()) {
             LOG(ERROR) << "Failed to find "
-                       << "Action" << i
-                       << "'s Node from Nodes section: " << node_name;
+                       << "Action[" << i
+                       << "]'s Node from Nodes section: " << node_name;
             actions_parsed.clear();
             return actions_parsed;
         }
@@ -317,7 +318,7 @@ std::map<std::string, std::vector<NodeAction>> HintManager::ParseActions(
         std::size_t value_index = 0;
 
         if (!nodes[node_index]->GetValueIndex(value_name, &value_index)) {
-            LOG(ERROR) << "Failed to read Action" << i << "'s Value";
+            LOG(ERROR) << "Failed to read Action[" << i << "]'s Value";
             LOG(ERROR) << "Action[" << i << "]'s Value " << value_name
                        << " is not defined in Node[" << node_name;
             actions_parsed.clear();
@@ -328,7 +329,7 @@ std::map<std::string, std::vector<NodeAction>> HintManager::ParseActions(
         Json::UInt64 duration = 0;
         if (actions[i]["Duration"].empty() ||
             !actions[i]["Duration"].isUInt64()) {
-            LOG(ERROR) << "Failed to read Action" << i << "'s Duration";
+            LOG(ERROR) << "Failed to read Action[" << i << "]'s Duration";
             actions_parsed.clear();
             return actions_parsed;
         } else {
