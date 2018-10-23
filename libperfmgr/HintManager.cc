@@ -225,8 +225,8 @@ std::vector<std::unique_ptr<Node>> HintManager::ParseNodes(
         } else {
             reset = nodes[i]["ResetOnInit"].asBool();
         }
-        LOG(VERBOSE) << "Node[" << i << "]'s ResetOnInit: " << reset ? "true"
-                                                                     : "false";
+        LOG(VERBOSE) << "Node[" << i
+                     << "]'s ResetOnInit: " << (reset ? "true" : "false");
 
         bool is_file = true;
         std::string node_type = nodes[i]["Type"].asString();
