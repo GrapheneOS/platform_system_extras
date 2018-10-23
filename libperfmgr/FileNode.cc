@@ -52,7 +52,8 @@ std::chrono::milliseconds FileNode::Update(bool log_error) {
 
     // Update node only if request index changes
     if (value_index != current_val_index_) {
-        const std::string& req_value = req_sorted_[value_index].GetRequestValue();
+        const std::string& req_value =
+            req_sorted_[value_index].GetRequestValue();
 
         fd_.reset(TEMP_FAILURE_RETRY(
             open(node_path_.c_str(), O_WRONLY | O_CLOEXEC | O_TRUNC)));
