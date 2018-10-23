@@ -91,6 +91,7 @@ cc_library_static {
     defaults: [
         "verity_tree_defaults",
     ],
+    recovery_available: true,
 
     export_include_dirs: ["include"],
     srcs: [
