@@ -106,7 +106,7 @@ bool NodeLooperThread::threadLoop() {
         n->Update(false);
     }
     for (auto& n : nodes_) {
-        timeout_ms = std::min(n->Update(), timeout_ms);
+        timeout_ms = std::min(n->Update(true), timeout_ms);
     }
 
     nsecs_t sleep_timeout_ns = std::numeric_limits<nsecs_t>::max();

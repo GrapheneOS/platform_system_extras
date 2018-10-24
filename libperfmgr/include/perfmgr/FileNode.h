@@ -35,7 +35,7 @@ class FileNode : public Node {
              std::vector<RequestGroup> req_sorted, std::size_t default_val_index,
              bool reset_on_init, bool hold_fd = false);
 
-    std::chrono::milliseconds Update(bool log_error = true) override;
+    std::chrono::milliseconds Update(bool log_error) override;
 
     bool GetHoldFd() const;
 

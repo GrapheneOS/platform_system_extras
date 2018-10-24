@@ -24,11 +24,20 @@ cc_defaults {
     static_libs: [
         "libjsoncpp",
     ],
-    cpp_std: "experimental",
+    cpp_std: "c++17",
     cflags: [
         "-Wall",
         "-Werror",
-    ]
+    ],
+    tidy: true,
+    tidy_checks: [
+        "android-*",
+        "cert-*",
+        "clang-analyzer-security*",
+    ],
+    tidy_flags: [
+        "-warnings-as-errors=android-*,clang-analyzer-security*,cert-*"
+    ],
 }
 
 cc_library {
