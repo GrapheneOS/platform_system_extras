@@ -111,7 +111,9 @@ int main(int argc, char* argv[]) {
                     (first_sector + extent.num_sectors - 1));
             first_sector += extent.num_sectors;
             if (extent.target_type == LP_TARGET_TYPE_LINEAR) {
-                printf("linear %" PRIu64, extent.target_data);
+                const auto& block_device = pt->block_devices[extent.target_source];
+                std::string device_name = GetBlockDevicePartitionName(block_device);
+                printf("linear %s %" PRIu64, device_name.c_str(), extent.target_data);
             } else if (extent.target_type == LP_TARGET_TYPE_ZERO) {
                 printf("zero");
             }
