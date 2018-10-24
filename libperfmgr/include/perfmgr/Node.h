@@ -59,14 +59,14 @@ class Node {
     // std::chrono::milliseconds::max() if no active request on Node; update
     // node's controlled file node value and the current value index based on
     // active request.
-    virtual std::chrono::milliseconds Update(bool log_error = true) = 0;
+    virtual std::chrono::milliseconds Update(bool log_error) = 0;
 
     const std::string& GetName() const;
     const std::string& GetPath() const;
     std::vector<std::string> GetValues() const;
     std::size_t GetDefaultIndex() const;
     bool GetResetOnInit() const;
-    bool GetValueIndex(const std::string value, std::size_t* index) const;
+    bool GetValueIndex(const std::string& value, std::size_t* index) const;
     virtual void DumpToFd(int fd) const = 0;
 
   protected:
