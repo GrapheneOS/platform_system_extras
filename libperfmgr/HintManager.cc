@@ -254,7 +254,8 @@ std::vector<std::unique_ptr<Node>> HintManager::ParseNodes(
             } else {
                 hold_fd = nodes[i]["HoldFd"].asBool();
             }
-            LOG(VERBOSE) << "Node[" << i << "]'s HoldFd: " << hold_fd;
+            LOG(VERBOSE) << "Node[" << i << "]'s HoldFd: " << std::boolalpha
+                         << hold_fd << std::noboolalpha;
 
             nodes_parsed.emplace_back(std::make_unique<FileNode>(
                 name, path, values_parsed,

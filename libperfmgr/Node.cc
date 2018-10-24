@@ -29,8 +29,8 @@ namespace perfmgr {
 Node::Node(std::string name, std::string node_path,
            std::vector<RequestGroup> req_sorted, std::size_t default_val_index,
            bool reset_on_init)
-    : name_(name),
-      node_path_(node_path),
+    : name_(std::move(name)),
+      node_path_(std::move(node_path)),
       req_sorted_(std::move(req_sorted)),
       default_val_index_(default_val_index),
       reset_on_init_(reset_on_init),
@@ -68,7 +68,7 @@ const std::string& Node::GetPath() const {
     return node_path_;
 }
 
-bool Node::GetValueIndex(const std::string value, std::size_t* index) const {
+bool Node::GetValueIndex(const std::string& value, std::size_t* index) const {
     bool found = false;
     for (std::size_t i = 0; i < req_sorted_.size(); i++) {
         if (req_sorted_[i].GetRequestValue() == value) {

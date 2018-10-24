@@ -30,11 +30,11 @@ FileNode::FileNode(std::string name, std::string node_path,
                    std::vector<RequestGroup> req_sorted,
                    std::size_t default_val_index, bool reset_on_init,
                    bool hold_fd)
-    : Node(name, node_path, std::move(req_sorted), default_val_index,
-           reset_on_init),
+    : Node(std::move(name), std::move(node_path), std::move(req_sorted),
+           default_val_index, reset_on_init),
       hold_fd_(hold_fd) {
     if (reset_on_init) {
-        Update();
+        Update(false);
     }
 }
 
