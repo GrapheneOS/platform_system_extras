@@ -51,7 +51,8 @@ std::chrono::milliseconds PropertyNode::Update(bool) {
 
     // Update node only if request index changes
     if (value_index != current_val_index_) {
-        const std::string& req_value = req_sorted_[value_index].GetRequestValue();
+        const std::string& req_value =
+            req_sorted_[value_index].GetRequestValue();
 
         if (!android::base::SetProperty(node_path_, req_value)) {
             LOG(WARNING) << "Failed to set property to : " << node_path_
