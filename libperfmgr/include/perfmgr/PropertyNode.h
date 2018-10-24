@@ -33,7 +33,7 @@ class PropertyNode : public Node {
                  std::vector<RequestGroup> req_sorted,
                  std::size_t default_val_index, bool reset_on_init);
 
-    std::chrono::milliseconds Update(bool log_error = true) override;
+    std::chrono::milliseconds Update(bool log_error) override;
 
     void DumpToFd(int fd) const override;
 
