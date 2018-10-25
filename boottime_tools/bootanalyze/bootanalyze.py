@@ -350,7 +350,7 @@ def iterate(args, search_events_pattern, timings_pattern, shutdown_events_patter
 
   if not logcat_event_time.get(KERNEL_TIME_KEY):
     print "kernel time not captured in logcat, cannot get time diff"
-    return None, None, None, None
+    return None, None, None, None, None, None
   diffs = []
   diffs.append((logcat_event_time[KERNEL_TIME_KEY], logcat_event_time[KERNEL_TIME_KEY]))
   if logcat_event_time.get(BOOT_ANIM_END_TIME_KEY) and dmesg_event_time.get(BOOT_ANIM_END_TIME_KEY):
@@ -360,7 +360,7 @@ def iterate(args, search_events_pattern, timings_pattern, shutdown_events_patter
   if not dmesg_event_time.get(KERNEL_BOOT_COMPLETE):
       print "BootAnimEnd time or BootComplete-kernel not captured in both log" +\
         ", cannot get time diff"
-      return None, None, None, None
+      return None, None, None, None, None, None
   diffs.append((logcat_event_time[KERNEL_BOOT_COMPLETE],\
                 logcat_event_time[KERNEL_BOOT_COMPLETE] - dmesg_event_time[KERNEL_BOOT_COMPLETE]))
 
