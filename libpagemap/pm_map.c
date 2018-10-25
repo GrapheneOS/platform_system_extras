@@ -130,6 +130,10 @@ int pm_map_workingset(pm_map_t* map, pm_memusage_t* ws_out) {
     pm_memusage_zero(&ws);
 
     for (i = 0; i < len; i++) {
+        if (!PM_PAGEMAP_PRESENT(pagemap[i]) && !PM_PAGEMAP_SWAPPED(pagemap[i])) {
+            continue;
+        }
+
         if (!pm_kernel_page_is_accessed(map->proc->ker, PM_PAGEMAP_PFN(pagemap[i]), NULL)) {
             continue;
         }
