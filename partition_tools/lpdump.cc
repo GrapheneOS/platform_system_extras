@@ -94,7 +94,6 @@ int main(int argc, char* argv[]) {
     printf("Metadata size: %u bytes\n", pt->header.header_size + pt->header.tables_size);
     printf("Metadata max size: %u bytes\n", pt->geometry.metadata_max_size);
     printf("Metadata slot count: %u\n", pt->geometry.metadata_slot_count);
-    printf("First logical sector: %" PRIu64 "\n", pt->geometry.first_logical_sector);
     printf("Partition table:\n");
     printf("------------------------\n");
 
@@ -121,14 +120,24 @@ int main(int argc, char* argv[]) {
         printf("------------------------\n");
     }
 
+    printf("Block device table:\n");
+    printf("------------------------\n");
+    for (const auto& block_device : pt->block_devices) {
+        std::string partition_name = GetBlockDevicePartitionName(block_device);
+        printf("  Partition name: %s\n", partition_name.c_str());
+        printf("  First sector: %" PRIu64 "\n", block_device.first_logical_sector);
+        printf("  Size: %" PRIu64 " bytes\n", block_device.size);
+        printf("------------------------\n");
+    }
+
     printf("Group table:\n");
     printf("------------------------\n");
     for (const auto& group : pt->groups) {
         std::string group_name = GetPartitionGroupName(group);
         printf("  Name: %s\n", group_name.c_str());
         printf("  Maximum size: %" PRIx64 "\n", group.maximum_size);
+        printf("------------------------\n");
     }
-    printf("------------------------\n");
 
     return EX_OK;
 }
