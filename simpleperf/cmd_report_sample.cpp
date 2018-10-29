@@ -153,10 +153,7 @@ bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
   report_fp_ = stdout;
   std::unique_ptr<FILE, decltype(&fclose)> fp(nullptr, fclose);
   if (!report_filename_.empty()) {
-    const char* open_mode = "w";
-    if (!dump_protobuf_report_file_.empty() && use_protobuf_) {
-      open_mode = "wb";
-    }
+    const char* open_mode = use_protobuf_ ? "wb" : "w";
     fp.reset(fopen(report_filename_.c_str(), open_mode));
     if (fp == nullptr) {
       PLOG(ERROR) << "failed to open " << report_filename_;
