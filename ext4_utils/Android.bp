@@ -30,14 +30,8 @@ cc_library {
         },
 
         android: {
-            srcs: [
-                "ext4_crypt.cpp",
-                "ext4_crypt_init_extensions.cpp",
-            ],
             shared_libs: [
                 "libbase",
-                "libkeyutils",
-                "liblogwrap",
                 "libselinux",
             ],
 
