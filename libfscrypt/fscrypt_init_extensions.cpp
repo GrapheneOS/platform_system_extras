@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#include "ext4_utils/ext4_crypt_init_extensions.h"
+#include "fscrypt/fscrypt.h"
+#include "fscrypt/fscrypt_init_extensions.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -34,17 +35,15 @@
 #include <keyutils.h>
 #include <logwrap/logwrap.h>
 
-#include "ext4_utils/ext4_crypt.h"
-
-#define TAG "ext4_utils"
+#define TAG "fscrypt"
 
 static const std::string arbitrary_sequence_number = "42";
 
 static int set_system_de_policy_on(char const* dir);
 
-int e4crypt_install_keyring()
+int fscrypt_install_keyring()
 {
-    key_serial_t device_keyring = add_key("keyring", "e4crypt", 0, 0,
+    key_serial_t device_keyring = add_key("keyring", "fscrypt", 0, 0,
                                           KEY_SPEC_SESSION_KEYRING);
 
     if (device_keyring == -1) {
@@ -57,7 +56,7 @@ int e4crypt_install_keyring()
     return 0;
 }
 
-int e4crypt_set_directory_policy(const char* dir)
+int fscrypt_set_directory_policy(const char* dir)
 {
     if (!dir || strncmp(dir, "/data/", 6)) {
         return 0;
@@ -101,14 +100,14 @@ int e4crypt_set_directory_policy(const char* dir)
 }
 
 static int set_system_de_policy_on(char const* dir) {
-    std::string ref_filename = std::string("/data") + e4crypt_key_ref;
+    std::string ref_filename = std::string("/data") + fscrypt_key_ref;
     std::string policy;
     if (!android::base::ReadFileToString(ref_filename, &policy)) {
         LOG(ERROR) << "Unable to read system policy to set on " << dir;
         return -1;
     }
 
-    auto type_filename = std::string("/data") + e4crypt_key_mode;
+    auto type_filename = std::string("/data") + fscrypt_key_mode;
     std::string modestring;
     if (!android::base::ReadFileToString(type_filename, &modestring)) {
         LOG(ERROR) << "Cannot read mode";
@@ -122,7 +121,7 @@ static int set_system_de_policy_on(char const* dir) {
     }
 
     LOG(INFO) << "Setting policy on " << dir;
-    int result = e4crypt_policy_ensure(dir, policy.c_str(), policy.length(),
+    int result = fscrypt_policy_ensure(dir, policy.c_str(), policy.length(),
                                        modes[0].c_str(),
                                        modes.size() >= 2 ?
                                             modes[1].c_str() : "aes-256-cts");
