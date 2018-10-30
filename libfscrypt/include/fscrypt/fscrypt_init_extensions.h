@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef _EXT4_CRYPT_H_
-#define _EXT4_CRYPT_H_
+#ifndef _FSCRYPT_INIT_EXTENSIONS_H_
+#define _FSCRYPT_INIT_EXTENSIONS_H_
 
 #include <sys/cdefs.h>
 #include <stdbool.h>
@@ -23,17 +23,11 @@
 
 __BEGIN_DECLS
 
-bool e4crypt_is_native();
-
-int e4crypt_policy_ensure(const char *directory, const char *policy,
-                          size_t policy_length,
-                          const char *contents_encryption_mode,
-                          const char *filenames_encryption_mode);
-
-static const char* e4crypt_unencrypted_folder = "/unencrypted";
-static const char* e4crypt_key_ref = "/unencrypted/ref";
-static const char* e4crypt_key_mode = "/unencrypted/mode";
+// These functions assume they are being called from init
+// They will not operate properly outside of init
+int fscrypt_install_keyring();
+int fscrypt_set_directory_policy(const char* path);
 
 __END_DECLS
 
-#endif // _EXT4_CRYPT_H_
+#endif // _FSCRYPT_INIT_EXTENSIONS_H_
