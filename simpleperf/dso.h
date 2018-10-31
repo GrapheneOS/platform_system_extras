@@ -40,6 +40,8 @@ class DebugElfFileFinder {
   void SetVdsoFile(const std::string& vdso_file, bool is_64bit);
   std::string FindDebugFile(const std::string& dso_path, bool force_64bit,
                             BuildId& build_id);
+  // Only for testing
+  std::string GetPathInSymFsDir(const std::string& path);
 
  private:
   void CollectBuildIdInDir(const std::string& dir);

@@ -190,7 +190,7 @@ std::vector<std::string> GetSubDirs(const std::string& dirpath) {
   std::vector<std::string> entries = GetEntriesInDir(dirpath);
   std::vector<std::string> result;
   for (size_t i = 0; i < entries.size(); ++i) {
-    if (IsDir(dirpath + "/" + entries[i])) {
+    if (IsDir(dirpath + OS_PATH_SEPARATOR + entries[i])) {
       result.push_back(std::move(entries[i]));
     }
   }
