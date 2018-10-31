@@ -24,6 +24,7 @@
 
 #include "get_test_data.h"
 #include "read_apk.h"
+#include "utils.h"
 
 using namespace simpleperf_dso_impl;
 
@@ -49,11 +50,18 @@ TEST(DebugElfFileFinder, use_build_id_list) {
 TEST(DebugElfFileFinder, concatenating_symfs_dir) {
   DebugElfFileFinder finder;
   ASSERT_TRUE(finder.SetSymFsDir(GetTestDataDir()));
+  ASSERT_EQ(finder.GetPathInSymFsDir("/system/libc.so"),
+            GetTestDataDir() + "system" + OS_PATH_SEPARATOR + "libc.so");
+  ASSERT_EQ(finder.GetPathInSymFsDir("/data/base.apk!/lib/base.so"),
+            GetTestDataDir() + "data" + OS_PATH_SEPARATOR + "base.apk!/lib/base.so");
+
   BuildId build_id(ELF_FILE_BUILD_ID);
   ASSERT_EQ(finder.FindDebugFile(ELF_FILE, false, build_id), GetTestDataDir() + ELF_FILE);
   std::string native_lib_in_apk = APK_FILE + "!/" + NATIVELIB_IN_APK;
+  std::string apk_path = APK_FILE;
+  std::replace(apk_path.begin(), apk_path.end(), '/', OS_PATH_SEPARATOR);
   ASSERT_EQ(finder.FindDebugFile(native_lib_in_apk, false, native_lib_build_id),
-            GetTestDataDir() + native_lib_in_apk);
+            GetTestDataDir() + apk_path + "!/" + NATIVELIB_IN_APK);
 }
 
 TEST(DebugElfFileFinder, use_vdso) {
@@ -71,9 +79,11 @@ TEST(DebugElfFileFinder, add_symbol_dir) {
   DebugElfFileFinder finder;
   ASSERT_FALSE(finder.AddSymbolDir(GetTestDataDir() + "dir_not_exist"));
   ASSERT_EQ(finder.FindDebugFile("elf", false, CHECK_ELF_FILE_BUILD_ID), "elf");
-  ASSERT_TRUE(finder.AddSymbolDir(GetTestDataDir() + CORRECT_SYMFS_FOR_BUILD_ID_CHECK));
+  std::string symfs_dir = GetTestDataDir() + CORRECT_SYMFS_FOR_BUILD_ID_CHECK;
+  std::replace(symfs_dir.begin(), symfs_dir.end(), '/', OS_PATH_SEPARATOR);
+  ASSERT_TRUE(finder.AddSymbolDir(symfs_dir));
   ASSERT_EQ(finder.FindDebugFile("elf", false, CHECK_ELF_FILE_BUILD_ID),
-            GetTestDataDir() + CORRECT_SYMFS_FOR_BUILD_ID_CHECK + "/elf_for_build_id_check");
+            symfs_dir + OS_PATH_SEPARATOR + "elf_for_build_id_check");
 }
 
 TEST(dso, dex_file_dso) {

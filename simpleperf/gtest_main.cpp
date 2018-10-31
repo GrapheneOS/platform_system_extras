@@ -22,6 +22,7 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/strings.h>
 #include <android-base/test_utils.h>
 #include <ziparchive/zip_archive.h>
 
@@ -216,8 +217,8 @@ int main(int argc, char** argv) {
     printf("Usage: %s -t <testdata_dir>\n", argv[0]);
     return 1;
   }
-  if (testdata_dir.back() != '/') {
-    testdata_dir.push_back('/');
+  if (!android::base::EndsWith(testdata_dir, OS_PATH_SEPARATOR)) {
+    testdata_dir += OS_PATH_SEPARATOR;
   }
   LOG(INFO) << "testdata is in " << testdata_dir;
   return RUN_ALL_TESTS();
