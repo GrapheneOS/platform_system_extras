@@ -35,8 +35,10 @@ static inline uint64_t Align(uint64_t value, uint64_t alignment) {
 
 #ifdef _WIN32
 #define CLOSE_ON_EXEC_MODE ""
+#define OS_PATH_SEPARATOR '\\'
 #else
 #define CLOSE_ON_EXEC_MODE "e"
+#define OS_PATH_SEPARATOR '/'
 #endif
 
 // OneTimeAllocator is used to allocate memory many times and free only once at the end.
