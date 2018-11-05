@@ -308,7 +308,7 @@ std::map<std::string, std::vector<NodeAction>> HintManager::ParseActions(
         if (nodes_index.find(node_name) == nodes_index.end()) {
             LOG(ERROR) << "Failed to find "
                        << "Action[" << i
-                       << "]'s Node from Nodes section: " << node_name;
+                       << "]'s Node from Nodes section: [" << node_name << "]";
             actions_parsed.clear();
             return actions_parsed;
         }
@@ -321,7 +321,7 @@ std::map<std::string, std::vector<NodeAction>> HintManager::ParseActions(
         if (!nodes[node_index]->GetValueIndex(value_name, &value_index)) {
             LOG(ERROR) << "Failed to read Action[" << i << "]'s Value";
             LOG(ERROR) << "Action[" << i << "]'s Value " << value_name
-                       << " is not defined in Node[" << node_name;
+                       << " is not defined in Node[" << node_name << "]";
             actions_parsed.clear();
             return actions_parsed;
         }
