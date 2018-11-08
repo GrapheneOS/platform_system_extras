@@ -60,6 +60,8 @@ static int usage(int /* argc */, char* argv[]) {
             "                                for DATA is listed below.\n"
             "  -n,--super-name=NAME          Specify the name of the block device that will\n"
             "                                house the super partition.\n"
+            "  -x,--auto-slot-suffixing      Mark the block device and partition names needing\n"
+            "                                slot suffixes before being used.\n"
             "\n"
             "Partition data format:\n"
             "  <name>:<attributes>:<size>[:group]\n"
@@ -91,6 +93,7 @@ int main(int argc, char* argv[]) {
         { "group", required_argument, nullptr, 'g' },
         { "device", required_argument, nullptr, 'D' },
         { "super-name", required_argument, nullptr, 'n' },
+        { "auto-slot-suffixing", no_argument, nullptr, 'x' },
         { nullptr, 0, nullptr, 0 },
     };
 
@@ -108,6 +111,7 @@ int main(int argc, char* argv[]) {
     std::map<std::string, std::string> images;
     bool output_sparse = false;
     bool has_implied_super = false;
+    bool auto_slot_suffixing = false;
 
     int rv;
     int index;
@@ -211,6 +215,9 @@ int main(int argc, char* argv[]) {
                 block_devices.emplace_back(info);
                 break;
             }
+            case 'x':
+                auto_slot_suffixing = true;
+                break;
             default:
                 break;
         }
@@ -267,6 +274,10 @@ int main(int argc, char* argv[]) {
     if (!builder) {
         fprintf(stderr, "Invalid metadata parameters.\n");
         return EX_USAGE;
+    }
+
+    if (auto_slot_suffixing) {
+        builder->SetAutoSlotSuffixing();
     }
 
     for (const auto& group_info : groups) {
