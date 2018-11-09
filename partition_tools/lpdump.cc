@@ -84,10 +84,8 @@ int main(int argc, char* argv[]) {
     }
     const char* file = argv[optind++];
 
-    std::unique_ptr<LpMetadata> pt;
-    if (IsBlockDevice(file)) {
-        pt = ReadMetadata(file, slot);
-    } else {
+    auto pt = ReadMetadata(file, slot);
+    if (!pt && !IsBlockDevice(file)) {
         pt = ReadFromImageFile(file);
     }
     if (!pt) {
