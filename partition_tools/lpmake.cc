@@ -352,8 +352,14 @@ int main(int argc, char* argv[]) {
 
     std::unique_ptr<LpMetadata> metadata = builder->Export();
     if (output_sparse) {
-        if (!WriteToSparseFile(output_path.c_str(), *metadata.get(), block_size, images)) {
-            return EX_CANTCREAT;
+        if (block_devices.size() == 1) {
+            if (!WriteToSparseFile(output_path.c_str(), *metadata.get(), block_size, images)) {
+                return EX_CANTCREAT;
+            }
+        } else {
+            if (!WriteSplitSparseFiles(output_path, *metadata.get(), block_size, images)) {
+                return EX_CANTCREAT;
+            }
         }
     } else if (!WriteToImageFile(output_path.c_str(), *metadata.get())) {
         return EX_CANTCREAT;
