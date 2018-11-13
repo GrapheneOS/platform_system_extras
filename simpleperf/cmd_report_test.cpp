@@ -351,6 +351,11 @@ TEST_F(ReportCommandTest, report_dumped_symbols_with_symfs_dir) {
   ASSERT_NE(content.find("main"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, report_without_symfs_dir) {
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(ReportCmd()->Run({"-i", GetTestData(PERF_DATA), "-o", tmpfile.path}));
+}
+
 TEST_F(ReportCommandTest, report_sort_vaddr_in_file) {
   Report(PERF_DATA, {"--sort", "vaddr_in_file"});
   ASSERT_TRUE(success);
