@@ -57,6 +57,18 @@ static bool IsBlockDevice(const char* file) {
     return !stat(file, &s) && S_ISBLK(s.st_mode);
 }
 
+class FileOrBlockDeviceOpener final : public PartitionOpener {
+public:
+    android::base::unique_fd Open(const std::string& path, int flags) const override {
+        // Try a local file first.
+        android::base::unique_fd fd(open(path.c_str(), flags));
+        if (fd >= 0) {
+            return fd;
+        }
+        return PartitionOpener::Open(path, flags);
+    }
+};
+
 int main(int argc, char* argv[]) {
     struct option options[] = {
         { "slot", required_argument, nullptr, 's' },
@@ -84,7 +96,8 @@ int main(int argc, char* argv[]) {
     }
     const char* file = argv[optind++];
 
-    auto pt = ReadMetadata(file, slot);
+    FileOrBlockDeviceOpener opener;
+    auto pt = ReadMetadata(opener, file, slot);
     if (!pt && !IsBlockDevice(file)) {
         pt = ReadFromImageFile(file);
     }
