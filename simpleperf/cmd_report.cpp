@@ -508,7 +508,6 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
 bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   bool demangle = true;
   bool show_ip_for_unknown_symbol = true;
-  std::string symfs_dir;
   std::string vmlinux;
   bool print_sample_count = false;
   std::vector<std::string> sort_keys = {"comm", "pid", "tid", "dso", "symbol"};
@@ -613,8 +612,9 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
-      symfs_dir = args[i];
-
+      if (!Dso::SetSymFsDir(args[i])) {
+        return false;
+      }
     } else if (args[i] == "--vmlinux") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -627,9 +627,6 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   }
 
   Dso::SetDemangle(demangle);
-  if (!Dso::SetSymFsDir(symfs_dir)) {
-    return false;
-  }
   if (!vmlinux.empty()) {
     Dso::SetVmlinux(vmlinux);
   }
