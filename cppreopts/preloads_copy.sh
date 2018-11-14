@@ -14,13 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# This script copies preloaded content from system_b to data partition
+# This script copies preloaded content from system_other to data partition
 
 # create files with 644 (global read) permissions.
 umask 022
 
 if [ $# -eq 1 ]; then
-  # Where the system_b is mounted that contains the preloads dir
+  # Where system_other is mounted that contains the preloads dir
   mountpoint=$1
   dest_dir=/data/preloads
   log -p i -t preloads_copy "Copying from $mountpoint/preloads"

@@ -14,14 +14,16 @@
 
 LOCAL_PATH:= $(call my-dir)
 
-# Create the cppreopts that does the copy
 include $(CLEAR_VARS)
+LOCAL_MODULE := preloads_copy.sh
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_SRC_FILES := preloads_copy.sh
+include $(BUILD_PREBUILT)
 
-LOCAL_MODULE:= cppreopts.sh
+include $(CLEAR_VARS)
+LOCAL_MODULE := cppreopts.sh
 LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_INIT_RC := cppreopts.rc
 LOCAL_SRC_FILES := cppreopts.sh
-
-LOCAL_REQUIRED_MODULES := preopt2cachename
-
+LOCAL_REQUIRED_MODULES := preopt2cachename preloads_copy.sh
 include $(BUILD_PREBUILT)
