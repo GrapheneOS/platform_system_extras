@@ -22,8 +22,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
-#include <android-base/test_utils.h>
 
 #include "build_id.h"
 #include "read_elf.h"

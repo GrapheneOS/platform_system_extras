@@ -21,7 +21,6 @@
 #include <map>
 
 #include <android-base/file.h>
-#include <android-base/test_utils.h>
 
 #include "get_test_data.h"
 #include "test_util.h"

@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-#include <android-base/test_utils.h>
+#include <android-base/file.h>
 
 #include "build_id.h"
 #include "perf_regs.h"

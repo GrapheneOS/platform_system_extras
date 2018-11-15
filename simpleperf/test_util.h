@@ -20,7 +20,6 @@
 #include <vector>
 
 #include <android-base/file.h>
-#include <android-base/test_utils.h>
 
 #include "environment.h"
 #include "read_elf.h"

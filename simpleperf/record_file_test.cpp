@@ -20,7 +20,7 @@
 
 #include <memory>
 
-#include <android-base/test_utils.h>
+#include <android-base/file.h>
 
 #include "environment.h"
 #include "event_attr.h"
