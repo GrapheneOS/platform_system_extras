@@ -23,7 +23,6 @@
 #include <vector>
 
 #include <android-base/file.h>
-#include <android-base/test_utils.h>
 
 #include "command.h"
 #include "get_test_data.h"

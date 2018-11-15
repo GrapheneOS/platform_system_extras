@@ -35,7 +35,6 @@
 #include <android-base/macros.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
-#include <android-base/test_utils.h>
 #include <android-base/thread_annotations.h>
 #include <gtest/gtest.h>
 #include <zlib.h>
