@@ -20,7 +20,6 @@
 
 #include <android-base/file.h>
 #include <android-base/stringprintf.h>
-#include <android-base/test_utils.h>
 
 #include "get_test_data.h"
 #include "read_apk.h"

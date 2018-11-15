@@ -22,10 +22,10 @@
 
 #include <android-base/file.h>
 #include <android-base/stringprintf.h>
-#include <android-base/test_utils.h>
 
 #include <map>
 #include <memory>
+#include <regex>
 #include <thread>
 
 #include "command.h"

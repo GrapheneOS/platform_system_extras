@@ -17,7 +17,6 @@
 #include <gtest/gtest.h>
 
 #include <android-base/file.h>
-#include <android-base/test_utils.h>
 
 #include "dso.h"
 #include "environment.h"
