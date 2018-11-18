@@ -22,7 +22,6 @@
 #include <string>
 
 #include <android-base/file.h>
-#include <android-base/test_utils.h>
 #include <android-base/unique_fd.h>
 #include <crypto_utils/android_pubkey.h>
 #include <fec/io.h>

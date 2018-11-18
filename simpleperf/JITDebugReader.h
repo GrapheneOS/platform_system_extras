@@ -27,8 +27,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
-#include <android-base/test_utils.h>
 
 #include "IOEventLoop.h"
 #include "record.h"
