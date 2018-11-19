@@ -45,11 +45,27 @@ static int usage(int /* argc */, char* argv[]) {
     return EX_USAGE;
 }
 
+static std::string BuildFlagString(const std::vector<std::string>& strings) {
+    return strings.empty() ? "none" : android::base::Join(strings, ",");
+}
+
 static std::string BuildAttributeString(uint32_t attrs) {
     std::vector<std::string> strings;
     if (attrs & LP_PARTITION_ATTR_READONLY) strings.emplace_back("readonly");
     if (attrs & LP_PARTITION_ATTR_SLOT_SUFFIXED) strings.emplace_back("slot-suffixed");
-    return strings.empty() ? "none" : android::base::Join(strings, ",");
+    return BuildFlagString(strings);
+}
+
+static std::string BuildGroupFlagString(uint32_t flags) {
+    std::vector<std::string> strings;
+    if (flags & LP_GROUP_SLOT_SUFFIXED) strings.emplace_back("slot-suffixed");
+    return BuildFlagString(strings);
+}
+
+static std::string BuildBlockDeviceFlagString(uint32_t flags) {
+    std::vector<std::string> strings;
+    if (flags & LP_BLOCK_DEVICE_SLOT_SUFFIXED) strings.emplace_back("slot-suffixed");
+    return BuildFlagString(strings);
 }
 
 static bool IsBlockDevice(const char* file) {
@@ -145,6 +161,7 @@ int main(int argc, char* argv[]) {
         printf("  Partition name: %s\n", partition_name.c_str());
         printf("  First sector: %" PRIu64 "\n", block_device.first_logical_sector);
         printf("  Size: %" PRIu64 " bytes\n", block_device.size);
+        printf("  Flags: %s\n", BuildBlockDeviceFlagString(block_device.flags).c_str());
         printf("------------------------\n");
     }
 
@@ -153,7 +170,8 @@ int main(int argc, char* argv[]) {
     for (const auto& group : pt->groups) {
         std::string group_name = GetPartitionGroupName(group);
         printf("  Name: %s\n", group_name.c_str());
-        printf("  Maximum size: %" PRIx64 "\n", group.maximum_size);
+        printf("  Maximum size: %" PRIu64 "\n", group.maximum_size);
+        printf("  Flags: %s\n", BuildGroupFlagString(group.flags).c_str());
         printf("------------------------\n");
     }
 
