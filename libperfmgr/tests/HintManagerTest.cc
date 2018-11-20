@@ -328,6 +328,70 @@ TEST_F(HintManagerTest, ParseNodesDuplicatePathTest) {
     EXPECT_EQ(0u, nodes.size());
 }
 
+// Test parsing file node with duplicate value
+TEST_F(HintManagerTest, ParseFileNodesDuplicateValueTest) {
+    std::string from = "1512000";
+    size_t start_pos = json_doc_.find(from);
+    json_doc_.replace(start_pos, from.length(), "1134000");
+    std::vector<std::unique_ptr<Node>> nodes =
+            HintManager::ParseNodes(json_doc_);
+    EXPECT_EQ(0u, nodes.size());
+}
+
+// Test parsing property node with duplicate value
+TEST_F(HintManagerTest, ParsePropertyNodesDuplicateValueTest) {
+    std::string from = "HIGH";
+    size_t start_pos = json_doc_.find(from);
+    json_doc_.replace(start_pos, from.length(), "LOW");
+    std::vector<std::unique_ptr<Node>> nodes =
+            HintManager::ParseNodes(json_doc_);
+    EXPECT_EQ(0u, nodes.size());
+}
+
+// Test parsing file node with empty value
+TEST_F(HintManagerTest, ParseFileNodesEmptyValueTest) {
+    std::string from = "384000";
+    size_t start_pos = json_doc_.find(from);
+    json_doc_.replace(start_pos, from.length(), "");
+    std::vector<std::unique_ptr<Node>> nodes =
+            HintManager::ParseNodes(json_doc_);
+    EXPECT_EQ(0u, nodes.size());
+}
+
+// Test parsing property node with empty value
+TEST_F(HintManagerTest, ParsePropertyNodesEmptyValueTest) {
+    std::string from = "LOW";
+    size_t start_pos = json_doc_.find(from);
+    json_doc_.replace(start_pos, from.length(), "");
+    std::vector<std::unique_ptr<Node>> nodes =
+            HintManager::ParseNodes(json_doc_);
+    EXPECT_EQ(3u, nodes.size());
+    EXPECT_EQ("CPUCluster0MinFreq", nodes[0]->GetName());
+    EXPECT_EQ("CPUCluster1MinFreq", nodes[1]->GetName());
+    EXPECT_EQ(files_[0 + 2]->path, nodes[0]->GetPath());
+    EXPECT_EQ(files_[1 + 2]->path, nodes[1]->GetPath());
+    EXPECT_EQ("1512000", nodes[0]->GetValues()[0]);
+    EXPECT_EQ("1134000", nodes[0]->GetValues()[1]);
+    EXPECT_EQ("384000", nodes[0]->GetValues()[2]);
+    EXPECT_EQ("1512000", nodes[1]->GetValues()[0]);
+    EXPECT_EQ("1134000", nodes[1]->GetValues()[1]);
+    EXPECT_EQ("384000", nodes[1]->GetValues()[2]);
+    EXPECT_EQ(2u, nodes[0]->GetDefaultIndex());
+    EXPECT_EQ(2u, nodes[1]->GetDefaultIndex());
+    EXPECT_TRUE(nodes[0]->GetResetOnInit());
+    EXPECT_FALSE(nodes[1]->GetResetOnInit());
+    // no dynamic_cast intentionally in Android
+    EXPECT_FALSE(reinterpret_cast<FileNode*>(nodes[0].get())->GetHoldFd());
+    EXPECT_TRUE(reinterpret_cast<FileNode*>(nodes[1].get())->GetHoldFd());
+    EXPECT_EQ("ModeProperty", nodes[2]->GetName());
+    EXPECT_EQ(prop_, nodes[2]->GetPath());
+    EXPECT_EQ("HIGH", nodes[2]->GetValues()[0]);
+    EXPECT_EQ("", nodes[2]->GetValues()[1]);
+    EXPECT_EQ("NONE", nodes[2]->GetValues()[2]);
+    EXPECT_EQ(2u, nodes[2]->GetDefaultIndex());
+    EXPECT_FALSE(nodes[2]->GetResetOnInit());
+}
+
 // Test parsing invalid json for nodes
 TEST_F(HintManagerTest, ParseBadFileNodesTest) {
     std::vector<std::unique_ptr<Node>> nodes =

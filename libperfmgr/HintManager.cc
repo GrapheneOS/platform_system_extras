@@ -180,14 +180,38 @@ std::vector<std::unique_ptr<Node>> HintManager::ParseNodes(
             return nodes_parsed;
         }
 
+        bool is_file = true;
+        std::string node_type = nodes[i]["Type"].asString();
+        LOG(VERBOSE) << "Node[" << i << "]'s Type: " << node_type;
+        if (node_type.empty()) {
+            LOG(ERROR) << "Failed to read "
+                       << "Node[" << i << "]'s Type, set to 'File' as default";
+        } else if (node_type == "File") {
+            is_file = true;
+        } else if (node_type == "Property") {
+            is_file = false;
+        } else {
+            LOG(ERROR) << "Invalid Node[" << i
+                       << "]'s Type: only File and Property supported.";
+            nodes_parsed.clear();
+            return nodes_parsed;
+        }
+
         std::vector<RequestGroup> values_parsed;
+        std::set<std::string> values_set_parsed;
         Json::Value values = nodes[i]["Values"];
         for (Json::Value::ArrayIndex j = 0; j < values.size(); ++j) {
             std::string value = values[j].asString();
             LOG(VERBOSE) << "Node[" << i << "]'s Value[" << j << "]: " << value;
-            if (value.empty()) {
-                LOG(ERROR) << "Failed to read Node[" << i << "]'s Value[" << j
+            auto result = values_set_parsed.insert(value);
+            if (!result.second) {
+                LOG(ERROR) << "Duplicate value parsed in Node[" << i << "]'s Value[" << j
                            << "]";
+                nodes_parsed.clear();
+                return nodes_parsed;
+            }
+            if (is_file && value.empty()) {
+                LOG(ERROR) << "Failed to read Node[" << i << "]'s Value[" << j << "]";
                 nodes_parsed.clear();
                 return nodes_parsed;
             }
@@ -228,23 +252,6 @@ std::vector<std::unique_ptr<Node>> HintManager::ParseNodes(
         }
         LOG(VERBOSE) << "Node[" << i << "]'s ResetOnInit: " << std::boolalpha
                      << reset << std::noboolalpha;
-
-        bool is_file = true;
-        std::string node_type = nodes[i]["Type"].asString();
-        LOG(VERBOSE) << "Node[" << i << "]'s Type: " << node_type;
-        if (node_type.empty()) {
-            LOG(ERROR) << "Failed to read "
-                       << "Node[" << i << "]'s Type, set to 'File' as default";
-        } else if (node_type == "File") {
-            is_file = true;
-        } else if (node_type == "Property") {
-            is_file = false;
-        } else {
-            LOG(ERROR) << "Invalid Node[" << i
-                       << "]'s Type: only File and Property supported.";
-            nodes_parsed.clear();
-            return nodes_parsed;
-        }
 
         if (is_file) {
             bool hold_fd = false;

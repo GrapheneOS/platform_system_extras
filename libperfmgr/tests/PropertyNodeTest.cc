@@ -116,7 +116,7 @@ TEST(PropertyNodeTest, GetPropertiesTest) {
 // Test add request
 TEST(PropertyNodeTest, AddRequestTest) {
     std::string key = _InitProperty("test.libperfmgr.key");
-    PropertyNode t("t", key, {{"value0"}, {"value1"}, {"value2"}}, 2, true);
+    PropertyNode t("t", key, {{"value0"}, {"value1"}, {""}}, 2, true);
     auto start = std::chrono::steady_clock::now();
     EXPECT_TRUE(t.AddRequest(1, "INTERACTION", start + 500ms));
     std::chrono::milliseconds expire_time = t.Update(true);
@@ -139,7 +139,7 @@ TEST(PropertyNodeTest, AddRequestTest) {
     // Let all requests timeout, now default value2
     std::this_thread::sleep_for(expire_time + kSLEEP_TOLERANCE_MS);
     expire_time = t.Update(true);
-    _VerifyPropertyValue(key, "value2");
+    _VerifyPropertyValue(key, "");
     EXPECT_EQ(std::chrono::milliseconds::max(), expire_time);
 }
 
