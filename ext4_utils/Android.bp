@@ -10,7 +10,10 @@ cc_library {
         "ext4_sb.c",
     ],
     // Various instances of dereferencing a type-punned pointer in extent.c
-    cflags: ["-Werror", "-fno-strict-aliasing"],
+    cflags: [
+        "-Werror",
+        "-fno-strict-aliasing",
+    ],
     export_include_dirs: ["include"],
     shared_libs: [
         "libsparse",
@@ -40,7 +43,7 @@ cc_library {
                 shared_libs: [
                     "libcutils",
                     "libext2_uuid",
-                ]
+                ],
             },
         },
     },
@@ -73,4 +76,19 @@ prebuilt_etc {
     name: "mke2fs.conf",
     recovery_available: true,
     src: "mke2fs.conf",
+}
+
+cc_binary_host {
+    name: "blk_alloc_to_base_fs",
+    srcs: ["blk_alloc_to_base_fs.c"],
+    shared_libs: ["libcutils"],
+    target: {
+        host: {
+            cflags: ["-DHOST"],
+        },
+    },
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
 }
