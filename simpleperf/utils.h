@@ -54,7 +54,7 @@ class OneTimeFreeAllocator {
   }
 
   void Clear();
-  const char* AllocateString(const std::string& s);
+  const char* AllocateString(std::string_view s);
 
  private:
   const size_t unit_size_;
