@@ -270,7 +270,10 @@ TEST(record_cmd, existing_threads) {
   ASSERT_TRUE(RunRecordCmd({"-t", tid_list}));
 }
 
-TEST(record_cmd, no_monitored_threads) { ASSERT_FALSE(RecordCmd()->Run({""})); }
+TEST(record_cmd, no_monitored_threads) {
+  TemporaryFile tmpfile;
+  ASSERT_FALSE(RecordCmd()->Run({"-o", tmpfile.path}));
+}
 
 TEST(record_cmd, more_than_one_event_types) {
   ASSERT_TRUE(RunRecordCmd({"-e", "cpu-cycles,cpu-clock"}));
