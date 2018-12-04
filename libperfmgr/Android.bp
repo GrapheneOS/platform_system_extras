@@ -24,7 +24,6 @@ cc_defaults {
     static_libs: [
         "libjsoncpp",
     ],
-    cpp_std: "c++17",
     cflags: [
         "-Wall",
         "-Werror",
