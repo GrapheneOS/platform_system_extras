@@ -455,7 +455,7 @@ void ConfigReader::FillConfig(Config* config) {
   config->fail_on_unsupported_events = getBoolValue("fail_on_unsupported_events");
 
   config->event_config.clear();
-  for (auto event : data_->e_entries) {
+  for (const auto& event : data_->e_entries) {
     Config::PerfCounterConfigElem elem;
     elem.events = event.names;
     elem.group = event.group;
