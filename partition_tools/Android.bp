@@ -39,6 +39,13 @@ cc_binary {
     srcs: [
         "lpdump.cc",
     ],
+    target: {
+        android: {
+            shared_libs: [
+                "libfs_mgr",
+            ],
+        },
+    },
 }
 
 cc_binary {
