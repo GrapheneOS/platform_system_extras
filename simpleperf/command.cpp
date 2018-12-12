@@ -80,7 +80,7 @@ std::unique_ptr<Command> CreateCommandInstance(const std::string& cmd_name) {
 
 const std::vector<std::string> GetAllCommandNames() {
   std::vector<std::string> names;
-  for (auto pair : CommandMap()) {
+  for (const auto& pair : CommandMap()) {
     names.push_back(pair.first);
   }
   return names;
