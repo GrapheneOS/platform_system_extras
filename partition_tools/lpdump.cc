@@ -27,6 +27,9 @@
 
 #include <android-base/strings.h>
 #include <android-base/parseint.h>
+#ifdef __ANDROID__
+#include <fs_mgr.h>
+#endif
 #include <liblp/liblp.h>
 
 using namespace android;
@@ -37,7 +40,7 @@ static int usage(int /* argc */, char* argv[]) {
             "%s - command-line tool for dumping Android Logical Partition images.\n"
             "\n"
             "Usage:\n"
-            "  %s [-s,--slot] file-or-device\n"
+            "  %s [-s <SLOT#>|--slot=<SLOT#>] [FILE|DEVICE]\n"
             "\n"
             "Options:\n"
             "  -s, --slot=N     Slot number or suffix.\n",
@@ -107,15 +110,22 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (optind >= argc) {
-        return usage(argc, argv);
-    }
-    const char* file = argv[optind++];
+    std::unique_ptr<LpMetadata> pt;
+    if (optind < argc) {
+        const char* file = argv[optind++];
 
-    FileOrBlockDeviceOpener opener;
-    auto pt = ReadMetadata(opener, file, slot);
-    if (!pt && !IsBlockDevice(file)) {
-        pt = ReadFromImageFile(file);
+        FileOrBlockDeviceOpener opener;
+        pt = ReadMetadata(opener, file, slot);
+        if (!pt && !IsBlockDevice(file)) {
+            pt = ReadFromImageFile(file);
+        }
+    } else {
+#ifdef __ANDROID__
+        auto slot_number = SlotNumberForSlotSuffix(fs_mgr_get_slot_suffix());
+        pt = ReadMetadata(fs_mgr_get_super_partition_name(), slot_number);
+#else
+        return usage(argc, argv);
+#endif
     }
     if (!pt) {
         fprintf(stderr, "Failed to read metadata.\n");
