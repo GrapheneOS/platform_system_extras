@@ -62,4 +62,11 @@ TEST(read_apk, ParseExtractedInMemoryPath) {
   ASSERT_EQ(entry_name, "classes.dex");
   ASSERT_FALSE(ParseExtractedInMemoryPath("/dev/ashmem/dalvik-thread local mark stack (deleted)",
                                           &zip_path, &entry_name));
+
+  // Parse multidex file.
+  ASSERT_TRUE(ParseExtractedInMemoryPath("/dev/ashmem/dalvik-classes2.dex extracted in memory from "
+      "/data/app/getxml.test.com.testgetxml-knxI11ZXLT-OVBs9X9bSkw==/base.apk!classes2.dex "
+      "(deleted)", &zip_path, &entry_name));
+  ASSERT_EQ(zip_path, "/data/app/getxml.test.com.testgetxml-knxI11ZXLT-OVBs9X9bSkw==/base.apk");
+  ASSERT_EQ(entry_name, "classes2.dex");
 }
