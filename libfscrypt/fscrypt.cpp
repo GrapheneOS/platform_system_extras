@@ -41,6 +41,16 @@
 #define FS_ENCRYPTION_MODE_AES_256_HEH      126
 #define FS_ENCRYPTION_MODE_PRIVATE          127
 
+/* new definition, not yet in Bionic's <linux/fs.h> */
+#ifndef FS_ENCRYPTION_MODE_ADIANTUM
+#define FS_ENCRYPTION_MODE_ADIANTUM         9
+#endif
+
+/* new definition, not yet in Bionic's <linux/fs.h> */
+#ifndef FS_POLICY_FLAG_DIRECT_KEY
+#define FS_POLICY_FLAG_DIRECT_KEY           0x4
+#endif
+
 #define HEX_LOOKUP "0123456789abcdef"
 
 bool fscrypt_is_native() {
@@ -112,6 +122,11 @@ static uint8_t fscrypt_get_policy_flags(int filenames_encryption_mode) {
     if (filenames_encryption_mode == FS_ENCRYPTION_MODE_AES_256_CTS) {
         // Use legacy padding with our original filenames encryption mode.
         return FS_POLICY_FLAGS_PAD_4;
+    } else if (filenames_encryption_mode == FS_ENCRYPTION_MODE_ADIANTUM) {
+        // Use DIRECT_KEY for Adiantum, since it's much more efficient but just
+        // as secure since Android doesn't reuse the same master key for
+        // multiple encryption modes
+        return (FS_POLICY_FLAGS_PAD_16 | FS_POLICY_FLAG_DIRECT_KEY);
     }
     // With a new mode we can use the better padding flag without breaking existing devices: pad
     // filenames with zeroes to the next 16-byte boundary.  This is more secure (helps hide the
@@ -233,6 +248,8 @@ int fscrypt_policy_ensure(const char *directory, const char *policy,
     if (!strcmp(contents_encryption_mode, "software") ||
         !strcmp(contents_encryption_mode, "aes-256-xts")) {
         contents_mode = FS_ENCRYPTION_MODE_AES_256_XTS;
+    } else if (!strcmp(contents_encryption_mode, "adiantum")) {
+        contents_mode = FS_ENCRYPTION_MODE_ADIANTUM;
     } else if (!strcmp(contents_encryption_mode, "ice")) {
         contents_mode = FS_ENCRYPTION_MODE_PRIVATE;
     } else {
@@ -245,6 +262,8 @@ int fscrypt_policy_ensure(const char *directory, const char *policy,
         filenames_mode = FS_ENCRYPTION_MODE_AES_256_CTS;
     } else if (!strcmp(filenames_encryption_mode, "aes-256-heh")) {
         filenames_mode = FS_ENCRYPTION_MODE_AES_256_HEH;
+    } else if (!strcmp(filenames_encryption_mode, "adiantum")) {
+        filenames_mode = FS_ENCRYPTION_MODE_ADIANTUM;
     } else {
         LOG(ERROR) << "Invalid file names encryption mode: "
                    << filenames_encryption_mode;
