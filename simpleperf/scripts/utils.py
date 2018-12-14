@@ -78,7 +78,9 @@ def str_to_bytes(str_value):
     return str_value.encode('utf-8')
 
 def bytes_to_str(bytes_value):
-    if not is_python3() or not bytes_value:
+    if not bytes_value:
+        return ''
+    if not is_python3():
         return bytes_value
     return bytes_value.decode('utf-8')
 
