@@ -35,7 +35,7 @@ namespace {
 struct SimpleperfSymbolizer : public Symbolizer {
   // For simplicity, we assume non-overlapping symbols.
   struct Symbol {
-    Symbol(const std::string& n, uint64_t l) : name(n), length(l) {}
+    Symbol(std::string_view n, uint64_t l) : name(n), length(l) {}
 
     std::string name;
     uint64_t length;
@@ -175,4 +175,3 @@ std::unique_ptr<Symbolizer> CreateELFSymbolizer() {
 }
 
 }  // namespace perfprofd
-
