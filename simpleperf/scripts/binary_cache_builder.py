@@ -154,7 +154,7 @@ class BinaryCacheBuilder(object):
         """pull binaries needed in perf.data to binary_cache."""
         for binary in self.binaries:
             build_id = self.binaries[binary]
-            if binary[0] != '/' or binary == "//anon" or binary.startswith("/dev/"):
+            if not binary.startswith('/') or binary == "//anon" or binary.startswith("/dev/"):
                 # [kernel.kallsyms] or unknown, or something we can't find binary.
                 continue
             binary_cache_file = binary[1:].replace('/', os.sep)
