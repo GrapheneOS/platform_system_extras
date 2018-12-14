@@ -22,11 +22,19 @@
 #include <string>
 #include <vector>
 
+#ifndef NO_LIBDEXFILE_SUPPORT
+#include <art_api/ext_dex_file.h>
+#endif
+
+#ifndef NO_LIBDEXFILE_SUPPORT
+typedef art_api::dex::MethodInfo DexFileSymbol;
+#else
 struct DexFileSymbol {
   uint64_t offset;
   uint64_t len;
   std::string name;
 };
+#endif
 
 bool ReadSymbolsFromDexFileInMemory(void* addr, uint64_t size,
                                     const std::vector<uint64_t>& dex_file_offsets,

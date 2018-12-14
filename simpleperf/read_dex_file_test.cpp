@@ -24,10 +24,6 @@
 #include "test_util.h"
 #include "utils.h"
 
-bool operator==(const DexFileSymbol& s1, const DexFileSymbol& s2) {
-  return s1.offset == s2.offset && s1.len == s2.len && s1.name == s2.name;
-}
-
 TEST(read_dex_file, smoke) {
   std::vector<DexFileSymbol> symbols;
   ASSERT_TRUE(ReadSymbolsFromDexFile(GetTestData("base.vdex"), {0x28}, &symbols));
@@ -35,6 +31,7 @@ TEST(read_dex_file, smoke) {
   DexFileSymbol target;
   target.offset = 0x6c77e;
   target.len = 0x16;
-  target.name = "com.example.simpleperf.simpleperfexamplewithnative.MixActivity$1.run";
+  target.name = art_api::dex::DexString(
+      "com.example.simpleperf.simpleperfexamplewithnative.MixActivity$1.run");
   ASSERT_NE(std::find(symbols.begin(), symbols.end(), target), symbols.end());
 }

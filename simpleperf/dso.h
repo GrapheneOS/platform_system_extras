@@ -59,7 +59,7 @@ struct Symbol {
   // TODO: make len uint32_t.
   uint64_t len;
 
-  Symbol(const std::string& name, uint64_t addr, uint64_t len);
+  Symbol(std::string_view name, uint64_t addr, uint64_t len);
   const char* Name() const { return name_; }
 
   const char* DemangledName() const;
