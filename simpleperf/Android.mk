@@ -26,8 +26,8 @@ simpleperf_cflags_host := $(simpleperf_common_cflags) \
                             -DUSE_BIONIC_UAPI_HEADERS -I bionic/libc/kernel \
                             -fvisibility=hidden \
 
-simpleperf_cflags_host_darwin := -I $(LOCAL_PATH)/nonlinux_support/include
-simpleperf_cflags_host_windows := -I $(LOCAL_PATH)/nonlinux_support/include
+simpleperf_cflags_host_darwin := -I $(LOCAL_PATH)/nonlinux_support/include -DNO_LIBDEXFILE_SUPPORT
+simpleperf_cflags_host_windows := -I $(LOCAL_PATH)/nonlinux_support/include -DNO_LIBDEXFILE_SUPPORT
 
 
 LLVM_ROOT_PATH := external/llvm
@@ -36,6 +36,8 @@ include $(LLVM_ROOT_PATH)/llvm.mk
 simpleperf_static_libraries_target := \
   libbacktrace \
   libunwindstack \
+  libdexfile_support \
+  libdexfile_external \
   libdexfile \
   libziparchive \
   libz \
@@ -77,6 +79,8 @@ simpleperf_static_libraries_host_linux := \
   libprocinfo \
   libbacktrace \
   libunwindstack \
+  libdexfile_support \
+  libdexfile_external \
   libdexfile \
   libcutils \
   libevent \
