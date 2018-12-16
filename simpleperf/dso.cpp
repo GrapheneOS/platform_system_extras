@@ -174,7 +174,7 @@ std::string DebugElfFileFinder::GetPathInSymFsDir(const std::string& path) {
 
 static OneTimeFreeAllocator symbol_name_allocator;
 
-Symbol::Symbol(const std::string& name, uint64_t addr, uint64_t len)
+Symbol::Symbol(std::string_view name, uint64_t addr, uint64_t len)
     : addr(addr),
       len(len),
       name_(symbol_name_allocator.AllocateString(name)),

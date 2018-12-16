@@ -17,68 +17,63 @@
 #include "read_dex_file.h"
 
 #include <fcntl.h>
-#include <sys/mman.h>
-#include <unistd.h>
 
-#include <functional>
+#include <algorithm>
+#include <iterator>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/unique_fd.h>
+#include <art_api/ext_dex_file.h>
 
-#include <dex/class_accessor-inl.h>
-#include <dex/code_item_accessors-inl.h>
-#include <dex/dex_file_loader.h>
-#include <dex/dex_file.h>
-
-static bool OpenDexFiles(void* addr, uint64_t size, std::vector<uint64_t> dex_file_offsets,
-                         const std::function<void (const art::DexFile&, uint64_t)>& callback) {
-  bool result = true;
+static bool ReadSymbols(
+    const std::vector<uint64_t>& dex_file_offsets, std::vector<DexFileSymbol>* symbols,
+    const std::function<std::unique_ptr<art_api::dex::DexFile>(uint64_t offset)>& open_file_cb) {
   for (uint64_t offset : dex_file_offsets) {
-    if (offset >= size || size - offset < sizeof(art::DexFile::Header)) {
-      result = false;
-      break;
+    std::unique_ptr<art_api::dex::DexFile> dex_file = open_file_cb(offset);
+    if (dex_file == nullptr) {
+      return false;
     }
-    auto header = reinterpret_cast<art::DexFile::Header*>(static_cast<char*>(addr) + offset);
-    if (size - offset < header->file_size_) {
-      result = false;
-      break;
+
+    std::vector<art_api::dex::MethodInfo> file_syms = dex_file->GetAllMethodInfos(false);
+
+    // Adjust offsets to be from the start of the combined file.
+    for (art_api::dex::MethodInfo& sym : file_syms) {
+      sym.offset += offset;
     }
-    art::DexFileLoader loader;
-    std::string error;
-    std::unique_ptr<const art::DexFile> dex_file = loader.Open(reinterpret_cast<uint8_t*>(header),
-                                                               header->file_size_, "", 0, nullptr,
-                                                               false, false, &error);
-    if (!dex_file) {
-      result = false;
-      break;
+
+    if (symbols->empty()) {
+      *symbols = std::move(file_syms);
+    } else {
+      symbols->reserve(symbols->size() + file_syms.size());
+      std::move(std::begin(file_syms), std::end(file_syms), std::back_inserter(*symbols));
     }
-    callback(*dex_file, offset);
   }
-  return result;
+
+  return true;
 }
 
 bool ReadSymbolsFromDexFileInMemory(void* addr, uint64_t size,
                                     const std::vector<uint64_t>& dex_file_offsets,
                                     std::vector<DexFileSymbol>* symbols) {
-  auto dexfile_callback = [&](const art::DexFile& dex_file, uint64_t dex_file_offset) {
-    for (art::ClassAccessor accessor : dex_file.GetClasses()) {
-      for (const art::ClassAccessor::Method& method : accessor.GetMethods()) {
-        art::CodeItemInstructionAccessor code = method.GetInstructions();
-        if (!code.HasCodeItem()) {
-          continue;
+  return ReadSymbols(
+      dex_file_offsets, symbols, [&](uint64_t offset) -> std::unique_ptr<art_api::dex::DexFile> {
+        size_t max_file_size;
+        if (__builtin_sub_overflow(size, offset, &max_file_size)) {
+          return nullptr;
         }
-        symbols->resize(symbols->size() + 1);
-        DexFileSymbol& symbol = symbols->back();
-        symbol.offset = reinterpret_cast<const uint8_t*>(code.Insns()) - dex_file.Begin() +
-            dex_file_offset;
-        symbol.len = code.InsnsSizeInBytes();
-        symbol.name = dex_file.PrettyMethod(method.GetIndex(), false);
-      }
-    }
-  };
-  return OpenDexFiles(addr, size, dex_file_offsets, dexfile_callback);
+        uint8_t* file_addr = static_cast<uint8_t*>(addr) + offset;
+        std::string error_msg;
+        std::unique_ptr<art_api::dex::DexFile> dex_file =
+            art_api::dex::DexFile::OpenFromMemory(file_addr, &max_file_size, "", &error_msg);
+        if (dex_file == nullptr) {
+          LOG(WARNING) << "Failed to read dex file symbols: " << error_msg;
+          return nullptr;
+        }
+        return dex_file;
+      });
 }
 
 bool ReadSymbolsFromDexFile(const std::string& file_path,
@@ -88,16 +83,16 @@ bool ReadSymbolsFromDexFile(const std::string& file_path,
   if (fd == -1) {
     return false;
   }
-  struct stat buf;
-  if (fstat(fd, &buf) == -1 || buf.st_size < 0) {
-    return false;
-  }
-  uint64_t file_size = buf.st_size;
-  void* addr = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
-  if (addr == MAP_FAILED) {
-    return false;
-  }
-  bool result = ReadSymbolsFromDexFileInMemory(addr, file_size, dex_file_offsets, symbols);
-  munmap(addr, file_size);
-  return result;
+  return ReadSymbols(
+      dex_file_offsets, symbols, [&](uint64_t offset) -> std::unique_ptr<art_api::dex::DexFile> {
+        std::string error_msg;
+        std::unique_ptr<art_api::dex::DexFile> dex_file =
+            art_api::dex::DexFile::OpenFromFd(fd, offset, file_path, &error_msg);
+        if (dex_file == nullptr) {
+          LOG(WARNING) << "Failed to read dex file symbols from '" << file_path
+                       << "': " << error_msg;
+          return nullptr;
+        }
+        return dex_file;
+      });
 }

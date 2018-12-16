@@ -159,6 +159,10 @@ bool ParseExtractedInMemoryPath(const std::string& path, std::string* zip_path,
         if (entry_name_start < entry_name_end && zip_path_start < zip_path_end) {
           *entry_name = path.substr(entry_name_start, entry_name_end - entry_name_start);
           *zip_path = path.substr(zip_path_start, zip_path_end - zip_path_start);
+          size_t multidex_separator_pos = zip_path->find('!');
+          if (multidex_separator_pos != std::string::npos) {
+            zip_path->resize(multidex_separator_pos);
+          }
           return true;
         }
       }
