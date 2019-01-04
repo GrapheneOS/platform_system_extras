@@ -28,5 +28,11 @@ cc_prebuilt_binary {
     required: [
         "preopt2cachename",
         "preloads_copy.sh",
+        "fstab.postinstall",
     ],
+}
+
+prebuilt_etc {
+    name: "fstab.postinstall",
+    src: "fstab.postinstall",
 }
