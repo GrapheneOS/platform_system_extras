@@ -165,6 +165,8 @@ def ConstructE2fsCommands(args):
     mke2fs_opts += ["-N", args.inodes]
   if args.inode_size:
     mke2fs_opts += ["-I", args.inode_size]
+  if args.mount_point:
+    mke2fs_opts += ["-M", args.mount_point]
   if args.reserved_percent:
     mke2fs_opts += ["-m", args.reserved_percent]
   if args.mke2fs_uuid:
