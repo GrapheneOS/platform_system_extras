@@ -80,6 +80,8 @@ def ParseArguments(argv):
                       help="The mount point (mke2fs).")
   parser.add_argument("--inodes", "-i",
                       help="The extfs inodes count (mke2fs).")
+  parser.add_argument("--inode_size", "-I",
+                      help="The extfs inode size (mke2fs).")
   parser.add_argument("--reserved_percent", "-M",
                       help="The reserved blocks percentage (mke2fs).")
   parser.add_argument("--flash_erase_block_size", "-e",
@@ -161,6 +163,10 @@ def ConstructE2fsCommands(args):
     mke2fs_opts += ["-L", args.label]
   if args.inodes:
     mke2fs_opts += ["-N", args.inodes]
+  if args.inode_size:
+    mke2fs_opts += ["-I", args.inode_size]
+  if args.mount_point:
+    mke2fs_opts += ["-M", args.mount_point]
   if args.reserved_percent:
     mke2fs_opts += ["-m", args.reserved_percent]
   if args.mke2fs_uuid:
