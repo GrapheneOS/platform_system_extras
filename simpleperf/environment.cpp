@@ -622,119 +622,197 @@ std::set<pid_t> WaitForAppProcesses(const std::string& package_name) {
   }
 }
 
-class ScopedFile {
- public:
-  ScopedFile(const std::string& filepath, const std::string& app_package_name = "")
-      : filepath_(filepath), app_package_name_(app_package_name) {}
+namespace {
 
-  ~ScopedFile() {
-    if (app_package_name_.empty()) {
-      unlink(filepath_.c_str());
-    } else {
-      Workload::RunCmd({"run-as", app_package_name_, "rm", "-rf", filepath_});
+class InAppRunner {
+ public:
+  InAppRunner(const std::string& package_name) : package_name_(package_name) {}
+  virtual ~InAppRunner() {
+    if (!tracepoint_file_.empty()) {
+      unlink(tracepoint_file_.c_str());
     }
   }
+  virtual bool Prepare() = 0;
+  bool RunCmdInApp(const std::string& cmd, const std::vector<std::string>& args,
+                   size_t workload_args_size, const std::string& output_filepath,
+                   bool need_tracepoint_events);
+ protected:
+  virtual std::vector<std::string> GetPrefixArgs(const std::string& cmd) = 0;
 
- private:
-  std::string filepath_;
-  std::string app_package_name_;
+  const std::string package_name_;
+  std::string tracepoint_file_;
 };
 
-bool RunInAppContext(const std::string& app_package_name, const std::string& cmd,
-                     const std::vector<std::string>& args, size_t workload_args_size,
-                     const std::string& output_filepath, bool need_tracepoint_events) {
-  // 1. Test if the package exists.
-  if (!Workload::RunCmd({"run-as", app_package_name, "echo", ">/dev/null"}, false)) {
-    LOG(ERROR) << "Package " << app_package_name << " doesn't exist or isn't debuggable.";
-    return false;
-  }
-
-  // 2. Copy simpleperf binary to the package. Create tracepoint_file if needed.
-  std::string simpleperf_path;
-  if (!android::base::Readlink("/proc/self/exe", &simpleperf_path)) {
-    PLOG(ERROR) << "ReadLink failed";
-    return false;
-  }
-  if (!Workload::RunCmd({"run-as", app_package_name, "cp", simpleperf_path, "simpleperf"})) {
-    return false;
-  }
-  ScopedFile scoped_simpleperf("simpleperf", app_package_name);
-  std::unique_ptr<ScopedFile> scoped_tracepoint_file;
-  const std::string tracepoint_file = "/data/local/tmp/tracepoint_events";
+bool InAppRunner::RunCmdInApp(const std::string& cmd, const std::vector<std::string>& cmd_args,
+                              size_t workload_args_size, const std::string& output_filepath,
+                              bool need_tracepoint_events) {
+  // 1. Build cmd args running in app's context.
+  std::vector<std::string> args = GetPrefixArgs(cmd);
+  args.insert(args.end(), {"--in-app", "--log", GetLogSeverityName()});
   if (need_tracepoint_events) {
     // Since we can't read tracepoint events from tracefs in app's context, we need to prepare
     // them in tracepoint_file in shell's context, and pass the path of tracepoint_file to the
     // child process using --tracepoint-events option.
+    const std::string tracepoint_file = "/data/local/tmp/tracepoint_events";
     if (!android::base::WriteStringToFile(GetTracepointEvents(), tracepoint_file)) {
       PLOG(ERROR) << "Failed to store tracepoint events";
       return false;
     }
-    scoped_tracepoint_file.reset(new ScopedFile(tracepoint_file));
+    tracepoint_file_ = tracepoint_file;
+    args.insert(args.end(), {"--tracepoint-events", tracepoint_file_});
   }
 
-  // 3. Prepare to start child process to profile.
-  std::string output_basename = output_filepath.empty() ? "" :
-                                    android::base::Basename(output_filepath);
-  std::vector<std::string> new_args =
-      {"run-as", app_package_name, "./simpleperf", cmd, "--in-app", "--log", GetLogSeverityName()};
-  if (need_tracepoint_events) {
-    new_args.push_back("--tracepoint-events");
-    new_args.push_back(tracepoint_file);
-  }
-  for (size_t i = 0; i < args.size(); ++i) {
-    if (i >= args.size() - workload_args_size || args[i] != "-o") {
-      new_args.push_back(args[i]);
-    } else {
-      new_args.push_back(args[i++]);
-      new_args.push_back(output_basename);
+  android::base::unique_fd out_fd;
+  if (!output_filepath.empty()) {
+    // A process running in app's context can't open a file outside it's data directory to write.
+    // So pass it a file descriptor to write.
+    out_fd = FileHelper::OpenWriteOnly(output_filepath);
+    if (out_fd == -1) {
+      PLOG(ERROR) << "Failed to open " << output_filepath;
+      return false;
     }
+    args.insert(args.end(), {"--out-fd", std::to_string(int(out_fd))});
   }
-  std::unique_ptr<Workload> workload = Workload::CreateWorkload(new_args);
+
+  // We can't send signal to a process running in app's context. So use a pipe file to send stop
+  // signal.
+  android::base::unique_fd stop_signal_rfd;
+  android::base::unique_fd stop_signal_wfd;
+  if (!android::base::Pipe(&stop_signal_rfd, &stop_signal_wfd, 0)) {
+    PLOG(ERROR) << "pipe";
+    return false;
+  }
+  args.insert(args.end(), {"--stop-signal-fd", std::to_string(int(stop_signal_rfd))});
+
+  for (size_t i = 0; i < cmd_args.size(); ++i) {
+    if (i < cmd_args.size() - workload_args_size) {
+      // Omit "-o output_file". It is replaced by "--out-fd fd".
+      if (cmd_args[i] == "-o" || cmd_args[i] == "--app") {
+        i++;
+        continue;
+      }
+    }
+    args.push_back(cmd_args[i]);
+  }
+  char* argv[args.size() + 1];
+  for (size_t i = 0; i < args.size(); ++i) {
+    argv[i] = &args[i][0];
+  }
+  argv[args.size()] = nullptr;
+
+  // 2. Run child process in app's context.
+  auto ChildProcFn = [&]() {
+    stop_signal_wfd.reset();
+    execvp(argv[0], argv);
+    exit(1);
+  };
+  std::unique_ptr<Workload> workload = Workload::CreateWorkload(ChildProcFn);
   if (!workload) {
     return false;
   }
+  stop_signal_rfd.reset();
 
+  // Wait on signals.
   IOEventLoop loop;
-  bool need_to_kill_child = false;
+  bool need_to_stop_child = false;
   std::vector<int> stop_signals = {SIGINT, SIGTERM};
   if (!SignalIsIgnored(SIGHUP)) {
     stop_signals.push_back(SIGHUP);
   }
   if (!loop.AddSignalEvents(stop_signals,
-                            [&]() { need_to_kill_child = true; return loop.ExitLoop(); })) {
+                            [&]() { need_to_stop_child = true; return loop.ExitLoop(); })) {
     return false;
   }
   if (!loop.AddSignalEvent(SIGCHLD, [&]() { return loop.ExitLoop(); })) {
     return false;
   }
 
-  // 4. Create child process to run run-as, and wait for the child process.
   if (!workload->Start()) {
     return false;
   }
   if (!loop.RunLoop()) {
     return false;
   }
-  if (need_to_kill_child) {
-    // The child process can exit before we kill it, so don't report kill errors.
-    Workload::RunCmd({"run-as", app_package_name, "pkill", "simpleperf"}, false);
+  if (need_to_stop_child) {
+    stop_signal_wfd.reset();
   }
   int exit_code;
   if (!workload->WaitChildProcess(&exit_code) || exit_code != 0) {
     return false;
   }
+  return true;
+}
 
-  // 5. If there is any output file, copy it from the app's directory.
-  if (!output_filepath.empty()) {
-    if (!Workload::RunCmd({"run-as", app_package_name, "cat", output_basename,
-                           ">" + output_filepath})) {
-      return false;
+class RunAs : public InAppRunner {
+ public:
+  RunAs(const std::string& package_name) : InAppRunner(package_name) {}
+  virtual ~RunAs() {
+    if (simpleperf_copied_in_app_) {
+      Workload::RunCmd({"run-as", package_name_, "rm", "-rf", "simpleperf"});
     }
-    if (!Workload::RunCmd({"run-as", app_package_name, "rm", output_basename})) {
+  }
+  bool Prepare() override;
+
+ protected:
+  std::vector<std::string> GetPrefixArgs(const std::string& cmd) {
+    return {"run-as", package_name_,
+            simpleperf_copied_in_app_ ? "./simpleperf" : simpleperf_path_, cmd,
+            "--app", package_name_};
+  }
+
+  bool simpleperf_copied_in_app_ = false;
+  std::string simpleperf_path_;
+};
+
+bool RunAs::Prepare() {
+  // Test if run-as can access the package.
+  if (!Workload::RunCmd({"run-as", package_name_, "echo", ">/dev/null", "2>/dev/null"}, false)) {
+    return false;
+  }
+  // run-as can't run /data/local/tmp/simpleperf directly. So copy simpleperf binary if needed.
+  if (!android::base::Readlink("/proc/self/exe", &simpleperf_path_)) {
+    PLOG(ERROR) << "ReadLink failed";
+    return false;
+  }
+  if (android::base::StartsWith(simpleperf_path_, "/system")) {
+    return true;
+  }
+  if (!Workload::RunCmd({"run-as", package_name_, "cp", simpleperf_path_, "simpleperf"})) {
+    return false;
+  }
+  simpleperf_copied_in_app_ = true;
+  return true;
+}
+
+class SimpleperfAppRunner : public InAppRunner {
+ public:
+  SimpleperfAppRunner(const std::string& package_name) : InAppRunner(package_name) {}
+  bool Prepare() override {
+    return GetAndroidVersion() >= kAndroidVersionP + 1;
+  }
+
+ protected:
+  std::vector<std::string> GetPrefixArgs(const std::string& cmd) {
+    return {"simpleperf_app_runner", package_name_, cmd};
+  }
+};
+
+}  // namespace
+
+bool RunInAppContext(const std::string& app_package_name, const std::string& cmd,
+                     const std::vector<std::string>& args, size_t workload_args_size,
+                     const std::string& output_filepath, bool need_tracepoint_events) {
+  std::unique_ptr<InAppRunner> in_app_runner(new RunAs(app_package_name));
+  if (!in_app_runner->Prepare()) {
+    in_app_runner.reset(new SimpleperfAppRunner(app_package_name));
+    if (!in_app_runner->Prepare()) {
+      LOG(ERROR) << "Package " << app_package_name
+          << " doesn't exist or isn't debuggable/profileable.";
       return false;
     }
   }
-  return true;
+  return in_app_runner->RunCmdInApp(cmd, args, workload_args_size, output_filepath,
+                                    need_tracepoint_events);
 }
 
 static std::string default_package_name;
