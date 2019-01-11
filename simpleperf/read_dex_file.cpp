@@ -26,7 +26,7 @@
 
 #include <android-base/logging.h>
 #include <android-base/unique_fd.h>
-#include <art_api/ext_dex_file.h>
+#include <art_api/dex_file_support.h>
 
 static bool ReadSymbols(
     const std::vector<uint64_t>& dex_file_offsets, std::vector<DexFileSymbol>* symbols,
