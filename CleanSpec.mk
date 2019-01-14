@@ -69,6 +69,11 @@ $(call add-clean-step, rm -f $(TARGET_OUT_OPTIONAL_EXECUTABLES)/cpueater)
 $(call add-clean-step, rm -f $(TARGET_OUT_OPTIONAL_EXECUTABLES)/daemonize)
 $(call add-clean-step, rm -f $(TARGET_OUT_OPTIONAL_EXECUTABLES)/directiotest)
 $(call add-clean-step, rm -f $(TARGET_OUT_OPTIONAL_EXECUTABLES)/ioshark_bench)
+
+# Remove `no-perfprofd` from the system partition, as its module
+# definition has been removed from the Blueprint file.
+$(call add-clean-step, rm -rf $(PRODUCT_OUT)/system/bin/no-perfprofd)
+
 # ************************************************
 # NEWER CLEAN STEPS MUST BE AT THE END OF THE LIST
 # ************************************************
