@@ -264,14 +264,3 @@ subdirs = [
     "binder_interface",
     "tests",
 ]
-
-// Dummy module overriding perfprofd to prevent its installation on some build products.
-cc_binary {
-    name: "no-perfprofd",
-    srcs: [
-        "no-perfprofd.cc",
-    ],
-    overrides: [
-        "perfprofd",
-    ],
-}
