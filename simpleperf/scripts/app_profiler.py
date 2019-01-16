@@ -304,7 +304,7 @@ class AppProfiler(ProfilerBase):
             log_exit("Can't start activity %s" % activity)
 
     def start_test(self):
-        runner = self.args.app + '/android.support.test.runner.AndroidJUnitRunner'
+        runner = self.args.app + '/androidx.test.runner.AndroidJUnitRunner'
         result = self.adb.run(['shell', 'am', 'instrument', '-e', 'class',
                                self.args.test, runner])
         if not result:
