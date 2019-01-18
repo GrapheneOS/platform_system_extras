@@ -182,26 +182,24 @@ include $(BUILD_HOST_STATIC_LIBRARY)
 
 # simpleperf target
 include $(CLEAR_VARS)
-LOCAL_MODULE := simpleperf
-LOCAL_MODULE_TAGS := debug
-LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
+LOCAL_MODULE := simpleperf_static
 LOCAL_CFLAGS := $(simpleperf_cflags_target)
 LOCAL_SRC_FILES := main.cpp
 LOCAL_STATIC_LIBRARIES := libsimpleperf $(simpleperf_static_libraries_with_libc_target)
 ifdef TARGET_2ND_ARCH
 ifneq ($(TARGET_TRANSLATE_2ND_ARCH),true)
 LOCAL_MULTILIB := both
-LOCAL_MODULE_STEM_32 := simpleperf32
-LOCAL_MODULE_STEM_64 := simpleperf
+LOCAL_MODULE_STEM_32 := simpleperf_static32
+LOCAL_MODULE_STEM_64 := simpleperf_static
 endif
 endif
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 include $(LLVM_DEVICE_BUILD_MK)
 include $(BUILD_EXECUTABLE)
 
-$(call dist-for-goals,sdk,$(ALL_MODULES.simpleperf.BUILT))
+$(call dist-for-goals,sdk,$(ALL_MODULES.simpleperf_static.BUILT))
 ifdef TARGET_2ND_ARCH
-$(call dist-for-goals,sdk,$(ALL_MODULES.simpleperf$(TARGET_2ND_ARCH_MODULE_SUFFIX).BUILT))
+$(call dist-for-goals,sdk,$(ALL_MODULES.simpleperf_static$(TARGET_2ND_ARCH_MODULE_SUFFIX).BUILT))
 endif
 
 # simpleperf host
