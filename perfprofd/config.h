@@ -46,7 +46,7 @@ struct Config {
   // Config directory (where to read configs).
   std::string config_directory = "/data/data/com.google.android.gms/files";
   // Full path to 'perf' executable.
-  std::string perf_path = "/system/xbin/simpleperf";
+  std::string perf_path = "/system/bin/simpleperf";
 
   // Desired sampling period (passed to perf -c option). Small
   // sampling periods can perturb the collected profiles, so enforce
