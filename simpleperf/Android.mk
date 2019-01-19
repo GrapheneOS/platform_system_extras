@@ -138,8 +138,6 @@ libsimpleperf_src_files_windows := \
 # libsimpleperf target
 include $(CLEAR_VARS)
 LOCAL_MODULE := libsimpleperf
-LOCAL_MODULE_TAGS := debug
-LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_CFLAGS := $(simpleperf_cflags_target)
 LOCAL_SRC_FILES := \
   $(libsimpleperf_src_files) \
