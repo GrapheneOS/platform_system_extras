@@ -29,27 +29,6 @@ cc_library {
     export_include_dirs: ["include"],
 }
 
-cc_binary {
-    name: "librank",
-    cflags: ["-Werror"],
-    srcs: ["librank.cpp"],
-    shared_libs: ["libpagemap"],
-}
-
-cc_binary {
-    name: "procmem",
-    cflags: ["-Werror"],
-    srcs: ["procmem.cpp"],
-    shared_libs: ["libpagemap"],
-}
-
-cc_binary {
-    name: "procrank",
-    cflags: ["-Werror"],
-    srcs: ["procrank.cpp"],
-    shared_libs: ["libpagemap", "libbase"],
-}
-
 cc_test {
     name: "pagemap_test",
     cflags: ["-Werror"],
