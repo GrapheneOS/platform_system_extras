@@ -266,7 +266,8 @@ bool HasHardwareCounter() {
     std::string cpu_info;
     if (android::base::ReadFileToString("/proc/cpuinfo", &cpu_info)) {
       std::string hardware = GetHardwareFromCpuInfo(cpu_info);
-      if (std::regex_search(hardware, std::regex(R"(i\.MX6.*Quad)"))) {
+      if (std::regex_search(hardware, std::regex(R"(i\.MX6.*Quad)")) ||
+          std::regex_search(hardware, std::regex(R"(SC7731e)")) ) {
         has_hw_counter = 0;
       }
     }

@@ -1323,5 +1323,5 @@ $ lunch aosp_arm64-userdebug
 $ mmma system/extras/simpleperf -j30
 ```
 
-If built successfully, out/target/product/generic_arm64/system/xbin/simpleperf is for ARM64, and
-out/target/product/generic_arm64/system/xbin/simpleperf32 is for ARM.
+If built successfully, out/target/product/generic_arm64/system/bin/simpleperf is for ARM64, and
+out/target/product/generic_arm64/system/bin/simpleperf32 is for ARM.
