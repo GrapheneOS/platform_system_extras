@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include <android-base/file.h>
+#include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 
 #include <map>
@@ -241,7 +242,7 @@ bool IsInNativeAbi() {
     FILE* fp = popen("uname -m", "re");
     char buf[40];
     memset(buf, '\0', sizeof(buf));
-    fgets(buf, sizeof(buf), fp);
+    CHECK_EQ(fgets(buf, sizeof(buf), fp), buf);
     pclose(fp);
     std::string s = buf;
     in_native_abi = 1;
