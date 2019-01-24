@@ -29,6 +29,7 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/strings.h>
+#include <android-base/unique_fd.h>
 
 #include "command.h"
 #include "environment.h"
@@ -338,6 +339,8 @@ class StatCommand : public Command {
 // Below options are only used internally and shouldn't be visible to the public.
 "--in-app         We are already running in the app's context.\n"
 "--tracepoint-events file_name   Read tracepoint events from [file_name] instead of tracefs.\n"
+"--out-fd <fd>    Write output to a file descriptor.\n"
+"--stop-signal-fd <fd>   Stop stating when fd is readable.\n"
 #endif
                 // clang-format on
                 ),
@@ -375,9 +378,11 @@ class StatCommand : public Command {
   std::vector<int> cpus_;
   EventSelectionSet event_selection_set_;
   std::string output_filename_;
+  android::base::unique_fd out_fd_;
   bool csv_;
   std::string app_package_name_;
   bool in_app_context_;
+  android::base::unique_fd stop_signal_fd_;
 };
 
 bool StatCommand::Run(const std::vector<std::string>& args) {
@@ -438,15 +443,20 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
     return false;
   }
   std::unique_ptr<FILE, decltype(&fclose)> fp_holder(nullptr, fclose);
-  FILE* fp = stdout;
   if (!output_filename_.empty()) {
-    fp_holder.reset(fopen(output_filename_.c_str(), "w"));
+    fp_holder.reset(fopen(output_filename_.c_str(), "we"));
     if (fp_holder == nullptr) {
       PLOG(ERROR) << "failed to open " << output_filename_;
       return false;
     }
-    fp = fp_holder.get();
+  } else if (out_fd_ != -1) {
+    fp_holder.reset(fdopen(out_fd_.release(), "we"));
+    if (fp_holder == nullptr) {
+      PLOG(ERROR) << "failed to write output.";
+      return false;
+    }
   }
+  FILE* fp = fp_holder ? fp_holder.get() : stdout;
 
   // 4. Add signal/periodic Events.
   IOEventLoop* loop = event_selection_set_.GetIOEventLoop();
@@ -465,13 +475,19 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   if (need_to_check_targets && !event_selection_set_.StopWhenNoMoreTargets()) {
     return false;
   }
-  if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM, SIGHUP},
-                             [&]() { return loop->ExitLoop(); })) {
+  auto exit_loop_callback = [loop]() {
+    return loop->ExitLoop();
+  };
+  if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM, SIGHUP}, exit_loop_callback)) {
     return false;
   }
+  if (stop_signal_fd_ != -1) {
+    if (!loop->AddReadEvent(stop_signal_fd_, exit_loop_callback)) {
+      return false;
+    }
+  }
   if (duration_in_sec_ != 0) {
-    if (!loop->AddPeriodicEvent(SecondToTimeval(duration_in_sec_),
-                                [&]() { return loop->ExitLoop(); })) {
+    if (!loop->AddPeriodicEvent(SecondToTimeval(duration_in_sec_), exit_loop_callback)) {
       return false;
     }
   }
@@ -569,6 +585,12 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       output_filename_ = args[i];
+    } else if (args[i] == "--out-fd") {
+      int fd;
+      if (!GetUintOption(args, &i, &fd)) {
+        return false;
+      }
+      out_fd_.reset(fd);
     } else if (args[i] == "-p") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -578,6 +600,12 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       event_selection_set_.AddMonitoredProcesses(pids);
+    } else if (args[i] == "--stop-signal-fd") {
+      int fd;
+      if (!GetUintOption(args, &i, &fd)) {
+        return false;
+      }
+      stop_signal_fd_.reset(fd);
     } else if (args[i] == "-t") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
