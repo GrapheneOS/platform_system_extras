@@ -32,6 +32,7 @@
 #include <android-base/file.h>
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
+#include <android-base/unique_fd.h>
 #if defined(__ANDROID__)
 #include <android-base/properties.h>
 #endif
@@ -218,6 +219,8 @@ class RecordCommand : public Command {
 // Below options are only used internally and shouldn't be visible to the public.
 "--in-app         We are already running in the app's context.\n"
 "--tracepoint-events file_name   Read tracepoint events from [file_name] instead of tracefs.\n"
+"--out-fd <fd>    Write perf.data to a file descriptor.\n"
+"--stop-signal-fd <fd>  Stop recording when fd is readable.\n"
 #endif
             // clang-format on
             ),
@@ -310,7 +313,9 @@ class RecordCommand : public Command {
 
   ThreadTree thread_tree_;
   std::string record_filename_;
+  android::base::unique_fd out_fd_;
   std::unique_ptr<RecordFileWriter> record_file_writer_;
+  android::base::unique_fd stop_signal_fd_;
 
   uint64_t sample_record_count_;
   uint64_t lost_record_count_;
@@ -477,14 +482,21 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     return false;
   }
   IOEventLoop* loop = event_selection_set_.GetIOEventLoop();
-  if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM},
-                             [loop]() { return loop->ExitLoop(); })) {
+  auto exit_loop_callback = [loop]() {
+    return loop->ExitLoop();
+  };
+  if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM}, exit_loop_callback)) {
     return false;
   }
 
   // Only add an event for SIGHUP if we didn't inherit SIG_IGN (e.g. from nohup).
   if (!SignalIsIgnored(SIGHUP)) {
-    if (!loop->AddSignalEvent(SIGHUP, [loop]() { return loop->ExitLoop(); })) {
+    if (!loop->AddSignalEvent(SIGHUP, exit_loop_callback)) {
+      return false;
+    }
+  }
+  if (stop_signal_fd_ != -1) {
+    if (!loop->AddReadEvent(stop_signal_fd_, exit_loop_callback)) {
       return false;
     }
   }
@@ -545,6 +557,31 @@ bool RecordCommand::DoRecording(Workload* workload) {
   return true;
 }
 
+static bool WriteRecordDataToOutFd(const std::string& in_filename, android::base::unique_fd out_fd) {
+  android::base::unique_fd in_fd(FileHelper::OpenReadOnly(in_filename));
+  if (in_fd == -1) {
+    PLOG(ERROR) << "Failed to open " << in_filename;
+    return false;
+  }
+  char buf[8192];
+  while (true) {
+    ssize_t n = TEMP_FAILURE_RETRY(read(in_fd, buf, sizeof(buf)));
+    if (n < 0) {
+      PLOG(ERROR) << "Failed to read " << in_filename;
+      return false;
+    }
+    if (n == 0) {
+      break;
+    }
+    if (!android::base::WriteFully(out_fd, buf, n)) {
+      PLOG(ERROR) << "Failed to write to out_fd";
+      return false;
+    }
+  }
+  unlink(in_filename.c_str());
+  return true;
+}
+
 bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
   // 1. Post unwind dwarf callchain.
   if (unwind_dwarf_callchain_ && post_unwind_) {
@@ -563,6 +600,9 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
     return false;
   }
   if (!record_file_writer_->Close()) {
+    return false;
+  }
+  if (out_fd_ != -1 && !WriteRecordDataToOutFd(record_filename_, std::move(out_fd_))) {
     return false;
   }
   time_stat_.post_process_time = GetSystemClock();
@@ -783,6 +823,12 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       record_filename_ = args[i];
+    } else if (args[i] == "--out-fd") {
+      int fd;
+      if (!GetUintOption(args, &i, &fd)) {
+        return false;
+      }
+      out_fd_.reset(fd);
     } else if (args[i] == "-p") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -810,6 +856,12 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       if (!GetUintOption(args, &i, &start_profiling_fd_)) {
         return false;
       }
+    } else if (args[i] == "--stop-signal-fd") {
+      int fd;
+      if (!GetUintOption(args, &i, &fd)) {
+        return false;
+      }
+      stop_signal_fd_.reset(fd);
     } else if (args[i] == "--symfs") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
