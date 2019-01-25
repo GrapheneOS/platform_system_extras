@@ -22,6 +22,8 @@
 #include <chrono>
 #include <thread>
 
+#include <android-base/logging.h>
+
 TEST(IOEventLoop, read) {
   int fd[2];
   ASSERT_EQ(0, pipe(fd));
@@ -49,7 +51,7 @@ TEST(IOEventLoop, read) {
     for (int i = 0; i < 100; ++i) {
       usleep(1000);
       char c;
-      write(fd[1], &c, 1);
+      CHECK_EQ(write(fd[1], &c, 1), 1);
     }
   });
   ASSERT_TRUE(loop.RunLoop());
@@ -169,7 +171,7 @@ TEST(IOEventLoop, read_and_del_event) {
     for (int i = 0; i < 100; ++i) {
       usleep(1000);
       char c;
-      write(fd[1], &c, 1);
+      CHECK_EQ(write(fd[1], &c, 1), 1);
     }
   });
   ASSERT_TRUE(loop.RunLoop());
