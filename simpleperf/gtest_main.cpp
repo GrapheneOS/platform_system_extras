@@ -23,7 +23,6 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/strings.h>
-#include <ziparchive/zip_archive.h>
 
 #if defined(__ANDROID__)
 #include <android-base/properties.h>
@@ -40,63 +39,6 @@
 static std::string testdata_dir;
 
 #if defined(__ANDROID__)
-static const std::string testdata_section = ".testzipdata";
-
-static bool ExtractTestDataFromElfSection() {
-  if (!MkdirWithParents(testdata_dir)) {
-    PLOG(ERROR) << "failed to create testdata_dir " << testdata_dir;
-    return false;
-  }
-  std::string content;
-  ElfStatus result = ReadSectionFromElfFile("/proc/self/exe", testdata_section, &content);
-  if (result != ElfStatus::NO_ERROR) {
-    LOG(ERROR) << "failed to read section " << testdata_section
-               << ": " << result;
-    return false;
-  }
-  TemporaryFile tmp_file;
-  if (!android::base::WriteStringToFile(content, tmp_file.path)) {
-    PLOG(ERROR) << "failed to write file " << tmp_file.path;
-    return false;
-  }
-  std::unique_ptr<ArchiveHelper> ahelper = ArchiveHelper::CreateInstance(tmp_file.path);
-  if (!ahelper) {
-    LOG(ERROR) << "failed to open archive " << tmp_file.path;
-    return false;
-  }
-  bool has_error = false;
-  auto callback = [&](ZipEntry& entry, const std::string& name) {
-    std::string path = testdata_dir + name;
-    // Skip dir.
-    if (path.back() == '/') {
-      return true;
-    }
-    if (!MkdirWithParents(path)) {
-      LOG(ERROR) << "failed to create dir for " << path;
-      has_error = true;
-      return false;
-    }
-    android::base::unique_fd fd = FileHelper::OpenWriteOnly(path);
-    if (fd == -1) {
-      PLOG(ERROR) << "failed to create file " << path;
-      has_error = true;
-      return false;
-    }
-    std::vector<uint8_t> data;
-    if (!ahelper->GetEntryData(entry, &data)) {
-      LOG(ERROR) << "failed to extract entry " << name;
-      has_error = true;
-      return false;
-    }
-    if (!android::base::WriteFully(fd, data.data(), data.size())) {
-      LOG(ERROR) << "failed to write file " << path;
-      has_error = true;
-      return false;
-    }
-    return true;
-  };
-  return ahelper->IterateEntries(callback) && !has_error;
-}
 
 class ScopedEnablingPerf {
  public:
@@ -171,6 +113,7 @@ int main(int argc, char** argv) {
   ScopedWorkloadExecutable scoped_workload_executable;
 #endif
 
+  testdata_dir = std::string(dirname(argv[0])) + "/testdata";
   for (int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
       testdata_dir = argv[i + 1];
@@ -195,26 +138,14 @@ int main(int argc, char** argv) {
   // /proc/sys/kernel/perf_event_paranoid is 3, so restore perf_harden
   // value after current test to not break that test.
   ScopedEnablingPerf scoped_enabling_perf;
-
-  std::unique_ptr<ScopedTempDir> tmp_dir;
-  if (!::testing::GTEST_FLAG(list_tests) && testdata_dir.empty()) {
-    testdata_dir = std::string(dirname(argv[0])) + "/testdata";
-    if (!IsDir(testdata_dir)) {
-      tmp_dir.reset(new ScopedTempDir);
-      testdata_dir = std::string(tmp_dir->path()) + "/";
-      if (!ExtractTestDataFromElfSection()) {
-        LOG(ERROR) << "failed to extract test data from elf section";
-        return 1;
-      }
-    }
-  }
-
 #endif
 
   testing::InitGoogleTest(&argc, argv);
-  if (!::testing::GTEST_FLAG(list_tests) && testdata_dir.empty()) {
-    printf("Usage: %s -t <testdata_dir>\n", argv[0]);
-    return 1;
+  if (!::testing::GTEST_FLAG(list_tests)) {
+    if (!IsDir(testdata_dir)) {
+      LOG(ERROR) << "testdata wasn't found. Use \"" << argv[0] << " -t <testdata_dir>\"";
+      return 1;
+    }
   }
   if (!android::base::EndsWith(testdata_dir, OS_PATH_SEPARATOR)) {
     testdata_dir += OS_PATH_SEPARATOR;
