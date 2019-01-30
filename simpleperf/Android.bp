@@ -583,7 +583,7 @@ cc_library_static {
     ],
     host_supported: false,
     cflags: [
-        "-DRUN_IN_APP_CONTEXT=\"com.android.simpleperf\"",
+        "-DIN_CTS_TEST",
     ],
     static_libs: [
         "libgtest",

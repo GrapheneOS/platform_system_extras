@@ -90,14 +90,7 @@ void CreateProcesses(size_t count,
   // Create workloads run longer than profiling time.
   for (size_t i = 0; i < count; ++i) {
     std::unique_ptr<Workload> workload;
-    if (GetDefaultAppPackageName().empty()) {
-      workload = Workload::CreateWorkload(RunWorkloadFunction);
-    } else {
-      workload = Workload::CreateWorkload({"run-as", GetDefaultAppPackageName(), "./workload"});
-      workload->SetKillFunction([](pid_t pid) {
-        Workload::RunCmd({"run-as", GetDefaultAppPackageName(), "kill", std::to_string(pid)});
-      });
-    }
+    workload = Workload::CreateWorkload(RunWorkloadFunction);
     ASSERT_TRUE(workload != nullptr);
     ASSERT_TRUE(workload->Start());
     workloads->push_back(std::move(workload));
@@ -122,7 +115,6 @@ TEST(stat_cmd, existing_threads) {
 }
 
 TEST(stat_cmd, no_monitored_threads) {
-  ScopedAppPackageName scoped_package_name("");
   ASSERT_FALSE(StatCmd()->Run({}));
   ASSERT_FALSE(StatCmd()->Run({""}));
 }
@@ -195,8 +187,6 @@ TEST(stat_cmd, no_modifier_for_clock_events) {
 }
 
 TEST(stat_cmd, handle_SIGHUP) {
-  // See http://b/79495636.
-  ScopedAppPackageName scoped_package_name("");
   std::thread thread([]() {
     sleep(1);
     kill(getpid(), SIGHUP);
@@ -296,4 +286,20 @@ TEST(stat_cmd, set_comm_in_another_thread) {
     // Sleep 1s to enter and exit cpu idle, which may abort the kernel.
     sleep(1);
   }
+}
+
+static void TestStatingApps(const std::string& app_name) {
+  // Bring the app to foreground.
+  ASSERT_TRUE(Workload::RunCmd({"am", "start", app_name + "/.MainActivity"}));
+  ASSERT_TRUE(StatCmd()->Run({"--app", app_name, "--duration", "3"}));
+}
+
+TEST(stat_cmd, app_option_for_debuggable_app) {
+  TEST_REQUIRE_APPS();
+  TestStatingApps("com.android.simpleperf.debuggable");
+}
+
+TEST(stat_cmd, app_option_for_profileable_app) {
+  TEST_REQUIRE_APPS();
+  TestStatingApps("com.android.simpleperf.profileable");
 }
