@@ -429,7 +429,6 @@ cc_library_shared {
     dist: {
         targets: ["sdk", "win_sdk"],
     },
-    ldflags: ["-Wl,--exclude-libs,ALL"],
     srcs: [
         "report_lib_interface.cpp",
     ],
@@ -438,6 +437,12 @@ cc_library_shared {
     target: {
         android: {
             enabled: false,
+        },
+        linux: {
+            ldflags: ["-Wl,--exclude-libs,ALL"],
+        },
+        windows: {
+            ldflags: ["-Wl,--exclude-libs,ALL"],
         },
         darwin: {
             dist: {
