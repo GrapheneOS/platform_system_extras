@@ -387,67 +387,50 @@ TEST(record_cmd, kernel_symbol) {
   ASSERT_TRUE(success);
 }
 
-// Check if the dso/symbol records in perf.data matches our expectation.
-static void CheckDsoSymbolRecords(const std::string& path,
-                                  bool can_have_dso_symbol_records,
-                                  bool* success) {
-  *success = false;
-  std::unique_ptr<RecordFileReader> reader =
-      RecordFileReader::CreateInstance(path);
-  ASSERT_TRUE(reader != nullptr);
-  std::vector<std::unique_ptr<Record>> records = reader->DataSection();
-  bool has_dso_record = false;
-  bool has_symbol_record = false;
-  std::map<uint64_t, bool> dso_hit_map;
-  for (const auto& record : records) {
-    if (record->type() == SIMPLE_PERF_RECORD_DSO) {
-      has_dso_record = true;
-      uint64_t dso_id = static_cast<const DsoRecord*>(record.get())->dso_id;
-      ASSERT_EQ(dso_hit_map.end(), dso_hit_map.find(dso_id));
-      dso_hit_map.insert(std::make_pair(dso_id, false));
-    } else if (record->type() == SIMPLE_PERF_RECORD_SYMBOL) {
-      has_symbol_record = true;
-      uint64_t dso_id = static_cast<const SymbolRecord*>(record.get())->dso_id;
-      auto it = dso_hit_map.find(dso_id);
-      ASSERT_NE(dso_hit_map.end(), it);
-      it->second = true;
+// Check if dumped symbols in perf.data matches our expectation.
+static bool CheckDumpedSymbols(const std::string& path, bool allow_dumped_symbols) {
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(path);
+  if (!reader) {
+    return false;
+  }
+  std::string file_path;
+  uint32_t file_type;
+  uint64_t min_vaddr;
+  std::vector<Symbol> symbols;
+  std::vector<uint64_t> dex_file_offsets;
+  size_t read_pos = 0;
+  bool has_dumped_symbols = false;
+  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr, &symbols,
+                                 &dex_file_offsets)) {
+    if (!symbols.empty()) {
+      has_dumped_symbols = true;
     }
   }
-  if (can_have_dso_symbol_records) {
-    // It is possible that there are no samples hitting functions having symbol.
-    // In that case, there are no dso/symbol records.
-    ASSERT_EQ(has_dso_record, has_symbol_record);
-    for (auto& pair : dso_hit_map) {
-      ASSERT_TRUE(pair.second);
-    }
-  } else {
-    ASSERT_FALSE(has_dso_record);
-    ASSERT_FALSE(has_symbol_record);
+  // It is possible that there are no samples hitting functions having symbols.
+  // So "allow_dumped_symbols = true" doesn't guarantee "has_dumped_symbols = true".
+  if (!allow_dumped_symbols && has_dumped_symbols) {
+    return false;
   }
-  *success = true;
+  return true;
 }
 
 TEST(record_cmd, no_dump_symbols) {
   TEST_REQUIRE_HW_COUNTER();
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
-  bool success;
-  CheckDsoSymbolRecords(tmpfile.path, true, &success);
-  ASSERT_TRUE(success);
-  ASSERT_TRUE(RunRecordCmd({"--no-dump-symbols"}, tmpfile.path));
-  CheckDsoSymbolRecords(tmpfile.path, false, &success);
-  ASSERT_TRUE(success);
+  ASSERT_TRUE(CheckDumpedSymbols(tmpfile.path, true));
+  ASSERT_TRUE(RunRecordCmd({"--no-dump-symbols", "--no-dump-kernel-symbols"}, tmpfile.path));
+  ASSERT_TRUE(CheckDumpedSymbols(tmpfile.path, false));
   OMIT_TEST_ON_NON_NATIVE_ABIS();
   ASSERT_TRUE(IsDwarfCallChainSamplingSupported());
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(1, &workloads);
   std::string pid = std::to_string(workloads[0]->GetPid());
   ASSERT_TRUE(RunRecordCmd({"-p", pid, "-g"}, tmpfile.path));
-  CheckDsoSymbolRecords(tmpfile.path, true, &success);
-  ASSERT_TRUE(success);
-  ASSERT_TRUE(RunRecordCmd({"-p", pid, "-g", "--no-dump-symbols"}, tmpfile.path));
-  CheckDsoSymbolRecords(tmpfile.path, false, &success);
-  ASSERT_TRUE(success);
+  ASSERT_TRUE(CheckDumpedSymbols(tmpfile.path, true));
+  ASSERT_TRUE(RunRecordCmd({"-p", pid, "-g", "--no-dump-symbols", "--no-dump-kernel-symbols"},
+                           tmpfile.path));
+  ASSERT_TRUE(CheckDumpedSymbols(tmpfile.path, false));
 }
 
 TEST(record_cmd, dump_kernel_symbols) {
