@@ -338,7 +338,6 @@ TEST(record_cmd, existing_threads) {
 
 TEST(record_cmd, no_monitored_threads) {
   TEST_REQUIRE_HW_COUNTER();
-  ScopedAppPackageName scoped_package_name("");
   TemporaryFile tmpfile;
   ASSERT_FALSE(RecordCmd()->Run({"-o", tmpfile.path}));
   ASSERT_FALSE(RecordCmd()->Run({"-o", tmpfile.path, ""}));
@@ -712,4 +711,58 @@ TEST(record_cmd, cpu_percent_option) {
   ASSERT_TRUE(RunRecordCmd({"--cpu-percent", "50"}));
   ASSERT_FALSE(RunRecordCmd({"--cpu-percent", "0"}));
   ASSERT_FALSE(RunRecordCmd({"--cpu-percent", "101"}));
+}
+
+static void TestRecordingApps(const std::string& app_name) {
+  // Bring the app to foreground to avoid no samples.
+  ASSERT_TRUE(Workload::RunCmd({"am", "start", app_name + "/.MainActivity"}));
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "--app", app_name, "-g", "--duration", "3"}));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader);
+  // Check if having samples.
+  bool has_sample = false;
+  ASSERT_TRUE(reader->ReadDataSection([&](std::unique_ptr<Record> r) {
+    if (r->type() == PERF_RECORD_SAMPLE) {
+      has_sample = true;
+    }
+    return true;
+  }));
+  ASSERT_TRUE(has_sample);
+
+  // Check if we can profile Java code by looking for a Java method name in dumped symbols, which
+  // is app_name + ".MainActivity$1.run".
+  const std::string expected_class_name = app_name + ".MainActivity";
+  const std::string expected_method_name = "run";
+  std::string file_path;
+  uint32_t file_type;
+  uint64_t min_vaddr;
+  std::vector<Symbol> symbols;
+  std::vector<uint64_t> dex_file_offsets;
+  size_t read_pos = 0;
+  bool has_java_symbol = false;
+  ASSERT_TRUE(reader->HasFeature(FEAT_FILE));
+  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr, &symbols,
+                                 &dex_file_offsets)) {
+    for (const auto& symbol : symbols) {
+      const char* name = symbol.DemangledName();
+      if (strstr(name, expected_class_name.c_str()) != nullptr &&
+          strstr(name, expected_method_name.c_str()) != nullptr) {
+        has_java_symbol = true;
+      }
+    }
+  }
+  ASSERT_TRUE(has_java_symbol);
+}
+
+TEST(record_cmd, app_option_for_debuggable_app) {
+  TEST_REQUIRE_HW_COUNTER();
+  TEST_REQUIRE_APPS();
+  TestRecordingApps("com.android.simpleperf.debuggable");
+}
+
+TEST(record_cmd, app_option_for_profileable_app) {
+  TEST_REQUIRE_HW_COUNTER();
+  TEST_REQUIRE_APPS();
+  TestRecordingApps("com.android.simpleperf.profileable");
 }
