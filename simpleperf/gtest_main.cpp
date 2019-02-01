@@ -65,54 +65,11 @@ class ScopedEnablingPerf {
   std::string prop_value_;
 };
 
-class ScopedWorkloadExecutable {
- public:
-  ScopedWorkloadExecutable() {
-    std::string executable_path;
-    if (!android::base::Readlink("/proc/self/exe", &executable_path)) {
-      PLOG(ERROR) << "ReadLink failed";
-    }
-    Workload::RunCmd({"run-as", GetDefaultAppPackageName(), "cp", executable_path, "workload"});
-  }
-
-  ~ScopedWorkloadExecutable() {
-    Workload::RunCmd({"run-as", GetDefaultAppPackageName(), "rm", "workload"});
-  }
-};
-
-class ScopedTempDir {
- public:
-  ~ScopedTempDir() {
-    Workload::RunCmd({"rm", "-rf", dir_.path});
-  }
-
-  char* path() {
-    return dir_.path;
-  }
-
- private:
-  TemporaryDir dir_;
-};
-
 #endif  // defined(__ANDROID__)
 
 int main(int argc, char** argv) {
   android::base::InitLogging(argv, android::base::StderrLogger);
   android::base::LogSeverity log_severity = android::base::WARNING;
-
-#if defined(RUN_IN_APP_CONTEXT)
-  // When RUN_IN_APP_CONTEXT macro is defined, the tests running record/stat commands will
-  // be forced to run with '--app' option. It will copy the test binary to an Android application's
-  // directory, and use run-as to run the binary as simpleperf executable.
-  if (android::base::Basename(argv[0]) == "simpleperf") {
-    return RunSimpleperfCmd(argc, argv) ? 0 : 1;
-  } else if (android::base::Basename(argv[0]) == "workload") {
-    RunWorkloadFunction();
-  }
-  SetDefaultAppPackageName(RUN_IN_APP_CONTEXT);
-  ScopedWorkloadExecutable scoped_workload_executable;
-#endif
-
   testdata_dir = std::string(dirname(argv[0])) + "/testdata";
   for (int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {

@@ -252,7 +252,6 @@ class RecordCommand : public Command {
     // to stdout/stderr, which is a problem when we use '--app' option. So ignore SIGPIPE to
     // finish properly.
     signal(SIGPIPE, SIG_IGN);
-    app_package_name_ = GetDefaultAppPackageName();
   }
 
   bool Run(const std::vector<std::string>& args);

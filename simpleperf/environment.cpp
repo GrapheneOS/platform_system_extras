@@ -774,6 +774,10 @@ bool RunAs::Prepare() {
     PLOG(ERROR) << "ReadLink failed";
     return false;
   }
+  if (simpleperf_path_.find("CtsSimpleperfTest") != std::string::npos) {
+    simpleperf_path_ = "/system/bin/simpleperf";
+    return true;
+  }
   if (android::base::StartsWith(simpleperf_path_, "/system")) {
     return true;
   }
@@ -813,16 +817,6 @@ bool RunInAppContext(const std::string& app_package_name, const std::string& cmd
   }
   return in_app_runner->RunCmdInApp(cmd, args, workload_args_size, output_filepath,
                                     need_tracepoint_events);
-}
-
-static std::string default_package_name;
-
-void SetDefaultAppPackageName(const std::string& package_name) {
-  default_package_name = package_name;
-}
-
-const std::string& GetDefaultAppPackageName() {
-  return default_package_name;
 }
 
 void AllowMoreOpenedFiles() {
