@@ -107,9 +107,6 @@ bool RunInAppContext(const std::string& app_package_name, const std::string& cmd
                      const std::vector<std::string>& args, size_t workload_args_size,
                      const std::string& output_filepath, bool need_tracepoint_events);
 
-// Below two functions are only used in cts tests, to force stat/record cmd to run in app's context.
-void SetDefaultAppPackageName(const std::string& package_name);
-const std::string& GetDefaultAppPackageName();
 void AllowMoreOpenedFiles();
 
 class ScopedTempFiles {
