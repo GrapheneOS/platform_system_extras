@@ -55,8 +55,10 @@ def collect_data(args):
         app_profiler_args += ["-np", args.native_program]
     elif args.pid != -1:
         app_profiler_args += ['--pid', str(args.pid)]
+    elif args.system_wide:
+        app_profiler_args += ['--system_wide']
     else:
-        log_exit("Please set profiling target with -p, -np or --pid option.")
+        log_exit("Please set profiling target with -p, -np, --pid or --system_wide option.")
     if args.compile_java_code:
         app_profiler_args.append("--compile_java_code")
     if args.disable_adb_root:
@@ -271,6 +273,7 @@ def main():
     record_group.add_argument('--record_file', default='perf.data', help='Default is perf.data.')
     record_group.add_argument('-sc', '--skip_collection', action='store_true', help="""Skip data
                               collection""")
+    record_group.add_argument('--system_wide', action='store_true', help='Profile system wide.')
     record_group.add_argument('-t', '--capture_duration', type=int, default=10, help="""Capture
                               duration in seconds.""")
 
@@ -308,9 +311,15 @@ def main():
         if args.pid != -1:
             process.pid = args.pid
             args.native_program = ''
+        if args.system_wide:
+            process.pid = -1
+            args.native_program = ''
 
-        process.name = args.app or args.native_program or ('Process %d' % args.pid)
-        log_info("Starting data collection stage for process '%s'." % process.name)
+        if args.system_wide:
+            process.name = 'system_wide'
+        else:
+            process.name = args.app or args.native_program or ('Process %d' % args.pid)
+        log_info("Starting data collection stage for '%s'." % process.name)
         if not collect_data(args):
             log_exit("Unable to collect data.")
         if process.pid == 0:

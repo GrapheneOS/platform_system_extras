@@ -56,6 +56,11 @@ cc_defaults {
     ],
     target: {
         // Required for LLVM.
+        darwin: {
+            host_ldlibs: [
+                "-lncurses",
+            ],
+        },
         linux_glibc: {
             host_ldlibs: [
                 "-lncurses",
@@ -209,6 +214,11 @@ cc_defaults {
                 "libevent",
                 "libprocinfo",
                 "libunwindstack",
+            ],
+        },
+        darwin: {
+            host_ldlibs: [
+                "-lncurses",
             ],
         },
         linux_glibc: {
@@ -588,7 +598,7 @@ cc_library_static {
     ],
     host_supported: false,
     cflags: [
-        "-DRUN_IN_APP_CONTEXT=\"com.android.simpleperf\"",
+        "-DIN_CTS_TEST",
     ],
     static_libs: [
         "libgtest",
