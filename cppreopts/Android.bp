@@ -14,17 +14,17 @@
 // limitations under the License.
 //
 
-cc_prebuilt_binary {
+sh_binary {
     name: "preloads_copy.sh",
 
-    srcs: ["preloads_copy.sh"],
+    src: "preloads_copy.sh",
 }
 
-cc_prebuilt_binary {
+sh_binary {
     name: "cppreopts.sh",
 
     init_rc: ["cppreopts.rc"],
-    srcs: ["cppreopts.sh"],
+    src: "cppreopts.sh",
     required: [
         "preopt2cachename",
         "preloads_copy.sh",
