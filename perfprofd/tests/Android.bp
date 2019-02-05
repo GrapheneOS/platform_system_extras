@@ -3,6 +3,7 @@
 cc_defaults {
     name: "perfprofd_test_defaults",
     defaults: [
+        "libartd_static_defaults",
         "perfprofd_defaults",
         "perfprofd_debug_defaults",
     ],
@@ -37,7 +38,6 @@ cc_test {
         "libprotobuf-cpp-lite",
         "liblog",
     ],
-    shared_libs: ["libart"],
     target: {
         host: {
             host_ldlibs: [
