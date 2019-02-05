@@ -162,7 +162,6 @@ cc_defaults {
         "libperfprofd_record_proto",
         "libquipper",
     ],
-    shared_libs: ["libart"],
     srcs: [
         "perf_data_converter.cc",
         "configreader.cc",
@@ -195,6 +194,7 @@ cc_defaults {
 cc_library_static {
     name: "libperfprofdcore",
     defaults: [
+        "libart_static_defaults",
         "libperfprofdcore_defaults",
     ],
 }
@@ -203,6 +203,7 @@ cc_library_static {
 cc_library_static {
     name: "libperfprofdcored",
     defaults: [
+        "libartd_static_defaults",
         "libperfprofdcore_defaults",
         "perfprofd_debug_defaults",
     ],
@@ -215,6 +216,7 @@ cc_library_static {
 cc_binary {
     name: "perfprofd",
     defaults: [
+        "libart_static_defaults",
         "perfprofd_defaults",
         "libsimpleperf_dex_read_static_reqs_defaults",
         "libsimpleperf_elf_read_static_reqs_defaults",
@@ -236,7 +238,6 @@ cc_binary {
 
     shared_libs: [
         "android.hardware.health@2.0",
-        "libart",
         "liblog",
         "libprotobuf-cpp-lite",
         "libbase",
