@@ -361,8 +361,8 @@ def iterate(args, search_events_pattern, timings_pattern, shutdown_events_patter
       print "BootAnimEnd time or BootComplete-kernel not captured in both log" +\
         ", cannot get time diff"
       return None, None, None, None, None, None
-  diffs.append((logcat_event_time[KERNEL_BOOT_COMPLETE],\
-                logcat_event_time[KERNEL_BOOT_COMPLETE] - dmesg_event_time[KERNEL_BOOT_COMPLETE]))
+  diffs.append((logcat_event_time[LOGCAT_BOOT_COMPLETE],\
+                logcat_event_time[LOGCAT_BOOT_COMPLETE] - dmesg_event_time[KERNEL_BOOT_COMPLETE]))
 
   for k, v in logcat_event_time.iteritems():
     debug("event[{0}, {1}]".format(k, v))
