@@ -72,12 +72,14 @@ ElfStatus ParseDynamicSymbolsFromElfFile(const std::string& filename,
 
 ElfStatus ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
                                                      const BuildId& expected_build_id,
-                                                     uint64_t* min_addr);
+                                                     uint64_t* min_addr,
+                                                     uint64_t* file_offset_of_min_vaddr);
 ElfStatus ReadMinExecutableVirtualAddressFromEmbeddedElfFile(const std::string& filename,
                                                              uint64_t file_offset,
                                                              uint32_t file_size,
                                                              const BuildId& expected_build_id,
-                                                             uint64_t* min_vaddr);
+                                                             uint64_t* min_vaddr,
+                                                             uint64_t* file_offset_of_min_vaddr);
 
 ElfStatus ReadSectionFromElfFile(const std::string& filename, const std::string& section_name,
                                  std::string* content);

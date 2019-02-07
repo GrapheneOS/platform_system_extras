@@ -117,8 +117,8 @@ class ThreadTree {
   void ClearThreadAndMap();
 
   void AddDsoInfo(const std::string& file_path, uint32_t file_type,
-                  uint64_t min_vaddr, std::vector<Symbol>* symbols,
-                  const std::vector<uint64_t>& dex_file_offsets);
+                  uint64_t min_vaddr, uint64_t file_offset_of_min_vaddr,
+                  std::vector<Symbol>* symbols, const std::vector<uint64_t>& dex_file_offsets);
   void AddDexFileOffset(const std::string& file_path, uint64_t dex_file_offset);
 
   // Update thread tree with information provided by record.

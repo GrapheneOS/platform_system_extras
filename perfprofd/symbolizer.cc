@@ -141,7 +141,9 @@ struct SimpleperfSymbolizer : public Symbolizer {
   }
 
   bool GetMinExecutableVAddr(const std::string& dso, uint64_t* addr) override {
-    ElfStatus status = ReadMinExecutableVirtualAddressFromElfFile(dso, BuildId(), addr);
+    uint64_t file_offset_of_min_vaddr;
+    ElfStatus status = ReadMinExecutableVirtualAddressFromElfFile(dso, BuildId(), addr,
+                                                                  &file_offset_of_min_vaddr);
     if (status != ElfStatus::NO_ERROR) {
       return true;
     }
