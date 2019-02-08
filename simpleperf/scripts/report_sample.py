@@ -46,9 +46,9 @@ def report_sample(record_file, symfs_dir, kallsyms_file, show_tracing_data):
 
         sec = sample.time / 1000000000
         usec = (sample.time - sec * 1000000000) / 1000
-        print('%s\t%d [%03d] %d.%d:\t\t%d %s:' % (sample.thread_comm,
-                                                  sample.tid, sample.cpu, sec,
-                                                  usec, sample.period, event.name))
+        print('%s\t%d [%03d] %d.%06d:\t\t%d %s:' % (sample.thread_comm,
+                                                    sample.tid, sample.cpu, sec,
+                                                    usec, sample.period, event.name))
         print('%16x\t%s (%s)' % (sample.ip, symbol.symbol_name, symbol.dso_name))
         for i in range(callchain.nr):
             entry = callchain.entries[i]
