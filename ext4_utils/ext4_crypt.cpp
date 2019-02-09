@@ -52,7 +52,6 @@ struct ext4_encryption_policy {
 
 #define EXT4_ENCRYPTION_MODE_AES_256_XTS    1
 #define EXT4_ENCRYPTION_MODE_AES_256_CTS    4
-#define EXT4_ENCRYPTION_MODE_ADIANTUM       9
 #define EXT4_ENCRYPTION_MODE_AES_256_HEH    126
 #define EXT4_ENCRYPTION_MODE_PRIVATE        127
 
@@ -62,7 +61,6 @@ struct ext4_encryption_policy {
 #define EXT4_POLICY_FLAGS_PAD_32        0x03
 #define EXT4_POLICY_FLAGS_PAD_MASK      0x03
 #define EXT4_POLICY_FLAGS_VALID         0x03
-#define EXT4_POLICY_FLAG_DIRECT_KEY     0x04
 
 // ext4enc:TODO Get value from somewhere sensible
 #define EXT4_IOC_SET_ENCRYPTION_POLICY _IOR('f', 19, struct ext4_encryption_policy)
@@ -139,11 +137,6 @@ static uint8_t e4crypt_get_policy_flags(int filenames_encryption_mode) {
     if (filenames_encryption_mode == EXT4_ENCRYPTION_MODE_AES_256_CTS) {
         // Use legacy padding with our original filenames encryption mode.
         return EXT4_POLICY_FLAGS_PAD_4;
-    } else if (filenames_encryption_mode == EXT4_ENCRYPTION_MODE_ADIANTUM) {
-        // Use DIRECT_KEY for Adiantum, since it's much more efficient but just
-        // as secure since Android doesn't reuse the same master key for
-        // multiple encryption modes
-        return (EXT4_POLICY_FLAGS_PAD_16 | EXT4_POLICY_FLAG_DIRECT_KEY);
     }
     // With a new mode we can use the better padding flag without breaking existing devices: pad
     // filenames with zeroes to the next 16-byte boundary.  This is more secure (helps hide the
@@ -265,8 +258,6 @@ int e4crypt_policy_ensure(const char *directory, const char *policy,
     if (!strcmp(contents_encryption_mode, "software") ||
         !strcmp(contents_encryption_mode, "aes-256-xts")) {
         contents_mode = EXT4_ENCRYPTION_MODE_AES_256_XTS;
-    } else if (!strcmp(contents_encryption_mode, "adiantum")) {
-        contents_mode = EXT4_ENCRYPTION_MODE_ADIANTUM;
     } else if (!strcmp(contents_encryption_mode, "ice")) {
         contents_mode = EXT4_ENCRYPTION_MODE_PRIVATE;
     } else {
@@ -279,8 +270,6 @@ int e4crypt_policy_ensure(const char *directory, const char *policy,
         filenames_mode = EXT4_ENCRYPTION_MODE_AES_256_CTS;
     } else if (!strcmp(filenames_encryption_mode, "aes-256-heh")) {
         filenames_mode = EXT4_ENCRYPTION_MODE_AES_256_HEH;
-    } else if (!strcmp(filenames_encryption_mode, "adiantum")) {
-        filenames_mode = EXT4_ENCRYPTION_MODE_ADIANTUM;
     } else {
         LOG(ERROR) << "Invalid file names encryption mode: "
                    << filenames_encryption_mode;
