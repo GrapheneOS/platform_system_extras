@@ -165,11 +165,15 @@ class Dso {
   uint32_t CreateDumpId();
   uint32_t CreateSymbolDumpId(const Symbol* symbol);
 
-  // Return the minimum virtual address in program header.
-  virtual uint64_t MinVirtualAddress() { return 0; }
-  virtual void SetMinVirtualAddress(uint64_t) {}
+  virtual void SetMinExecutableVaddr(uint64_t, uint64_t) {}
+  virtual void GetMinExecutableVaddr(uint64_t* min_vaddr, uint64_t* file_offset) {
+    *min_vaddr = 0;
+    *file_offset = 0;
+  }
   virtual void AddDexFileOffset(uint64_t) {}
   virtual const std::vector<uint64_t>* DexFileOffsets() { return nullptr; }
+
+  virtual uint64_t IpToVaddrInFile(uint64_t ip, uint64_t map_start, uint64_t map_pgoff) = 0;
 
   const Symbol* FindSymbol(uint64_t vaddr_in_dso);
 

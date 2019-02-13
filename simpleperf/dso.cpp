@@ -416,6 +416,10 @@ class DexFileDso : public Dso {
     return &dex_file_offsets_;
   }
 
+  uint64_t IpToVaddrInFile(uint64_t ip, uint64_t map_start, uint64_t map_pgoff) override {
+    return ip - map_start + map_pgoff;
+  }
+
   std::vector<Symbol> LoadSymbols() override {
     std::vector<Symbol> symbols;
     std::vector<DexFileSymbol> dex_file_symbols;
@@ -454,43 +458,63 @@ class DexFileDso : public Dso {
 class ElfDso : public Dso {
  public:
   ElfDso(const std::string& path, const std::string& debug_file_path)
-      : Dso(DSO_ELF_FILE, path, debug_file_path),
-        min_vaddr_(std::numeric_limits<uint64_t>::max()) {}
+      : Dso(DSO_ELF_FILE, path, debug_file_path) {}
 
-  uint64_t MinVirtualAddress() override {
-    if (min_vaddr_ == std::numeric_limits<uint64_t>::max()) {
-      min_vaddr_ = 0;
-      if (type_ == DSO_ELF_FILE) {
-        BuildId build_id = GetExpectedBuildId();
-
-        uint64_t addr;
-        ElfStatus result;
-        auto tuple = SplitUrlInApk(debug_file_path_);
-        if (std::get<0>(tuple)) {
-          EmbeddedElf* elf = ApkInspector::FindElfInApkByName(std::get<1>(tuple),
-                                                              std::get<2>(tuple));
-          if (elf == nullptr) {
-            result = ElfStatus::FILE_NOT_FOUND;
-          } else {
-            result = ReadMinExecutableVirtualAddressFromEmbeddedElfFile(
-                elf->filepath(), elf->entry_offset(), elf->entry_size(), build_id, &addr);
-          }
-        } else {
-          result = ReadMinExecutableVirtualAddressFromElfFile(debug_file_path_, build_id, &addr);
-        }
-        if (result != ElfStatus::NO_ERROR) {
-          LOG(WARNING) << "failed to read min virtual address of "
-                       << GetDebugFilePath() << ": " << result;
-        } else {
-          min_vaddr_ = addr;
-        }
-      }
-    }
-    return min_vaddr_;
+  void SetMinExecutableVaddr(uint64_t min_vaddr, uint64_t file_offset) override {
+    min_vaddr_ = min_vaddr;
+    file_offset_of_min_vaddr_ = file_offset;
   }
 
-  void SetMinVirtualAddress(uint64_t min_vaddr) override {
-    min_vaddr_ = min_vaddr;
+  void GetMinExecutableVaddr(uint64_t* min_vaddr, uint64_t* file_offset) override {
+    if (type_ == DSO_DEX_FILE) {
+      return dex_file_dso_->GetMinExecutableVaddr(min_vaddr, file_offset);
+    }
+    if (min_vaddr_ == uninitialized_value) {
+      min_vaddr_ = 0;
+      BuildId build_id = GetExpectedBuildId();
+      uint64_t addr;
+      uint64_t offset;
+      ElfStatus result;
+      auto tuple = SplitUrlInApk(debug_file_path_);
+      if (std::get<0>(tuple)) {
+        EmbeddedElf* elf = ApkInspector::FindElfInApkByName(std::get<1>(tuple),
+                                                            std::get<2>(tuple));
+        if (elf == nullptr) {
+          result = ElfStatus::FILE_NOT_FOUND;
+        } else {
+          result = ReadMinExecutableVirtualAddressFromEmbeddedElfFile(
+              elf->filepath(), elf->entry_offset(), elf->entry_size(), build_id, &addr, &offset);
+        }
+      } else {
+        result = ReadMinExecutableVirtualAddressFromElfFile(debug_file_path_, build_id, &addr,
+                                                            &offset);
+      }
+      if (result != ElfStatus::NO_ERROR) {
+        LOG(WARNING) << "failed to read min virtual address of "
+                     << GetDebugFilePath() << ": " << result;
+      } else {
+        min_vaddr_ = addr;
+        file_offset_of_min_vaddr_ = offset;
+      }
+    }
+    *min_vaddr = min_vaddr_;
+    *file_offset = file_offset_of_min_vaddr_;
+  }
+
+  uint64_t IpToVaddrInFile(uint64_t ip, uint64_t map_start, uint64_t map_pgoff) override {
+    if (type_ == DSO_DEX_FILE) {
+      return dex_file_dso_->IpToVaddrInFile(ip, map_start, map_pgoff);
+    }
+    uint64_t min_vaddr;
+    uint64_t file_offset_of_min_vaddr;
+    GetMinExecutableVaddr(&min_vaddr, &file_offset_of_min_vaddr);
+    if (file_offset_of_min_vaddr == uninitialized_value) {
+      return ip - map_start + min_vaddr;
+    }
+    // Apps may make part of the executable segment of a shared library writeable, which can
+    // generate multiple executable segments at runtime. So use map_pgoff to calculate
+    // vaddr_in_file.
+    return ip - map_start + map_pgoff - file_offset_of_min_vaddr + min_vaddr;
   }
 
   void AddDexFileOffset(uint64_t dex_file_offset) override {
@@ -542,7 +566,10 @@ class ElfDso : public Dso {
   }
 
  private:
-  uint64_t min_vaddr_;
+  static constexpr uint64_t uninitialized_value = std::numeric_limits<uint64_t>::max();
+
+  uint64_t min_vaddr_ = uninitialized_value;
+  uint64_t file_offset_of_min_vaddr_ = uninitialized_value;
   std::unique_ptr<DexFileDso> dex_file_dso_;
 };
 
@@ -550,6 +577,10 @@ class KernelDso : public Dso {
  public:
   KernelDso(const std::string& path, const std::string& debug_file_path)
       : Dso(DSO_KERNEL, path, debug_file_path) {}
+
+  uint64_t IpToVaddrInFile(uint64_t ip, uint64_t, uint64_t) override {
+    return ip;
+  }
 
  protected:
   std::vector<Symbol> LoadSymbols() override {
@@ -615,6 +646,10 @@ class KernelModuleDso : public Dso {
   KernelModuleDso(const std::string& path, const std::string& debug_file_path)
       : Dso(DSO_KERNEL_MODULE, path, debug_file_path) {}
 
+  uint64_t IpToVaddrInFile(uint64_t ip, uint64_t map_start, uint64_t) override {
+    return ip - map_start;
+  }
+
  protected:
   std::vector<Symbol> LoadSymbols() override {
     std::vector<Symbol> symbols;
@@ -635,6 +670,10 @@ class KernelModuleDso : public Dso {
 class UnknownDso : public Dso {
  public:
   UnknownDso(const std::string& path) : Dso(DSO_UNKNOWN_FILE, path, path) {}
+
+  uint64_t IpToVaddrInFile(uint64_t ip, uint64_t, uint64_t) override {
+    return ip;
+  }
 
  protected:
   std::vector<Symbol> LoadSymbols() override {
