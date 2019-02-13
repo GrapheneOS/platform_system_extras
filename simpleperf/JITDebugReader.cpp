@@ -338,8 +338,10 @@ const JITDebugReader::DescriptorsLocation* JITDebugReader::GetDescriptorsLocatio
 
   // Read libart.so to find the addresses of __jit_debug_descriptor and __dex_debug_descriptor.
   uint64_t min_vaddr_in_file;
+  uint64_t file_offset;
   ElfStatus status = ReadMinExecutableVirtualAddressFromElfFile(art_lib_path, BuildId(),
-                                                                &min_vaddr_in_file);
+                                                                &min_vaddr_in_file,
+                                                                &file_offset);
   if (status != ElfStatus::NO_ERROR) {
     LOG(ERROR) << "ReadMinExecutableVirtualAddress failed, status = " << status;
     return nullptr;
