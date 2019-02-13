@@ -98,7 +98,11 @@ TEST(dso, dex_file_dso) {
     ASSERT_EQ(symbol->len, static_cast<uint64_t>(0x16));
     ASSERT_STREQ(symbol->DemangledName(),
                  "com.example.simpleperf.simpleperfexamplewithnative.MixActivity$1.run");
-    ASSERT_EQ(0u, dso->MinVirtualAddress());
+    uint64_t min_vaddr;
+    uint64_t file_offset_of_min_vaddr;
+    dso->GetMinExecutableVaddr(&min_vaddr, &file_offset_of_min_vaddr);
+    ASSERT_EQ(min_vaddr, 0);
+    ASSERT_EQ(file_offset_of_min_vaddr, 0);
 
     // Don't crash on not exist zip entry.
     dso = Dso::CreateDso(dso_type, GetTestData("base.zip!/not_exist_entry"));
@@ -125,11 +129,21 @@ TEST(dso, embedded_elf) {
   ASSERT_TRUE(dso);
   ASSERT_EQ(dso->Path(), file_path);
   ASSERT_EQ(dso->GetDebugFilePath(), file_path);
-  ASSERT_EQ(dso->MinVirtualAddress(), 0u);
+  uint64_t min_vaddr;
+  uint64_t file_offset_of_min_vaddr;
+  dso->GetMinExecutableVaddr(&min_vaddr, &file_offset_of_min_vaddr);
+  ASSERT_EQ(min_vaddr, 0);
+  ASSERT_EQ(file_offset_of_min_vaddr, 0);
   const Symbol* symbol = dso->FindSymbol(0x9a4);
   ASSERT_TRUE(symbol != nullptr);
   ASSERT_STREQ(symbol->Name(), "Java_com_example_hellojni_HelloJni_callFunc1");
   BuildId build_id;
   ASSERT_TRUE(GetBuildIdFromDsoPath(file_path, &build_id));
   ASSERT_EQ(build_id, native_lib_build_id);
+}
+
+TEST(dso, IpToVaddrInFile) {
+  std::unique_ptr<Dso> dso = Dso::CreateDso(DSO_ELF_FILE, GetTestData("libc.so"));
+  ASSERT_TRUE(dso);
+  ASSERT_EQ(0xa5140, dso->IpToVaddrInFile(0xe9201140, 0xe9201000, 0xa5000));
 }
