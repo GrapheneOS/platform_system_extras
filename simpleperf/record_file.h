@@ -76,6 +76,7 @@ class RecordFileWriter {
   bool WriteFileFeature(const std::string& file_path,
                         uint32_t file_type,
                         uint64_t min_vaddr,
+                        uint64_t file_offset_of_min_vaddr,
                         const std::vector<const Symbol*>& symbols,
                         const std::vector<uint64_t>* dex_file_offsets);
   bool WriteFeatureBegin(int feature);
@@ -148,8 +149,8 @@ class RecordFileReader {
   // call, and is updated to point to the next file information. Return true
   // if read successfully, and return false if there is no more file
   // information.
-  bool ReadFileFeature(size_t& read_pos, std::string* file_path,
-                       uint32_t* file_type, uint64_t* min_vaddr,
+  bool ReadFileFeature(size_t& read_pos, std::string* file_path, uint32_t* file_type,
+                       uint64_t* min_vaddr, uint64_t* file_offset_of_min_vaddr,
                        std::vector<Symbol>* symbols, std::vector<uint64_t>* dex_file_offsets);
   bool ReadMetaInfoFeature(std::unordered_map<std::string, std::string>* info_map);
 

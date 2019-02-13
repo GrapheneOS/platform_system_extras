@@ -506,13 +506,16 @@ ElfStatus ParseDynamicSymbolsFromElfFile(const std::string& filename,
 }
 
 template <class ELFT>
-ElfStatus ReadMinExecutableVirtualAddress(const llvm::object::ELFFile<ELFT>* elf, uint64_t* p_vaddr) {
+ElfStatus ReadMinExecutableVirtualAddress(const llvm::object::ELFFile<ELFT>* elf,
+                                          uint64_t* p_vaddr,
+                                          uint64_t* file_offset) {
   bool has_vaddr = false;
   uint64_t min_addr = std::numeric_limits<uint64_t>::max();
   for (auto it = elf->program_header_begin(); it != elf->program_header_end(); ++it) {
     if ((it->p_type == llvm::ELF::PT_LOAD) && (it->p_flags & llvm::ELF::PF_X)) {
       if (it->p_vaddr < min_addr) {
         min_addr = it->p_vaddr;
+        *file_offset = it->p_offset;
         has_vaddr = true;
       }
     }
@@ -520,6 +523,7 @@ ElfStatus ReadMinExecutableVirtualAddress(const llvm::object::ELFFile<ELFT>* elf
   if (!has_vaddr) {
     // JIT symfiles don't have program headers.
     min_addr = 0;
+    *file_offset = 0;
   }
   *p_vaddr = min_addr;
   return ElfStatus::NO_ERROR;
@@ -527,20 +531,22 @@ ElfStatus ReadMinExecutableVirtualAddress(const llvm::object::ELFFile<ELFT>* elf
 
 ElfStatus ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
                                                      const BuildId& expected_build_id,
-                                                     uint64_t* min_vaddr) {
+                                                     uint64_t* min_vaddr,
+                                                     uint64_t* file_offset_of_min_vaddr) {
   ElfStatus result = IsValidElfPath(filename);
   if (result != ElfStatus::NO_ERROR) {
     return result;
   }
   return ReadMinExecutableVirtualAddressFromEmbeddedElfFile(filename, 0, 0, expected_build_id,
-                                                            min_vaddr);
+                                                            min_vaddr, file_offset_of_min_vaddr);
 }
 
 ElfStatus ReadMinExecutableVirtualAddressFromEmbeddedElfFile(const std::string& filename,
                                                              uint64_t file_offset,
                                                              uint32_t file_size,
                                                              const BuildId& expected_build_id,
-                                                             uint64_t* min_vaddr) {
+                                                             uint64_t* min_vaddr,
+                                                             uint64_t* file_offset_of_min_vaddr) {
   BinaryWrapper wrapper;
   ElfStatus result = OpenObjectFile(filename, file_offset, file_size, &wrapper);
   if (result != ElfStatus::NO_ERROR) {
@@ -551,9 +557,9 @@ ElfStatus ReadMinExecutableVirtualAddressFromEmbeddedElfFile(const std::string& 
     return result;
   }
   if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(wrapper.obj)) {
-    return ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr);
+    return ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr, file_offset_of_min_vaddr);
   } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(wrapper.obj)) {
-    return ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr);
+    return ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr, file_offset_of_min_vaddr);
   }
   return ElfStatus::FILE_MALFORMED;
 }

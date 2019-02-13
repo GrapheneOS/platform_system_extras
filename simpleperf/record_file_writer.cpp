@@ -304,7 +304,9 @@ bool RecordFileWriter::WriteFileFeatures(const std::vector<Dso*>& files) {
       continue;
     }
     uint32_t dso_type = dso->type();
-    uint64_t min_vaddr = dso->MinVirtualAddress();
+    uint64_t min_vaddr;
+    uint64_t file_offset_of_min_vaddr;
+    dso->GetMinExecutableVaddr(&min_vaddr, &file_offset_of_min_vaddr);
 
     // Dumping all symbols in hit files takes too much space, so only dump
     // needed symbols.
@@ -318,7 +320,8 @@ bool RecordFileWriter::WriteFileFeatures(const std::vector<Dso*>& files) {
     std::sort(dump_symbols.begin(), dump_symbols.end(), Symbol::CompareByAddr);
 
     const std::vector<uint64_t>* dex_file_offsets = dso->DexFileOffsets();
-    if (!WriteFileFeature(dso->Path(), dso_type, min_vaddr, dump_symbols, dex_file_offsets)) {
+    if (!WriteFileFeature(dso->Path(), dso_type, min_vaddr, file_offset_of_min_vaddr,
+                          dump_symbols, dex_file_offsets)) {
       return false;
     }
   }
@@ -328,6 +331,7 @@ bool RecordFileWriter::WriteFileFeatures(const std::vector<Dso*>& files) {
 bool RecordFileWriter::WriteFileFeature(const std::string& file_path,
                                         uint32_t file_type,
                                         uint64_t min_vaddr,
+                                        uint64_t file_offset_of_min_vaddr,
                                         const std::vector<const Symbol*>& symbols,
                                         const std::vector<uint64_t>* dex_file_offsets) {
   uint32_t size = file_path.size() + 1 + sizeof(uint32_t) * 2 +
@@ -337,6 +341,9 @@ bool RecordFileWriter::WriteFileFeature(const std::string& file_path,
   }
   if (dex_file_offsets != nullptr) {
     size += sizeof(uint32_t) + sizeof(uint64_t) * dex_file_offsets->size();
+  }
+  if (file_type == DSO_ELF_FILE) {
+    size += sizeof(uint64_t);
   }
   std::vector<char> buf(sizeof(uint32_t) + size);
   char* p = buf.data();
@@ -356,6 +363,9 @@ bool RecordFileWriter::WriteFileFeature(const std::string& file_path,
     uint32_t offset_count = dex_file_offsets->size();
     MoveToBinaryFormat(offset_count, p);
     MoveToBinaryFormat(dex_file_offsets->data(), offset_count, p);
+  }
+  if (file_type == DSO_ELF_FILE) {
+    MoveToBinaryFormat(file_offset_of_min_vaddr, p);
   }
   CHECK_EQ(buf.size(), static_cast<size_t>(p - buf.data()));
 

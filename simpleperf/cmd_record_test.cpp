@@ -395,12 +395,13 @@ static bool CheckDumpedSymbols(const std::string& path, bool allow_dumped_symbol
   std::string file_path;
   uint32_t file_type;
   uint64_t min_vaddr;
+  uint64_t file_offset_of_min_vaddr;
   std::vector<Symbol> symbols;
   std::vector<uint64_t> dex_file_offsets;
   size_t read_pos = 0;
   bool has_dumped_symbols = false;
-  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr, &symbols,
-                                 &dex_file_offsets)) {
+  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr,
+                                 &file_offset_of_min_vaddr, &symbols, &dex_file_offsets)) {
     if (!symbols.empty()) {
       has_dumped_symbols = true;
     }
@@ -447,12 +448,13 @@ TEST(record_cmd, dump_kernel_symbols) {
   std::string file_path;
   uint32_t file_type;
   uint64_t min_vaddr;
+  uint64_t file_offset_of_min_vaddr;
   std::vector<Symbol> symbols;
   std::vector<uint64_t> dex_file_offsets;
   size_t read_pos = 0;
   bool has_kernel_symbols = false;
-  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr, &symbols,
-                                 &dex_file_offsets)) {
+  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr,
+                                 &file_offset_of_min_vaddr, &symbols, &dex_file_offsets)) {
     if (file_type == DSO_KERNEL && !symbols.empty()) {
       has_kernel_symbols = true;
     }
@@ -737,13 +739,14 @@ static void TestRecordingApps(const std::string& app_name) {
   std::string file_path;
   uint32_t file_type;
   uint64_t min_vaddr;
+  uint64_t file_offset_of_min_vaddr;
   std::vector<Symbol> symbols;
   std::vector<uint64_t> dex_file_offsets;
   size_t read_pos = 0;
   bool has_java_symbol = false;
   ASSERT_TRUE(reader->HasFeature(FEAT_FILE));
-  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr, &symbols,
-                                 &dex_file_offsets)) {
+  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr,
+                                 &file_offset_of_min_vaddr, &symbols, &dex_file_offsets)) {
     for (const auto& symbol : symbols) {
       const char* name = symbol.DemangledName();
       if (strstr(name, expected_class_name.c_str()) != nullptr &&
