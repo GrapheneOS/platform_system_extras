@@ -18,6 +18,8 @@
 
 #include "ext4_utils/ext4_utils.h"
 
+#include <android-base/file.h>
+
 #if WIPE_IS_SUPPORTED
 
 #if defined(__linux__)
@@ -54,6 +56,13 @@ int wipe_block_device(int fd, s64 len)
 			warn("Discard failed\n");
 			return 1;
 		} else {
+			char buf[4096] = {0};
+
+			if (!android::base::WriteFully(fd, buf, 4096)) {
+				warn("Writing zeros failed\n");
+				return 1;
+			}
+			fsync(fd);
 			warn("Wipe via secure discard failed, used discard instead\n");
 			return 0;
 		}

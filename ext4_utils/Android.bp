@@ -5,9 +5,9 @@ cc_library {
     host_supported: true,
     recovery_available: true,
     srcs: [
-        "ext4_utils.c",
-        "wipe.c",
-        "ext4_sb.c",
+        "ext4_utils.cpp",
+        "wipe.cpp",
+        "ext4_sb.cpp",
     ],
     // Various instances of dereferencing a type-punned pointer in extent.c
     cflags: [
@@ -16,6 +16,7 @@ cc_library {
     ],
     export_include_dirs: ["include"],
     shared_libs: [
+        "libbase",
         "libsparse",
         "libz",
     ],
@@ -80,7 +81,7 @@ prebuilt_etc {
 
 cc_binary_host {
     name: "blk_alloc_to_base_fs",
-    srcs: ["blk_alloc_to_base_fs.c"],
+    srcs: ["blk_alloc_to_base_fs.cpp"],
     shared_libs: ["libcutils"],
     target: {
         host: {
