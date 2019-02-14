@@ -143,6 +143,10 @@ bool RunSimpleperfCmd(int argc, char** argv) {
         LOG(ERROR) << "Missing argument for --log option.\n";
         return false;
       }
+#if defined(__ANDROID__)
+    } else if (strcmp(argv[i], "--log-to-android-buffer") == 0) {
+      android::base::SetLogger(android::base::LogdLogger());
+#endif
     } else if (strcmp(argv[i], "--version") == 0) {
       LOG(INFO) << "Simpleperf version " << GetSimpleperfVersion();
       return true;

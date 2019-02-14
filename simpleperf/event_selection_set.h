@@ -149,6 +149,8 @@ class EventSelectionSet {
   bool StopWhenNoMoreTargets(double check_interval_in_sec =
                                  DEFAULT_PERIOD_TO_CHECK_MONITORED_TARGETS_IN_SEC);
 
+  bool SetEnableEvents(bool enable);
+
  private:
   struct EventSelection {
     EventTypeAndModifier event_type_modifier;
