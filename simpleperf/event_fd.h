@@ -58,7 +58,7 @@ class EventFd {
 
   // It tells the kernel to start counting and recording events specified by
   // this file.
-  bool EnableEvent();
+  bool SetEnableEvent(bool enable);
 
   bool ReadCounter(PerfCounter* counter);
 

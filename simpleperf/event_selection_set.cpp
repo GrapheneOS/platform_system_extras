@@ -883,3 +883,16 @@ bool EventSelectionSet::HasSampler() {
   }
   return false;
 }
+
+bool EventSelectionSet::SetEnableEvents(bool enable) {
+  for (auto& group : groups_) {
+    for (auto& sel : group) {
+      for (auto& fd : sel.event_fds) {
+        if (!fd->SetEnableEvent(enable)) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
