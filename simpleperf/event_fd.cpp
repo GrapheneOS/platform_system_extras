@@ -114,10 +114,10 @@ uint64_t EventFd::Id() const {
   return id_;
 }
 
-bool EventFd::EnableEvent() {
-  int result = ioctl(perf_event_fd_, PERF_EVENT_IOC_ENABLE, 0);
+bool EventFd::SetEnableEvent(bool enable) {
+  int result = ioctl(perf_event_fd_, enable ? PERF_EVENT_IOC_ENABLE : PERF_EVENT_IOC_DISABLE, 0);
   if (result < 0) {
-    PLOG(ERROR) << "ioctl(enable) " << Name() << " failed";
+    PLOG(ERROR) << "ioctl(" << (enable ? "enable" : "disable") << ")" << Name() << " failed";
     return false;
   }
   return true;
