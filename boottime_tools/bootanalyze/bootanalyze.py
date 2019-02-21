@@ -250,23 +250,25 @@ def capture_bugreport(bugreport_hint, boot_complete_time):
 
 def generate_timing_points(timing_events, timings):
   timing_points = collections.OrderedDict()
+  monitor_contention_points = collections.OrderedDict()
   for k, l in timing_events.iteritems():
       for v in l:
-        name, time_v = extract_timing(v, timings)
+        name, time_v, dict = extract_timing(v, timings)
         if name and time_v:
           if v.find("SystemServerTimingAsync") > 0:
             name = "(" + name + ")"
+          if k.endswith("_secs"):
+            time_v = time_v * 1000.0
+          if k.startswith("long_monitor_contention"):
+            monitor_contention_points[v] = time_v
+            continue
           new_name = name
           name_index = 0
           while timing_points.get(new_name): # if the name is already taken, append #digit
             name_index += 1
             new_name = name + "#" + str(name_index)
-          name = new_name
-          if k.endswith("_secs"):
-            timing_points[name] = time_v * 1000.0
-          else:
-            timing_points[name] = time_v
-  return timing_points
+          timing_points[new_name] = time_v
+  return timing_points, monitor_contention_points
 
 def dump_timing_points(msg_header, timing_points):
     print msg_header + " event timing in time order, key: time"
@@ -280,6 +282,13 @@ def dump_timing_points(msg_header, timing_points):
       print '{0:30}: {1:<7.5}'.format(
         item[0], item[1])
     print "-----------------"
+
+def dump_monitor_contentions(logcat_monitor_contentions):
+  print "Monitor contentions over 100ms:"
+  for item in logcat_monitor_contentions.items():
+      if item[1] > 100:
+        print '{0:<7.5}ms: {1}'.format(item[1], item[0])
+  print "-----------------"
 
 def handle_reboot_log(capture_log_on_error, shutdown_events_pattern, components_to_monitor):
   shutdown_events, shutdown_timing_events = collect_logcat_for_shutdown(capture_log_on_error,\
@@ -398,10 +407,12 @@ def iterate(args, search_events_pattern, timings_pattern, shutdown_events_patter
   print "-----------------"
 
   if args.timings:
-    kernel_timing_points = generate_timing_points(kernel_timing_events, timings_pattern)
-    logcat_timing_points = generate_timing_points(logcat_timing_events, timings_pattern)
+    kernel_timing_points, _ = generate_timing_points(kernel_timing_events, timings_pattern)
+    logcat_timing_points, logcat_monitor_contentions =\
+      generate_timing_points(logcat_timing_events, timings_pattern)
     dump_timing_points("Kernel", kernel_timing_points)
     dump_timing_points("Logcat", logcat_timing_points)
+    dump_monitor_contentions(logcat_monitor_contentions)
 
   for item in sorted(events.items(), key=operator.itemgetter(1)):
     data_points[item[0]] = {
@@ -472,8 +483,8 @@ def extract_timing(s, patterns):
   for k, p in patterns.iteritems():
     m = p.search(s)
     if m:
-      g_dict = m.groupdict()
-      return g_dict['name'], float(g_dict['time'])
+      dict = m.groupdict()
+      return dict['name'], float(dict['time']), dict
   return None, None
 
 def init_arguments():
