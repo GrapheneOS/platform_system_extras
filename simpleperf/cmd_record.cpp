@@ -206,20 +206,24 @@ class RecordCommand : public Command {
 "                        dumped in perf.data, to support reporting in another\n"
 "                        environment.\n"
 "-o record_file_name    Set record file name, default is perf.data.\n"
-"--exit-with-parent            Stop recording when the process starting\n"
-"                              simpleperf dies.\n"
 "--size-limit SIZE[K|M|G]      Stop recording after SIZE bytes of records.\n"
 "                              Default is unlimited.\n"
-"--start_profiling_fd fd_no    After starting profiling, write \"STARTED\" to\n"
-"                              <fd_no>, then close <fd_no>.\n"
-"--stdio-controls-profiling    Use stdin/stdout to pause/resume profiling.\n"
 "--symfs <dir>    Look for files with symbols relative to this directory.\n"
 "                 This option is used to provide files with symbol table and\n"
 "                 debug information, which are used for unwinding and dumping symbols.\n"
+"\n"
+"Other options:\n"
+"--exit-with-parent            Stop recording when the process starting\n"
+"                              simpleperf dies.\n"
+"--start_profiling_fd fd_no    After starting profiling, write \"STARTED\" to\n"
+"                              <fd_no>, then close <fd_no>.\n"
+"--stdio-controls-profiling    Use stdin/stdout to pause/resume profiling.\n"
+#if defined(__ANDROID__)
+"--in-app                      We are already running in the app's context.\n"
+"--tracepoint-events file_name   Read tracepoint events from [file_name] instead of tracefs.\n"
+#endif
 #if 0
 // Below options are only used internally and shouldn't be visible to the public.
-"--in-app         We are already running in the app's context.\n"
-"--tracepoint-events file_name   Read tracepoint events from [file_name] instead of tracefs.\n"
 "--out-fd <fd>    Write perf.data to a file descriptor.\n"
 "--stop-signal-fd <fd>  Stop recording when fd is readable.\n"
 #endif
