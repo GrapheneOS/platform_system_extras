@@ -80,7 +80,6 @@ static void calculate_rounds(uint64_t size, image *ctx)
 static int process_chunk(void *priv, const void *data, size_t len)
 {
     image *ctx = (image *)priv;
-    assert(len % FEC_BLOCKSIZE == 0);
 
     if (data) {
         memcpy(&ctx->input[ctx->pos], data, len);
@@ -135,6 +134,8 @@ static void file_image_load(const std::vector<int>& fds, image *ctx)
         sparse_file_callback(file, false, false, process_chunk, ctx);
         sparse_file_destroy(file);
     }
+
+    assert(ctx->pos % FEC_BLOCKSIZE == 0);
 
     for (auto fd : fds) {
         close(fd);
