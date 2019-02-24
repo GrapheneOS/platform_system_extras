@@ -9,6 +9,8 @@ timings:
   init_service_exec_secs: init:\sService\s.*exec\s\S+\s\((?P<name>\S.+)\).*pid.*\swaiting\stook\s(?P<time>[.0-9]+)\sseconds
   zygote64_timing: (?P<name>Zygote64Timing\:\s\S+)\stook\sto\scomplete\:\s(?P<time>[0-9]+)ms
   zygote32_timing: (?P<name>Zygote32Timing\:\s\S+)\stook\sto\scomplete\:\s(?P<time>[0-9]+)ms
+  long_monitor_contention_secs: \s(?P<component>\S+)\sLong\smonitor\scontention\swith\sowner\s(?P<name>\S.+).*\sfor\s(?P<time>[.0-9]+)s
+  long_monitor_contention_ms: \s(?P<component>\S+)\sLong\smonitor\scontention\swith\sowner\s(?P<name>\S.+).*\sfor\s(?P<time>[.0-9]+)ms
 events:
   kernel: Linux version
   android_init_1st_stage: init first stage started
