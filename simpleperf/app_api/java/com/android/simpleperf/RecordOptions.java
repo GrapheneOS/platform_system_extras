@@ -17,6 +17,9 @@
 package com.android.simpleperf;
 
 import android.system.Os;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -39,7 +42,8 @@ import java.util.List;
 public class RecordOptions {
 
     /**
-     * Set output filename. Default is perf.data. The file will be generated under simpleperf_data/.
+     * Set output filename. Default is perf-<month>-<day>-<hour>-<minute>-<second>.data.
+     * The file will be generated under simpleperf_data/.
      */
     public RecordOptions setOutputFilename(String filename) {
         outputFilename = filename;
@@ -110,8 +114,13 @@ public class RecordOptions {
      */
     public List<String> toRecordArgs() {
         ArrayList<String> args = new ArrayList<>();
+
+        String filename = outputFilename;
+        if (filename == null) {
+            filename = getDefaultOutputFilename();
+        }
         args.add("-o");
-        args.add(outputFilename);
+        args.add(filename);
         args.add("-e");
         args.add(event);
         args.add("-f");
@@ -146,7 +155,13 @@ public class RecordOptions {
         return args;
     }
 
-    private String outputFilename = "perf.data";
+    private String getDefaultOutputFilename() {
+        LocalDateTime time = LocalDateTime.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("'perf'-MM-dd-HH-mm-ss'.data'");
+        return time.format(formatter);
+    }
+
+    private String outputFilename;
     private String event = "cpu-cycles";
     private int freq = 4000;
     private double durationInSecond = 0.0;
