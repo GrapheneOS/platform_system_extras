@@ -99,8 +99,7 @@ cc_defaults {
     name: "libsimpleperf_dex_read_static_reqs_defaults",
     defaults: ["libdexfile_static_defaults"],
     static_libs: [
-        "libdexfile_external",
-        "libdexfile_support",
+        "libdexfile_support_static",
     ],
     header_libs: ["libdexfile_external_headers"],
     export_header_lib_headers: ["libdexfile_external_headers"],
@@ -165,9 +164,7 @@ cc_defaults {
         linux: {
             static_libs: [
                 "libunwindstack",
-                "libdexfile_support",
-                "libdexfile_external",
-                "libdexfile",
+                "libdexfile_support_static",
                 "libcutils",
                 "libprocinfo",
                 "libevent",
@@ -209,7 +206,6 @@ cc_defaults {
         linux: {
             shared_libs: [
                 "libcutils",
-                "libdexfile_external",
                 "libdexfile_support",
                 "libevent",
                 "libprocinfo",
