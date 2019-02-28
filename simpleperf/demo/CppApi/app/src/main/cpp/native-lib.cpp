@@ -47,6 +47,7 @@ void* ProfileThreadFunc(void*) {
   sleep(1);
   log("stop recording");
   session.StopRecording();
+  log("stop recording successfully");
   profile_thread_exited = true;
   return nullptr;
 };

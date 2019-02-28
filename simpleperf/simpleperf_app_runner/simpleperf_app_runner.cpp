@@ -98,8 +98,9 @@ std::vector<gid_t> GetSupplementaryGids(uid_t userAppId) {
 }
 
 static void CheckSimpleperfArguments(const char* cmdname, char** args) {
-  if (strcmp(cmdname, "stat") != 0 && strcmp(cmdname, "record") != 0) {
-    error(1, 0, "only stat/record commands are allowed");
+  if (strcmp(cmdname, "stat") != 0 && strcmp(cmdname, "record") != 0 &&
+      strcmp(cmdname, "api-collect") != 0) {
+    error(1, 0, "cmd isn't allowed: %s", cmdname);
   }
   std::set<std::string> zero_arg_options = {
       "-b", "--csv", "--exit-with-parent", "-g", "--in-app", "--interval-only-values",
