@@ -96,6 +96,7 @@ extern void RegisterReportSampleCommand();
 extern void RegisterStatCommand();
 extern void RegisterDebugUnwindCommand();
 extern void RegisterTraceSchedCommand();
+extern void RegisterAPICommands();
 
 class CommandRegister {
  public:
@@ -111,6 +112,9 @@ class CommandRegister {
     RegisterStatCommand();
     RegisterDebugUnwindCommand();
     RegisterTraceSchedCommand();
+#if defined(__ANDROID__)
+    RegisterAPICommands();
+#endif
 #endif
   }
 };

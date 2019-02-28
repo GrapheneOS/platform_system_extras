@@ -23,6 +23,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <mutex>
@@ -38,7 +39,7 @@ enum RecordCmd {
 
 class RecordOptionsImpl {
  public:
-  std::string output_filename = "perf.data";
+  std::string output_filename;
   std::string event = "cpu-cycles";
   size_t freq = 4000;
   double duration_in_second = 0.0;
@@ -97,9 +98,27 @@ RecordOptions& RecordOptions::TraceOffCpu() {
   return *this;
 }
 
+static std::string GetDefaultOutputFilename() {
+  time_t t = time(nullptr);
+  struct tm tm;
+  if (localtime_r(&t, &tm) != &tm) {
+    return "perf.data";
+  }
+  char* buf = nullptr;
+  asprintf(&buf, "perf-%02d-%02d-%02d-%02d-%02d.data", tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
+           tm.tm_min, tm.tm_sec);
+  std::string result = buf;
+  free(buf);
+  return result;
+}
+
 std::vector<std::string> RecordOptions::ToRecordArgs() const {
   std::vector<std::string> args;
-  args.insert(args.end(), {"-o", impl_->output_filename});
+  std::string output_filename = impl_->output_filename;
+  if (output_filename.empty()) {
+    output_filename = GetDefaultOutputFilename();
+  }
+  args.insert(args.end(), {"-o", output_filename});
   args.insert(args.end(), {"-e", impl_->event});
   args.insert(args.end(), {"-f", std::to_string(impl_->freq)});
   if (impl_->duration_in_second != 0.0) {
@@ -147,6 +166,7 @@ class ProfileSessionImpl {
 
  private:
   std::string FindSimpleperf();
+  std::string FindSimpleperfInTempDir();
   void CheckIfPerfEnabled();
   void CreateSimpleperfDataDir();
   void CreateSimpleperfProcess(const std::string& simpleperf_path,
@@ -251,19 +271,37 @@ static bool IsExecutableFile(const std::string& path) {
 }
 
 std::string ProfileSessionImpl::FindSimpleperf() {
-  std::vector<std::string> candidates = {
-      // For debuggable apps, simpleperf is put to the appDir by api_app_profiler.py.
-      app_data_dir_ + "/simpleperf",
-      // For profileable apps on Android >= Q, use simpleperf in system image.
-      "/system/bin/simpleperf"
-  };
-  for (const auto& path : candidates) {
-    if (IsExecutableFile(path)) {
-      return path;
-    }
+  // 1. Try /data/local/tmp/simpleperf first. Probably it's newer than /system/bin/simpleperf.
+  std::string simpleperf_path = FindSimpleperfInTempDir();
+  if (!simpleperf_path.empty()) {
+    return simpleperf_path;
   }
-  Abort("can't find simpleperf on device. Please run api_app_profiler.py.");
+  // 2. Try /system/bin/simpleperf, which is available on Android >= Q.
+  simpleperf_path = "/system/bin/simpleperf";
+  if (IsExecutableFile(simpleperf_path)) {
+    return simpleperf_path;
+  }
+  Abort("can't find simpleperf on device. Please run api_profiler.py.");
   return "";
+}
+
+std::string ProfileSessionImpl::FindSimpleperfInTempDir() {
+  const std::string path = "/data/local/tmp/simpleperf";
+  if (!IsExecutableFile(path)) {
+    return "";
+  }
+  // Copy it to app_dir to execute it.
+  const std::string to_path = app_data_dir_ + "/simpleperf";
+  const std::string copy_cmd = "cp " + path + " " + to_path;
+  if (system(copy_cmd.c_str()) != 0) {
+    return "";
+  }
+  const std::string test_cmd = to_path;
+  // For apps with target sdk >= 29, executing app data file isn't allowed. So test executing it.
+  if (system(test_cmd.c_str()) != 0) {
+    return "";
+  }
+  return to_path;
 }
 
 static std::string ReadFile(FILE* fp) {
@@ -287,7 +325,7 @@ void ProfileSessionImpl::CheckIfPerfEnabled() {
   std::string s = ReadFile(fp);
   pclose(fp);
   if (!s.empty() && s[0] == '1') {
-    Abort("linux perf events aren't enabled on the device. Please run api_app_profiler.py.");
+    Abort("linux perf events aren't enabled on the device. Please run api_profiler.py.");
   }
 }
 
