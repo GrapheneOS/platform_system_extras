@@ -119,20 +119,18 @@ static unwindstack::Regs* GetBacktraceRegs(const RegSet& regs) {
 static unwindstack::MapInfo* CreateMapInfo(const MapEntry* entry) {
   const char* name = entry->dso->GetDebugFilePath().c_str();
   uint64_t pgoff = entry->pgoff;
-  if (entry->pgoff == 0) {
-    auto tuple = SplitUrlInApk(entry->dso->GetDebugFilePath());
-    if (std::get<0>(tuple)) {
-      // The unwinder does not understand the ! format, so change back to
-      // the previous format (apk, offset).
-      EmbeddedElf* elf = ApkInspector::FindElfInApkByName(std::get<1>(tuple), std::get<2>(tuple));
-      if (elf != nullptr) {
-        name = elf->filepath().c_str();
-        pgoff = elf->entry_offset();
-      }
+  auto tuple = SplitUrlInApk(entry->dso->GetDebugFilePath());
+  if (std::get<0>(tuple)) {
+    // The unwinder does not understand the ! format, so change back to
+    // the previous format (apk, offset).
+    EmbeddedElf* elf = ApkInspector::FindElfInApkByName(std::get<1>(tuple), std::get<2>(tuple));
+    if (elf != nullptr) {
+      name = elf->filepath().c_str();
+      pgoff += elf->entry_offset();
     }
   }
   return new unwindstack::MapInfo(nullptr, entry->start_addr, entry->get_end_addr(), pgoff,
-                                  PROT_READ | PROT_EXEC | entry->flags, name);
+                                  PROT_READ | entry->flags, name);
 }
 
 void UnwindMaps::UpdateMaps(const MapSet& map_set) {
@@ -177,6 +175,11 @@ void UnwindMaps::UpdateMaps(const MapSet& map_set) {
   });
   entries_.resize(map_set.maps.size());
   maps_.resize(map_set.maps.size());
+  // prev_map is needed by libunwindstack to find the start of an embedded lib in an apk.
+  // See http://b/120981155.
+  for (size_t i = 1; i < maps_.size(); ++i) {
+    maps_[i]->prev_map = maps_[i-1].get();
+  }
 }
 
 OfflineUnwinder::OfflineUnwinder(bool collect_stat) : collect_stat_(collect_stat) {
