@@ -174,19 +174,52 @@ public class ProfileSession {
     }
 
     private String findSimpleperf() {
-        String[] candidates = new String[]{
-                // For debuggable apps, simpleperf is put to the appDir by api_app_profiler.py.
-                appDataDir + "/simpleperf",
-                // For profileable apps on Android >= Q, use simpleperf in system image.
-                "/system/bin/simpleperf"
-        };
-        for (String path : candidates) {
-            File file = new File(path);
-            if (file.isFile()) {
-                return path;
-            }
+        // 1. Try /data/local/tmp/simpleperf. Probably it's newer than /system/bin/simpleperf.
+        String simpleperfPath = findSimpleperfInTempDir();
+        if (simpleperfPath != null) {
+            return simpleperfPath;
         }
-        throw new Error("can't find simpleperf on device. Please run api_app_profiler.py.");
+        // 2. Try /system/bin/simpleperf, which is available on Android >= Q.
+        simpleperfPath = "/system/bin/simpleperf";
+        if (isExecutableFile(simpleperfPath)) {
+            return simpleperfPath;
+        }
+        throw new Error("can't find simpleperf on device. Please run api_profiler.py.");
+    }
+
+    private boolean isExecutableFile(String path) {
+        File file = new File(path);
+        return file.canExecute();
+    }
+
+    private String findSimpleperfInTempDir() {
+        String path = "/data/local/tmp/simpleperf";
+        File file = new File(path);
+        if (!file.isFile()){
+            return null;
+        }
+        // Copy it to app dir to execute it.
+        String toPath = appDataDir + "/simpleperf";
+        try {
+            Process process = new ProcessBuilder()
+                    .command("cp", path, toPath).start();
+            process.waitFor();
+        } catch (Exception e) {
+            return null;
+        }
+        if (!isExecutableFile(toPath)) {
+            return null;
+        }
+        // For apps with target sdk >= 29, executing app data file isn't allowed. So test executing
+        // it.
+        try {
+            Process process = new ProcessBuilder()
+                    .command(toPath).start();
+            process.waitFor();
+        } catch (Exception e) {
+            return null;
+        }
+        return toPath;
     }
 
     private void checkIfPerfEnabled() {
@@ -206,7 +239,7 @@ public class ProfileSession {
         value = readInputStream(process.getInputStream());
         if (value.startsWith("1")) {
             throw new Error("linux perf events aren't enabled on the device." +
-                            " Please run api_app_profiler.py.");
+                            " Please run api_profiler.py.");
         }
     }
 

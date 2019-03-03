@@ -706,6 +706,35 @@ TEST(record_cmd, kernel_bug_making_zero_dyn_size) {
     }
     return true;
   }));
+  ASSERT_TRUE(has_sample);
+}
+
+TEST(record_cmd, kernel_bug_making_zero_dyn_size_for_kernel_samples) {
+  // Test a kernel bug that makes zero dyn_size for syscalls of 32-bit applications in 64-bit
+  // kernels. If it fails, please cherry pick below kernel patch:
+  // 02e184476eff8 perf/core: Force USER_DS when recording user stack data
+  TEST_REQUIRE_HW_COUNTER();
+  TEST_REQUIRE_HOST_ROOT();
+  std::vector<std::unique_ptr<Workload>> workloads;
+  CreateProcesses(1, &workloads);
+  std::string pid = std::to_string(workloads[0]->GetPid());
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run({"-e", "sched:sched_switch", "-o", tmpfile.path, "-p", pid,
+                                "--call-graph", "dwarf,8", "--no-unwind", "--duration", "1"}));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader);
+  bool has_sample = false;
+  ASSERT_TRUE(reader->ReadDataSection([&](std::unique_ptr<Record> r) {
+    if (r->type() == PERF_RECORD_SAMPLE && r->InKernel()) {
+      SampleRecord* sr = static_cast<SampleRecord*>(r.get());
+      if (sr->stack_user_data.dyn_size == 0) {
+        return false;
+      }
+      has_sample = true;
+    }
+    return true;
+  }));
+  ASSERT_TRUE(has_sample);
 }
 
 TEST(record_cmd, cpu_percent_option) {

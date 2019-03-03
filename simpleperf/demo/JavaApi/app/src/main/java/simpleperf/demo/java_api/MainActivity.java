@@ -60,7 +60,7 @@ public class MainActivity extends AppCompatActivity {
                     Thread.sleep(1000);
                     Log.e("simpleperf", "stopRecording");
                     profileSession.stopRecording();
-                    Log.e("simpleperf", "stopRecording success");
+                    Log.e("simpleperf", "stopRecording successfully");
                 } catch (Exception e) {
                     Log.e("simpleperf", "exception: " + e.getMessage());
                 }

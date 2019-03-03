@@ -623,6 +623,10 @@ std::set<pid_t> WaitForAppProcesses(const std::string& package_name) {
   }
 }
 
+bool IsAppDebuggable(const std::string& package_name) {
+  return Workload::RunCmd({"run-as", package_name, "echo", ">/dev/null", "2>/dev/null"}, false);
+}
+
 namespace {
 
 class InAppRunner {
@@ -767,7 +771,7 @@ class RunAs : public InAppRunner {
 
 bool RunAs::Prepare() {
   // Test if run-as can access the package.
-  if (!Workload::RunCmd({"run-as", package_name_, "echo", ">/dev/null", "2>/dev/null"}, false)) {
+  if (!IsAppDebuggable(package_name_)) {
     return false;
   }
   // run-as can't run /data/local/tmp/simpleperf directly. So copy simpleperf binary if needed.

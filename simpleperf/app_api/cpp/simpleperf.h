@@ -42,7 +42,8 @@ class RecordOptions {
   RecordOptions();
   ~RecordOptions();
   /**
-   * Set output filename. Default is perf.data. The file will be generated under simpleperf_data/.
+   * Set output filename. Default is perf-<month>-<day>-<hour>-<minute>-<second>.data.
+   * The file will be generated under simpleperf_data/.
    */
   RecordOptions& SetOutputFilename(const std::string& filename);
 

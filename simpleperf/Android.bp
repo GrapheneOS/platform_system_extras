@@ -198,11 +198,6 @@ cc_defaults {
         "libziparchive",
     ],
     target: {
-        android: {
-            shared_libs: [
-                "libLLVM_android",
-            ],
-        },
         linux: {
             shared_libs: [
                 "libcutils",
@@ -240,6 +235,24 @@ cc_defaults {
 }
 
 cc_defaults {
+    name: "simpleperf_libs_for_tests",
+    defaults: ["simpleperf_shared_libs"],
+    target: {
+        android: {
+            // 32-bit libLLVM_android isn't shipped on device. So use static llvm libs in tests.
+            static_libs: [
+                "libLLVMObject",
+                "libLLVMBitReader",
+                "libLLVMMC",
+                "libLLVMMCParser",
+                "libLLVMCore",
+                "libLLVMSupport",
+            ],
+        },
+    },
+}
+
+cc_defaults {
     name: "libsimpleperf_srcs",
     srcs: [
         "cmd_dumprecord.cpp",
@@ -265,6 +278,7 @@ cc_defaults {
         linux: {
             srcs: [
                 "CallChainJoiner.cpp",
+                "cmd_api.cpp",
                 "cmd_debug_unwind.cpp",
                 "cmd_list.cpp",
                 "cmd_record.cpp",
@@ -320,6 +334,13 @@ cc_binary {
         "main.cpp",
     ],
     static_libs: ["libsimpleperf"],
+    target: {
+        android: {
+            shared_libs: [
+                "libLLVM_android",
+            ],
+        },
+    },
 }
 
 // simpleperf released in ndk
@@ -548,7 +569,7 @@ cc_test {
     name: "simpleperf_unit_test",
     defaults: [
         "simpleperf_test_srcs",
-        "simpleperf_shared_libs",
+        "simpleperf_libs_for_tests",
     ],
     static_libs: [
         "libgmock",
@@ -567,7 +588,7 @@ cc_test {
 cc_test {
     name: "simpleperf_cpu_hotplug_test",
     defaults: [
-        "simpleperf_shared_libs",
+        "simpleperf_libs_for_tests",
     ],
     srcs: [
         "cpu_hotplug_test.cpp",
@@ -590,7 +611,7 @@ cc_library_static {
     name: "libsimpleperf_cts_test",
     defaults: [
         "simpleperf_test_srcs",
-        "simpleperf_shared_libs",
+        "simpleperf_libs_for_tests",
     ],
     host_supported: false,
     cflags: [
@@ -608,7 +629,7 @@ cc_library_static {
 cc_test {
     name: "simpleperf_record_test",
     defaults: [
-        "simpleperf_shared_libs",
+        "simpleperf_libs_for_tests",
     ],
     srcs: [
         "record_lib_test.cpp",
