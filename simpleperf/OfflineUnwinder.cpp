@@ -150,28 +150,26 @@ void UnwindMaps::UpdateMaps(const MapSet& map_set) {
     } else if (i == old_size || entry->start_addr <= entries_[i]->start_addr) {
       // Add an entry.
       entries_.push_back(entry);
-      maps_.push_back(CreateMapInfo(entry));
+      maps_.emplace_back(CreateMapInfo(entry));
       ++it;
     } else {
       // Remove an entry.
       entries_[i] = nullptr;
-      delete maps_[i];
       maps_[i++] = nullptr;
     }
   }
   while (i < old_size) {
     entries_[i] = nullptr;
-    delete maps_[i];
     maps_[i++] = nullptr;
   }
-  std::sort(entries_.begin(), entries_.end(), [](const MapEntry* e1, const MapEntry* e2) {
+  std::sort(entries_.begin(), entries_.end(), [](const auto& e1, const auto& e2) {
     if (e1 == nullptr || e2 == nullptr) {
       return e1 != nullptr;
     }
     return e1->start_addr < e2->start_addr;
   });
   std::sort(maps_.begin(), maps_.end(),
-            [](const unwindstack::MapInfo* m1, const unwindstack::MapInfo* m2) {
+            [](const auto& m1, const auto& m2) {
     if (m1 == nullptr || m2 == nullptr) {
       return m1 != nullptr;
     }
