@@ -87,7 +87,7 @@ int fscrypt_set_directory_policy(const char* dir)
         "vendor_ce", "vendor_de",
         "media",
         "data", "user", "user_de",
-        "apex", "preloads", "pkg_staging",
+        "apex", "preloads", "app-staging",
         "gsi",
     };
     std::string prefix = "/data/";
