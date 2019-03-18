@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <unistd.h>
+
 #include <memory>
 #include <string>
 
@@ -41,12 +43,11 @@ class JsonSchemaTestConfig {
   virtual ~JsonSchemaTestConfig() = default;
   virtual std::unique_ptr<google::protobuf::Message> CreateMessage() const = 0;
   virtual std::string file_path() const = 0;
-  virtual std::string GetFileContent() const {
-    std::string content;
-    if (!android::base::ReadFileToString(file_path(), &content)) {
-      return "";
-    }
-    return content;
+  /**
+   * If it returns true, tests are skipped when the file is not found.
+   */
+  virtual bool optional() const {
+    return false;
   }
 };
 using JsonSchemaTestConfigFactory =
@@ -79,11 +80,19 @@ class JsonSchemaTest
     auto&& config =
         ::testing::TestWithParam<JsonSchemaTestConfigFactory>::GetParam()();
     file_path_ = config->file_path();
-    json_ = config->GetFileContent();
-    ASSERT_FALSE(json_.empty()) << "Cannot read " << config->file_path();
+
+    if (access(file_path_.c_str(), F_OK) == -1) {
+      ASSERT_EQ(ENOENT, errno) << "File '" << file_path_ << "' is not accessible: "
+                               << strerror(errno);
+      ASSERT_TRUE(config->optional()) << "Missing mandatory file " << file_path_;
+      GTEST_SKIP();
+    }
+    ASSERT_TRUE(android::base::ReadFileToString(file_path_, &json_));
+    ASSERT_FALSE(json_.empty()) << "File '" << file_path_ << "' exists but is empty";
+
     object_ = config->CreateMessage();
     auto res = internal::JsonStringToMessage(json_, object_.get());
-    ASSERT_TRUE(res.ok()) << "Invalid format of file " << config->file_path()
+    ASSERT_TRUE(res.ok()) << "Invalid format of file " << file_path_
                           << ": " << res.error();
   }
   google::protobuf::Message* message() const {
