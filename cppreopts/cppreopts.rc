@@ -18,8 +18,17 @@ service cppreopts /system/bin/cppreopts.sh /postinstall
     user root
     capabilities
 
-on property:sys.cppreopt=requested
+# Post install is above Treble VINTF, because it runs some utilities from
+# /system. Therefore, the fstab can only be in either /system or /product.
+on property:sys.cppreopt=requested && property:ro.postinstall.fstab.prefix=/system
     mount_all /system/etc/fstab.postinstall
+    setprop sys.cppreopt mounted
+
+on property:sys.cppreopt=requested && property:ro.postinstall.fstab.prefix=/product
+    mount_all /product/etc/fstab.postinstall
+    setprop sys.cppreopt mounted
+
+on property:sys.cppreopt=mounted
     exec_start cppreopts
     # Optional script to copy additional preloaded content to data directory
     exec - system system -- /system/bin/preloads_copy.sh /postinstall
