@@ -468,9 +468,6 @@ cc_library_shared {
         linux: {
             ldflags: ["-Wl,--exclude-libs,ALL"],
         },
-        windows: {
-            ldflags: ["-Wl,--exclude-libs,ALL"],
-        },
         darwin: {
             dist: {
                 dir: "simpleperf/darwin/x86",
