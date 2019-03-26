@@ -28,6 +28,7 @@
 #include <android-base/strings.h>
 #include <android-base/parseint.h>
 #ifdef __ANDROID__
+#include <cutils/android_get_control_file.h>
 #include <fs_mgr.h>
 #endif
 #include <liblp/liblp.h>
@@ -77,14 +78,35 @@ static bool IsBlockDevice(const char* file) {
     return !stat(file, &s) && S_ISBLK(s.st_mode);
 }
 
+// Reimplementation of fs_mgr_get_slot_suffix() without reading
+// kernel commandline.
+static std::string GetSlotSuffix() {
+    return base::GetProperty("ro.boot.slot_suffix", "");
+}
+
+// Reimplementation of fs_mgr_get_super_partition_name() without reading
+// kernel commandline. Always return the super partition at current slot.
+static std::string GetSuperPartionName() {
+    std::string super_partition = base::GetProperty("ro.boot.super_partition", "");
+    if (super_partition.empty()) {
+        return LP_METADATA_DEFAULT_PARTITION_NAME;
+    }
+    return super_partition + GetSlotSuffix();
+}
+
 class FileOrBlockDeviceOpener final : public PartitionOpener {
 public:
     android::base::unique_fd Open(const std::string& path, int flags) const override {
         // Try a local file first.
-        android::base::unique_fd fd(open(path.c_str(), flags));
-        if (fd >= 0) {
-            return fd;
-        }
+        android::base::unique_fd fd;
+
+#ifdef __ANDROID__
+        fd.reset(android_get_control_file(path.c_str()));
+        if (fd >= 0) return fd;
+#endif
+        fd.reset(open(path.c_str(), flags));
+        if (fd >= 0) return fd;
+
         return PartitionOpener::Open(path, flags);
     }
 };
@@ -95,6 +117,9 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
         { "help", no_argument, nullptr, 'h' },
         { nullptr, 0, nullptr, 0 },
     };
+
+    // Allow this function to be invoked by lpdumpd multiple times.
+    optind = 1;
 
     int rv;
     int index;
@@ -122,8 +147,8 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
         }
     } else {
 #ifdef __ANDROID__
-        auto slot_number = SlotNumberForSlotSuffix(fs_mgr_get_slot_suffix());
-        pt = ReadMetadata(fs_mgr_get_super_partition_name(), slot_number);
+        auto slot_number = SlotNumberForSlotSuffix(GetSlotSuffix());
+        pt = ReadMetadata(GetSuperPartionName(), slot_number);
 #else
         return usage(argc, argv, cerr);
 #endif
@@ -190,6 +215,6 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
     return EX_OK;
 }
 
-int main(int argc, char* argv[]) {
+int LpdumpMain(int argc, char* argv[]) {
     return LpdumpMain(argc, argv, std::cout, std::cerr);
 }
