@@ -16,12 +16,12 @@
 
 #include <getopt.h>
 #include <inttypes.h>
-#include <stdio.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sysexits.h>
 #include <unistd.h>
 
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -35,16 +35,17 @@
 using namespace android;
 using namespace android::fs_mgr;
 
-static int usage(int /* argc */, char* argv[]) {
-    fprintf(stderr,
-            "%s - command-line tool for dumping Android Logical Partition images.\n"
+static int usage(int /* argc */, char* argv[], std::ostream& cerr) {
+    cerr << argv[0]
+         << " - command-line tool for dumping Android Logical Partition images.\n"
             "\n"
             "Usage:\n"
-            "  %s [-s <SLOT#>|--slot=<SLOT#>] [FILE|DEVICE]\n"
+            "  "
+         << argv[0]
+         << " [-s <SLOT#>|--slot=<SLOT#>] [FILE|DEVICE]\n"
             "\n"
             "Options:\n"
-            "  -s, --slot=N     Slot number or suffix.\n",
-            argv[0], argv[0]);
+            "  -s, --slot=N     Slot number or suffix.\n";
     return EX_USAGE;
 }
 
@@ -88,7 +89,7 @@ public:
     }
 };
 
-int main(int argc, char* argv[]) {
+int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
     struct option options[] = {
         { "slot", required_argument, nullptr, 's' },
         { "help", no_argument, nullptr, 'h' },
@@ -101,7 +102,7 @@ int main(int argc, char* argv[]) {
     while ((rv = getopt_long_only(argc, argv, "s:h", options, &index)) != -1) {
         switch (rv) {
             case 'h':
-                return usage(argc, argv);
+                return usage(argc, argv, cerr);
             case 's':
                 if (!android::base::ParseUint(optarg, &slot)) {
                     slot = SlotNumberForSlotSuffix(optarg);
@@ -124,66 +125,71 @@ int main(int argc, char* argv[]) {
         auto slot_number = SlotNumberForSlotSuffix(fs_mgr_get_slot_suffix());
         pt = ReadMetadata(fs_mgr_get_super_partition_name(), slot_number);
 #else
-        return usage(argc, argv);
+        return usage(argc, argv, cerr);
 #endif
     }
     if (!pt) {
-        fprintf(stderr, "Failed to read metadata.\n");
+        cerr << "Failed to read metadata.\n";
         return EX_NOINPUT;
     }
 
-    printf("Metadata version: %u.%u\n", pt->header.major_version, pt->header.minor_version);
-    printf("Metadata size: %u bytes\n", pt->header.header_size + pt->header.tables_size);
-    printf("Metadata max size: %u bytes\n", pt->geometry.metadata_max_size);
-    printf("Metadata slot count: %u\n", pt->geometry.metadata_slot_count);
-    printf("Partition table:\n");
-    printf("------------------------\n");
+    cout << "Metadata version: " << pt->header.major_version << "." << pt->header.minor_version
+         << "\n";
+    cout << "Metadata size: " << (pt->header.header_size + pt->header.tables_size) << " bytes\n";
+    cout << "Metadata max size: " << pt->geometry.metadata_max_size << " bytes\n";
+    cout << "Metadata slot count: " << pt->geometry.metadata_slot_count << "\n";
+    cout << "Partition table:\n";
+    cout << "------------------------\n";
 
     for (const auto& partition : pt->partitions) {
         std::string name = GetPartitionName(partition);
         std::string group_name = GetPartitionGroupName(pt->groups[partition.group_index]);
-        printf("  Name: %s\n", name.c_str());
-        printf("  Group: %s\n", group_name.c_str());
-        printf("  Attributes: %s\n", BuildAttributeString(partition.attributes).c_str());
-        printf("  Extents:\n");
+        cout << "  Name: " << name << "\n";
+        cout << "  Group: " << group_name << "\n";
+        cout << "  Attributes: " << BuildAttributeString(partition.attributes) << "\n";
+        cout << "  Extents:\n";
         uint64_t first_sector = 0;
         for (size_t i = 0; i < partition.num_extents; i++) {
             const LpMetadataExtent& extent = pt->extents[partition.first_extent_index + i];
-            printf("    %" PRIu64 " .. %" PRIu64 " ", first_sector,
-                    (first_sector + extent.num_sectors - 1));
+            cout << "    " << first_sector << " .. " << (first_sector + extent.num_sectors - 1)
+                 << " ";
             first_sector += extent.num_sectors;
             if (extent.target_type == LP_TARGET_TYPE_LINEAR) {
                 const auto& block_device = pt->block_devices[extent.target_source];
                 std::string device_name = GetBlockDevicePartitionName(block_device);
-                printf("linear %s %" PRIu64, device_name.c_str(), extent.target_data);
+                cout << "linear " << device_name.c_str() << " " << extent.target_data;
             } else if (extent.target_type == LP_TARGET_TYPE_ZERO) {
-                printf("zero");
+                cout << "zero";
             }
-            printf("\n");
+            cout << "\n";
         }
-        printf("------------------------\n");
+        cout << "------------------------\n";
     }
 
-    printf("Block device table:\n");
-    printf("------------------------\n");
+    cout << "Block device table:\n";
+    cout << "------------------------\n";
     for (const auto& block_device : pt->block_devices) {
         std::string partition_name = GetBlockDevicePartitionName(block_device);
-        printf("  Partition name: %s\n", partition_name.c_str());
-        printf("  First sector: %" PRIu64 "\n", block_device.first_logical_sector);
-        printf("  Size: %" PRIu64 " bytes\n", block_device.size);
-        printf("  Flags: %s\n", BuildBlockDeviceFlagString(block_device.flags).c_str());
-        printf("------------------------\n");
+        cout << "  Partition name: " << partition_name << "\n";
+        cout << "  First sector: " << block_device.first_logical_sector << "\n";
+        cout << "  Size: " << block_device.size << " bytes\n";
+        cout << "  Flags: " << BuildBlockDeviceFlagString(block_device.flags) << "\n";
+        cout << "------------------------\n";
     }
 
-    printf("Group table:\n");
-    printf("------------------------\n");
+    cout << "Group table:\n";
+    cout << "------------------------\n";
     for (const auto& group : pt->groups) {
         std::string group_name = GetPartitionGroupName(group);
-        printf("  Name: %s\n", group_name.c_str());
-        printf("  Maximum size: %" PRIu64 "\n", group.maximum_size);
-        printf("  Flags: %s\n", BuildGroupFlagString(group.flags).c_str());
-        printf("------------------------\n");
+        cout << "  Name: " << group_name << "\n";
+        cout << "  Maximum size: " << group.maximum_size << " bytes\n";
+        cout << "  Flags: " << BuildGroupFlagString(group.flags) << "\n";
+        cout << "------------------------\n";
     }
 
     return EX_OK;
+}
+
+int main(int argc, char* argv[]) {
+    return LpdumpMain(argc, argv, std::cout, std::cerr);
 }
