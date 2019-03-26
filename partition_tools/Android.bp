@@ -27,8 +27,8 @@ cc_defaults {
     },
 }
 
-cc_binary {
-    name: "lpdump",
+cc_library_shared {
+    name: "liblpdump",
     defaults: ["lp_defaults"],
     host_supported: true,
     shared_libs: [
@@ -42,7 +42,42 @@ cc_binary {
     target: {
         android: {
             shared_libs: [
+                "libcutils",
                 "libfs_mgr",
+            ],
+        },
+    },
+}
+
+cc_binary {
+    name: "lpdump",
+    defaults: ["lp_defaults"],
+    host_supported: true,
+    shared_libs: [
+        "libbase",
+        "liblog",
+        "liblp",
+    ],
+    target: {
+        android: {
+            srcs: [
+                "lpdump_target.cc",
+            ],
+            shared_libs: [
+                "liblpdump_interface-cpp",
+                "libbinder",
+                "libutils",
+            ],
+            required: [
+                "lpdumpd",
+            ],
+        },
+        host: {
+            srcs: [
+                "lpdump_host.cc",
+            ],
+            shared_libs: [
+                "liblpdump",
             ],
         },
     },
@@ -73,5 +108,23 @@ cc_binary {
     ],
     srcs: [
         "lpflash.cc",
+    ],
+}
+
+cc_binary {
+    name: "lpdumpd",
+    defaults: ["lp_defaults"],
+    init_rc: ["lpdumpd.rc"],
+    shared_libs: [
+        "libbase",
+        "libbinder",
+        "liblog",
+        "liblp",
+        "liblpdump",
+        "liblpdump_interface-cpp",
+        "libutils",
+    ],
+    srcs: [
+        "lpdumpd.cc",
     ],
 }
