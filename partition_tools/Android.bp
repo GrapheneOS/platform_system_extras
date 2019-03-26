@@ -35,10 +35,18 @@ cc_library_shared {
         "libbase",
         "liblog",
         "liblp",
+        "libprotobuf-cpp-full",
+    ],
+    static_libs: [
+        "libjsonpbparse",
     ],
     srcs: [
         "lpdump.cc",
+        "dynamic_partitions_device_info.proto",
     ],
+    proto: {
+        type: "full",
+    },
     target: {
         android: {
             shared_libs: [
@@ -57,6 +65,9 @@ cc_binary {
         "libbase",
         "liblog",
         "liblp",
+    ],
+    static_libs: [
+        "libjsonpbparse",
     ],
     target: {
         android: {
