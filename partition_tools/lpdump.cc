@@ -16,23 +16,31 @@
 
 #include <getopt.h>
 #include <inttypes.h>
+#include <sys/mount.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/types.h>
 #include <sysexits.h>
 #include <unistd.h>
 
 #include <iostream>
+#include <optional>
+#include <regex>
 #include <string>
 #include <vector>
 
-#include <android-base/strings.h>
 #include <android-base/parseint.h>
+#include <android-base/properties.h>
+#include <android-base/strings.h>
 #ifdef __ANDROID__
 #include <cutils/android_get_control_file.h>
 #include <fs_mgr.h>
 #endif
+#include <jsonpb/jsonpb.h>
+#include <liblp/builder.h>
 #include <liblp/liblp.h>
 
+#include "dynamic_partitions_device_info.pb.h"
 using namespace android;
 using namespace android::fs_mgr;
 
@@ -43,10 +51,11 @@ static int usage(int /* argc */, char* argv[], std::ostream& cerr) {
             "Usage:\n"
             "  "
          << argv[0]
-         << " [-s <SLOT#>|--slot=<SLOT#>] [FILE|DEVICE]\n"
+         << " [-s <SLOT#>|--slot=<SLOT#>] [-j|--json] [FILE|DEVICE]\n"
             "\n"
             "Options:\n"
-            "  -s, --slot=N     Slot number or suffix.\n";
+            "  -s, --slot=N     Slot number or suffix.\n"
+            "  -j, --json       Print in JSON format.\n";
     return EX_USAGE;
 }
 
@@ -94,6 +103,150 @@ static std::string GetSuperPartionName() {
     return super_partition + GetSlotSuffix();
 }
 
+static std::string RemoveSuffix(const std::string& s, const std::string& suffix) {
+    if (base::EndsWith(s, suffix)) {
+        return s.substr(0, s.length() - suffix.length());
+    }
+    return s;
+}
+
+// Merge proto with information from metadata.
+static bool MergeMetadata(const LpMetadata* metadata,
+                          DynamicPartitionsDeviceInfoProto* proto) {
+    if (!metadata) return false;
+    auto builder = MetadataBuilder::New(*metadata);
+    if (!builder) return false;
+
+    std::string slot_suffix = GetSlotSuffix();
+
+    for (const auto& group_name : builder->ListGroups()) {
+        auto group = builder->FindGroup(group_name);
+        if (!group) continue;
+        if (!base::EndsWith(group_name, slot_suffix)) continue;
+        auto group_proto = proto->add_groups();
+        group_proto->set_name(RemoveSuffix(group_name, slot_suffix));
+        group_proto->set_maximum_size(group->maximum_size());
+
+        for (auto partition : builder->ListPartitionsInGroup(group_name)) {
+            auto partition_name = partition->name();
+            if (!base::EndsWith(partition_name, slot_suffix)) continue;
+            auto partition_proto = proto->add_partitions();
+            partition_proto->set_name(RemoveSuffix(partition_name, slot_suffix));
+            partition_proto->set_group_name(RemoveSuffix(group_name, slot_suffix));
+            partition_proto->set_size(partition->size());
+            partition_proto->set_is_dynamic(true);
+        }
+    }
+
+    for (const auto& block_device : metadata->block_devices) {
+        std::string name = GetBlockDevicePartitionName(block_device);
+        BlockDeviceInfo info;
+        if (!builder->GetBlockDeviceInfo(name, &info)) {
+            continue;
+        }
+        auto block_device_proto = proto->add_block_devices();
+        block_device_proto->set_name(RemoveSuffix(name, slot_suffix));
+        block_device_proto->set_size(info.size);
+        block_device_proto->set_block_size(info.logical_block_size);
+        block_device_proto->set_alignment(info.alignment);
+        block_device_proto->set_alignment_offset(info.alignment_offset);
+    }
+    return true;
+}
+
+#ifdef __ANDROID__
+static DynamicPartitionsDeviceInfoProto::Partition* FindPartition(
+        DynamicPartitionsDeviceInfoProto* proto, const std::string& partition) {
+    for (DynamicPartitionsDeviceInfoProto::Partition& p : *proto->mutable_partitions()) {
+        if (p.name() == partition) {
+            return &p;
+        }
+    }
+    return nullptr;
+}
+
+static std::optional<std::string> GetReadonlyPartitionName(const android::fs_mgr::FstabEntry& entry) {
+    // Only report readonly partitions.
+    if ((entry.flags & MS_RDONLY) == 0) return std::nullopt;
+    std::regex regex("/([a-zA-Z_]*)$");
+    std::smatch match;
+    if (!std::regex_match(entry.mount_point, match, regex)) return std::nullopt;
+    // On system-as-root devices, fstab lists / for system partition.
+    std::string partition = match[1];
+    return partition.empty() ? "system" : partition;
+}
+
+static bool MergeFsUsage(DynamicPartitionsDeviceInfoProto* proto,
+                         std::ostream& cerr) {
+    using namespace std::string_literals;
+    Fstab fstab;
+    if (!ReadDefaultFstab(&fstab)) {
+        cerr << "Cannot read fstab\n";
+        return false;
+    }
+
+    for (const auto& entry : fstab) {
+        auto partition = GetReadonlyPartitionName(entry);
+        if (!partition) {
+            continue;
+        }
+
+        // system is mounted to "/";
+        const char* mount_point = (entry.mount_point == "/system")
+            ? "/" : entry.mount_point.c_str();
+
+        struct statvfs vst;
+        if (statvfs(mount_point, &vst) == -1) {
+            continue;
+        }
+
+        auto partition_proto = FindPartition(proto, *partition);
+        if (partition_proto == nullptr) {
+            partition_proto = proto->add_partitions();
+            partition_proto->set_name(*partition);
+            partition_proto->set_is_dynamic(false);
+        }
+        partition_proto->set_fs_size((uint64_t)vst.f_blocks * vst.f_frsize);
+        if (vst.f_bavail <= vst.f_blocks) {
+            partition_proto->set_fs_used((uint64_t)(vst.f_blocks - vst.f_bavail) * vst.f_frsize);
+        }
+    }
+    return true;
+}
+#endif
+
+// Print output in JSON format.
+// If successful, this function must write a valid JSON string to "cout" and return 0.
+static int PrintJson(const LpMetadata* metadata, std::ostream& cout,
+                     std::ostream& cerr) {
+    DynamicPartitionsDeviceInfoProto proto;
+
+    if (base::GetBoolProperty("ro.boot.dynamic_partitions", false)) {
+        proto.set_enabled(true);
+    }
+
+    if (base::GetBoolProperty("ro.boot.dynamic_partitions_retrofit", false)) {
+        proto.set_retrofit(true);
+    }
+
+    if (!MergeMetadata(metadata, &proto)) {
+        cerr << "Warning: Failed to read metadata.\n";
+    }
+#ifdef __ANDROID__
+    if (!MergeFsUsage(&proto, cerr)) {
+        cerr << "Warning: Failed to read filesystem size and usage.\n";
+    }
+#endif
+
+    auto error_or_json = jsonpb::MessageToJsonString(proto);
+    if (!error_or_json.ok()) {
+        cerr << error_or_json.error() << "\n";
+        return EX_SOFTWARE;
+    }
+    cout << *error_or_json;
+    return EX_OK;
+}
+
 class FileOrBlockDeviceOpener final : public PartitionOpener {
 public:
     android::base::unique_fd Open(const std::string& path, int flags) const override {
@@ -112,11 +265,14 @@ public:
 };
 
 int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
+    // clang-format off
     struct option options[] = {
         { "slot", required_argument, nullptr, 's' },
         { "help", no_argument, nullptr, 'h' },
+        { "json", no_argument, nullptr, 'j' },
         { nullptr, 0, nullptr, 0 },
     };
+    // clang-format on
 
     // Allow this function to be invoked by lpdumpd multiple times.
     optind = 1;
@@ -124,7 +280,8 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
     int rv;
     int index;
     uint32_t slot = 0;
-    while ((rv = getopt_long_only(argc, argv, "s:h", options, &index)) != -1) {
+    bool json = false;
+    while ((rv = getopt_long_only(argc, argv, "s:jh", options, &index)) != -1) {
         switch (rv) {
             case 'h':
                 return usage(argc, argv, cerr);
@@ -133,14 +290,16 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
                     slot = SlotNumberForSlotSuffix(optarg);
                 }
                 break;
+            case 'j':
+                json = true;
+                break;
         }
     }
 
     std::unique_ptr<LpMetadata> pt;
     if (optind < argc) {
-        const char* file = argv[optind++];
-
         FileOrBlockDeviceOpener opener;
+        const char* file = argv[optind++];
         pt = ReadMetadata(opener, file, slot);
         if (!pt && !IsBlockDevice(file)) {
             pt = ReadFromImageFile(file);
@@ -153,6 +312,12 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
         return usage(argc, argv, cerr);
 #endif
     }
+
+    // --json option doesn't require metadata to be present.
+    if (json) {
+        return PrintJson(pt.get(), cout, cerr);
+    }
+
     if (!pt) {
         cerr << "Failed to read metadata.\n";
         return EX_NOINPUT;
