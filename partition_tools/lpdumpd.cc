@@ -50,12 +50,17 @@ class Lpdump : public BnLpdump {
         }
         LOG(DEBUG) << "Dumping with args: " << base::Join(args, " ");
         std::stringstream output;
-        int ret = LpdumpMain((int)m_args.size(), argv, output, output);
+        std::stringstream error;
+        int ret = LpdumpMain((int)m_args.size(), argv, output, error);
+        std::string error_str = error.str();
         if (ret == 0) {
+            if (!error_str.empty()) {
+                LOG(WARNING) << error_str;
+            }
             *aidl_return = output.str();
             return Status::ok();
         } else {
-            return Status::fromServiceSpecificError(ret, output.str().c_str());
+            return Status::fromServiceSpecificError(ret, error_str.c_str());
         }
     }
 };
