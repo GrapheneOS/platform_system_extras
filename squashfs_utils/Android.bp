@@ -17,8 +17,17 @@ cc_library {
 
     target: {
         host: {
-            cflags: ["-Wall", "-Werror", "-D_GNU_SOURCE", "-DSQUASHFS_NO_KLOG"]
+            cflags: [
+                "-Wall",
+                "-Werror",
+                "-D_GNU_SOURCE",
+                "-DSQUASHFS_NO_KLOG",
+            ],
         },
     },
+}
 
+sh_binary_host {
+    name: "mksquashfsimage.sh",
+    src: "mksquashfsimage.sh",
 }
