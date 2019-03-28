@@ -24,3 +24,17 @@ cc_binary_host {
     defaults: ["computestats-defaults"],
     srcs: ["computestatsf.c"],
 }
+
+sh_binary_host {
+    name: "app-launcher",
+    src: "app-launcher",
+    required: [
+        "computestats",
+        "computestatsf",
+    ],
+    target: {
+        darwin: {
+            enabled: false,
+        },
+    },
+}
