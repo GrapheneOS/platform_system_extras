@@ -80,7 +80,7 @@ int main(int argc, char* argv[]) {
 
   // Get the raw image.
   android::base::unique_fd fd(open(argv[1], O_RDONLY));
-  if (!fd) {
+  if (fd == -1) {
     fprintf(stderr, "failed to open %s: %s\n", argv[1], strerror(errno));
     return 1;
   }

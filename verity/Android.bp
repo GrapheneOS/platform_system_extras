@@ -130,3 +130,23 @@ cc_test {
         "libverity_tree",
     ],
 }
+
+// VeritySigner should probably just be a java_binary
+sh_binary_host {
+    name: "verity_signer",
+    src: "verity_signer",
+    required: ["VeritySigner"],
+}
+
+// BootSignature should probably just be a java_binary
+sh_binary_host {
+    name: "boot_signer",
+    src: "boot_signer",
+    required: ["BootSignature"],
+}
+
+// This should probably be a python_binary_host
+sh_binary_host {
+    name: "build_verity_metadata.py",
+    src: "build_verity_metadata.py",
+}
