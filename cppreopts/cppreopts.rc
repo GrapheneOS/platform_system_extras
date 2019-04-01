@@ -16,6 +16,9 @@ service cppreopts /system/bin/cppreopts.sh /postinstall
     oneshot
     disabled
     user root
+    priority -20
+    ioprio rt 0
+    writepid /dev/cpuset/foreground/tasks
     capabilities
 
 # Post install is above Treble VINTF, because it runs some utilities from
