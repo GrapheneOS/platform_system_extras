@@ -8,6 +8,7 @@ cc_binary {
     static_executable: true,
     static_libs: [
         "libc",
+        "libbase",
         "libcutils",
     ],
 }
