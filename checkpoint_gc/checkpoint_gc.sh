@@ -44,7 +44,6 @@ DIRTY_SEGMENTS=${DIRTY_SEGMENTS_START}
 TODO_SEGMENTS=$((${DIRTY_SEGMENTS_START}-${DIRTY_SEGMENTS_THRESHOLD}))
 echo $DIRTY_SEGMENTS_START
 while [ ${DIRTY_SEGMENTS} -gt ${DIRTY_SEGMENTS_THRESHOLD} ]; do
-  echo $DIRTY_SEGMENTS
   PROGRESS=`echo "(${DIRTY_SEGMENTS_START}-${DIRTY_SEGMENTS})/${TODO_SEGMENTS}"|bc -l`
   if [[ $PROGRESS == -* ]]; then
       PROGRESS=0
@@ -52,6 +51,8 @@ while [ ${DIRTY_SEGMENTS} -gt ${DIRTY_SEGMENTS_THRESHOLD} ]; do
   print -u${STATUS_FD} "global_progress ${PROGRESS}"
   read DIRTY_SEGMENTS < /sys/fs/f2fs/${NAME}/dirty_segments
   sleep ${SLEEP}
+  # In case someone turns it off behind our back
+  echo 1 > /sys/fs/f2fs/${NAME}/gc_urgent
 done
 
 log -pi -t checkpoint_gc Turning off GC for ${NAME}
