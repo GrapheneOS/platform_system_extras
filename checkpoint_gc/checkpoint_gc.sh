@@ -23,8 +23,9 @@
 
 # TARGET_SLOT="${1}"
 STATUS_FD="${2}"
-GC_TIME=120
 DIRTY_SEGMENTS_THRESHOLD=100
+
+SLEEP=5
 
 NAME=`while read dev dir type opt; do
   if [ /data = ${dir} -a f2fs = ${type} ]; then
@@ -38,16 +39,20 @@ fi
 log -pi -t checkpoint_gc Turning on GC for ${NAME}
 echo 1 > /sys/fs/f2fs/${NAME}/gc_urgent || exit 1
 
-COUNT=0
-STEP=5
-while [ ${COUNT} -lt ${GC_TIME} ]; do
-  print -u${STATUS_FD} "global_progress `echo $COUNT/$GC_TIME|bc -l`"
-  read DIRTY_SEGMENTS < /sys/fs/f2fs/${NAME}/dirty_segments
-  if [ ${DIRTY_SEGMENTS} -le ${DIRTY_SEGMENTS_THRESHOLD} ]; then
-    break
+read DIRTY_SEGMENTS_START < /sys/fs/f2fs/${NAME}/dirty_segments
+DIRTY_SEGMENTS=${DIRTY_SEGMENTS_START}
+TODO_SEGMENTS=$((${DIRTY_SEGMENTS_START}-${DIRTY_SEGMENTS_THRESHOLD}))
+echo $DIRTY_SEGMENTS_START
+while [ ${DIRTY_SEGMENTS} -gt ${DIRTY_SEGMENTS_THRESHOLD} ]; do
+  PROGRESS=`echo "(${DIRTY_SEGMENTS_START}-${DIRTY_SEGMENTS})/${TODO_SEGMENTS}"|bc -l`
+  if [[ $PROGRESS == -* ]]; then
+      PROGRESS=0
   fi
-  sleep ${STEP}
-  COUNT=$((${COUNT}+${STEP}))
+  print -u${STATUS_FD} "global_progress ${PROGRESS}"
+  read DIRTY_SEGMENTS < /sys/fs/f2fs/${NAME}/dirty_segments
+  sleep ${SLEEP}
+  # In case someone turns it off behind our back
+  echo 1 > /sys/fs/f2fs/${NAME}/gc_urgent
 done
 
 log -pi -t checkpoint_gc Turning off GC for ${NAME}
