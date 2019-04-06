@@ -253,10 +253,6 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Partition table must have at least one entry.\n");
         return EX_USAGE;
     }
-    if (!images.empty() && !output_sparse) {
-        fprintf(stderr, "Cannot write partition data for non-sparse images.\n");
-        return EX_USAGE;
-    }
 
     // Note that we take the block_size to mean both the logical block size and
     // the block size for libsparse.
@@ -351,13 +347,15 @@ int main(int argc, char* argv[]) {
     }
 
     std::unique_ptr<LpMetadata> metadata = builder->Export();
-    if (output_sparse) {
+    if (!images.empty()) {
         if (block_devices.size() == 1) {
-            if (!WriteToSparseFile(output_path.c_str(), *metadata.get(), block_size, images)) {
+            if (!WriteToImageFile(output_path.c_str(), *metadata.get(), block_size, images,
+                                  output_sparse)) {
                 return EX_CANTCREAT;
             }
         } else {
-            if (!WriteSplitSparseFiles(output_path, *metadata.get(), block_size, images)) {
+            if (!WriteSplitImageFiles(output_path, *metadata.get(), block_size, images,
+                                      output_sparse)) {
                 return EX_CANTCREAT;
             }
         }
