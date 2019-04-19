@@ -85,7 +85,7 @@ Thread* Threads::CreateThread(pid_t tid) {
   thread->tid_ = tid;
   thread->pointers_ = pointers_;
   thread->total_time_nsecs_ = 0;
-  if (pthread_create(&thread->thread_id_, nullptr, ThreadRunner, thread) == -1) {
+  if ((errno = pthread_create(&thread->thread_id_, nullptr, ThreadRunner, thread)) != 0) {
     err(1, "Failed to create thread %d: %s\n", tid, strerror(errno));
   }
 
