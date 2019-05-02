@@ -79,14 +79,18 @@ extern "C" JNIEXPORT void JNICALL
 Java_simpleperf_demo_cpp_1api_MainActivity_runNativeCode(
     JNIEnv *env,
     jobject jobj) {
-  pthread_t profile_thread;
-  if (pthread_create(&profile_thread, nullptr, ProfileThreadFunc, nullptr) != 0) {
-    log("failed to create profile thread");
-    return;
-  }
-  pthread_t busy_thread;
-  if (pthread_create(&busy_thread, nullptr, BusyThreadFunc, nullptr) != 0) {
-    log("failed to create busy thread");
+  static bool threadsStarted = false;
+  if (!threadsStarted) {
+    pthread_t profile_thread;
+    if (pthread_create(&profile_thread, nullptr, ProfileThreadFunc, nullptr) != 0) {
+      log("failed to create profile thread");
+      return;
+    }
+    pthread_t busy_thread;
+    if (pthread_create(&busy_thread, nullptr, BusyThreadFunc, nullptr) != 0) {
+      log("failed to create busy thread");
+    }
+    threadsStarted = true;
   }
 }
 
