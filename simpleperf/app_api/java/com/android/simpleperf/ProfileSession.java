@@ -65,6 +65,7 @@ public class ProfileSession {
     private String appDataDir;
     private String simpleperfDataDir;
     private Process simpleperfProcess;
+    private boolean traceOffcpu = false;
 
     /**
      * @param appDataDir the same as android.content.Context.getDataDir().
@@ -115,6 +116,11 @@ public class ProfileSession {
         if (state != State.NOT_YET_STARTED) {
             throw new AssertionError("startRecording: session in wrong state " + state);
         }
+        for (String arg : args) {
+            if (arg.equals("--trace-offcpu")) {
+                traceOffcpu = true;
+            }
+        }
         String simpleperfPath = findSimpleperf();
         checkIfPerfEnabled();
         createSimpleperfDataDir();
@@ -128,6 +134,10 @@ public class ProfileSession {
     public synchronized void pauseRecording() {
         if (state != State.STARTED) {
             throw new AssertionError("pauseRecording: session in wrong state " + state);
+        }
+        if (traceOffcpu) {
+            throw new AssertionError(
+                    "--trace-offcpu option doesn't work well with pause/resume recording");
         }
         sendCmd("pause");
         state = State.PAUSED;
