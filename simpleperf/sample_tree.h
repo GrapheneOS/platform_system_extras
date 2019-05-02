@@ -145,7 +145,7 @@ class SampleTreeBuilder {
             }
           }
           EntryT* callchain_sample =
-              CreateCallChainSample(sample, ip, in_kernel, callchain, acc_info);
+              CreateCallChainSample(thread, sample, ip, in_kernel, callchain, acc_info);
           if (callchain_sample == nullptr) {
             break;
           }
@@ -188,8 +188,8 @@ class SampleTreeBuilder {
                                AccumulateInfoT* acc_info) = 0;
   virtual EntryT* CreateBranchSample(const SampleRecord& r,
                                      const BranchStackItemType& item) = 0;
-  virtual EntryT* CreateCallChainSample(const EntryT* sample, uint64_t ip,
-                                        bool in_kernel,
+  virtual EntryT* CreateCallChainSample(const ThreadEntry* thread, const EntryT* sample,
+                                        uint64_t ip, bool in_kernel,
                                         const std::vector<EntryT*>& callchain,
                                         const AccumulateInfoT& acc_info) = 0;
   virtual const ThreadEntry* GetThreadOfSample(EntryT*) = 0;

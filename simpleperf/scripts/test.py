@@ -647,7 +647,6 @@ class TestExampleWithNativeJniCall(TestExampleBase):
         self.run_cmd(["report.py", "-g", "--comms", "BusyThread", "-o", "report.txt"])
         self.check_strings_in_file("report.txt", [
             "com.example.simpleperf.simpleperfexamplewithnative.MixActivity$1.run",
-            "com.example.simpleperf.simpleperfexamplewithnative.MixActivity.callFunction",
             "Java_com_example_simpleperf_simpleperfexamplewithnative_MixActivity_callFunction"])
         remove("annotated_files")
         self.run_cmd(["annotate.py", "-s", self.example_path, "--comm", "BusyThread"])
