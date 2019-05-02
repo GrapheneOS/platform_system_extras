@@ -123,6 +123,21 @@ class TestBase(unittest.TestCase):
             return output_data
         return ''
 
+    def check_strings_in_file(self, filename, strings):
+        self.check_exist(filename=filename)
+        with open(filename, 'r') as fh:
+            self.check_strings_in_content(fh.read(), strings)
+
+    def check_exist(self, filename=None, dirname=None):
+        if filename:
+            self.assertTrue(os.path.isfile(filename), filename)
+        if dirname:
+            self.assertTrue(os.path.isdir(dirname), dirname)
+
+    def check_strings_in_content(self, content, strings):
+        for s in strings:
+            self.assertNotEqual(content.find(s), -1, "s: %s, content: %s" % (s, content))
+
 
 class TestExampleBase(TestBase):
     @classmethod
@@ -208,12 +223,6 @@ class TestExampleBase(TestBase):
         if build_binary_cache:
             self.check_exist(dirname="binary_cache")
 
-    def check_exist(self, filename=None, dirname=None):
-        if filename:
-            self.assertTrue(os.path.isfile(filename), filename)
-        if dirname:
-            self.assertTrue(os.path.isdir(dirname), dirname)
-
     def check_file_under_dir(self, dirname, filename):
         self.check_exist(dirname=dirname)
         for _, _, files in os.walk(dirname):
@@ -221,16 +230,6 @@ class TestExampleBase(TestBase):
                 if f == filename:
                     return
         self.fail("Failed to call check_file_under_dir(dir=%s, file=%s)" % (dirname, filename))
-
-
-    def check_strings_in_file(self, filename, strings):
-        self.check_exist(filename=filename)
-        with open(filename, 'r') as fh:
-            self.check_strings_in_content(fh.read(), strings)
-
-    def check_strings_in_content(self, content, strings):
-        for s in strings:
-            self.assertNotEqual(content.find(s), -1, "s: %s, content: %s" % (s, content))
 
     def check_annotation_summary(self, summary_file, check_entries):
         """ check_entries is a list of (name, accumulated_period, period).
@@ -1271,6 +1270,82 @@ class TestBinaryCacheBuilder(TestBase):
         shutil.copy(origin_file, source_file)
         binary_cache_builder.copy_binaries_from_symfs_dirs([symfs_dir])
         self.assertTrue(filecmp.cmp(target_file, source_file))
+
+
+class TestApiProfiler(TestBase):
+    def run_api_test(self, package_name, apk_name, expected_reports, min_android_version):
+        adb = AdbHelper()
+        if adb.get_android_version() < ord(min_android_version) - ord('L') + 5:
+            log_info('skip this test on Android < %s.' % min_android_version)
+            return
+        # step 1: Prepare profiling.
+        self.run_cmd(['api_profiler.py', 'prepare'])
+        # step 2: Install and run the app.
+        apk_path = os.path.join('testdata', apk_name)
+        adb.run(['uninstall', package_name])
+        adb.check_run(['install', '-t', apk_path])
+        adb.check_run(['shell', 'am', 'start', '-n', package_name + '/.MainActivity'])
+        # step 3: Wait until the app exits.
+        time.sleep(4)
+        while True:
+            result = adb.run(['shell', 'pidof', package_name])
+            if not result:
+                break
+            time.sleep(1)
+        # step 4: Collect recording data.
+        remove('simpleperf_data')
+        self.run_cmd(['api_profiler.py', 'collect', '-p', package_name, '-o', 'simpleperf_data'])
+        # step 5: Check recording data.
+        names = os.listdir('simpleperf_data')
+        self.assertGreater(len(names), 0)
+        for name in names:
+            path = os.path.join('simpleperf_data', name)
+            remove('report.txt')
+            self.run_cmd(['report.py', '-g', '-o', 'report.txt', '-i', path])
+            self.check_strings_in_file('report.txt', expected_reports)
+        # step 6: Clean up.
+        remove('report.txt')
+        remove('simpleperf_data')
+        adb.check_run(['uninstall', package_name])
+
+    def run_cpp_api_test(self, apk_name, min_android_version):
+        self.run_api_test('simpleperf.demo.cpp_api', apk_name, ['BusyThreadFunc'],
+                          min_android_version)
+
+    def test_cpp_api_on_a_debuggable_app_targeting_prev_q(self):
+        # The source code of the apk is in simpleperf/demo/CppApi (with a small change to exit
+        # after recording).
+        self.run_cpp_api_test('cpp_api-debug_prev_Q.apk', 'N')
+
+    def test_cpp_api_on_a_debuggable_app_targeting_q(self):
+        self.run_cpp_api_test('cpp_api-debug_Q.apk', 'N')
+
+    def test_cpp_api_on_a_profileable_app_targeting_prev_q(self):
+        # a release apk with <profileable android:shell="true" />
+        self.run_cpp_api_test('cpp_api-profile_prev_Q.apk', 'Q')
+
+    def test_cpp_api_on_a_profileable_app_targeting_q(self):
+        self.run_cpp_api_test('cpp_api-profile_Q.apk', 'Q')
+
+    def run_java_api_test(self, apk_name, min_android_version):
+        self.run_api_test('simpleperf.demo.java_api', apk_name,
+                          ['simpleperf.demo.java_api.MainActivity', 'java.lang.Thread.run'],
+                          min_android_version)
+
+    def test_java_api_on_a_debuggable_app_targeting_prev_q(self):
+        # The source code of the apk is in simpleperf/demo/JavaApi (with a small change to exit
+        # after recording).
+        self.run_java_api_test('java_api-debug_prev_Q.apk', 'P')
+
+    def test_java_api_on_a_debuggable_app_targeting_q(self):
+        self.run_java_api_test('java_api-debug_Q.apk', 'P')
+
+    def test_java_api_on_a_profileable_app_targeting_prev_q(self):
+        # a release apk with <profileable android:shell="true" />
+        self.run_java_api_test('java_api-profile_prev_Q.apk', 'Q')
+
+    def test_java_api_on_a_profileable_app_targeting_q(self):
+        self.run_java_api_test('java_api-profile_Q.apk', 'Q')
 
 
 def get_all_tests():

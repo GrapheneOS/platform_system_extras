@@ -34,7 +34,8 @@ SIMPLEPERF_SCRIPT_LIST := \
     testdata/perf_with_symbols.data \
     testdata/perf_with_trace_offcpu.data \
     testdata/perf_with_tracepoint_event.data \
-    testdata/perf_with_interpreter_frames.data
+    testdata/perf_with_interpreter_frames.data \
+    $(call all-named-files-under,*,app_api)
 
 SIMPLEPERF_SCRIPT_LIST := $(addprefix -f $(LOCAL_PATH)/,$(SIMPLEPERF_SCRIPT_LIST))
 
