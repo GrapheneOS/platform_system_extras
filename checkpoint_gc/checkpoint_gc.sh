@@ -26,6 +26,8 @@ STATUS_FD="${2}"
 DIRTY_SEGMENTS_THRESHOLD=100
 
 SLEEP=5
+TIME=0
+MAX_TIME=3600
 
 NAME=`while read dev dir type opt; do
   if [ /data = ${dir} -a f2fs = ${type} ]; then
@@ -42,8 +44,8 @@ echo 1 > /sys/fs/f2fs/${NAME}/gc_urgent || exit 1
 read DIRTY_SEGMENTS_START < /sys/fs/f2fs/${NAME}/dirty_segments
 DIRTY_SEGMENTS=${DIRTY_SEGMENTS_START}
 TODO_SEGMENTS=$((${DIRTY_SEGMENTS_START}-${DIRTY_SEGMENTS_THRESHOLD}))
-echo $DIRTY_SEGMENTS_START
 while [ ${DIRTY_SEGMENTS} -gt ${DIRTY_SEGMENTS_THRESHOLD} ]; do
+  log -pi -t checkpoint_gc dirty segments:${DIRTY_SEGMENTS} \(threshold:${DIRTY_SEGMENTS_THRESHOLD}\)
   PROGRESS=`echo "(${DIRTY_SEGMENTS_START}-${DIRTY_SEGMENTS})/${TODO_SEGMENTS}"|bc -l`
   if [[ $PROGRESS == -* ]]; then
       PROGRESS=0
@@ -51,6 +53,10 @@ while [ ${DIRTY_SEGMENTS} -gt ${DIRTY_SEGMENTS_THRESHOLD} ]; do
   print -u${STATUS_FD} "global_progress ${PROGRESS}"
   read DIRTY_SEGMENTS < /sys/fs/f2fs/${NAME}/dirty_segments
   sleep ${SLEEP}
+  TIME=$((${TIME}+${SLEEP}))
+  if [ ${TIME} -gt ${MAX_TIME} ]; then
+    break
+  fi
   # In case someone turns it off behind our back
   echo 1 > /sys/fs/f2fs/${NAME}/gc_urgent
 done
