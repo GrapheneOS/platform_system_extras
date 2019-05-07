@@ -62,7 +62,8 @@ struct SampleEntry {
   // accumuated when appearing in other sample's callchain
   uint64_t accumulated_period;
   uint64_t sample_count;
-  const ThreadEntry* thread;
+  pid_t pid;
+  pid_t tid;
   const char* thread_comm;
   const MapEntry* map;
   const Symbol* symbol;
@@ -78,7 +79,8 @@ struct SampleEntry {
         period(period),
         accumulated_period(accumulated_period),
         sample_count(sample_count),
-        thread(thread),
+        pid(thread->pid),
+        tid(thread->tid),
         thread_comm(thread->comm),
         map(map),
         symbol(symbol),
@@ -183,11 +185,10 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
     return InsertSample(std::move(sample));
   }
 
-  SampleEntry* CreateCallChainSample(const SampleEntry* sample, uint64_t ip,
-                                     bool in_kernel,
+  SampleEntry* CreateCallChainSample(const ThreadEntry* thread, const SampleEntry* sample,
+                                     uint64_t ip, bool in_kernel,
                                      const std::vector<SampleEntry*>& callchain,
                                      const uint64_t& acc_info) override {
-    const ThreadEntry* thread = sample->thread;
     const MapEntry* map = thread_tree_->FindMap(thread, ip, in_kernel);
     if (thread_tree_->IsUnknownDso(map->dso)) {
       // The unwinders can give wrong ip addresses, which can't map to a valid dso. Skip them.
@@ -203,7 +204,7 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
   }
 
   const ThreadEntry* GetThreadOfSample(SampleEntry* sample) override {
-    return sample->thread;
+    return thread_tree_->FindThreadOrNew(sample->pid, sample->tid);
   }
 
   uint64_t GetPeriodForCallChain(const uint64_t& acc_info) override {
@@ -212,11 +213,11 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
 
   bool FilterSample(const SampleEntry* sample) override {
     if (!pid_filter_.empty() &&
-        pid_filter_.find(sample->thread->pid) == pid_filter_.end()) {
+        pid_filter_.find(sample->pid) == pid_filter_.end()) {
       return false;
     }
     if (!tid_filter_.empty() &&
-        tid_filter_.find(sample->thread->tid) == tid_filter_.end()) {
+        tid_filter_.find(sample->tid) == tid_filter_.end()) {
       return false;
     }
     if (!comm_filter_.empty() &&
