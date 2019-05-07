@@ -106,7 +106,7 @@ ArchiveHelper::~ArchiveHelper() {
 bool ArchiveHelper::IterateEntries(
     const std::function<bool(ZipEntry&, const std::string&)>& callback) {
   void* iteration_cookie;
-  if (StartIteration(handle_, &iteration_cookie, nullptr, nullptr) < 0) {
+  if (StartIteration(handle_, &iteration_cookie) < 0) {
     LOG(ERROR) << "Failed to iterate " << filename_;
     return false;
   }
