@@ -128,7 +128,7 @@ bool ArchiveHelper::IterateEntries(
 }
 
 bool ArchiveHelper::FindEntry(const std::string& name, ZipEntry* entry) {
-  int result = ::FindEntry(handle_, ZipString(name.c_str()), entry);
+  int result = ::FindEntry(handle_, name, entry);
   if (result != 0) {
     LOG(ERROR) << "Failed to find " << name << " in " << filename_;
     return false;
