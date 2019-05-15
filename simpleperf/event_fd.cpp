@@ -235,7 +235,9 @@ size_t EventFd::GetAvailableMmapDataSize(size_t& data_pos) {
 
   uint64_t write_head = mmap_metadata_page_->data_head;
   uint64_t read_head = mmap_metadata_page_->data_tail;
-  if (write_head == read_head) {
+  // The kernel may decrease data_head temporarily (http://b/132446871), making
+  // write_head < read_head. So check it to avoid available data size underflow.
+  if (write_head <= read_head) {
     // No available data.
     return 0;
   }
