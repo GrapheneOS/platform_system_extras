@@ -309,7 +309,7 @@ def iterate(args, search_events_pattern, timings_pattern, shutdown_events_patter
     # sleep to make sure that logcat reader is reading before adb is gone by reboot. ugly but make
     # impl simple.
     t = threading.Thread(target = lambda : (time.sleep(2), reboot(args.serial, args.stressfs != '',\
-        args.permissive, args.adb_reboot)))
+        args.permissive, args.adb_reboot, args.buffersize)))
     t.start()
     shutdown_events, shutdown_timing_events = handle_reboot_log(True, shutdown_events_pattern,\
         components_to_monitor)
@@ -531,6 +531,9 @@ def init_arguments():
   parser.add_argument('-y', '--systrace', dest='systrace',
                       action='store_true',
                       help='collect systrace from the device. kernel trace should be already enabled', )
+  parser.add_argument('-G', '--buffersize', dest='buffersize', action='store', type=str,
+                      default=None,
+                      help='set logcat buffersize')
   return parser.parse_args()
 
 def handle_zygote_event(zygote_pids, events, event, line):
@@ -763,7 +766,7 @@ def do_reboot(serial, use_adb_reboot):
     retry += 1
   return False
 
-def reboot(serial, use_stressfs, permissive, use_adb_reboot):
+def reboot(serial, use_stressfs, permissive, use_adb_reboot, adb_buffersize=None):
   if use_stressfs:
     print 'Starting write to data partition'
     run_adb_shell_cmd('am start' +\
@@ -782,6 +785,11 @@ def reboot(serial, use_stressfs, permissive, use_adb_reboot):
 
   print 'Waiting the device'
   run_adb_cmd('wait-for-device')
+
+  if adb_buffersize is not None:
+    # increase the buffer size
+    if run_adb_cmd('logcat -G {}'.format(adb_buffersize)) != 0:
+      debug('Fail to set logcat buffer size as {}'.format(adb_buffersize))
 
 def run_adb_cmd(cmd):
   return subprocess.call(ADB_CMD + ' ' + cmd, shell=True)

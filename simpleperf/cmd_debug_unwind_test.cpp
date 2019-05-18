@@ -73,3 +73,20 @@ TEST(cmd_debug_unwind, unwind_with_ip_zero_in_callchain) {
                                      "-o", tmp_file.path}));
   ASSERT_NE(capture.Finish().find("Unwinding sample count: 1"), std::string::npos);
 }
+
+TEST(cmd_debug_unwind, unwind_embedded_lib_in_apk) {
+  // Check if we can unwind through a native library embedded in an apk. In the profiling data
+  // file, there is a sample with ip address pointing to
+  // /data/app/simpleperf.demo.cpp_api/base.apk!/lib/arm64-v8a/libnative-lib.so.
+  // If unwound successfully, it can reach a function in libc.so.
+  TemporaryFile tmp_file;
+  ASSERT_TRUE(DebugUnwindCmd()->Run({"-i", GetTestData("perf_unwind_embedded_lib_in_apk.data"),
+                                     "--symfs", GetTestDataDir(), "-o", tmp_file.path}));
+  CaptureStdout capture;
+  ASSERT_TRUE(capture.Start());
+  ASSERT_TRUE(CreateCommandInstance("report-sample")->Run(
+      {"--show-callchain", "-i", tmp_file.path}));
+  std::string output = capture.Finish();
+  ASSERT_NE(output.find("libnative-lib.so"), std::string::npos);
+  ASSERT_NE(output.find("libc.so"), std::string::npos);
+}
