@@ -28,7 +28,7 @@ void __gcov_flush() {
 }
 }
 
-static const char kCoveragePropName[] = "coverage.flush";
+static const char kCoveragePropName[] = "debug.coverage.flush";
 
 TEST(profile_extras, smoke) {
   flush_count = 0;
