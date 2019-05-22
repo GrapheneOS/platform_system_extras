@@ -256,6 +256,8 @@ class PprofProfileGenerator(object):
         kallsyms = 'binary_cache/kallsyms'
         if os.path.isfile(kallsyms):
             self.lib.SetKallsymsFile(kallsyms)
+        if config.get('show_art_frames'):
+            self.lib.ShowArtFrames()
         self.comm_filter = set(config['comm_filters']) if config.get('comm_filters') else None
         if config.get('pid_filters'):
             self.pid_filter = {int(x) for x in config['pid_filters']}
@@ -561,6 +563,8 @@ def main():
     parser.add_argument('--dso', nargs='+', action='append', help="""
         Use samples only in selected binaries.""")
     parser.add_argument('--ndk_path', type=extant_dir, help='Set the path of a ndk release.')
+    parser.add_argument('--show_art_frames', action='store_true',
+                        help='Show frames of internal methods in the ART Java interpreter.')
 
     args = parser.parse_args()
     if args.show:
@@ -578,6 +582,7 @@ def main():
     config['tid_filters'] = flatten_arg_list(args.tid)
     config['dso_filters'] = flatten_arg_list(args.dso)
     config['ndk_path'] = args.ndk_path
+    config['show_art_frames'] = args.show_art_frames
     generator = PprofProfileGenerator(config)
     profile = generator.gen()
     store_pprof_profile(config['output_file'], profile)
