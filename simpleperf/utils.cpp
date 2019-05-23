@@ -111,11 +111,10 @@ bool ArchiveHelper::IterateEntries(
     return false;
   }
   ZipEntry zentry;
-  ZipString zname;
+  std::string zname;
   int result;
   while ((result = Next(iteration_cookie, &zentry, &zname)) == 0) {
-    std::string name(zname.name, zname.name + zname.name_length);
-    if (!callback(zentry, name)) {
+    if (!callback(zentry, zname)) {
       break;
     }
   }
