@@ -55,7 +55,12 @@ static int usage(int /* argc */, char* argv[], std::ostream& cerr) {
             "\n"
             "Options:\n"
             "  -s, --slot=N     Slot number or suffix.\n"
-            "  -j, --json       Print in JSON format.\n";
+            "  -j, --json       Print in JSON format.\n"
+            "  -e, --is-super-empty\n"
+            "                   The given file is a super_empty.img.\n"
+            "  -d, --dump-metadata-size\n"
+            "                   Print the space reserved for metadata to stdout\n"
+            "                   in bytes.\n";
     return EX_USAGE;
 }
 
@@ -247,6 +252,13 @@ static int PrintJson(const LpMetadata* metadata, std::ostream& cout,
     return EX_OK;
 }
 
+static int DumpMetadataSize(const LpMetadata* metadata, std::ostream& cout) {
+    auto super_device = GetMetadataSuperBlockDevice(*metadata);
+    uint64_t metadata_size = super_device->first_logical_sector * LP_SECTOR_SIZE;
+    cout << metadata_size << std::endl;
+    return EX_OK;
+}
+
 class FileOrBlockDeviceOpener final : public PartitionOpener {
 public:
     android::base::unique_fd Open(const std::string& path, int flags) const override {
@@ -270,6 +282,8 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
         { "slot", required_argument, nullptr, 's' },
         { "help", no_argument, nullptr, 'h' },
         { "json", no_argument, nullptr, 'j' },
+        { "dump-metadata-size", no_argument, nullptr, 'd' },
+        { "is-super-empty", no_argument, nullptr, 'e' },
         { nullptr, 0, nullptr, 0 },
     };
     // clang-format on
@@ -281,18 +295,30 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
     int index;
     uint32_t slot = 0;
     bool json = false;
-    while ((rv = getopt_long_only(argc, argv, "s:jh", options, &index)) != -1) {
+    bool is_empty = false;
+    bool dump_metadata_size = false;
+    while ((rv = getopt_long_only(argc, argv, "s:jhde", options, &index)) != -1) {
         switch (rv) {
             case 'h':
-                return usage(argc, argv, cerr);
+                usage(argc, argv, cerr);
+                return EX_OK;
             case 's':
                 if (!android::base::ParseUint(optarg, &slot)) {
                     slot = SlotNumberForSlotSuffix(optarg);
                 }
                 break;
+            case 'e':
+                is_empty = true;
+                break;
+            case 'd':
+                dump_metadata_size = true;
+                break;
             case 'j':
                 json = true;
                 break;
+            case '?':
+            case ':':
+                return usage(argc, argv, cerr);
         }
     }
 
@@ -300,12 +326,17 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
     if (optind < argc) {
         FileOrBlockDeviceOpener opener;
         const char* file = argv[optind++];
-        pt = ReadMetadata(opener, file, slot);
+        if (!is_empty) {
+            pt = ReadMetadata(opener, file, slot);
+        }
         if (!pt && !IsBlockDevice(file)) {
             pt = ReadFromImageFile(file);
         }
     } else {
 #ifdef __ANDROID__
+        if (is_empty) {
+            return usage(argc, argv, cerr);
+        }
         auto slot_number = SlotNumberForSlotSuffix(GetSlotSuffix());
         pt = ReadMetadata(GetSuperPartionName(), slot_number);
 #else
@@ -321,6 +352,10 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
     if (!pt) {
         cerr << "Failed to read metadata.\n";
         return EX_NOINPUT;
+    }
+
+    if (dump_metadata_size) {
+        return DumpMetadataSize(pt.get(), cout);
     }
 
     cout << "Metadata version: " << pt->header.major_version << "." << pt->header.minor_version
