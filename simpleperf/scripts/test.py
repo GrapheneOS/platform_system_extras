@@ -1347,6 +1347,25 @@ class TestApiProfiler(TestBase):
         self.run_java_api_test('java_api-profile_Q.apk', 'Q')
 
 
+class TestPprofProtoGenerator(TestBase):
+    def test_show_art_frames(self):
+        if not HAS_GOOGLE_PROTOBUF:
+            log_info('Skip test for pprof_proto_generator because google.protobuf is missing')
+            return
+        testdata_path = os.path.join('testdata', 'perf_with_interpreter_frames.data')
+        art_frame_str = 'art::interpreter::DoCall'
+
+        # By default, don't show art frames.
+        self.run_cmd(['pprof_proto_generator.py', '-i', testdata_path])
+        output = self.run_cmd(['pprof_proto_generator.py', '--show'], return_output=True)
+        self.assertEqual(output.find(art_frame_str), -1, 'output: ' + output)
+
+        # Use --show_art_frames to show art frames.
+        self.run_cmd(['pprof_proto_generator.py', '-i', testdata_path, '--show_art_frames'])
+        output = self.run_cmd(['pprof_proto_generator.py', '--show'], return_output=True)
+        self.assertNotEqual(output.find(art_frame_str), -1, 'output: ' + output)
+
+
 def get_all_tests():
     tests = []
     for name, value in globals().items():
