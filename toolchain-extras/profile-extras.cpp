@@ -33,7 +33,7 @@ static void gcov_signal_handler(__unused int signum) {
   __gcov_flush();
 }
 
-static const char kCoveragePropName[] = "coverage.flush";
+static const char kCoveragePropName[] = "debug.coverage.flush";
 
 // In a loop, wait for any change to sysprops and trigger a __gcov_flush when
 // <kCoveragePropName> sysprop transistions to "1" after a transistion to "0".
