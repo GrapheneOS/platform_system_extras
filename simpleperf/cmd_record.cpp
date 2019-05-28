@@ -514,7 +514,7 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     }
   }
   if (stdio_controls_profiling_) {
-    if (!loop->AddReadEvent(0, [&]() { return ProcessControlCmd(loop); })) {
+    if (!loop->AddReadEvent(0, [this, loop]() { return ProcessControlCmd(loop); })) {
       return false;
     }
   }
