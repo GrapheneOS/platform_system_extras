@@ -56,10 +56,8 @@ INSTALL_LIST = [
     InstallEntry('MODULES-IN-system-extras-simpleperf_mac',
                  'simpleperf/darwin/x86_64/simpleperf_ndk64',
                  'darwin/x86_64/simpleperf'),
-    # TODO: simpleperf.exe on x86_64 windows doesn't work, use simpleperf_ndk.exe twice instead.
-    # TODO: possibly fixed by the switch to clang? (http://b/37956245)
     InstallEntry('MODULES-IN-system-extras-simpleperf',
-                 'simpleperf/windows/x86/simpleperf_ndk.exe',
+                 'simpleperf/windows/x86_64/simpleperf_ndk64.exe',
                  'windows/x86_64/simpleperf.exe', True),
     InstallEntry('MODULES-IN-system-extras-simpleperf',
                  'simpleperf/windows/x86/simpleperf_ndk.exe',
