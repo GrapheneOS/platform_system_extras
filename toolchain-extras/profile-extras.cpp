@@ -17,7 +17,9 @@
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdlib.h>
 #include <string.h>
+#include <libgen.h> // For POSIX basename().
 
 // Use _system_properties.h to use __system_property_wait_any()
 #define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
@@ -83,6 +85,20 @@ __attribute__((constructor)) int init_profile_extras(void) {
   if (ret1 == SIG_ERR) {
     return -1;
   }
+
+  // Do not create thread running property_watch_loop for zygote (it can get
+  // invoked as zygote or app_process).  This check is only needed for the
+  // platform, but can be done on any version after Android L, when
+  // getprogname() was added.
+#if defined(__ANDROID_API__) && __ANDROID_API__ >= __ANDROID_API_L__
+  const char *prog_basename = basename(getprogname());
+  if (strncmp(prog_basename, "zygote", strlen("zygote")) == 0) {
+    return 0;
+  }
+  if (strncmp(prog_basename, "app_process", strlen("app_process")) == 0) {
+    return 0;
+  }
+#endif
 
   pthread_t thread;
   int error = pthread_create(&thread, nullptr, property_watch_loop, nullptr);
