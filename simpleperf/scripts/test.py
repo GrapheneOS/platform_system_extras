@@ -1430,7 +1430,9 @@ def run_tests(tests):
     build_testdata()
     log_info('Run tests with python%d\n%s' % (3 if is_python3() else 2, '\n'.join(tests)))
     argv = [sys.argv[0]] + tests
-    unittest.main(argv=argv, failfast=True, verbosity=2, exit=False)
+    test_program = unittest.main(argv=argv, failfast=True, verbosity=2, exit=False)
+    if not test_program.result.wasSuccessful():
+        sys.exit(1)
 
 
 def main():
