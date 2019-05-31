@@ -548,8 +548,10 @@ void JITDebugReader::ReadDexFileDebugInfo(Process& process,
     std::string file_path;
     std::string zip_path;
     std::string entry_path;
+    std::shared_ptr<ThreadMmap> extracted_dex_file_map;
     if (ParseExtractedInMemoryPath(it->name, &zip_path, &entry_path)) {
       file_path = GetUrlInApk(zip_path, entry_path);
+      extracted_dex_file_map = std::make_shared<ThreadMmap>(*it);
     } else {
       if (!IsRegularFile(it->name)) {
         // TODO: read dex file only exist in memory?
@@ -559,7 +561,8 @@ void JITDebugReader::ReadDexFileDebugInfo(Process& process,
     }
     // Offset of dex file in .vdex file or .apk file.
     uint64_t dex_file_offset = dex_entry.symfile_addr - it->start_addr + it->pgoff;
-    debug_info->emplace_back(process.pid, dex_entry.timestamp, dex_file_offset, file_path);
+    debug_info->emplace_back(process.pid, dex_entry.timestamp, dex_file_offset, file_path,
+                             extracted_dex_file_map);
     LOG(VERBOSE) << "DexFile " << file_path << "+" << std::hex << dex_file_offset
                  << " in map [" << it->start_addr << " - " << (it->start_addr + it->len)
                  << "] with size " << dex_entry.symfile_size;
