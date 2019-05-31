@@ -30,6 +30,7 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 
+#include "environment.h"
 #include "IOEventLoop.h"
 #include "record.h"
 
@@ -54,15 +55,21 @@ struct JITDebugInfo {
   // For dex file, it is the path of the file containing the dex file.
   std::string file_path;
 
+  // The map for dex file extracted in memory. On Android Q, ART extracts dex files in apk files
+  // directly into memory, and names it using prctl(). The kernel doesn't generate a new mmap
+  // record for it. So we need to dump it manually.
+  std::shared_ptr<ThreadMmap> extracted_dex_file_map;
+
   JITDebugInfo(pid_t pid, uint64_t timestamp, uint64_t jit_code_addr, uint64_t jit_code_len,
                const std::string& file_path)
       : type(JIT_DEBUG_JIT_CODE), pid(pid), timestamp(timestamp), jit_code_addr(jit_code_addr),
         jit_code_len(jit_code_len), file_path(file_path) {}
 
   JITDebugInfo(pid_t pid, uint64_t timestamp, uint64_t dex_file_offset,
-               const std::string& file_path)
+               const std::string& file_path,
+               const std::shared_ptr<ThreadMmap>& extracted_dex_file_map)
       : type(JIT_DEBUG_DEX_FILE), pid(pid), timestamp(timestamp), dex_file_offset(dex_file_offset),
-        file_path(file_path) {}
+        file_path(file_path), extracted_dex_file_map(extracted_dex_file_map) {}
 
   bool operator>(const JITDebugInfo& other) const {
     return timestamp > other.timestamp;
@@ -166,7 +173,7 @@ class JITDebugReader {
                        std::vector<JITDebugInfo>* debug_info);
   void ReadDexFileDebugInfo(Process& process, const std::vector<CodeEntry>& dex_entries,
                        std::vector<JITDebugInfo>* debug_info);
-  bool AddDebugInfo(const std::vector<JITDebugInfo>& jit_symfiles, bool sync_kernel_records);
+  bool AddDebugInfo(const std::vector<JITDebugInfo>& debug_info, bool sync_kernel_records);
 
   bool keep_symfiles_ = false;
   bool sync_with_records_ = false;
