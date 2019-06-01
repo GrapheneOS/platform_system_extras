@@ -1304,6 +1304,16 @@ bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_i
         return false;
       }
     } else {
+      if (info.extracted_dex_file_map) {
+        ThreadMmap& map = *info.extracted_dex_file_map;
+        uint64_t timestamp = jit_debug_reader_->SyncWithRecords() ? info.timestamp
+                                                                  : last_record_timestamp_;
+        Mmap2Record record(*attr_id.attr, false, info.pid, info.pid, map.start_addr, map.len,
+                           map.pgoff, map.prot, map.name, attr_id.ids[0], timestamp);
+        if (!ProcessRecord(&record)) {
+          return false;
+        }
+      }
       thread_tree_.AddDexFileOffset(info.file_path, info.dex_file_offset);
     }
   }
