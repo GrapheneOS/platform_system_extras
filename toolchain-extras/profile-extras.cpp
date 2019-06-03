@@ -67,6 +67,8 @@ void *property_watch_loop(__unused void *arg) {
   }
 }
 
+__attribute__((weak)) int init_profile_extras_once = 0;
+
 // Initialize libprofile-extras:
 // - Install a signal handler that triggers __gcov_flush on <GCOV_FLUSH_SIGNAL>.
 // - Create a thread that calls __gcov_flush when <kCoveragePropName> sysprop
@@ -81,6 +83,10 @@ void *property_watch_loop(__unused void *arg) {
 // We force the linker to include init_profile_extras() by passing
 // '-uinit_profile_extras' to the linker (in build/soong).
 __attribute__((constructor)) int init_profile_extras(void) {
+  if (init_profile_extras_once)
+    return 0;
+  init_profile_extras_once = 1;
+
   sighandler_t ret1 = signal(GCOV_FLUSH_SIGNAL, gcov_signal_handler);
   if (ret1 == SIG_ERR) {
     return -1;
