@@ -115,7 +115,7 @@ class KernelRecordReader {
 class RecordReadThread {
  public:
   RecordReadThread(size_t record_buffer_size, const perf_event_attr& attr, size_t min_mmap_pages,
-                   size_t max_mmap_pages);
+                   size_t max_mmap_pages, bool allow_cutting_samples = true);
   ~RecordReadThread();
   void SetBufferLevels(size_t record_buffer_low_level, size_t record_buffer_critical_level) {
     record_buffer_low_level_ = record_buffer_low_level;
