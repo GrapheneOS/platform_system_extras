@@ -67,6 +67,18 @@ void *property_watch_loop(__unused void *arg) {
   }
 }
 
+#if defined(__ANDROID_API__) && __ANDROID_API__ >= __ANDROID_API_L__
+static char prop_watch_disabled_procs[][128] = {
+  "zygote",
+  "zygote32",
+  "app_process",
+  "app_process32",
+};
+
+static size_t prop_watch_num_disabled_procs = \
+  sizeof(prop_watch_disabled_procs) / sizeof(prop_watch_disabled_procs[0]);
+#endif
+
 __attribute__((weak)) int init_profile_extras_once = 0;
 
 // Initialize libprofile-extras:
@@ -98,11 +110,10 @@ __attribute__((constructor)) int init_profile_extras(void) {
   // getprogname() was added.
 #if defined(__ANDROID_API__) && __ANDROID_API__ >= __ANDROID_API_L__
   const char *prog_basename = basename(getprogname());
-  if (strncmp(prog_basename, "zygote", strlen("zygote")) == 0) {
-    return 0;
-  }
-  if (strncmp(prog_basename, "app_process", strlen("app_process")) == 0) {
-    return 0;
+  for (size_t i = 0; i < prop_watch_num_disabled_procs; i ++) {
+    if (strcmp(prog_basename, prop_watch_disabled_procs[i]) == 0) {
+      return 0;
+    }
   }
 #endif
 
