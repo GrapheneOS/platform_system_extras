@@ -204,7 +204,8 @@ bool KernelRecordReader::MoveToNextRecord(const RecordParser& parser) {
 }
 
 RecordReadThread::RecordReadThread(size_t record_buffer_size, const perf_event_attr& attr,
-                                   size_t min_mmap_pages, size_t max_mmap_pages)
+                                   size_t min_mmap_pages, size_t max_mmap_pages,
+                                   bool allow_cutting_samples)
     : record_buffer_(record_buffer_size), record_parser_(attr), attr_(attr),
       min_mmap_pages_(min_mmap_pages), max_mmap_pages_(max_mmap_pages) {
   if (attr.sample_type & PERF_SAMPLE_STACK_USER) {
@@ -212,6 +213,9 @@ RecordReadThread::RecordReadThread(size_t record_buffer_size, const perf_event_a
   }
   record_buffer_low_level_ = std::min(record_buffer_size / 4, kDefaultLowBufferLevel);
   record_buffer_critical_level_ = std::min(record_buffer_size / 6, kDefaultCriticalBufferLevel);
+  if (!allow_cutting_samples) {
+    record_buffer_low_level_ = record_buffer_critical_level_;
+  }
 }
 
 RecordReadThread::~RecordReadThread() {
