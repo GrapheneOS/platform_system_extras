@@ -134,7 +134,8 @@ class EventSelectionSet {
 
   bool OpenEventFiles(const std::vector<int>& on_cpus);
   bool ReadCounters(std::vector<CountersInfo>* counters);
-  bool MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pages, size_t record_buffer_size);
+  bool MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pages, size_t record_buffer_size,
+                      bool allow_cutting_samples);
   bool PrepareToReadMmapEventData(const std::function<bool(Record*)>& callback);
   bool SyncKernelBuffer();
   bool FinishReadMmapEventData();
