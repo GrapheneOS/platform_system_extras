@@ -365,3 +365,30 @@ TEST_F(RecordReadThreadTest, has_data_notification_until_buffer_empty) {
   ASSERT_EQ(record_index, records_.size());
   ASSERT_TRUE(thread.RemoveEventFds(event_fds));
 }
+
+TEST_F(RecordReadThreadTest, no_cut_samples) {
+  perf_event_attr attr = CreateFakeEventAttr();
+  attr.sample_type |= PERF_SAMPLE_STACK_USER;
+  attr.sample_stack_user = 64 * 1024;
+  RecordReadThread thread(128 * 1024, attr, 1, 1, false);
+  IOEventLoop loop;
+  ASSERT_TRUE(thread.RegisterDataCallback(loop, []() { return true; }));
+  const size_t total_samples = 100;
+  records_ = CreateFakeRecords(attr, total_samples, 8 * 1024, 8 * 1024);
+  std::vector<EventFd*> event_fds = CreateFakeEventFds(attr, 1);
+  ASSERT_TRUE(thread.AddEventFds(event_fds));
+  ASSERT_TRUE(thread.SyncKernelBuffer());
+  ASSERT_TRUE(thread.RemoveEventFds(event_fds));
+  size_t received_samples = 0;
+  while (thread.GetRecord()) {
+    received_samples++;
+  }
+  size_t lost_samples;
+  size_t lost_non_samples;
+  size_t cut_stack_samples;
+  thread.GetLostRecords(&lost_samples, &lost_non_samples, &cut_stack_samples);
+  ASSERT_GT(received_samples, 0u);
+  ASSERT_GT(lost_samples, 0u);
+  ASSERT_EQ(lost_samples, total_samples - received_samples);
+  ASSERT_EQ(cut_stack_samples, 0u);
+}

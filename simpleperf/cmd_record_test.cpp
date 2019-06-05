@@ -798,3 +798,8 @@ TEST(record_cmd, app_option_for_profileable_app) {
   TEST_REQUIRE_APPS();
   TestRecordingApps("com.android.simpleperf.profileable");
 }
+
+TEST(record_cmd, no_cut_samples_option) {
+  TEST_REQUIRE_HW_COUNTER();
+  ASSERT_TRUE(RunRecordCmd({"--no-cut-samples"}));
+}
