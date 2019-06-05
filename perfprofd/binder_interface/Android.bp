@@ -44,4 +44,5 @@ filegroup {
     srcs: [
         "aidl/android/os/IPerfProfd.aidl",
     ],
+    path: "aidl",
 }
