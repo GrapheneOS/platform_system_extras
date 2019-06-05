@@ -117,6 +117,12 @@ class NativeLibDownloader(object):
         self.adb.check_run(['shell', 'mkdir', '-p', self.dir_on_device])
         if os.path.exists(self.build_id_list_file):
             os.remove(self.build_id_list_file)
+        result, output = self.adb.run_and_return_output(['shell', 'ls', self.dir_on_device])
+        if not result:
+            return
+        file_set = set(output.strip().split())
+        if self.build_id_list_file not in file_set:
+            return
         self.adb.run(['pull', self.dir_on_device + self.build_id_list_file])
         if os.path.exists(self.build_id_list_file):
             with open(self.build_id_list_file, 'rb') as fh:
@@ -124,7 +130,9 @@ class NativeLibDownloader(object):
                     line = bytes_to_str(line).strip()
                     items = line.split('=')
                     if len(items) == 2:
-                        self.device_build_id_map[items[0]] = items[1]
+                        build_id, filename = items
+                        if filename in file_set:
+                            self.device_build_id_map[build_id] = filename
             remove(self.build_id_list_file)
 
     def sync_natives_libs_on_device(self):
