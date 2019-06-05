@@ -111,15 +111,6 @@ std::string DebugElfFileFinder::FindDebugFile(const std::string& dso_path, bool 
       return vdso_32bit_;
     }
   }
-  // 1. Try build_id_to_file_map.
-  if (!build_id_to_file_map_.empty()) {
-    if (!build_id.IsEmpty() || GetBuildIdFromDsoPath(dso_path, &build_id)) {
-      auto it = build_id_to_file_map_.find(build_id.ToString());
-      if (it != build_id_to_file_map_.end()) {
-        return it->second;
-      }
-    }
-  }
   auto check_path = [&](const std::string& path) {
     BuildId debug_build_id;
     if (GetBuildIdFromDsoPath(path, &debug_build_id)) {
@@ -132,6 +123,15 @@ std::string DebugElfFileFinder::FindDebugFile(const std::string& dso_path, bool 
     return false;
   };
 
+  // 1. Try build_id_to_file_map.
+  if (!build_id_to_file_map_.empty()) {
+    if (!build_id.IsEmpty() || GetBuildIdFromDsoPath(dso_path, &build_id)) {
+      auto it = build_id_to_file_map_.find(build_id.ToString());
+      if (it != build_id_to_file_map_.end() && check_path(it->second)) {
+        return it->second;
+      }
+    }
+  }
   // 2. Try concatenating symfs_dir and dso_path.
   if (!symfs_dir_.empty()) {
     std::string path = GetPathInSymFsDir(dso_path);
