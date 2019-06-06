@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <malloc.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,7 +49,8 @@ size_t GetMaxAllocs(int fd) {
     }
 
     word++;
-    while (*word++ == ' ');
+    while (*word++ == ' ')
+      ;
     // This will treat a realloc as an allocation, even if it frees
     // another allocation. Since reallocs are relatively rare, this
     // shouldn't inflate the numbers that much.
@@ -149,8 +151,8 @@ void ProcessDump(int fd, size_t max_allocs, size_t max_threads) {
   pointers.FreeAll();
 
   // Print out the total time making all allocation calls.
-  printf("Total Allocation/Free Time: %" PRIu64 "ns %0.2fs\n",
-         threads.total_time_nsecs(), threads.total_time_nsecs()/1000000000.0);
+  printf("Total Allocation/Free Time: %" PRIu64 "ns %0.2fs\n", threads.total_time_nsecs(),
+         threads.total_time_nsecs() / 1000000000.0);
 }
 
 constexpr size_t DEFAULT_MAX_THREADS = 512;
@@ -165,6 +167,11 @@ int main(int argc, char** argv) {
     fprintf(stderr, "Usage: %s MEMORY_LOG_FILE [MAX_THREADS]\n", basename(argv[0]));
     return 1;
   }
+
+#if defined(__BIONIC__)
+  printf("Setting decay time to 1\n");
+  mallopt(M_DECAY_TIME, 1);
+#endif
 
   size_t max_threads = DEFAULT_MAX_THREADS;
   if (argc == 3) {
