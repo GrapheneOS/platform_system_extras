@@ -1440,14 +1440,16 @@ def get_all_tests():
     return sorted(tests)
 
 
-def run_tests(tests):
+def run_tests(tests, repeats):
     os.chdir(get_script_dir())
     build_testdata()
-    log_info('Run tests with python%d\n%s' % (3 if is_python3() else 2, '\n'.join(tests)))
     argv = [sys.argv[0]] + tests
-    test_program = unittest.main(argv=argv, failfast=True, verbosity=2, exit=False)
-    if not test_program.result.wasSuccessful():
-        sys.exit(1)
+    for repeat in range(repeats):
+        log_info('Run tests with python %d for %dth time\n%s' % (
+            3 if is_python3() else 2, repeat + 1, '\n'.join(tests)))
+        test_program = unittest.main(argv=argv, failfast=True, verbosity=2, exit=False)
+        if not test_program.result.wasSuccessful():
+            sys.exit(1)
 
 
 def main():
@@ -1456,6 +1458,7 @@ def main():
     parser.add_argument('--test-from', nargs=1, help='Run left tests from the selected test.')
     parser.add_argument('--python-version', choices=['2', '3', 'both'], default='both', help="""
                         Run tests on which python versions.""")
+    parser.add_argument('--repeat', type=int, nargs=1, default=1, help='run test multiple times')
     parser.add_argument('pattern', nargs='*', help='Run tests matching the selected pattern.')
     args = parser.parse_args()
     tests = get_all_tests()
@@ -1496,7 +1499,7 @@ def main():
             argv += ['--python-version', str(version)]
             subprocess.check_call(argv)
         else:
-            run_tests(tests)
+            run_tests(tests, args.repeat[0])
 
 
 if __name__ == '__main__':
