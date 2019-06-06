@@ -126,7 +126,7 @@ static std::vector<MallocEntry>* GetTraceData(const char* filename, size_t* max_
     //   TID is the thread id of the thread doing the operation.
     //   ALLOCATION_TYPE is one of malloc, calloc, memalign, realloc, free, thread_done
     //   POINTER is the hex value of the actual pointer
-    if (sscanf(line.c_str(), "%d: %s %" SCNxPTR " %n", &tid, name, &pointer, &line_pos) != 3) {
+    if (sscanf(line.c_str(), "%d: %127s %" SCNxPTR " %n", &tid, name, &pointer, &line_pos) != 3) {
       errx(1, "Internal Error: Failed to process %s", line.c_str());
     }
     const char* line_end = &line[line_pos];
