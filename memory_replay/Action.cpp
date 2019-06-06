@@ -22,18 +22,26 @@
 #include <string.h>
 #include <sys/param.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <new>
 
 #include "Action.h"
-#include "Threads.h"
 #include "Pointers.h"
+#include "Threads.h"
 
-static uint64_t nanotime() {
+static __always_inline uint64_t Nanotime() {
   struct timespec t;
   t.tv_sec = t.tv_nsec = 0;
   clock_gettime(CLOCK_MONOTONIC, &t);
   return static_cast<uint64_t>(t.tv_sec) * 1000000000LL + t.tv_nsec;
+}
+
+static __always_inline void MakeAllocationResident(void* ptr, size_t nbytes, int pagesize) {
+  uint8_t* data = reinterpret_cast<uint8_t*>(ptr);
+  for (size_t i = 0; i < nbytes; i += pagesize) {
+    data[i] = 1;
+  }
 }
 
 class EndThreadAction : public Action {
@@ -63,11 +71,12 @@ class MallocAction : public AllocAction {
   }
 
   uint64_t Execute(Pointers* pointers) override {
-    uint64_t time_nsecs = nanotime();
+    int pagesize = getpagesize();
+    uint64_t time_nsecs = Nanotime();
     void* memory = malloc(size_);
-    time_nsecs = nanotime() - time_nsecs;
+    MakeAllocationResident(memory, size_, pagesize);
+    time_nsecs = Nanotime() - time_nsecs;
 
-    memset(memory, 1, size_);
     pointers->Add(key_pointer_, memory);
 
     return time_nsecs;
@@ -83,11 +92,12 @@ class CallocAction : public AllocAction {
   }
 
   uint64_t Execute(Pointers* pointers) override {
-    uint64_t time_nsecs = nanotime();
+    int pagesize = getpagesize();
+    uint64_t time_nsecs = Nanotime();
     void* memory = calloc(n_elements_, size_);
-    time_nsecs = nanotime() - time_nsecs;
+    MakeAllocationResident(memory, n_elements_ * size_, pagesize);
+    time_nsecs = Nanotime() - time_nsecs;
 
-    memset(memory, 0, n_elements_ * size_);
     pointers->Add(key_pointer_, memory);
 
     return time_nsecs;
@@ -113,11 +123,12 @@ class ReallocAction : public AllocAction {
       old_memory = pointers->Remove(old_pointer_);
     }
 
-    uint64_t time_nsecs = nanotime();
+    int pagesize = getpagesize();
+    uint64_t time_nsecs = Nanotime();
     void* memory = realloc(old_memory, size_);
-    time_nsecs = nanotime() - time_nsecs;
+    MakeAllocationResident(memory, size_, pagesize);
+    time_nsecs = Nanotime() - time_nsecs;
 
-    memset(memory, 1, size_);
     pointers->Add(key_pointer_, memory);
 
     return time_nsecs;
@@ -136,11 +147,12 @@ class MemalignAction : public AllocAction {
   }
 
   uint64_t Execute(Pointers* pointers) override {
-    uint64_t time_nsecs = nanotime();
+    int pagesize = getpagesize();
+    uint64_t time_nsecs = Nanotime();
     void* memory = memalign(align_, size_);
-    time_nsecs = nanotime() - time_nsecs;
+    MakeAllocationResident(memory, size_, pagesize);
+    time_nsecs = Nanotime() - time_nsecs;
 
-    memset(memory, 1, size_);
     pointers->Add(key_pointer_, memory);
 
     return time_nsecs;
@@ -152,17 +164,16 @@ class MemalignAction : public AllocAction {
 
 class FreeAction : public AllocAction {
  public:
-  explicit FreeAction(uintptr_t key_pointer) : AllocAction(key_pointer) {
-  }
+  explicit FreeAction(uintptr_t key_pointer) : AllocAction(key_pointer) {}
 
   bool DoesFree() override { return key_pointer_ != 0; }
 
   uint64_t Execute(Pointers* pointers) override {
     if (key_pointer_) {
       void* memory = pointers->Remove(key_pointer_);
-      uint64_t time_nsecs = nanotime();
+      uint64_t time_nsecs = Nanotime();
       free(memory);
-      return nanotime() - time_nsecs;
+      return Nanotime() - time_nsecs;
     }
     return 0;
   }
@@ -176,8 +187,8 @@ size_t Action::MaxActionSize() {
   return MAX(max, sizeof(FreeAction));
 }
 
-Action* Action::CreateAction(uintptr_t key_pointer, const char* type,
-                             const char* line, void* action_memory) {
+Action* Action::CreateAction(uintptr_t key_pointer, const char* type, const char* line,
+                             void* action_memory) {
   Action* action = nullptr;
   if (strcmp(type, "malloc") == 0) {
     action = new (action_memory) MallocAction(key_pointer, line);
