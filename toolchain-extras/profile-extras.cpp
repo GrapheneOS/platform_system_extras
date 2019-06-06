@@ -73,6 +73,8 @@ static char prop_watch_disabled_procs[][128] = {
   "zygote32",
   "app_process",
   "app_process32",
+  "adbd",
+  "init",
 };
 
 static size_t prop_watch_num_disabled_procs = \
