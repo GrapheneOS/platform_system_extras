@@ -57,6 +57,7 @@ from simpleperf_report_lib import ReportLib
 from utils import log_exit, log_info, log_fatal
 from utils import AdbHelper, Addr2Nearestline, bytes_to_str, find_tool_path, get_script_dir
 from utils import is_python3, is_windows, Objdump, ReadElf, remove, SourceFileSearcher
+from utils import str_to_bytes
 
 try:
     # pylint: disable=unused-import
@@ -1189,15 +1190,19 @@ class TestTools(unittest.TestCase):
 
 
 class TestNativeLibDownloader(unittest.TestCase):
-    def test_smoke(self):
-        adb = AdbHelper()
+    def setUp(self):
+        self.adb = AdbHelper()
+        self.adb.check_run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
 
+    def tearDown(self):
+        self.adb.check_run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
+
+    def test_smoke(self):
         def is_lib_on_device(path):
-            return adb.run(['shell', 'ls', path])
+            return self.adb.run(['shell', 'ls', path])
 
         # Sync all native libs on device.
-        adb.run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
-        downloader = NativeLibDownloader(None, 'arm64', adb)
+        downloader = NativeLibDownloader(None, 'arm64', self.adb)
         downloader.collect_native_libs_on_host(os.path.join(
             'testdata', 'SimpleperfExampleWithNative', 'app', 'build', 'intermediates', 'cmake',
             'profiling'))
@@ -1227,12 +1232,22 @@ class TestNativeLibDownloader(unittest.TestCase):
                     self.assertTrue(build_id not in downloader.device_build_id_map)
                     self.assertFalse(is_lib_on_device(downloader.dir_on_device + name))
             if sync_count == 1:
-                adb.run(['pull', '/data/local/tmp/native_libs/build_id_list', 'build_id_list'])
+                self.adb.run(['pull', '/data/local/tmp/native_libs/build_id_list',
+                              'build_id_list'])
                 with open('build_id_list', 'rb') as fh:
                     self.assertEqual(bytes_to_str(fh.read()),
                                      '{}={}\n'.format(lib_list[0][0], lib_list[0][1].name))
                 remove('build_id_list')
-        adb.run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
+
+    def test_handle_wrong_build_id_list(self):
+        with open('build_id_list', 'wb') as fh:
+            fh.write(str_to_bytes('fake_build_id=binary_not_exist\n'))
+        self.adb.check_run(['shell', 'mkdir', '-p', '/data/local/tmp/native_libs'])
+        self.adb.check_run(['push', 'build_id_list', '/data/local/tmp/native_libs'])
+        remove('build_id_list')
+        downloader = NativeLibDownloader(None, 'arm64', self.adb)
+        downloader.collect_native_libs_on_device()
+        self.assertEqual(len(downloader.device_build_id_map), 0)
 
 
 class TestReportHtml(TestBase):
@@ -1425,14 +1440,16 @@ def get_all_tests():
     return sorted(tests)
 
 
-def run_tests(tests):
+def run_tests(tests, repeats):
     os.chdir(get_script_dir())
     build_testdata()
-    log_info('Run tests with python%d\n%s' % (3 if is_python3() else 2, '\n'.join(tests)))
     argv = [sys.argv[0]] + tests
-    test_program = unittest.main(argv=argv, failfast=True, verbosity=2, exit=False)
-    if not test_program.result.wasSuccessful():
-        sys.exit(1)
+    for repeat in range(repeats):
+        log_info('Run tests with python %d for %dth time\n%s' % (
+            3 if is_python3() else 2, repeat + 1, '\n'.join(tests)))
+        test_program = unittest.main(argv=argv, failfast=True, verbosity=2, exit=False)
+        if not test_program.result.wasSuccessful():
+            sys.exit(1)
 
 
 def main():
@@ -1441,6 +1458,7 @@ def main():
     parser.add_argument('--test-from', nargs=1, help='Run left tests from the selected test.')
     parser.add_argument('--python-version', choices=['2', '3', 'both'], default='both', help="""
                         Run tests on which python versions.""")
+    parser.add_argument('--repeat', type=int, nargs=1, default=1, help='run test multiple times')
     parser.add_argument('pattern', nargs='*', help='Run tests matching the selected pattern.')
     args = parser.parse_args()
     tests = get_all_tests()
@@ -1481,7 +1499,7 @@ def main():
             argv += ['--python-version', str(version)]
             subprocess.check_call(argv)
         else:
-            run_tests(tests)
+            run_tests(tests, args.repeat[0])
 
 
 if __name__ == '__main__':

@@ -39,6 +39,8 @@ if [ -z "${NAME}" ]; then
   exit 0
 fi
 log -pi -t checkpoint_gc Turning on GC for ${NAME}
+read OLD_SLEEP < /sys/fs/f2fs/${NAME}/gc_urgent_sleep_time || exit 1
+echo 50 > /sys/fs/f2fs/${NAME}/gc_urgent_sleep_time || exit 1
 echo 1 > /sys/fs/f2fs/${NAME}/gc_urgent || exit 1
 
 read DIRTY_SEGMENTS_START < /sys/fs/f2fs/${NAME}/dirty_segments
@@ -63,6 +65,7 @@ done
 
 log -pi -t checkpoint_gc Turning off GC for ${NAME}
 echo 0 > /sys/fs/f2fs/${NAME}/gc_urgent
+echo ${OLD_SLEEP} > /sys/fs/f2fs/${NAME}/gc_urgent_sleep_time
 sync
 
 print -u${STATUS_FD} "global_progress 1.0"

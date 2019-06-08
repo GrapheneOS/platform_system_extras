@@ -16,6 +16,9 @@
 
 package com.android.simpleperf;
 
+import android.os.Build;
+import android.system.OsConstants;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -53,6 +56,7 @@ import java.util.stream.Collectors;
  * </p>
  */
 public class ProfileSession {
+    private static final String SIMPLEPERF_PATH_IN_IMAGE = "/system/bin/simpleperf";
 
     enum State {
         NOT_YET_STARTED,
@@ -63,6 +67,7 @@ public class ProfileSession {
 
     private State state = State.NOT_YET_STARTED;
     private String appDataDir;
+    private String simpleperfPath;
     private String simpleperfDataDir;
     private Process simpleperfProcess;
     private boolean traceOffcpu = false;
@@ -121,7 +126,7 @@ public class ProfileSession {
                 traceOffcpu = true;
             }
         }
-        String simpleperfPath = findSimpleperf();
+        simpleperfPath = findSimpleperf();
         checkIfPerfEnabled();
         createSimpleperfDataDir();
         createSimpleperfProcess(simpleperfPath, args);
@@ -161,7 +166,14 @@ public class ProfileSession {
         if (state != State.STARTED && state != State.PAUSED) {
             throw new AssertionError("stopRecording: session in wrong state " + state);
         }
-        simpleperfProcess.destroy();
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.P + 1 &&
+                simpleperfPath.equals(SIMPLEPERF_PATH_IN_IMAGE)) {
+            // The simpleperf shipped on Android Q contains a bug, which may make it abort if
+            // calling simpleperfProcess.destroy().
+            destroySimpleperfProcessWithoutClosingStdin();
+        } else {
+            simpleperfProcess.destroy();
+        }
         try {
             int exitCode = simpleperfProcess.waitFor();
             if (exitCode != 0) {
@@ -171,6 +183,22 @@ public class ProfileSession {
         }
         simpleperfProcess = null;
         state = State.STOPPED;
+    }
+
+    private void destroySimpleperfProcessWithoutClosingStdin() {
+        // In format "Process[pid=? ..."
+        String s = simpleperfProcess.toString();
+        final String prefix = "Process[pid=";
+        if (s.startsWith(prefix)) {
+            int startIndex = prefix.length();
+            int endIndex = s.indexOf(',');
+            if (endIndex > startIndex) {
+                int pid = Integer.parseInt(s.substring(startIndex, endIndex).trim());
+                android.os.Process.sendSignal(pid, OsConstants.SIGTERM);
+                return;
+            }
+        }
+        simpleperfProcess.destroy();
     }
 
     private String readInputStream(InputStream in) {
@@ -190,7 +218,7 @@ public class ProfileSession {
             return simpleperfPath;
         }
         // 2. Try /system/bin/simpleperf, which is available on Android >= Q.
-        simpleperfPath = "/system/bin/simpleperf";
+        simpleperfPath = SIMPLEPERF_PATH_IN_IMAGE;
         if (isExecutableFile(simpleperfPath)) {
             return simpleperfPath;
         }
