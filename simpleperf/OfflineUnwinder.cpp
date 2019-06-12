@@ -206,15 +206,14 @@ bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& r
 
   UnwindMaps& cached_map = cached_maps_[thread.pid];
   cached_map.UpdateMaps(*thread.maps);
-  std::shared_ptr<unwindstack::MemoryOfflineBuffer> stack_memory(
-      new unwindstack::MemoryOfflineBuffer(reinterpret_cast<const uint8_t*>(stack),
-                                           stack_addr, stack_addr + stack_size));
   std::unique_ptr<unwindstack::Regs> unwind_regs(GetBacktraceRegs(regs));
   if (!unwind_regs) {
     return false;
   }
-  unwindstack::Unwinder unwinder(MAX_UNWINDING_FRAMES, &cached_map, unwind_regs.get(),
-                                 stack_memory);
+  unwindstack::Unwinder unwinder(
+      MAX_UNWINDING_FRAMES, &cached_map, unwind_regs.get(),
+      unwindstack::Memory::CreateOfflineMemory(reinterpret_cast<const uint8_t*>(stack), stack_addr,
+                                               stack_addr + stack_size));
   unwinder.SetResolveNames(false);
   unwinder.Unwind();
   size_t last_jit_method_frame = UINT_MAX;
