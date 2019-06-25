@@ -62,6 +62,11 @@ static int usage(int /* argc */, char* argv[]) {
             "                                house the super partition.\n"
             "  -x,--auto-slot-suffixing      Mark the block device and partition names needing\n"
             "                                slot suffixes before being used.\n"
+            "  -F,--force-full-image         Force a full image to be written even if no\n"
+            "                                partition images were specified. Normally, this\n"
+            "                                would produce a minimal super_empty.img which\n"
+            "                                cannot be flashed; force-full-image will produce\n"
+            "                                a flashable image.\n"
             "\n"
             "Partition data format:\n"
             "  <name>:<attributes>:<size>[:group]\n"
@@ -94,6 +99,7 @@ int main(int argc, char* argv[]) {
         { "device", required_argument, nullptr, 'D' },
         { "super-name", required_argument, nullptr, 'n' },
         { "auto-slot-suffixing", no_argument, nullptr, 'x' },
+        { "force-full-image", no_argument, nullptr, 'F' },
         { nullptr, 0, nullptr, 0 },
     };
 
@@ -112,10 +118,11 @@ int main(int argc, char* argv[]) {
     bool output_sparse = false;
     bool has_implied_super = false;
     bool auto_slot_suffixing = false;
+    bool force_full_image = false;
 
     int rv;
     int index;
-    while ((rv = getopt_long_only(argc, argv, "d:m:s:p:o:h", options, &index)) != -1) {
+    while ((rv = getopt_long_only(argc, argv, "d:m:s:p:o:h:FSx", options, &index)) != -1) {
         switch (rv) {
             case 'h':
                 return usage(argc, argv);
@@ -217,6 +224,9 @@ int main(int argc, char* argv[]) {
             }
             case 'x':
                 auto_slot_suffixing = true;
+                break;
+            case 'F':
+                force_full_image = true;
                 break;
             default:
                 break;
@@ -347,7 +357,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::unique_ptr<LpMetadata> metadata = builder->Export();
-    if (!images.empty()) {
+    if (!images.empty() || force_full_image) {
         if (block_devices.size() == 1) {
             if (!WriteToImageFile(output_path.c_str(), *metadata.get(), block_size, images,
                                   output_sparse)) {
