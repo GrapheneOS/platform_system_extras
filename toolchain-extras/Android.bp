@@ -2,6 +2,7 @@ cc_defaults {
     name: "libprofile-defaults",
     srcs: [
         "profile-extras.cpp",
+        "profile-globals.c",
     ],
     native_coverage: false,
 }
@@ -26,6 +27,10 @@ cc_library_static {
     name: "libprofile-extras_ndk",
     defaults: ["libprofile-defaults",],
     native_bridge_supported: true,
+    vendor_available: true,
+    vndk: {
+        enabled: true,
+    },
 
     sdk_version: "minimum",
 }
