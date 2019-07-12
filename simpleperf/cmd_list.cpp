@@ -45,7 +45,7 @@ static bool IsEventTypeSupported(const EventType& event_type) {
   // We can't decide whether the raw event is supported by calling perf_event_open().
   // Instead, we can check if it can collect some real number.
   perf_event_attr attr = CreateDefaultPerfEventAttr(event_type);
-  std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, gettid(), -1, nullptr);
+  std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, gettid(), -1, nullptr, false);
   if (event_fd == nullptr) {
     return false;
   }
@@ -72,18 +72,27 @@ static void PrintEventTypesOfType(uint32_t type, const std::string& type_name,
                                   const std::set<EventType>& event_types) {
   printf("List of %s:\n", type_name.c_str());
   if (type == PERF_TYPE_RAW && (GetBuildArch() == ARCH_ARM || GetBuildArch() == ARCH_ARM64)) {
-    printf("  # Please refer to PMU event numbers listed in ARMv8 manual for details.\n");
-    printf("  # A possible link is https://developer.arm.com/docs/ddi0487/latest/arm-architecture-reference-manual-armv8-for-armv8-a-architecture-profile.\n");
+    printf("  # Please refer to \"PMU common architectural and microarchitectural event numbers\"\n"
+           "  # and \"ARM recommendations for IMPLEMENTATION DEFINED event numbers\" listed in\n"
+           "  # ARMv8 manual for details.\n"
+           "  # A possible link is https://developer.arm.com/docs/ddi0487/latest/arm-architecture-reference-manual-armv8-for-armv8-a-architecture-profile.\n");
   }
   for (auto& event_type : event_types) {
     if (event_type.type == type) {
-      if (IsEventTypeSupported(event_type)) {
-        printf("  %s", event_type.name.c_str());
-        if (!event_type.description.empty()) {
-          printf("\t\t# %s", event_type.description.c_str());
-        }
-        printf("\n");
+      bool supported = IsEventTypeSupported(event_type);
+      // For raw events, we may not be able to detect whether it is supported on device.
+      // So always print them.
+      if (!supported && type != PERF_TYPE_RAW) {
+        continue;
       }
+      printf("  %s", event_type.name.c_str());
+      if (!supported) {
+        printf(" (may not supported)");
+      }
+      if (!event_type.description.empty()) {
+        printf("\t\t# %s", event_type.description.c_str());
+      }
+      printf("\n");
     }
   }
   printf("\n");
