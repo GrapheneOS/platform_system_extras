@@ -24,10 +24,13 @@
 
 #include "command.h"
 #include "environment.h"
+#include "ETMRecorder.h"
 #include "event_attr.h"
 #include "event_fd.h"
 #include "event_selection_set.h"
 #include "event_type.h"
+
+using namespace simpleperf;
 
 static bool IsEventTypeSupported(const EventType& event_type) {
   if (event_type.type != PERF_TYPE_RAW) {
@@ -100,8 +103,9 @@ class ListCommand : public Command {
 "         hw          hardware events\n"
 "         sw          software events\n"
 "         cache       hardware cache events\n"
-"         raw         raw pmu events\n"
+"         raw         raw cpu pmu events\n"
 "         tracepoint  tracepoint events\n"
+"         cs-etm      coresight etm instruction tracing events\n"
 "Options:\n"
 "--show-features    Show features supported on the device, including:\n"
 "                     dwarf-based-call-graph\n"
@@ -128,6 +132,7 @@ bool ListCommand::Run(const std::vector<std::string>& args) {
       {"raw", {PERF_TYPE_RAW, "raw events provided by cpu pmu"}},
       {"tracepoint", {PERF_TYPE_TRACEPOINT, "tracepoint events"}},
       {"user-space-sampler", {SIMPLEPERF_TYPE_USER_SPACE_SAMPLERS, "user-space samplers"}},
+      {"cs-etm", {-1, "coresight etm events"}},
   };
 
   std::vector<std::string> names;
@@ -153,6 +158,9 @@ bool ListCommand::Run(const std::vector<std::string>& args) {
 
   for (auto& name : names) {
     auto it = type_map.find(name);
+    if (name == "cs-etm") {
+      it->second.first = ETMRecorder::GetInstance().GetEtmEventType();
+    }
     PrintEventTypesOfType(it->second.first, it->second.second, event_types);
   }
   return true;
