@@ -342,10 +342,6 @@ bool CheckPerfEventLimit() {
   // enough permission to create inherited tracepoint events, write -1 to perf_event_paranoid.
   // See http://b/62230699.
   if (IsRoot()) {
-    char* env = getenv("PERFPROFD_DISABLE_PERF_EVENT_PARANOID_CHANGE");
-    if (env != nullptr && strcmp(env, "1") == 0) {
-      return true;
-    }
     return android::base::WriteStringToFile("-1", "/proc/sys/kernel/perf_event_paranoid");
   }
   int limit_level;
