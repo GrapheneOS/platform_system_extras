@@ -71,11 +71,19 @@ static bool IsEventTypeSupported(const EventType& event_type) {
 static void PrintEventTypesOfType(uint32_t type, const std::string& type_name,
                                   const std::set<EventType>& event_types) {
   printf("List of %s:\n", type_name.c_str());
-  if (type == PERF_TYPE_RAW && (GetBuildArch() == ARCH_ARM || GetBuildArch() == ARCH_ARM64)) {
-    printf("  # Please refer to \"PMU common architectural and microarchitectural event numbers\"\n"
-           "  # and \"ARM recommendations for IMPLEMENTATION DEFINED event numbers\" listed in\n"
-           "  # ARMv8 manual for details.\n"
-           "  # A possible link is https://developer.arm.com/docs/ddi0487/latest/arm-architecture-reference-manual-armv8-for-armv8-a-architecture-profile.\n");
+  if (GetBuildArch() == ARCH_ARM || GetBuildArch() == ARCH_ARM64) {
+    if (type == PERF_TYPE_RAW) {
+      printf(
+          // clang-format off
+"  # Please refer to \"PMU common architectural and microarchitectural event numbers\"\n"
+"  # and \"ARM recommendations for IMPLEMENTATION DEFINED event numbers\" listed in\n"
+"  # ARMv8 manual for details.\n"
+"  # A possible link is https://developer.arm.com/docs/ddi0487/latest/arm-architecture-reference-manual-armv8-for-armv8-a-architecture-profile.\n"
+          // clang-format on
+      );
+    } else if (type == PERF_TYPE_HW_CACHE) {
+      printf("  # More cache events are available in `simpleperf list raw`.\n");
+    }
   }
   for (auto& event_type : event_types) {
     if (event_type.type == type) {
