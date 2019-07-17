@@ -807,7 +807,20 @@ TEST(record_cmd, no_cut_samples_option) {
 }
 
 TEST(record_cmd, cs_etm_event) {
-  if (ETMRecorder::GetInstance().CheckEtmSupport()) {
-    ASSERT_TRUE(RunRecordCmd({"-e", "cs-etm"}));
+  if (!ETMRecorder::GetInstance().CheckEtmSupport()) {
+    GTEST_LOG_(INFO) << "Omit this test since etm isn't supported on this device";
+    return;
   }
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({"-e", "cs-etm"}, tmpfile.path));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader);
+  bool has_auxtrace_info = false;
+  ASSERT_TRUE(reader->ReadDataSection([&](std::unique_ptr<Record> r) {
+    if (r->type() == PERF_RECORD_AUXTRACE_INFO) {
+      has_auxtrace_info = true;
+    }
+    return true;
+  }));
+  ASSERT_TRUE(has_auxtrace_info);
 }

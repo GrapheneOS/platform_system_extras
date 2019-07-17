@@ -40,6 +40,7 @@
 #include "CallChainJoiner.h"
 #include "command.h"
 #include "environment.h"
+#include "ETMRecorder.h"
 #include "event_selection_set.h"
 #include "event_type.h"
 #include "IOEventLoop.h"
@@ -282,6 +283,7 @@ class RecordCommand : public Command {
   bool DumpKernelMaps();
   bool DumpUserSpaceMaps();
   bool DumpProcessMaps(pid_t pid, const std::unordered_set<pid_t>& tids);
+  bool DumpAuxTraceInfo();
   bool ProcessRecord(Record* record);
   bool ShouldOmitRecord(Record* record);
   bool DumpMapsForRecord(Record* record);
@@ -1044,7 +1046,8 @@ bool RecordCommand::CreateAndInitRecordFile() {
   }
   // Use first perf_event_attr and first event id to dump mmap and comm records.
   dumping_attr_id_ = event_selection_set_.GetEventAttrWithId()[0];
-  return DumpKernelSymbol() && DumpTracingData() && DumpKernelMaps() && DumpUserSpaceMaps();
+  return DumpKernelSymbol() && DumpTracingData() && DumpKernelMaps() && DumpUserSpaceMaps() &&
+         DumpAuxTraceInfo();
 }
 
 std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(
@@ -1208,6 +1211,16 @@ bool RecordCommand::ProcessRecord(Record* record) {
     return SaveRecordAfterUnwinding(record);
   }
   return SaveRecordWithoutUnwinding(record);
+}
+
+bool RecordCommand::DumpAuxTraceInfo() {
+  for (auto& event_type : event_selection_set_.GetEvents()) {
+    if (event_type->name == "cs-etm") {
+      AuxTraceInfoRecord auxtrace_info = ETMRecorder::GetInstance().CreateAuxTraceInfoRecord();
+      return ProcessRecord(&auxtrace_info);
+    }
+  }
+  return true;
 }
 
 template <typename MmapRecordType>
