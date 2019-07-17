@@ -285,6 +285,7 @@ cc_defaults {
                 "cmd_stat.cpp",
                 "cmd_trace_sched.cpp",
                 "environment.cpp",
+                "ETMRecorder.cpp",
                 "event_fd.cpp",
                 "event_selection_set.cpp",
                 "InplaceSamplerClient.cpp",
