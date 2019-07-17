@@ -31,6 +31,7 @@
 
 #include "command.h"
 #include "environment.h"
+#include "ETMRecorder.h"
 #include "event_selection_set.h"
 #include "get_test_data.h"
 #include "record.h"
@@ -38,6 +39,7 @@
 #include "test_util.h"
 #include "thread_tree.h"
 
+using namespace simpleperf;
 using namespace PerfFileFormat;
 
 static std::unique_ptr<Command> RecordCmd() {
@@ -802,4 +804,10 @@ TEST(record_cmd, app_option_for_profileable_app) {
 TEST(record_cmd, no_cut_samples_option) {
   TEST_REQUIRE_HW_COUNTER();
   ASSERT_TRUE(RunRecordCmd({"--no-cut-samples"}));
+}
+
+TEST(record_cmd, cs_etm_event) {
+  if (ETMRecorder::GetInstance().CheckEtmSupport()) {
+    ASSERT_TRUE(RunRecordCmd({"-e", "cs-etm"}));
+  }
 }

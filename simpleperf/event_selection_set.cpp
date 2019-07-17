@@ -23,12 +23,15 @@
 #include <android-base/logging.h>
 
 #include "environment.h"
+#include "ETMRecorder.h"
 #include "event_attr.h"
 #include "event_type.h"
 #include "IOEventLoop.h"
 #include "perf_regs.h"
 #include "utils.h"
 #include "RecordReadThread.h"
+
+using namespace simpleperf;
 
 bool IsBranchSamplingSupported() {
   const EventType* type = FindEventTypeByName("cpu-cycles");
@@ -159,6 +162,13 @@ bool EventSelectionSet::BuildAndCheckEventSelection(const std::string& event_nam
   selection->event_attr.exclude_host = event_type->exclude_host;
   selection->event_attr.exclude_guest = event_type->exclude_guest;
   selection->event_attr.precise_ip = event_type->precise_ip;
+  if (event_type->event_type.name == "cs-etm") {
+    auto& etm_recorder = ETMRecorder::GetInstance();
+    if (!etm_recorder.CheckEtmSupport()) {
+      return false;
+    }
+    ETMRecorder::GetInstance().SetEtmPerfEventAttr(&selection->event_attr);
+  }
   bool set_default_sample_freq = false;
   if (!for_stat_cmd_) {
     if (event_type->event_type.type == PERF_TYPE_TRACEPOINT) {
