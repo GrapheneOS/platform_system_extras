@@ -28,8 +28,11 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
+#include "ETMRecorder.h"
 #include "event_attr.h"
 #include "utils.h"
+
+using namespace simpleperf;
 
 #define EVENT_TYPE_TABLE_ENTRY(name, type, config, description, limited_arch) \
           {name, type, config, description, limited_arch},
@@ -145,6 +148,12 @@ const std::set<EventType>& GetAllEventTypes() {
     g_event_types.insert(static_event_type_array.begin(), static_event_type_array.end());
     std::vector<EventType> tracepoint_array = GetTracepointEventTypes();
     g_event_types.insert(tracepoint_array.begin(), tracepoint_array.end());
+#if defined(__linux__)
+    std::unique_ptr<EventType> etm_type = ETMRecorder::GetInstance().BuildEventType();
+    if (etm_type) {
+      g_event_types.emplace(std::move(*etm_type));
+    }
+#endif
   }
   return g_event_types;
 }
