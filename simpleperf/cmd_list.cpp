@@ -24,10 +24,13 @@
 
 #include "command.h"
 #include "environment.h"
+#include "ETMRecorder.h"
 #include "event_attr.h"
 #include "event_fd.h"
 #include "event_selection_set.h"
 #include "event_type.h"
+
+using namespace simpleperf;
 
 static bool IsEventTypeSupported(const EventType& event_type) {
   if (event_type.type != PERF_TYPE_RAW) {
@@ -71,11 +74,19 @@ static bool IsEventTypeSupported(const EventType& event_type) {
 static void PrintEventTypesOfType(uint32_t type, const std::string& type_name,
                                   const std::set<EventType>& event_types) {
   printf("List of %s:\n", type_name.c_str());
-  if (type == PERF_TYPE_RAW && (GetBuildArch() == ARCH_ARM || GetBuildArch() == ARCH_ARM64)) {
-    printf("  # Please refer to \"PMU common architectural and microarchitectural event numbers\"\n"
-           "  # and \"ARM recommendations for IMPLEMENTATION DEFINED event numbers\" listed in\n"
-           "  # ARMv8 manual for details.\n"
-           "  # A possible link is https://developer.arm.com/docs/ddi0487/latest/arm-architecture-reference-manual-armv8-for-armv8-a-architecture-profile.\n");
+  if (GetBuildArch() == ARCH_ARM || GetBuildArch() == ARCH_ARM64) {
+    if (type == PERF_TYPE_RAW) {
+      printf(
+          // clang-format off
+"  # Please refer to \"PMU common architectural and microarchitectural event numbers\"\n"
+"  # and \"ARM recommendations for IMPLEMENTATION DEFINED event numbers\" listed in\n"
+"  # ARMv8 manual for details.\n"
+"  # A possible link is https://developer.arm.com/docs/ddi0487/latest/arm-architecture-reference-manual-armv8-for-armv8-a-architecture-profile.\n"
+          // clang-format on
+      );
+    } else if (type == PERF_TYPE_HW_CACHE) {
+      printf("  # More cache events are available in `simpleperf list raw`.\n");
+    }
   }
   for (auto& event_type : event_types) {
     if (event_type.type == type) {
@@ -109,8 +120,9 @@ class ListCommand : public Command {
 "         hw          hardware events\n"
 "         sw          software events\n"
 "         cache       hardware cache events\n"
-"         raw         raw pmu events\n"
+"         raw         raw cpu pmu events\n"
 "         tracepoint  tracepoint events\n"
+"         cs-etm      coresight etm instruction tracing events\n"
 "Options:\n"
 "--show-features    Show features supported on the device, including:\n"
 "                     dwarf-based-call-graph\n"
@@ -137,6 +149,7 @@ bool ListCommand::Run(const std::vector<std::string>& args) {
       {"raw", {PERF_TYPE_RAW, "raw events provided by cpu pmu"}},
       {"tracepoint", {PERF_TYPE_TRACEPOINT, "tracepoint events"}},
       {"user-space-sampler", {SIMPLEPERF_TYPE_USER_SPACE_SAMPLERS, "user-space samplers"}},
+      {"cs-etm", {-1, "coresight etm events"}},
   };
 
   std::vector<std::string> names;
@@ -162,6 +175,9 @@ bool ListCommand::Run(const std::vector<std::string>& args) {
 
   for (auto& name : names) {
     auto it = type_map.find(name);
+    if (name == "cs-etm") {
+      it->second.first = ETMRecorder::GetInstance().GetEtmEventType();
+    }
     PrintEventTypesOfType(it->second.first, it->second.second, event_types);
   }
   return true;
