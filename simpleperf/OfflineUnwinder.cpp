@@ -18,6 +18,8 @@
 
 #include <sys/mman.h>
 
+#include <unordered_map>
+
 #include <android-base/logging.h>
 #include <unwindstack/MachineArm.h>
 #include <unwindstack/MachineArm64.h>
@@ -133,6 +135,15 @@ static unwindstack::MapInfo* CreateMapInfo(const MapEntry* entry) {
                                   PROT_READ | entry->flags, name);
 }
 
+class UnwindMaps : public unwindstack::Maps {
+ public:
+  void UpdateMaps(const MapSet& map_set);
+
+ private:
+  uint64_t version_ = 0u;
+  std::vector<const MapEntry*> entries_;
+};
+
 void UnwindMaps::UpdateMaps(const MapSet& map_set) {
   if (version_ == map_set.version) {
     return;
@@ -182,13 +193,24 @@ void UnwindMaps::UpdateMaps(const MapSet& map_set) {
   }
 }
 
-OfflineUnwinder::OfflineUnwinder(bool collect_stat) : collect_stat_(collect_stat) {
-  unwindstack::Elf::SetCachingEnabled(true);
-}
+class OfflineUnwinderImpl : public OfflineUnwinder {
+ public:
+  OfflineUnwinderImpl(bool collect_stat) : collect_stat_(collect_stat) {
+    unwindstack::Elf::SetCachingEnabled(true);
+  }
 
-bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& regs,
-                                      const char* stack, size_t stack_size,
-                                      std::vector<uint64_t>* ips, std::vector<uint64_t>* sps) {
+  bool UnwindCallChain(const ThreadEntry& thread, const RegSet& regs, const char* stack,
+                       size_t stack_size, std::vector<uint64_t>* ips,
+                       std::vector<uint64_t>* sps) override;
+
+ private:
+  bool collect_stat_;
+  std::unordered_map<pid_t, UnwindMaps> cached_maps_;
+};
+
+bool OfflineUnwinderImpl::UnwindCallChain(const ThreadEntry& thread, const RegSet& regs,
+                                          const char* stack, size_t stack_size,
+                                          std::vector<uint64_t>* ips, std::vector<uint64_t>* sps) {
   uint64_t start_time;
   if (collect_stat_) {
     start_time = GetSystemClock();
@@ -283,6 +305,10 @@ bool OfflineUnwinder::UnwindCallChain(const ThreadEntry& thread, const RegSet& r
     unwinding_result_.stack_end = stack_addr + stack_size;
   }
   return true;
+}
+
+std::unique_ptr<OfflineUnwinder> OfflineUnwinder::Create(bool collect_stat) {
+  return std::unique_ptr<OfflineUnwinder>(new OfflineUnwinderImpl(collect_stat));
 }
 
 }  // namespace simpleperf
