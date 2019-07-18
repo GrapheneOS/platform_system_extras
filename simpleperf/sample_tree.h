@@ -77,7 +77,7 @@ class SampleTreeBuilder {
     build_callchain_ = build_callchain;
     use_caller_as_callchain_root_ = use_caller_as_callchain_root;
     if (accumulate_callchain_) {
-      offline_unwinder_.reset(new OfflineUnwinder(false));
+      offline_unwinder_ = OfflineUnwinder::Create(false);
     }
   }
 

@@ -419,7 +419,7 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     return false;
   }
   if (unwind_dwarf_callchain_) {
-    offline_unwinder_.reset(new OfflineUnwinder(false));
+    offline_unwinder_ = OfflineUnwinder::Create(false);
   }
   if (unwind_dwarf_callchain_ && allow_callchain_joiner_) {
     callchain_joiner_.reset(new CallChainJoiner(DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE,
