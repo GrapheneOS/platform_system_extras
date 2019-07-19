@@ -30,6 +30,7 @@
 
 #include "dso.h"
 #include "event_attr.h"
+#include "event_type.h"
 #include "perf_event.h"
 #include "record.h"
 #include "record_file_format.h"
@@ -152,7 +153,8 @@ class RecordFileReader {
   bool ReadFileFeature(size_t& read_pos, std::string* file_path, uint32_t* file_type,
                        uint64_t* min_vaddr, uint64_t* file_offset_of_min_vaddr,
                        std::vector<Symbol>* symbols, std::vector<uint64_t>* dex_file_offsets);
-  bool ReadMetaInfoFeature(std::unordered_map<std::string, std::string>* info_map);
+
+  const std::unordered_map<std::string, std::string>& GetMetaInfoFeature() { return meta_info_; }
 
   void LoadBuildIdAndFileFeatures(ThreadTree& thread_tree);
 
@@ -167,6 +169,8 @@ class RecordFileReader {
   bool ReadAttrSection();
   bool ReadIdsForAttr(const PerfFileFormat::FileAttr& attr, std::vector<uint64_t>* ids);
   bool ReadFeatureSectionDescriptors();
+  bool ReadMetaInfoFeature();
+  void UseRecordingEnvironment();
   std::unique_ptr<Record> ReadRecord(uint64_t* nbytes_read);
   bool Read(void* buf, size_t len);
   void ProcessEventIdRecord(const EventIdRecord& r);
@@ -184,6 +188,10 @@ class RecordFileReader {
   size_t event_id_reverse_pos_in_non_sample_records_;
 
   uint64_t read_record_size_;
+
+  std::unordered_map<std::string, std::string> meta_info_;
+  std::unique_ptr<ScopedCurrentArch> scoped_arch_;
+  std::unique_ptr<ScopedEventTypes> scoped_event_types_;
 
   DISALLOW_COPY_AND_ASSIGN(RecordFileReader);
 };
