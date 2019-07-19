@@ -40,7 +40,7 @@ class DumpRecordCommand : public Command {
       : Command("dump", "dump perf record file",
                 "Usage: simpleperf dumprecord [options] [perf_record_file]\n"
                 "    Dump different parts of a perf record file. Default file is perf.data.\n"),
-        record_filename_("perf.data"), record_file_arch_(GetBuildArch()) {
+        record_filename_("perf.data") {
   }
 
   bool Run(const std::vector<std::string>& args);
@@ -54,7 +54,6 @@ class DumpRecordCommand : public Command {
 
   std::string record_filename_;
   std::unique_ptr<RecordFileReader> record_file_reader_;
-  ArchType record_file_arch_;
 };
 
 bool DumpRecordCommand::Run(const std::vector<std::string>& args) {
@@ -64,25 +63,6 @@ bool DumpRecordCommand::Run(const std::vector<std::string>& args) {
   record_file_reader_ = RecordFileReader::CreateInstance(record_filename_);
   if (record_file_reader_ == nullptr) {
     return false;
-  }
-  std::string arch = record_file_reader_->ReadFeatureString(FEAT_ARCH);
-  if (!arch.empty()) {
-    record_file_arch_ = GetArchType(arch);
-    if (record_file_arch_ == ARCH_UNSUPPORTED) {
-      return false;
-    }
-  }
-  ScopedCurrentArch scoped_arch(record_file_arch_);
-  std::unique_ptr<ScopedEventTypes> scoped_event_types;
-  if (record_file_reader_->HasFeature(PerfFileFormat::FEAT_META_INFO)) {
-    std::unordered_map<std::string, std::string> meta_info;
-    if (!record_file_reader_->ReadMetaInfoFeature(&meta_info)) {
-      return false;
-    }
-    auto it = meta_info.find("event_type_info");
-    if (it != meta_info.end()) {
-      scoped_event_types.reset(new ScopedEventTypes(it->second));
-    }
   }
   DumpFileHeader();
   DumpAttrSection();
@@ -268,12 +248,8 @@ bool DumpRecordCommand::DumpFeatureSection() {
         }
       }
     } else if (feature == FEAT_META_INFO) {
-      std::unordered_map<std::string, std::string> info_map;
-      if (!record_file_reader_->ReadMetaInfoFeature(&info_map)) {
-        return false;
-      }
       PrintIndented(1, "meta_info:\n");
-      for (auto& pair : info_map) {
+      for (auto& pair : record_file_reader_->GetMetaInfoFeature()) {
         PrintIndented(2, "%s = %s\n", pair.first.c_str(), pair.second.c_str());
       }
     }
