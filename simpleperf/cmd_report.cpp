@@ -432,7 +432,7 @@ class ReportCommand : public Command {
 
  private:
   bool ParseOptions(const std::vector<std::string>& args);
-  bool ReadMetaInfoFromRecordFile();
+  void ReadMetaInfoFromRecordFile();
   bool ReadEventAttrFromRecordFile();
   bool ReadFeaturesFromRecordFile();
   bool ReadSampleTreeFromRecordFile();
@@ -468,8 +468,6 @@ class ReportCommand : public Command {
   size_t sched_switch_attr_id_;
 
   std::string report_filename_;
-  std::unordered_map<std::string, std::string> meta_info_;
-  std::unique_ptr<ScopedEventTypes> scoped_event_types_;
 };
 
 bool ReportCommand::Run(const std::vector<std::string>& args) {
@@ -483,9 +481,7 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
   if (record_file_reader_ == nullptr) {
     return false;
   }
-  if (!ReadMetaInfoFromRecordFile()) {
-    return false;
-  }
+  ReadMetaInfoFromRecordFile();
   if (!ReadEventAttrFromRecordFile()) {
     return false;
   }
@@ -735,25 +731,14 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   return true;
 }
 
-bool ReportCommand::ReadMetaInfoFromRecordFile() {
-  if (record_file_reader_->HasFeature(PerfFileFormat::FEAT_META_INFO)) {
-    if (!record_file_reader_->ReadMetaInfoFeature(&meta_info_)) {
-      return false;
-    }
-    auto it = meta_info_.find("system_wide_collection");
-    if (it != meta_info_.end()) {
-      system_wide_collection_ = it->second == "true";
-    }
-    it = meta_info_.find("trace_offcpu");
-    if (it != meta_info_.end()) {
-      trace_offcpu_ = it->second == "true";
-    }
-    it = meta_info_.find("event_type_info");
-    if (it != meta_info_.end()) {
-      scoped_event_types_.reset(new ScopedEventTypes(it->second));
-    }
+void ReportCommand::ReadMetaInfoFromRecordFile() {
+  auto& meta_info = record_file_reader_->GetMetaInfoFeature();
+  if (auto it = meta_info.find("system_wide_collection"); it != meta_info.end()) {
+    system_wide_collection_ = it->second == "true";
   }
-  return true;
+  if (auto it = meta_info.find("trace_offcpu"); it != meta_info.end()) {
+    trace_offcpu_ = it->second == "true";
+  }
 }
 
 bool ReportCommand::ReadEventAttrFromRecordFile() {
@@ -806,7 +791,7 @@ bool ReportCommand::ReadFeaturesFromRecordFile() {
   std::vector<std::string> cmdline = record_file_reader_->ReadCmdlineFeature();
   if (!cmdline.empty()) {
     record_cmdline_ = android::base::Join(cmdline, ' ');
-    if (meta_info_.find("system_wide_collection") == meta_info_.end()) {
+    if (record_file_reader_->GetMetaInfoFeature().count("system_wide_collection")) {
       // TODO: the code to detect system wide collection option is fragile, remove
       // it once we can do cross unwinding.
       for (size_t i = 0; i < cmdline.size(); i++) {

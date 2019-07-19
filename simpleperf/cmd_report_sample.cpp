@@ -138,9 +138,7 @@ class ReportSampleCommand : public Command {
   size_t sample_count_;
   size_t lost_count_;
   bool trace_offcpu_;
-  std::unique_ptr<ScopedEventTypes> scoped_event_types_;
   std::vector<std::string> event_types_;
-  std::unordered_map<std::string, std::string> meta_info_;
   bool remove_unknown_kernel_symbols_;
   bool kernel_symbols_available_;
   bool show_art_frames_;
@@ -425,22 +423,12 @@ bool ReportSampleCommand::OpenRecordFile() {
     return false;
   }
   record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
-  if (record_file_reader_->HasFeature(PerfFileFormat::FEAT_META_INFO)) {
-    if (!record_file_reader_->ReadMetaInfoFeature(&meta_info_)) {
-      return false;
-    }
-    auto it = meta_info_.find("event_type_info");
-    if (it != meta_info_.end()) {
-      scoped_event_types_.reset(new ScopedEventTypes(it->second));
-    }
-    it = meta_info_.find("trace_offcpu");
-    if (it != meta_info_.end()) {
-      trace_offcpu_ = it->second == "true";
-    }
-    it = meta_info_.find("kernel_symbols_available");
-    if (it != meta_info_.end()) {
-      kernel_symbols_available_ = it->second == "true";
-    }
+  auto& meta_info = record_file_reader_->GetMetaInfoFeature();
+  if (auto it = meta_info.find("trace_offcpu"); it != meta_info.end()) {
+    trace_offcpu_ = it->second == "true";
+  }
+  if (auto it = meta_info.find("kernel_symbols_available"); it != meta_info.end()) {
+    kernel_symbols_available_ = it->second == "true";
   }
   for (EventAttrWithId& attr : record_file_reader_->AttrSection()) {
     event_types_.push_back(GetEventNameByAttr(*attr.attr));
@@ -449,8 +437,9 @@ bool ReportSampleCommand::OpenRecordFile() {
 }
 
 bool ReportSampleCommand::PrintMetaInfo() {
-  auto it = meta_info_.find("app_package_name");
-  std::string app_package_name = it != meta_info_.end() ? it->second : "";
+  auto& meta_info = record_file_reader_->GetMetaInfoFeature();
+  auto it = meta_info.find("app_package_name");
+  std::string app_package_name = it != meta_info.end() ? it->second : "";
   if (use_protobuf_) {
     proto::Record proto_record;
     proto::MetaInfo* meta_info = proto_record.mutable_meta_info();

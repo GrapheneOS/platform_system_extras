@@ -371,9 +371,7 @@ bool DebugUnwindCommand::WriteFeatureSections() {
   // Write meta_info section.
   std::unordered_map<std::string, std::string> info_map;
   if (it != features.end() && it->first == PerfFileFormat::FEAT_META_INFO) {
-    if (!reader_->ReadMetaInfoFeature(&info_map)) {
-      return false;
-    }
+    info_map = reader_->GetMetaInfoFeature();
     ++it;
   }
   info_map["debug_unwind"] = "true";
