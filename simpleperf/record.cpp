@@ -45,6 +45,7 @@ static std::string RecordTypeToString(int record_type) {
       {PERF_RECORD_BUILD_ID, "build_id"},
       {PERF_RECORD_MMAP2, "mmap2"},
       {PERF_RECORD_TRACING_DATA, "tracing_data"},
+      {PERF_RECORD_AUXTRACE_INFO, "auxtrace_info"},
       {SIMPLE_PERF_RECORD_KERNEL_SYMBOL, "kernel_symbol"},
       {SIMPLE_PERF_RECORD_DSO, "dso"},
       {SIMPLE_PERF_RECORD_SYMBOL, "symbol"},
@@ -910,6 +911,55 @@ BuildIdRecord::BuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id,
   UpdateBinary(new_binary);
 }
 
+AuxTraceInfoRecord::AuxTraceInfoRecord(char* p) : Record(p) {
+  const char* end = p + size();
+  p += header_size();
+  data = reinterpret_cast<DataType*>(p);
+  CHECK_EQ(data->aux_type, AUX_TYPE_ETM);
+  CHECK_EQ(data->version, 0);
+  for (uint32_t i = 0; i < data->nr_cpu; ++i) {
+    CHECK_EQ(data->etm4_info[i].magic, MAGIC_ETM4);
+  }
+  p += sizeof(DataType) + data->nr_cpu * sizeof(ETM4Info);
+  CHECK_EQ(p, end);
+}
+
+AuxTraceInfoRecord::AuxTraceInfoRecord(const DataType& data,
+                                       const std::vector<ETM4Info>& etm4_info) {
+  SetTypeAndMisc(PERF_RECORD_AUXTRACE_INFO, 0);
+  SetSize(header_size() + sizeof(DataType) + sizeof(ETM4Info) * etm4_info.size());
+  char* new_binary = new char[size()];
+  char* p = new_binary;
+  MoveToBinaryFormat(header, p);
+  this->data = reinterpret_cast<DataType*>(p);
+  MoveToBinaryFormat(data, p);
+  for (auto& etm4 : etm4_info) {
+    MoveToBinaryFormat(etm4, p);
+  }
+  UpdateBinary(new_binary);
+}
+
+void AuxTraceInfoRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "aux_type %u\n", data->aux_type);
+  PrintIndented(indent, "version %" PRIu64 "\n", data->version);
+  PrintIndented(indent, "nr_cpu %u\n", data->nr_cpu);
+  PrintIndented(indent, "pmu_type %u\n", data->pmu_type);
+  PrintIndented(indent, "snapshot %" PRIu64 "\n", data->snapshot);
+  indent++;
+  for (int i = 0; i < data->nr_cpu; i++) {
+    const ETM4Info& e = data->etm4_info[i];
+    PrintIndented(indent, "magic 0x%" PRIx64 "\n", e.magic);
+    PrintIndented(indent, "cpu %" PRIu64 "\n", e.cpu);
+    PrintIndented(indent, "trcconfigr 0x%" PRIx64 "\n", e.trcconfigr);
+    PrintIndented(indent, "trctraceidr 0x%" PRIx64 "\n", e.trctraceidr);
+    PrintIndented(indent, "trcidr0 0x%" PRIx64 "\n", e.trcidr0);
+    PrintIndented(indent, "trcidr1 0x%" PRIx64 "\n", e.trcidr1);
+    PrintIndented(indent, "trcidr2 0x%" PRIx64 "\n", e.trcidr2);
+    PrintIndented(indent, "trcidr8 0x%" PRIx64 "\n", e.trcidr8);
+    PrintIndented(indent, "trcauthstatus 0x%" PRIx64 "\n", e.trcauthstatus);
+  }
+}
+
 KernelSymbolRecord::KernelSymbolRecord(char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
@@ -1211,6 +1261,8 @@ std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr, uint32
       return std::unique_ptr<Record>(new SampleRecord(attr, p));
     case PERF_RECORD_TRACING_DATA:
       return std::unique_ptr<Record>(new TracingDataRecord(p));
+    case PERF_RECORD_AUXTRACE_INFO:
+      return std::unique_ptr<Record>(new AuxTraceInfoRecord(p));
     case SIMPLE_PERF_RECORD_KERNEL_SYMBOL:
       return std::unique_ptr<Record>(new KernelSymbolRecord(p));
     case SIMPLE_PERF_RECORD_DSO:

@@ -40,6 +40,8 @@ enum user_record_type {
   PERF_RECORD_BUILD_ID,
   PERF_RECORD_FINISHED_ROUND,
 
+  PERF_RECORD_AUXTRACE_INFO = 70,
+
   SIMPLE_PERF_RECORD_TYPE_START = 32768,
   SIMPLE_PERF_RECORD_KERNEL_SYMBOL,
   // TODO: remove DsoRecord and SymbolRecord.
@@ -433,6 +435,40 @@ struct BuildIdRecord : public Record {
 
   BuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id,
                 const std::string& filename);
+
+ protected:
+  void DumpData(size_t indent) const override;
+};
+
+struct AuxTraceInfoRecord : public Record {
+  // magic values to be compatible with linux perf
+  static const uint32_t AUX_TYPE_ETM = 3;
+  static const uint64_t MAGIC_ETM4 = 0x4040404040404040ULL;
+
+  struct ETM4Info {
+    uint64_t magic;
+    uint64_t cpu;
+    uint64_t trcconfigr;
+    uint64_t trctraceidr;
+    uint64_t trcidr0;
+    uint64_t trcidr1;
+    uint64_t trcidr2;
+    uint64_t trcidr8;
+    uint64_t trcauthstatus;
+  };
+
+  struct DataType {
+    uint32_t aux_type;
+    uint32_t reserved;
+    uint64_t version;
+    uint32_t nr_cpu;
+    uint32_t pmu_type;
+    uint64_t snapshot;
+    ETM4Info etm4_info[0];
+  }* data;
+
+  explicit AuxTraceInfoRecord(char* p);
+  AuxTraceInfoRecord(const DataType& data, const std::vector<ETM4Info>& etm4_info);
 
  protected:
   void DumpData(size_t indent) const override;
