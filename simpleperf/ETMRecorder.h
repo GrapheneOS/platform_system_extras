@@ -22,6 +22,7 @@
 #include <memory>
 
 #include "event_type.h"
+#include "record.h"
 #include "perf_event.h"
 
 namespace simpleperf {
@@ -31,7 +32,7 @@ struct ETMPerCpu {
   uint32_t trcidr1;
   uint32_t trcidr2;
   uint32_t trcidr8;
-  uint32_t trcidr9;
+  uint32_t trcauthstatus;
   uint32_t trctraceid;
 
   int GetMajorVersion() const;
@@ -54,14 +55,21 @@ class ETMRecorder {
   std::unique_ptr<EventType> BuildEventType();
   bool CheckEtmSupport();
   void SetEtmPerfEventAttr(perf_event_attr* attr);
+  AuxTraceInfoRecord CreateAuxTraceInfoRecord();
 
  private:
   bool ReadEtmInfo();
   bool FindSinkConfig();
+  void BuildEtmConfig();
 
   int event_type_ = 0;
   bool etm_supported_ = false;
+  // select ETR device, setting in perf_event_attr->config2
   uint32_t sink_config_ = 0;
+  // select etm options (timestamp, context_id, ...), setting in perf_event_attr->config
+  uint64_t etm_event_config_ = 0;
+  // record etm options in AuxTraceInfoRecord
+  uint32_t etm_config_reg_ = 0;
   std::map<int, ETMPerCpu> etm_info_;
 };
 
