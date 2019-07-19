@@ -32,8 +32,15 @@
 
 namespace simpleperf {
 
-static constexpr uint64_t ETM4_CFG_CTXTID = 1ULL << 6;
-static constexpr uint64_t ETM4_CFG_TS = 1ULL << 11;
+static constexpr bool ETM_RECORD_TIMESTAMP = false;
+
+// Config bits from include/linux/coresight-pmu.h in the kernel
+// For etm_event_config:
+static constexpr int ETM_OPT_CTXTID = 14;
+static constexpr int ETM_OPT_TS = 28;
+// For etm_config_reg:
+static constexpr int ETM4_CFG_BIT_CTXTID = 6;
+static constexpr int ETM4_CFG_BIT_TS = 11;
 
 static const std::string ETM_DIR = "/sys/bus/event_source/devices/cs_etm/";
 
@@ -127,7 +134,7 @@ bool ETMRecorder::ReadEtmInfo() {
           ReadValueInEtmDir(name + "/trcidr/trcidr1", &cpu_info.trcidr1) &&
           ReadValueInEtmDir(name + "/trcidr/trcidr2", &cpu_info.trcidr2) &&
           ReadValueInEtmDir(name + "/trcidr/trcidr8", &cpu_info.trcidr8) &&
-          ReadValueInEtmDir(name + "/trcidr/trcidr9", &cpu_info.trcidr9) &&
+          ReadValueInEtmDir(name + "/mgmt/trcauthstatus", &cpu_info.trcauthstatus) &&
           ReadValueInEtmDir(name + "/mgmt/trctraceid", &cpu_info.trctraceid);
       if (!success) {
         return false;
@@ -150,15 +157,50 @@ bool ETMRecorder::FindSinkConfig() {
 
 void ETMRecorder::SetEtmPerfEventAttr(perf_event_attr* attr) {
   CHECK(etm_supported_);
-  attr->config |= ETM4_CFG_CTXTID;
-  bool ts_supported = true;
-  for (auto& p : etm_info_) {
-    ts_supported &= p.second.IsTimestampSupported();
-  }
-  if (ts_supported) {
-    attr->config |= ETM4_CFG_TS;
-  }
+  BuildEtmConfig();
+  attr->config = etm_event_config_;
   attr->config2 = sink_config_;
+}
+
+void ETMRecorder::BuildEtmConfig() {
+  if (etm_event_config_ == 0) {
+    etm_event_config_ |= 1ULL << ETM_OPT_CTXTID;
+    etm_config_reg_ |= 1U << ETM4_CFG_BIT_CTXTID;
+
+    if (ETM_RECORD_TIMESTAMP) {
+      bool ts_supported = true;
+      for (auto& p : etm_info_) {
+        ts_supported &= p.second.IsTimestampSupported();
+      }
+      if (ts_supported) {
+        etm_event_config_ |= 1ULL << ETM_OPT_TS;
+        etm_config_reg_ |= 1U << ETM4_CFG_BIT_TS;
+      }
+    }
+  }
+}
+
+AuxTraceInfoRecord ETMRecorder::CreateAuxTraceInfoRecord() {
+  AuxTraceInfoRecord::DataType data;
+  memset(&data, 0, sizeof(data));
+  data.aux_type = AuxTraceInfoRecord::AUX_TYPE_ETM;
+  data.nr_cpu = etm_info_.size();
+  data.pmu_type = GetEtmEventType();
+  std::vector<AuxTraceInfoRecord::ETM4Info> etm4_v(etm_info_.size());
+  size_t pos = 0;
+  for (auto& p : etm_info_) {
+    auto& e = etm4_v[pos++];
+    e.magic = AuxTraceInfoRecord::MAGIC_ETM4;
+    e.cpu = p.first;
+    e.trcconfigr = etm_config_reg_;
+    e.trctraceidr = p.second.trctraceid;
+    e.trcidr0 = p.second.trcidr0;
+    e.trcidr1 = p.second.trcidr1;
+    e.trcidr2 = p.second.trcidr2;
+    e.trcidr8 = p.second.trcidr8;
+    e.trcauthstatus = p.second.trcauthstatus;
+  }
+  return AuxTraceInfoRecord(data, etm4_v);
 }
 
 }  // namespace simpleperf
