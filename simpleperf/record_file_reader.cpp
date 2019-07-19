@@ -78,9 +78,10 @@ std::unique_ptr<RecordFileReader> RecordFileReader::CreateInstance(const std::st
   }
   auto reader = std::unique_ptr<RecordFileReader>(new RecordFileReader(filename, fp));
   if (!reader->ReadHeader() || !reader->ReadAttrSection() ||
-      !reader->ReadFeatureSectionDescriptors()) {
+      !reader->ReadFeatureSectionDescriptors() || !reader->ReadMetaInfoFeature()) {
     return nullptr;
   }
+  reader->UseRecordingEnvironment();
   return reader;
 }
 
@@ -203,6 +204,17 @@ bool RecordFileReader::ReadIdsForAttr(const FileAttr& attr, std::vector<uint64_t
     return false;
   }
   return true;
+}
+
+void RecordFileReader::UseRecordingEnvironment() {
+  std::string arch = ReadFeatureString(FEAT_ARCH);
+  if (!arch.empty()) {
+    scoped_arch_.reset(new ScopedCurrentArch(GetArchType(arch)));
+  }
+  auto& meta_info = GetMetaInfoFeature();
+  if (auto it = meta_info.find("event_type_info"); it != meta_info.end()) {
+    scoped_event_types_.reset(new ScopedEventTypes(it->second));
+  }
 }
 
 bool RecordFileReader::ReadDataSection(
@@ -471,19 +483,21 @@ bool RecordFileReader::ReadFileFeature(size_t& read_pos,
   return true;
 }
 
-bool RecordFileReader::ReadMetaInfoFeature(std::unordered_map<std::string, std::string>* info_map) {
-  std::vector<char> buf;
-  if (!ReadFeatureSection(FEAT_META_INFO, &buf)) {
-    return false;
-  }
-  const char* p = buf.data();
-  const char* end = buf.data() + buf.size();
-  while (p < end) {
-    const char* key = p;
-    const char* value = key + strlen(key) + 1;
-    CHECK(value < end);
-    (*info_map)[p] = value;
-    p = value + strlen(value) + 1;
+bool RecordFileReader::ReadMetaInfoFeature() {
+  if (feature_section_descriptors_.count(FEAT_META_INFO)) {
+    std::vector<char> buf;
+    if (!ReadFeatureSection(FEAT_META_INFO, &buf)) {
+      return false;
+    }
+    const char* p = buf.data();
+    const char* end = buf.data() + buf.size();
+    while (p < end) {
+      const char* key = p;
+      const char* value = key + strlen(key) + 1;
+      CHECK(value < end);
+      meta_info_[p] = value;
+      p = value + strlen(value) + 1;
+    }
   }
   return true;
 }
