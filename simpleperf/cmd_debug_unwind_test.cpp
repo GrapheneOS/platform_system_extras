@@ -60,9 +60,8 @@ TEST(cmd_debug_unwind, symfs_option) {
   const std::map<int, PerfFileFormat::SectionDesc>& features = reader->FeatureSectionDescriptors();
   ASSERT_NE(features.find(PerfFileFormat::FEAT_FILE), features.end());
   ASSERT_NE(features.find(PerfFileFormat::FEAT_META_INFO), features.end());
-  std::unordered_map<std::string, std::string> info_map;
-  ASSERT_TRUE(reader->ReadMetaInfoFeature(&info_map));
-  ASSERT_EQ(info_map["debug_unwind"], "true");
+  auto meta_info = reader->GetMetaInfoFeature();
+  ASSERT_EQ(meta_info["debug_unwind"], "true");
 }
 
 TEST(cmd_debug_unwind, unwind_with_ip_zero_in_callchain) {

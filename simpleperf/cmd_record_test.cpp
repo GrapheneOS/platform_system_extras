@@ -565,8 +565,7 @@ TEST(record_cmd, record_meta_info_feature) {
   ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
   ASSERT_TRUE(reader);
-  std::unordered_map<std::string, std::string> info_map;
-  ASSERT_TRUE(reader->ReadMetaInfoFeature(&info_map));
+  auto& info_map = reader->GetMetaInfoFeature();
   ASSERT_NE(info_map.find("simpleperf_version"), info_map.end());
   ASSERT_NE(info_map.find("timestamp"), info_map.end());
 #if defined(__ANDROID__)
@@ -604,8 +603,7 @@ TEST(record_cmd, trace_offcpu_option) {
   ASSERT_TRUE(RunRecordCmd({"--trace-offcpu", "-f", "1000"}, tmpfile.path));
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
   ASSERT_TRUE(reader);
-  std::unordered_map<std::string, std::string> info_map;
-  ASSERT_TRUE(reader->ReadMetaInfoFeature(&info_map));
+  auto info_map = reader->GetMetaInfoFeature();
   ASSERT_EQ(info_map["trace_offcpu"], "true");
   CheckEventType(tmpfile.path, "sched:sched_switch", 1u, 0u);
 }
@@ -624,8 +622,7 @@ TEST(record_cmd, clockid_option) {
     ASSERT_TRUE(RunRecordCmd({"--clockid", "monotonic"}, tmpfile.path));
     std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
     ASSERT_TRUE(reader);
-    std::unordered_map<std::string, std::string> info_map;
-    ASSERT_TRUE(reader->ReadMetaInfoFeature(&info_map));
+    auto info_map = reader->GetMetaInfoFeature();
     ASSERT_EQ(info_map["clockid"], "monotonic");
   }
 }
