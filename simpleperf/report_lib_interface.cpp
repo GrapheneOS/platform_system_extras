@@ -187,7 +187,6 @@ class ReportLib {
   std::vector<CallChainEntry> callchain_entries_;
   std::string build_id_string_;
   std::vector<EventInfo> events_;
-  std::unique_ptr<ScopedEventTypes> scoped_event_types_;
   bool trace_offcpu_;
   std::unordered_map<pid_t, std::unique_ptr<SampleRecord>> next_sample_cache_;
   FeatureSection feature_section_;
@@ -224,17 +223,8 @@ bool ReportLib::OpenRecordFileIfNecessary() {
       return false;
     }
     record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
-    std::unordered_map<std::string, std::string> meta_info_map;
-    if (record_file_reader_->HasFeature(PerfFileFormat::FEAT_META_INFO) &&
-        !record_file_reader_->ReadMetaInfoFeature(&meta_info_map)) {
-      return false;
-    }
-    auto it = meta_info_map.find("event_type_info");
-    if (it != meta_info_map.end()) {
-      scoped_event_types_.reset(new ScopedEventTypes(it->second));
-    }
-    it = meta_info_map.find("trace_offcpu");
-    if (it != meta_info_map.end()) {
+    auto& meta_info = record_file_reader_->GetMetaInfoFeature();
+    if (auto it = meta_info.find("trace_offcpu"); it != meta_info.end()) {
       trace_offcpu_ = it->second == "true";
     }
   }
