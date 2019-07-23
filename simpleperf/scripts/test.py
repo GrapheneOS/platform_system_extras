@@ -1411,22 +1411,58 @@ class TestApiProfiler(TestBase):
 
 
 class TestPprofProtoGenerator(TestBase):
-    def test_show_art_frames(self):
+    def setUp(self):
         if not HAS_GOOGLE_PROTOBUF:
-            log_info('Skip test for pprof_proto_generator because google.protobuf is missing')
-            return
-        testdata_path = os.path.join('testdata', 'perf_with_interpreter_frames.data')
+            raise unittest.SkipTest(
+                'Skip test for pprof_proto_generator because google.protobuf is missing')
+
+    def run_generator(self, options=None, testdata_file='perf_with_interpreter_frames.data'):
+        testdata_path = os.path.join('testdata', testdata_file)
+        options = options or []
+        self.run_cmd(['pprof_proto_generator.py', '-i', testdata_path] + options)
+        return self.run_cmd(['pprof_proto_generator.py', '--show'], return_output=True)
+
+    def test_show_art_frames(self):
         art_frame_str = 'art::interpreter::DoCall'
-
         # By default, don't show art frames.
-        self.run_cmd(['pprof_proto_generator.py', '-i', testdata_path])
-        output = self.run_cmd(['pprof_proto_generator.py', '--show'], return_output=True)
-        self.assertEqual(output.find(art_frame_str), -1, 'output: ' + output)
-
+        self.assertNotIn(art_frame_str, self.run_generator())
         # Use --show_art_frames to show art frames.
-        self.run_cmd(['pprof_proto_generator.py', '-i', testdata_path, '--show_art_frames'])
-        output = self.run_cmd(['pprof_proto_generator.py', '--show'], return_output=True)
-        self.assertNotEqual(output.find(art_frame_str), -1, 'output: ' + output)
+        self.assertIn(art_frame_str, self.run_generator(['--show_art_frames']))
+
+    def test_pid_filter(self):
+        key = 'PlayScene::DoFrame()'  # function in process 10419
+        self.assertIn(key, self.run_generator())
+        self.assertIn(key, self.run_generator(['--pid', '10419']))
+        self.assertIn(key, self.run_generator(['--pid', '10419', '10416']))
+        self.assertNotIn(key, self.run_generator(['--pid', '10416']))
+
+    def test_tid_filter(self):
+        key1 = 'art::ProfileSaver::Run()'  # function in thread 10459
+        key2 = 'PlayScene::DoFrame()'  # function in thread 10463
+        for options in ([], ['--tid', '10459', '10463']):
+            output = self.run_generator(options)
+            self.assertIn(key1, output)
+            self.assertIn(key2, output)
+        output = self.run_generator(['--tid', '10459'])
+        self.assertIn(key1, output)
+        self.assertNotIn(key2, output)
+        output = self.run_generator(['--tid', '10463'])
+        self.assertNotIn(key1, output)
+        self.assertIn(key2, output)
+
+    def test_comm_filter(self):
+        key1 = 'art::ProfileSaver::Run()'  # function in thread 'Profile Saver'
+        key2 = 'PlayScene::DoFrame()'  # function in thread 'e.sample.tunnel'
+        for options in ([], ['--comm', 'Profile Saver', 'e.sample.tunnel']):
+            output = self.run_generator(options)
+            self.assertIn(key1, output)
+            self.assertIn(key2, output)
+        output = self.run_generator(['--comm', 'Profile Saver'])
+        self.assertIn(key1, output)
+        self.assertNotIn(key2, output)
+        output = self.run_generator(['--comm', 'e.sample.tunnel'])
+        self.assertNotIn(key1, output)
+        self.assertIn(key2, output)
 
 
 def get_all_tests():
@@ -1458,7 +1494,7 @@ def main():
     parser.add_argument('--test-from', nargs=1, help='Run left tests from the selected test.')
     parser.add_argument('--python-version', choices=['2', '3', 'both'], default='both', help="""
                         Run tests on which python versions.""")
-    parser.add_argument('--repeat', type=int, nargs=1, default=1, help='run test multiple times')
+    parser.add_argument('--repeat', type=int, nargs=1, default=[1], help='run test multiple times')
     parser.add_argument('pattern', nargs='*', help='Run tests matching the selected pattern.')
     args = parser.parse_args()
     tests = get_all_tests()
