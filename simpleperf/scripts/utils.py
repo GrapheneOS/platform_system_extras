@@ -70,6 +70,17 @@ def log_exit(msg):
 def disable_debug_log():
     logging.getLogger().setLevel(logging.WARN)
 
+def set_log_level(level_name):
+    if level_name == 'debug':
+        level = logging.DEBUG
+    elif level_name == 'info':
+        level = logging.INFO
+    elif level_name == 'warning':
+        level = logging.WARNING
+    else:
+        log_fatal('unknown log level: %s' % level_name)
+    logging.getLogger().setLevel(level)
+
 def str_to_bytes(str_value):
     if not is_python3():
         return str_value
