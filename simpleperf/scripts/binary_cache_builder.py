@@ -27,7 +27,7 @@ import shutil
 
 from simpleperf_report_lib import ReportLib
 from utils import AdbHelper, extant_dir, extant_file, flatten_arg_list, log_info, log_warning
-from utils import ReadElf
+from utils import ReadElf, set_log_level
 
 def is_jit_symfile(dso_name):
     return dso_name.split('/')[-1].startswith('TemporaryFile')
@@ -209,7 +209,7 @@ class BinaryCacheBuilder(object):
         if os.path.isfile(file_path):
             os.remove(file_path)
         if self.adb.switch_to_root():
-            self.adb.run(['shell', '"echo 0 >/proc/sys/kernel/kptr_restrict"'])
+            self.adb.run(['shell', 'echo', '0', '>/proc/sys/kernel/kptr_restrict'])
             self.adb.run(['pull', '/proc/kallsyms', file_path])
 
 
@@ -223,8 +223,10 @@ def main():
     parser.add_argument('--disable_adb_root', action='store_true', help="""
         Force adb to run in non root mode.""")
     parser.add_argument('--ndk_path', nargs=1, help='Find tools in the ndk path.')
+    parser.add_argument(
+        '--log', choices=['debug', 'info', 'warning'], default='info', help='set log level')
     args = parser.parse_args()
-
+    set_log_level(args.log)
     ndk_path = None if not args.ndk_path else args.ndk_path[0]
     builder = BinaryCacheBuilder(ndk_path, args.disable_adb_root)
     symfs_dirs = flatten_arg_list(args.native_lib_dir)
