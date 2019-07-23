@@ -30,8 +30,8 @@ import os
 import os.path
 
 from simpleperf_report_lib import ReportLib
-from utils import Addr2Nearestline, bytes_to_str, extant_dir, find_tool_path, flatten_arg_list
-from utils import log_info, log_exit, str_to_bytes
+from utils import Addr2Nearestline, extant_dir, find_tool_path, flatten_arg_list
+from utils import log_info, log_exit
 try:
     import profile_pb2
 except ImportError:
@@ -40,13 +40,13 @@ except ImportError:
 def load_pprof_profile(filename):
     profile = profile_pb2.Profile()
     with open(filename, "rb") as f:
-        profile.ParseFromString(bytes_to_str(f.read()))
+        profile.ParseFromString(f.read())
     return profile
 
 
 def store_pprof_profile(filename, profile):
     with open(filename, 'wb') as f:
-        f.write(str_to_bytes(profile.SerializeToString()))
+        f.write(profile.SerializeToString())
 
 
 class PprofProfilePrinter(object):
@@ -330,12 +330,12 @@ class PprofProfileGenerator(object):
         if self.comm_filter:
             if sample.thread_comm not in self.comm_filter:
                 return False
-            if self.pid_filter:
-                if sample.pid not in self.pid_filter:
-                    return False
-            if self.tid_filter:
-                if sample.tid not in self.tid_filter:
-                    return False
+        if self.pid_filter:
+            if sample.pid not in self.pid_filter:
+                return False
+        if self.tid_filter:
+            if sample.tid not in self.tid_filter:
+                return False
         return True
 
     def _filter_symbol(self, symbol):
