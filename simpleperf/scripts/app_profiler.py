@@ -30,7 +30,7 @@ import sys
 import time
 
 from utils import AdbHelper, bytes_to_str, extant_dir, get_script_dir, get_target_binary_path
-from utils import log_debug, log_info, log_exit, ReadElf, remove, str_to_bytes
+from utils import log_debug, log_info, log_exit, ReadElf, remove, set_log_level, str_to_bytes
 
 NATIVE_LIBS_DIR_ON_DEVICE = '/data/local/tmp/native_libs/'
 
@@ -203,11 +203,12 @@ class ProfilerBase(object):
         """Start simpleperf reocrd process on device."""
         args = ['/data/local/tmp/simpleperf', 'record', '-o', '/data/local/tmp/perf.data',
                 self.args.record_options]
-        if self.adb.run(['shell', 'ls', NATIVE_LIBS_DIR_ON_DEVICE]):
+        if self.adb.run(['shell', 'ls', NATIVE_LIBS_DIR_ON_DEVICE, '>/dev/null', '2>&1']):
             args += ['--symfs', NATIVE_LIBS_DIR_ON_DEVICE]
+        args += ['--log', self.args.log]
         args += target_args
         adb_args = [self.adb.adb_path, 'shell'] + args
-        log_debug('run adb cmd: %s' % adb_args)
+        log_info('run adb cmd: %s' % adb_args)
         self.record_subproc = subprocess.Popen(adb_args)
 
     def wait_profiling(self):
@@ -244,7 +245,7 @@ class ProfilerBase(object):
         if not self.args.skip_collect_binaries:
             binary_cache_args = [sys.executable,
                                  os.path.join(get_script_dir(), 'binary_cache_builder.py')]
-            binary_cache_args += ['-i', self.args.perf_data_path]
+            binary_cache_args += ['-i', self.args.perf_data_path, '--log', self.args.log]
             if self.args.native_lib_dir:
                 binary_cache_args += ['-lib', self.args.native_lib_dir]
             if self.args.disable_adb_root:
@@ -425,12 +426,15 @@ def main():
                              help="""Force adb to run in non root mode. By default, app_profiler.py
                                      will try to switch to root mode to be able to profile released
                                      Android apps.""")
+    other_group.add_argument(
+        '--log', choices=['debug', 'info', 'warning'], default='info', help='set log level')
 
     def check_args(args):
         if (not args.app) and (args.compile_java_code or args.activity or args.test):
             log_exit('--compile_java_code, -a, -t can only be used when profiling an Android app.')
 
     args = parser.parse_args()
+    set_log_level(args.log)
     check_args(args)
     if args.app:
         profiler = AppProfiler(args)
