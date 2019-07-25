@@ -129,8 +129,12 @@ bool RecordFileWriter::WriteRecord(const Record& record) {
   // RECORD_SPLIT records, followed by a RECORD_SPLIT_END record.
   constexpr uint32_t RECORD_SIZE_LIMIT = 65535;
   if (record.size() <= RECORD_SIZE_LIMIT) {
-    WriteData(record.Binary(), record.size());
-    return true;
+    bool result = WriteData(record.Binary(), record.size());
+    if (result && record.type() == PERF_RECORD_AUXTRACE) {
+      auto auxtrace = static_cast<const AuxTraceRecord*>(&record);
+      result = WriteData(auxtrace->location.addr, auxtrace->data->aux_size);
+    }
+    return result;
   }
   CHECK_GT(record.type(), SIMPLE_PERF_RECORD_TYPE_START);
   const char* p = record.Binary();
@@ -204,6 +208,14 @@ bool RecordFileWriter::ReadDataSection(const std::function<void(const Record*)>&
     }
     read_pos += header.size;
     std::unique_ptr<Record> r = ReadRecordFromBuffer(event_attr_, header.type, record_buf.data());
+    if (r->type() == PERF_RECORD_AUXTRACE) {
+      auto auxtrace = static_cast<AuxTraceRecord*>(r.get());
+      if (fseek(record_fp_, auxtrace->data->aux_size, SEEK_CUR) != 0) {
+        PLOG(ERROR) << "fseek() failed";
+        return false;
+      }
+      read_pos += auxtrace->data->aux_size;
+    }
     callback(r.get());
   }
   return true;
