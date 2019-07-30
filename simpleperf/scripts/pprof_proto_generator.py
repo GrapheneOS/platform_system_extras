@@ -268,6 +268,7 @@ class PprofProfileGenerator(object):
         else:
             self.tid_filter = None
         self.dso_filter = set(config['dso_filters']) if config.get('dso_filters') else None
+        self.max_chain_length = config['max_chain_length']
         self.profile = profile_pb2.Profile()
         self.profile.string_table.append('')
         self.string_table = {}
@@ -302,7 +303,7 @@ class PprofProfileGenerator(object):
             if self._filter_symbol(symbol):
                 location_id = self.get_location_id(symbol.vaddr_in_file, symbol)
                 sample.add_location_id(location_id)
-            for i in range(callchain.nr):
+            for i in range(max(0, callchain.nr - self.max_chain_length), callchain.nr):
                 entry = callchain.entries[i]
                 if self._filter_symbol(symbol):
                     location_id = self.get_location_id(entry.ip, entry.symbol)
@@ -562,6 +563,8 @@ def main():
         Use samples only in threads with selected thread ids.""")
     parser.add_argument('--dso', nargs='+', action='append', help="""
         Use samples only in selected binaries.""")
+    parser.add_argument('--max_chain_length', type=int, default=1000000000, help="""
+        Maximum depth of samples to be converted.""")  # Large value as infinity standin.
     parser.add_argument('--ndk_path', type=extant_dir, help='Set the path of a ndk release.')
     parser.add_argument('--show_art_frames', action='store_true',
                         help='Show frames of internal methods in the ART Java interpreter.')
@@ -583,6 +586,7 @@ def main():
     config['dso_filters'] = flatten_arg_list(args.dso)
     config['ndk_path'] = args.ndk_path
     config['show_art_frames'] = args.show_art_frames
+    config['max_chain_length'] = args.max_chain_length
     generator = PprofProfileGenerator(config)
     profile = generator.gen()
     store_pprof_profile(config['output_file'], profile)
