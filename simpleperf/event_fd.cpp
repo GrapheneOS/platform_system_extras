@@ -95,6 +95,7 @@ std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr,
 
 EventFd::~EventFd() {
   DestroyMappedBuffer();
+  DestroyAuxBuffer();
   close(perf_event_fd_);
 }
 
@@ -251,6 +252,66 @@ void EventFd::DiscardMmapData(size_t discard_size) {
   // mb() used to ensure finish reading data before writing data_tail.
   __sync_synchronize();
   mmap_metadata_page_->data_tail += discard_size;
+}
+
+bool EventFd::CreateAuxBuffer(size_t aux_buffer_size, bool report_error) {
+  CHECK(HasMappedBuffer());
+  CHECK(IsPowerOfTwo(aux_buffer_size));
+  mmap_metadata_page_->aux_offset = mmap_len_;
+  mmap_metadata_page_->aux_size = aux_buffer_size;
+  mmap_metadata_page_->aux_head = 0;
+  mmap_metadata_page_->aux_tail = 0;
+  void* mmap_addr = mmap(nullptr, aux_buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                         perf_event_fd_, mmap_metadata_page_->aux_offset);
+  if (mmap_addr == MAP_FAILED) {
+    if (report_error) {
+      PLOG(ERROR) << "failed to mmap aux buffer of size " << aux_buffer_size << " for " << Name();
+    } else {
+      PLOG(DEBUG) << "failed to mmap aux buffer of size " << aux_buffer_size << " for " << Name();
+    }
+    return false;
+  }
+  aux_buffer_ = static_cast<char*>(mmap_addr);
+  aux_buffer_size_ = aux_buffer_size;
+  return true;
+}
+
+void EventFd::DestroyAuxBuffer() {
+  if (HasAuxBuffer()) {
+    munmap(aux_buffer_, aux_buffer_size_);
+    aux_buffer_ = nullptr;
+    aux_buffer_size_ = 0;
+  }
+}
+
+uint64_t EventFd::GetAvailableAuxData(char** buf1, size_t* size1, char** buf2, size_t* size2) {
+  // Aux buffer is similar to mapped_data_buffer. See comments in GetAvailableMmapData().
+  uint64_t write_head = mmap_metadata_page_->aux_head;
+  uint64_t read_head = mmap_metadata_page_->aux_tail;
+  if (write_head <= read_head) {
+    *size1 = *size2 = 0;
+    return 0;  // No available data.
+  }
+  // rmb() used to ensure reading data after reading aux_head.
+  __sync_synchronize();
+  size_t data_pos = read_head & (aux_buffer_size_ - 1);
+  size_t data_size = write_head - read_head;
+  *buf1 = aux_buffer_ + data_pos;
+  if (data_size <= aux_buffer_size_ - data_pos) {
+    *size1 = data_size;
+    *size2 = 0;
+  } else {
+    *size1 = aux_buffer_size_ - data_pos;
+    *buf2 = aux_buffer_;
+    *size2 = data_size - *size1;
+  }
+  return read_head;
+}
+
+void EventFd::DiscardAuxData(size_t discard_size) {
+  // mb() used to ensure finish reading data before writing aux_tail.
+  __sync_synchronize();
+  mmap_metadata_page_->aux_tail += discard_size;
 }
 
 bool EventFd::StartPolling(IOEventLoop& loop,

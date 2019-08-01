@@ -813,11 +813,15 @@ TEST(record_cmd, cs_etm_event) {
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
   ASSERT_TRUE(reader);
   bool has_auxtrace_info = false;
+  bool has_auxtrace = false;
   ASSERT_TRUE(reader->ReadDataSection([&](std::unique_ptr<Record> r) {
     if (r->type() == PERF_RECORD_AUXTRACE_INFO) {
       has_auxtrace_info = true;
+    } else if (r->type() == PERF_RECORD_AUXTRACE) {
+      has_auxtrace = true;
     }
     return true;
   }));
   ASSERT_TRUE(has_auxtrace_info);
+  ASSERT_TRUE(has_auxtrace);
 }

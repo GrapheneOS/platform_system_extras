@@ -171,7 +171,7 @@ class RecordFileReader {
   bool ReadFeatureSectionDescriptors();
   bool ReadMetaInfoFeature();
   void UseRecordingEnvironment();
-  std::unique_ptr<Record> ReadRecord(uint64_t* nbytes_read);
+  std::unique_ptr<Record> ReadRecord();
   bool Read(void* buf, size_t len);
   void ProcessEventIdRecord(const EventIdRecord& r);
 
