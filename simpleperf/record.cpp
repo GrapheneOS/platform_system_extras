@@ -46,6 +46,7 @@ static std::string RecordTypeToString(int record_type) {
       {PERF_RECORD_MMAP2, "mmap2"},
       {PERF_RECORD_TRACING_DATA, "tracing_data"},
       {PERF_RECORD_AUXTRACE_INFO, "auxtrace_info"},
+      {PERF_RECORD_AUXTRACE, "auxtrace"},
       {SIMPLE_PERF_RECORD_KERNEL_SYMBOL, "kernel_symbol"},
       {SIMPLE_PERF_RECORD_DSO, "dso"},
       {SIMPLE_PERF_RECORD_SYMBOL, "symbol"},
@@ -960,6 +961,41 @@ void AuxTraceInfoRecord::DumpData(size_t indent) const {
   }
 }
 
+AuxTraceRecord::AuxTraceRecord(char* p) : Record(p) {
+  const char* end = p + header.size;
+  p += header_size();
+  data = reinterpret_cast<DataType*>(p);
+  p += sizeof(DataType);
+  CHECK_EQ(p, end);
+}
+
+AuxTraceRecord::AuxTraceRecord(uint64_t aux_size, uint64_t offset, uint32_t idx, uint32_t tid,
+                               uint32_t cpu) {
+  SetTypeAndMisc(PERF_RECORD_AUXTRACE, 0);
+  SetSize(header_size() + sizeof(DataType));
+  char* new_binary = new char[size()];
+  char* p = new_binary;
+  MoveToBinaryFormat(header, p);
+  data = reinterpret_cast<DataType*>(p);
+  data->aux_size = aux_size;
+  data->offset = offset;
+  data->reserved0 = 0;
+  data->idx = idx;
+  data->tid = tid;
+  data->cpu = cpu;
+  data->reserved1 = 0;
+  UpdateBinary(new_binary);
+}
+
+void AuxTraceRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "aux_size %" PRIu64 "\n", data->aux_size);
+  PrintIndented(indent, "offset %" PRIu64 "\n", data->offset);
+  PrintIndented(indent, "idx %u\n", data->idx);
+  PrintIndented(indent, "tid %u\n", data->tid);
+  PrintIndented(indent, "cpu %u\n", data->cpu);
+  PrintIndented(indent, "location.file_offset %" PRIu64 "\n", location.file_offset);
+}
+
 KernelSymbolRecord::KernelSymbolRecord(char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
@@ -1263,6 +1299,8 @@ std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr, uint32
       return std::unique_ptr<Record>(new TracingDataRecord(p));
     case PERF_RECORD_AUXTRACE_INFO:
       return std::unique_ptr<Record>(new AuxTraceInfoRecord(p));
+    case PERF_RECORD_AUXTRACE:
+      return std::unique_ptr<Record>(new AuxTraceRecord(p));
     case SIMPLE_PERF_RECORD_KERNEL_SYMBOL:
       return std::unique_ptr<Record>(new KernelSymbolRecord(p));
     case SIMPLE_PERF_RECORD_DSO:

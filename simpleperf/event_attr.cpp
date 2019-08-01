@@ -233,7 +233,7 @@ std::string GetEventNameByAttr(const perf_event_attr& attr) {
     // An event type uses both type and config value to define itself. But etm event type
     // only uses type value (whose config value is used to set etm options).
     if (event_type.type == attr.type &&
-        (event_type.config == attr.config || event_type.name == "cs-etm")) {
+        (event_type.config == attr.config || IsEtmEventType(event_type.type))) {
       std::string name = event_type.name;
       if (attr.exclude_user && !attr.exclude_kernel) {
         name += ":k";

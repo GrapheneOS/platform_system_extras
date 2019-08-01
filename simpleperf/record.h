@@ -41,6 +41,7 @@ enum user_record_type {
   PERF_RECORD_FINISHED_ROUND,
 
   PERF_RECORD_AUXTRACE_INFO = 70,
+  PERF_RECORD_AUXTRACE = 71,
 
   SIMPLE_PERF_RECORD_TYPE_START = 32768,
   SIMPLE_PERF_RECORD_KERNEL_SYMBOL,
@@ -469,6 +470,32 @@ struct AuxTraceInfoRecord : public Record {
 
   explicit AuxTraceInfoRecord(char* p);
   AuxTraceInfoRecord(const DataType& data, const std::vector<ETM4Info>& etm4_info);
+
+ protected:
+  void DumpData(size_t indent) const override;
+};
+
+struct AuxTraceRecord : public Record {
+  struct DataType {
+    uint64_t aux_size;
+    uint64_t offset;
+    uint64_t reserved0;  // reference
+    uint32_t idx;
+    uint32_t tid;
+    uint32_t cpu;
+    uint32_t reserved1;
+  } * data;
+  // AuxTraceRecord is followed by aux tracing data with size data->aux_size.
+  // The location of aux tracing data in memory or file is kept in location.
+  struct AuxDataLocation {
+    const char* addr = nullptr;
+    uint64_t file_offset = 0;
+  } location;
+
+  explicit AuxTraceRecord(char* p);
+  AuxTraceRecord(uint64_t aux_size, uint64_t offset, uint32_t idx, uint32_t tid, uint32_t cpu);
+
+  static size_t Size() { return sizeof(perf_event_header) + sizeof(DataType); }
 
  protected:
   void DumpData(size_t indent) const override;

@@ -45,12 +45,14 @@ static constexpr int ETM4_CFG_BIT_TS = 11;
 static const std::string ETM_DIR = "/sys/bus/event_source/devices/cs_etm/";
 
 template <typename T>
-static bool ReadValueInEtmDir(const std::string& file, T* value) {
+static bool ReadValueInEtmDir(const std::string& file, T* value, bool report_error = true) {
   std::string s;
   uint64_t v;
   if (!android::base::ReadFileToString(ETM_DIR + file, &s) ||
       !android::base::ParseUint(android::base::Trim(s), &v)) {
-    LOG(ERROR) << "failed to read " << ETM_DIR << file;
+    if (report_error) {
+      LOG(ERROR) << "failed to read " << ETM_DIR << file;
+    }
     return false;
   }
   *value = static_cast<T>(v);
@@ -80,7 +82,7 @@ ETMRecorder& ETMRecorder::GetInstance() {
 
 int ETMRecorder::GetEtmEventType() {
   if (event_type_ == 0) {
-    if (!IsDir(ETM_DIR) || !ReadValueInEtmDir("type", &event_type_)) {
+    if (!IsDir(ETM_DIR) || !ReadValueInEtmDir("type", &event_type_, false)) {
       event_type_ = -1;
     }
   }
