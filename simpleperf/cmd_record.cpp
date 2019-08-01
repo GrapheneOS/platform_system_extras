@@ -631,32 +631,37 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
   time_stat_.post_process_time = GetSystemClock();
 
   // 4. Show brief record result.
-  size_t lost_samples;
-  size_t lost_non_samples;
-  size_t cut_stack_samples;
-  event_selection_set_.GetLostRecords(&lost_samples, &lost_non_samples, &cut_stack_samples);
-  std::string cut_samples;
-  if (cut_stack_samples > 0) {
-    cut_samples = android::base::StringPrintf(" (cut %zu)", cut_stack_samples);
-  }
-  lost_record_count_ += lost_samples + lost_non_samples;
-  LOG(INFO) << "Samples recorded: " << sample_record_count_ << cut_samples
-            << ". Samples lost: " << lost_record_count_ << ".";
-  LOG(DEBUG) << "In user space, dropped " << lost_samples << " samples, " << lost_non_samples
-             << " non samples, cut stack of " << cut_stack_samples << " samples.";
-  if (sample_record_count_ + lost_record_count_ != 0) {
-    double lost_percent = static_cast<double>(lost_record_count_) /
-                          (lost_record_count_ + sample_record_count_);
-    constexpr double LOST_PERCENT_WARNING_BAR = 0.1;
-    if (lost_percent >= LOST_PERCENT_WARNING_BAR) {
-      LOG(WARNING) << "Lost " << (lost_percent * 100) << "% of samples, "
-                   << "consider increasing mmap_pages(-m), "
-                   << "or decreasing sample frequency(-f), "
-                   << "or increasing sample period(-c).";
+  auto record_stat = event_selection_set_.GetRecordStat();
+  if (event_selection_set_.HasAuxTrace()) {
+    LOG(INFO) << "Aux data traced: " << record_stat.aux_data_size;
+    if (record_stat.lost_aux_data_size != 0) {
+      LOG(INFO) << "Aux data lost in user space: " << record_stat.lost_aux_data_size;
     }
-  }
-  if (callchain_joiner_) {
-    callchain_joiner_->DumpStat();
+  } else {
+    std::string cut_samples;
+    if (record_stat.cut_stack_samples > 0) {
+      cut_samples = android::base::StringPrintf(" (cut %zu)", record_stat.cut_stack_samples);
+    }
+    lost_record_count_ += record_stat.lost_samples + record_stat.lost_non_samples;
+    LOG(INFO) << "Samples recorded: " << sample_record_count_ << cut_samples
+              << ". Samples lost: " << lost_record_count_ << ".";
+    LOG(DEBUG) << "In user space, dropped " << record_stat.lost_samples << " samples, "
+               << record_stat.lost_non_samples << " non samples, cut stack of "
+               << record_stat.cut_stack_samples << " samples.";
+    if (sample_record_count_ + lost_record_count_ != 0) {
+      double lost_percent =
+          static_cast<double>(lost_record_count_) / (lost_record_count_ + sample_record_count_);
+      constexpr double LOST_PERCENT_WARNING_BAR = 0.1;
+      if (lost_percent >= LOST_PERCENT_WARNING_BAR) {
+        LOG(WARNING) << "Lost " << (lost_percent * 100) << "% of samples, "
+                     << "consider increasing mmap_pages(-m), "
+                     << "or decreasing sample frequency(-f), "
+                     << "or increasing sample period(-c).";
+      }
+    }
+    if (callchain_joiner_) {
+      callchain_joiner_->DumpStat();
+    }
   }
   LOG(DEBUG) << "Prepare recording time "
       << (time_stat_.start_recording_time - time_stat_.prepare_recording_time) / 1e6
@@ -1214,11 +1219,9 @@ bool RecordCommand::ProcessRecord(Record* record) {
 }
 
 bool RecordCommand::DumpAuxTraceInfo() {
-  for (auto& event_type : event_selection_set_.GetEvents()) {
-    if (event_type->name == "cs-etm") {
-      AuxTraceInfoRecord auxtrace_info = ETMRecorder::GetInstance().CreateAuxTraceInfoRecord();
-      return ProcessRecord(&auxtrace_info);
-    }
+  if (event_selection_set_.HasAuxTrace()) {
+    AuxTraceInfoRecord auxtrace_info = ETMRecorder::GetInstance().CreateAuxTraceInfoRecord();
+    return ProcessRecord(&auxtrace_info);
   }
   return true;
 }

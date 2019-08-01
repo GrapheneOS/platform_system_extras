@@ -98,5 +98,6 @@ struct EventTypeAndModifier {
 };
 
 std::unique_ptr<EventTypeAndModifier> ParseEventType(const std::string& event_type_str);
+bool IsEtmEventType(uint32_t type);
 
 #endif  // SIMPLE_PERF_EVENT_H_

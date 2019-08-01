@@ -240,7 +240,7 @@ bool RecordFileReader::ReadRecord(std::unique_ptr<Record>& record) {
   }
   record = nullptr;
   if (read_record_size_ < header_.data.size) {
-    record = ReadRecord(&read_record_size_);
+    record = ReadRecord();
     if (record == nullptr) {
       return false;
     }
@@ -251,7 +251,7 @@ bool RecordFileReader::ReadRecord(std::unique_ptr<Record>& record) {
   return true;
 }
 
-std::unique_ptr<Record> RecordFileReader::ReadRecord(uint64_t* nbytes_read) {
+std::unique_ptr<Record> RecordFileReader::ReadRecord() {
   char header_buf[Record::header_size()];
   if (!Read(header_buf, Record::header_size())) {
     return nullptr;
@@ -270,7 +270,7 @@ std::unique_ptr<Record> RecordFileReader::ReadRecord(uint64_t* nbytes_read) {
         return nullptr;
       }
       cur_size += bytes_to_read;
-      *nbytes_read += header.size;
+      read_record_size_ += header.size;
       if (!Read(header_buf, Record::header_size())) {
         return nullptr;
       }
@@ -280,7 +280,7 @@ std::unique_ptr<Record> RecordFileReader::ReadRecord(uint64_t* nbytes_read) {
       LOG(ERROR) << "SPLIT records are not followed by a SPLIT_END record.";
       return nullptr;
     }
-    *nbytes_read += header.size;
+    read_record_size_ += header.size;
     header = RecordHeader(buf.data());
     p.reset(new char[header.size]);
     memcpy(p.get(), buf.data(), buf.size());
@@ -292,7 +292,7 @@ std::unique_ptr<Record> RecordFileReader::ReadRecord(uint64_t* nbytes_read) {
         return nullptr;
       }
     }
-    *nbytes_read += header.size;
+    read_record_size_ += header.size;
   }
 
   const perf_event_attr* attr = &file_attrs_[0].attr;
@@ -317,7 +317,17 @@ std::unique_ptr<Record> RecordFileReader::ReadRecord(uint64_t* nbytes_read) {
       }
     }
   }
-  return ReadRecordFromOwnedBuffer(*attr, header.type, p.release());
+  auto r = ReadRecordFromOwnedBuffer(*attr, header.type, p.release());
+  if (r->type() == PERF_RECORD_AUXTRACE) {
+    auto auxtrace = static_cast<AuxTraceRecord*>(r.get());
+    auxtrace->location.file_offset = header_.data.offset + read_record_size_;
+    read_record_size_ += auxtrace->data->aux_size;
+    if (fseek(record_fp_, auxtrace->data->aux_size, SEEK_CUR) != 0) {
+      PLOG(ERROR) << "fseek() failed";
+      return nullptr;
+    }
+  }
+  return r;
 }
 
 bool RecordFileReader::Read(void* buf, size_t len) {

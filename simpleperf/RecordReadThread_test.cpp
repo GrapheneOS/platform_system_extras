@@ -106,10 +106,14 @@ TEST(RecordParser, smoke) {
 }
 
 struct MockEventFd : public EventFd {
-  MockEventFd(const perf_event_attr& attr, int cpu, char* buffer, size_t buffer_size)
+  MockEventFd(const perf_event_attr& attr, int cpu, char* buffer, size_t buffer_size,
+              bool mock_aux_buffer)
       : EventFd(attr, -1, "", 0, cpu) {
     mmap_data_buffer_ = buffer;
     mmap_data_buffer_size_ = buffer_size;
+    if (mock_aux_buffer) {
+      aux_buffer_size_ = 1;  // Make HasAuxBuffer() return true.
+    }
   }
 
   MOCK_METHOD2(CreateMappedBuffer, bool(size_t, bool));
@@ -118,6 +122,11 @@ struct MockEventFd : public EventFd {
   MOCK_METHOD0(StopPolling, bool());
   MOCK_METHOD1(GetAvailableMmapDataSize, size_t(size_t&));
   MOCK_METHOD1(DiscardMmapData, void(size_t));
+
+  MOCK_METHOD2(CreateAuxBuffer, bool(size_t, bool));
+  MOCK_METHOD0(DestroyAuxBuffer, void());
+  MOCK_METHOD4(GetAvailableAuxData, uint64_t(char**, size_t*, char**, size_t*));
+  MOCK_METHOD1(DiscardAuxData, void(size_t));
 };
 
 static perf_event_attr CreateFakeEventAttr() {
@@ -170,7 +179,7 @@ TEST(KernelRecordReader, smoke) {
     pos += records[i]->size();
   }
   // Read records using KernelRecordReader.
-  MockEventFd event_fd(attr, 0, buffer.data(), buffer.size());
+  MockEventFd event_fd(attr, 0, buffer.data(), buffer.size(), false);
 
   EXPECT_CALL(event_fd, GetAvailableMmapDataSize(Truly(SetArg(data_pos))))
       .Times(1).WillOnce(Return(data_size));
@@ -208,7 +217,7 @@ class RecordReadThreadTest : public ::testing::Test {
     }
     event_fds_.resize(event_fd_count);
     for (size_t i = 0; i < event_fd_count; ++i) {
-      event_fds_[i].reset(new MockEventFd(attr, i, buffers_[i].data(), buffer_size));
+      event_fds_[i].reset(new MockEventFd(attr, i, buffers_[i].data(), buffer_size, false));
       EXPECT_CALL(*event_fds_[i], CreateMappedBuffer(_, _)).Times(1).WillOnce(Return(true));
       EXPECT_CALL(*event_fds_[i], StartPolling(_, _)).Times(1).WillOnce(Return(true));
       EXPECT_CALL(*event_fds_[i], GetAvailableMmapDataSize(Truly(SetArg(0)))).Times(1)
@@ -216,6 +225,7 @@ class RecordReadThreadTest : public ::testing::Test {
       EXPECT_CALL(*event_fds_[i], DiscardMmapData(Eq(data_size))).Times(1);
       EXPECT_CALL(*event_fds_[i], StopPolling()).Times(1).WillOnce(Return(true));
       EXPECT_CALL(*event_fds_[i], DestroyMappedBuffer()).Times(1);
+      EXPECT_CALL(*event_fds_[i], DestroyAuxBuffer()).Times(1);
     }
     std::vector<EventFd*> result;
     for (auto& fd : event_fds_) {
@@ -329,13 +339,9 @@ TEST_F(RecordReadThreadTest, process_sample_record) {
   thread.SetBufferLevels(record_buffer_size, record_buffer_size);
   read_record(r);
   ASSERT_FALSE(r);
-  size_t lost_samples;
-  size_t lost_non_samples;
-  size_t cut_stack_samples;
-  thread.GetLostRecords(&lost_samples, &lost_non_samples, &cut_stack_samples);
-  ASSERT_EQ(lost_samples, 1u);
-  ASSERT_EQ(lost_non_samples, 0u);
-  ASSERT_EQ(cut_stack_samples, 1u);
+  ASSERT_EQ(thread.GetStat().lost_samples, 1u);
+  ASSERT_EQ(thread.GetStat().lost_non_samples, 0u);
+  ASSERT_EQ(thread.GetStat().cut_stack_samples, 1u);
 }
 
 // Test that the data notification exists until the RecordBuffer is empty. So we can read all
@@ -383,12 +389,111 @@ TEST_F(RecordReadThreadTest, no_cut_samples) {
   while (thread.GetRecord()) {
     received_samples++;
   }
-  size_t lost_samples;
-  size_t lost_non_samples;
-  size_t cut_stack_samples;
-  thread.GetLostRecords(&lost_samples, &lost_non_samples, &cut_stack_samples);
   ASSERT_GT(received_samples, 0u);
-  ASSERT_GT(lost_samples, 0u);
-  ASSERT_EQ(lost_samples, total_samples - received_samples);
-  ASSERT_EQ(cut_stack_samples, 0u);
+  ASSERT_GT(thread.GetStat().lost_samples, 0u);
+  ASSERT_EQ(thread.GetStat().lost_samples, total_samples - received_samples);
+  ASSERT_EQ(thread.GetStat().cut_stack_samples, 0u);
+}
+
+struct FakeAuxData {
+  std::vector<char> buf1;
+  std::vector<char> buf2;
+  std::vector<char> pad;
+  bool lost;
+
+  FakeAuxData(size_t buf1_size, size_t buf2_size, char c, size_t pad_size, bool lost)
+      : buf1(buf1_size, c), buf2(buf2_size, c), pad(pad_size, 0), lost(lost) {}
+};
+
+TEST_F(RecordReadThreadTest, read_aux_data) {
+  const EventType* type = FindEventTypeByName("cs-etm");
+  if (type == nullptr) {
+    GTEST_LOG_(INFO) << "Omit this test as cs-etm event type isn't available";
+    return;
+  }
+  std::vector<FakeAuxData> aux_data;
+  aux_data.emplace_back(40, 0, '0', 0, false);   // one buffer
+  aux_data.emplace_back(40, 40, '1', 0, false);  // two buffers
+  aux_data.emplace_back(36, 0, '2', 4, false);   // one buffer needs padding to 8 bytes alignment
+  aux_data.emplace_back(1024, 0, '3', 0, true);  // one buffer too big to fit into RecordReadThread
+  size_t test_index = 0;
+
+  auto SetBuf1 = [&](char** buf1) {
+    *buf1 = aux_data[test_index].buf1.data();
+    return true;
+  };
+  auto SetSize1 = [&](size_t* size1) {
+    *size1 = aux_data[test_index].buf1.size();
+    return true;
+  };
+  auto SetBuf2 = [&](char** buf2) {
+    *buf2 = aux_data[test_index].buf2.data();
+    return true;
+  };
+  auto SetSize2 = [&](size_t* size2) {
+    *size2 = aux_data[test_index].buf2.size();
+    return true;
+  };
+  auto CheckDiscardSize = [&](size_t size) {
+    return size == aux_data[test_index].buf1.size() + aux_data[test_index].buf2.size();
+  };
+
+  perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
+  MockEventFd fd(attr, 0, nullptr, 1, true);
+  EXPECT_CALL(fd, CreateMappedBuffer(_, _)).Times(1).WillOnce(Return(true));
+  EXPECT_CALL(fd, CreateAuxBuffer(_, _)).Times(1).WillOnce(Return(true));
+  EXPECT_CALL(fd, StartPolling(_, _)).Times(1).WillOnce(Return(true));
+  EXPECT_CALL(fd, GetAvailableMmapDataSize(_)).Times(aux_data.size()).WillRepeatedly(Return(0));
+  EXPECT_CALL(fd,
+              GetAvailableAuxData(Truly(SetBuf1), Truly(SetSize1), Truly(SetBuf2), Truly(SetSize2)))
+      .Times(aux_data.size());
+  EXPECT_CALL(fd, DiscardAuxData(Truly(CheckDiscardSize))).Times(aux_data.size());
+  EXPECT_CALL(fd, StopPolling()).Times(1).WillOnce(Return(true));
+  EXPECT_CALL(fd, DestroyMappedBuffer()).Times(1);
+  EXPECT_CALL(fd, DestroyAuxBuffer()).Times(1);
+
+  RecordReadThread thread(1024, attr, 1, 1);
+  IOEventLoop loop;
+  ASSERT_TRUE(thread.RegisterDataCallback(loop, []() { return true; }));
+  ASSERT_TRUE(thread.AddEventFds({&fd}));
+  for (; test_index < aux_data.size(); ++test_index) {
+    ASSERT_TRUE(thread.SyncKernelBuffer());
+    std::unique_ptr<Record> r = thread.GetRecord();
+    if (aux_data[test_index].lost) {
+      ASSERT_TRUE(r == nullptr);
+      continue;
+    }
+    ASSERT_TRUE(r);
+    ASSERT_EQ(r->type(), PERF_RECORD_AUXTRACE);
+    auto auxtrace = static_cast<AuxTraceRecord*>(r.get());
+    auto& expected = aux_data[test_index];
+    ASSERT_EQ(auxtrace->data->aux_size,
+              expected.buf1.size() + expected.buf2.size() + expected.pad.size());
+    const char* p = auxtrace->location.addr;
+    ASSERT_TRUE(p != nullptr);
+    if (!expected.buf1.empty()) {
+      ASSERT_EQ(memcmp(p, expected.buf1.data(), expected.buf1.size()), 0);
+      p += expected.buf1.size();
+    }
+    if (!expected.buf2.empty()) {
+      ASSERT_EQ(memcmp(p, expected.buf2.data(), expected.buf2.size()), 0);
+      p += expected.buf2.size();
+    }
+    if (!expected.pad.empty()) {
+      ASSERT_EQ(memcmp(p, expected.pad.data(), expected.pad.size()), 0);
+    }
+  }
+  ASSERT_TRUE(thread.GetRecord() == nullptr);
+  ASSERT_TRUE(thread.RemoveEventFds({&fd}));
+  size_t aux_data_size = 0;
+  size_t lost_aux_data_size = 0;
+  for (auto& aux : aux_data) {
+    if (aux.lost) {
+      lost_aux_data_size += aux.buf1.size() + aux.buf2.size();
+    } else {
+      aux_data_size += aux.buf1.size() + aux.buf2.size();
+    }
+  }
+  ASSERT_EQ(aux_data_size, thread.GetStat().aux_data_size);
+  ASSERT_EQ(lost_aux_data_size, thread.GetStat().lost_aux_data_size);
 }
