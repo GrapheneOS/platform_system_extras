@@ -23,12 +23,17 @@
 #include <unordered_map>
 
 #include "environment.h"
+#include "event_type.h"
 #include "record.h"
+#include "utils.h"
 
 namespace simpleperf {
 
 static constexpr size_t kDefaultLowBufferLevel = 10 * 1024 * 1024u;
 static constexpr size_t kDefaultCriticalBufferLevel = 5 * 1024 * 1024u;
+
+// TODO: add an option to config it.
+static constexpr size_t kDefaultAuxBufferSize = 4 * 1024 * 1024;
 
 RecordBuffer::RecordBuffer(size_t buffer_size)
     : read_head_(0), write_head_(0), buffer_size_(buffer_size), buffer_(new char[buffer_size]) {
@@ -287,7 +292,13 @@ std::unique_ptr<Record> RecordReadThread::GetRecord() {
   record_buffer_.MoveToNextRecord();
   char* p = record_buffer_.GetCurrentRecord();
   if (p != nullptr) {
-    return ReadRecordFromBuffer(attr_, p);
+    std::unique_ptr<Record> r = ReadRecordFromBuffer(attr_, p);
+    if (r->type() == PERF_RECORD_AUXTRACE) {
+      auto auxtrace = static_cast<AuxTraceRecord*>(r.get());
+      record_buffer_.AddCurrentRecordSize(auxtrace->data->aux_size);
+      auxtrace->location.addr = r->Binary() + r->size();
+    }
+    return r;
   }
   if (has_data_notification_) {
     char dummy;
@@ -355,12 +366,20 @@ bool RecordReadThread::HandleAddEventFds(IOEventLoop& loop,
   std::unordered_map<int, EventFd*> cpu_map;
   for (size_t pages = max_mmap_pages_; pages >= min_mmap_pages_; pages >>= 1) {
     bool success = true;
+    bool report_error = pages == min_mmap_pages_;
     for (EventFd* fd : event_fds) {
       auto it = cpu_map.find(fd->Cpu());
       if (it == cpu_map.end()) {
-        if (!fd->CreateMappedBuffer(pages, pages == min_mmap_pages_)) {
+        if (!fd->CreateMappedBuffer(pages, report_error)) {
           success = false;
           break;
+        }
+        if (IsEtmEventType(fd->attr().type)) {
+          if (!fd->CreateAuxBuffer(kDefaultAuxBufferSize, report_error)) {
+            fd->DestroyMappedBuffer();
+            success = false;
+            break;
+          }
         }
         cpu_map[fd->Cpu()] = fd;
       } else {
@@ -376,6 +395,7 @@ bool RecordReadThread::HandleAddEventFds(IOEventLoop& loop,
     }
     for (auto& pair : cpu_map) {
       pair.second->DestroyMappedBuffer();
+      pair.second->DestroyAuxBuffer();
     }
     cpu_map.clear();
   }
@@ -402,6 +422,7 @@ bool RecordReadThread::HandleRemoveEventFds(const std::vector<EventFd*>& event_f
         kernel_record_readers_.erase(it);
         event_fd->StopPolling();
         event_fd->DestroyMappedBuffer();
+        event_fd->DestroyAuxBuffer();
       }
     }
   }
@@ -423,33 +444,38 @@ bool RecordReadThread::ReadRecordsFromKernelBuffer() {
         readers.push_back(&reader);
       }
     }
-    if (readers.empty()) {
-      break;
-    }
-    if (readers.size() == 1u) {
-      // Only one buffer has data, process it directly.
-      while (readers[0]->MoveToNextRecord(record_parser_)) {
-        PushRecordToRecordBuffer(readers[0]);
-      }
-    } else {
-      // Use a binary heap to merge records from different buffers. As records from the same buffer
-      // are already ordered by time, we only need to merge the first record from all buffers. And
-      // each time a record is popped from the heap, we put the next record from its buffer into
-      // the heap.
-      for (auto& reader : readers) {
-        reader->MoveToNextRecord(record_parser_);
-      }
-      std::make_heap(readers.begin(), readers.end(), CompareRecordTime);
-      size_t size = readers.size();
-      while (size > 0) {
-        std::pop_heap(readers.begin(), readers.begin() + size, CompareRecordTime);
-        PushRecordToRecordBuffer(readers[size - 1]);
-        if (readers[size - 1]->MoveToNextRecord(record_parser_)) {
-          std::push_heap(readers.begin(), readers.begin() + size, CompareRecordTime);
-        } else {
-          size--;
+    bool has_data = false;
+    if (!readers.empty()) {
+      has_data = true;
+      if (readers.size() == 1u) {
+        // Only one buffer has data, process it directly.
+        while (readers[0]->MoveToNextRecord(record_parser_)) {
+          PushRecordToRecordBuffer(readers[0]);
+        }
+      } else {
+        // Use a binary heap to merge records from different buffers. As records from the same
+        // buffer are already ordered by time, we only need to merge the first record from all
+        // buffers. And each time a record is popped from the heap, we put the next record from its
+        // buffer into the heap.
+        for (auto& reader : readers) {
+          reader->MoveToNextRecord(record_parser_);
+        }
+        std::make_heap(readers.begin(), readers.end(), CompareRecordTime);
+        size_t size = readers.size();
+        while (size > 0) {
+          std::pop_heap(readers.begin(), readers.begin() + size, CompareRecordTime);
+          PushRecordToRecordBuffer(readers[size - 1]);
+          if (readers[size - 1]->MoveToNextRecord(record_parser_)) {
+            std::push_heap(readers.begin(), readers.begin() + size, CompareRecordTime);
+          } else {
+            size--;
+          }
         }
       }
+    }
+    ReadAuxDataFromKernelBuffer(&has_data);
+    if (!has_data) {
+      break;
     }
     if (!SendDataNotificationToMainThread()) {
       return false;
@@ -466,7 +492,7 @@ void RecordReadThread::PushRecordToRecordBuffer(KernelRecordReader* kernel_recor
     if (free_size < record_buffer_critical_level_) {
       // When the free size in record buffer is below critical level, drop sample records to save
       // space for more important records (like mmap or fork records).
-      lost_samples_++;
+      stat_.lost_samples++;
       return;
     }
     size_t stack_size_limit = stack_size_in_sample_record_;
@@ -513,10 +539,10 @@ void RecordReadThread::PushRecordToRecordBuffer(KernelRecordReader* kernel_recor
           memcpy(p + pos + new_stack_size, &new_stack_size, sizeof(uint64_t));
           record_buffer_.FinishWrite();
           if (new_stack_size < dyn_stack_size) {
-            cut_stack_samples_++;
+            stat_.cut_stack_samples++;
           }
         } else {
-          lost_samples_++;
+          stat_.lost_samples++;
         }
         return;
       }
@@ -528,9 +554,47 @@ void RecordReadThread::PushRecordToRecordBuffer(KernelRecordReader* kernel_recor
     record_buffer_.FinishWrite();
   } else {
     if (header.type == PERF_RECORD_SAMPLE) {
-      lost_samples_++;
+      stat_.lost_samples++;
     } else {
-      lost_non_samples_++;
+      stat_.lost_non_samples++;
+    }
+  }
+}
+
+void RecordReadThread::ReadAuxDataFromKernelBuffer(bool* has_data) {
+  for (auto& reader : kernel_record_readers_) {
+    EventFd* event_fd = reader.GetEventFd();
+    if (event_fd->HasAuxBuffer()) {
+      char* buf[2];
+      size_t size[2];
+      uint64_t offset = event_fd->GetAvailableAuxData(&buf[0], &size[0], &buf[1], &size[1]);
+      size_t aux_size = size[0] + size[1];
+      if (aux_size == 0) {
+        continue;
+      }
+      *has_data = true;
+      AuxTraceRecord auxtrace(Align(aux_size, 8), offset, event_fd->Cpu(), 0, event_fd->Cpu());
+      size_t alloc_size = auxtrace.size() + auxtrace.data->aux_size;
+      if (record_buffer_.GetFreeSize() < alloc_size + record_buffer_critical_level_) {
+        stat_.lost_aux_data_size += aux_size;
+      } else {
+        char* p = record_buffer_.AllocWriteSpace(alloc_size);
+        CHECK(p != nullptr);
+        MoveToBinaryFormat(auxtrace.Binary(), auxtrace.size(), p);
+        MoveToBinaryFormat(buf[0], size[0], p);
+        if (size[1] != 0) {
+          MoveToBinaryFormat(buf[1], size[1], p);
+        }
+        size_t pad_size = auxtrace.data->aux_size - aux_size;
+        if (pad_size != 0) {
+          uint64_t pad = 0;
+          memcpy(p, &pad, pad_size);
+        }
+        record_buffer_.FinishWrite();
+        stat_.aux_data_size += aux_size;
+        LOG(DEBUG) << "record aux data " << aux_size << " bytes";
+      }
+      event_fd->DiscardAuxData(aux_size);
     }
   }
 }
