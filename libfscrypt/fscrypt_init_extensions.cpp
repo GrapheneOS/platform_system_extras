@@ -37,8 +37,6 @@
 
 #define TAG "fscrypt"
 
-static const std::string arbitrary_sequence_number = "42";
-
 static int set_system_de_policy_on(char const* dir);
 
 int fscrypt_install_keyring()
