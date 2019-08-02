@@ -49,6 +49,7 @@ static const std::map<int, std::string> feature_name_map = {
     {FEAT_BRANCH_STACK, "branch_stack"},
     {FEAT_PMU_MAPPINGS, "pmu_mappings"},
     {FEAT_GROUP_DESC, "group_desc"},
+    {FEAT_AUXTRACE, "auxtrace"},
     {FEAT_FILE, "file"},
     {FEAT_META_INFO, "meta_info"},
 };
@@ -338,6 +339,14 @@ bool RecordFileReader::Read(void* buf, size_t len) {
   return true;
 }
 
+bool RecordFileReader::ReadAtOffset(uint64_t offset, void* buf, size_t len) {
+  if (fseek(record_fp_, offset, SEEK_SET) != 0) {
+    PLOG(ERROR) << "failed to seek to " << offset;
+    return false;
+  }
+  return Read(buf, len);
+}
+
 void RecordFileReader::ProcessEventIdRecord(const EventIdRecord& r) {
   for (size_t i = 0; i < r.count; ++i) {
     event_ids_for_file_attrs_[r.data[i].attr_id].push_back(r.data[i].event_id);
@@ -364,11 +373,7 @@ bool RecordFileReader::ReadFeatureSection(int feature, std::vector<char>* data) 
   if (section.size == 0) {
     return true;
   }
-  if (fseek(record_fp_, section.offset, SEEK_SET) != 0) {
-    PLOG(ERROR) << "fseek() failed";
-    return false;
-  }
-  if (!Read(data->data(), data->size())) {
+  if (!ReadAtOffset(section.offset, data->data(), data->size())) {
     return false;
   }
   return true;
@@ -429,6 +434,25 @@ std::string RecordFileReader::ReadFeatureString(int feature) {
   MoveFromBinaryFormat(len, p);
   CHECK_LE(p + len, end);
   return p;
+}
+
+std::vector<uint64_t> RecordFileReader::ReadAuxTraceFeature() {
+  std::vector<char> buf;
+  if (!ReadFeatureSection(FEAT_AUXTRACE, &buf)) {
+    return {};
+  }
+  std::vector<uint64_t> auxtrace_offset;
+  const char* p = buf.data();
+  const char* end = buf.data() + buf.size();
+  while (p < end) {
+    uint64_t offset;
+    uint64_t size;
+    MoveFromBinaryFormat(offset, p);
+    auxtrace_offset.push_back(offset);
+    MoveFromBinaryFormat(size, p);
+    CHECK_EQ(size, AuxTraceRecord::Size());
+  }
+  return auxtrace_offset;
 }
 
 bool RecordFileReader::ReadFileFeature(size_t& read_pos,
@@ -534,6 +558,62 @@ void RecordFileReader::LoadBuildIdAndFileFeatures(ThreadTree& thread_tree) {
                              dex_file_offsets);
     }
   }
+}
+
+bool RecordFileReader::ReadAuxData(uint32_t cpu, uint64_t aux_offset, void* buf, size_t size) {
+  long saved_pos = ftell(record_fp_);
+  if (saved_pos == -1) {
+    PLOG(ERROR) << "ftell() failed";
+    return false;
+  }
+  if (aux_data_location_.empty() && !BuildAuxDataLocation()) {
+    return false;
+  }
+  AuxDataLocation* location = nullptr;
+  auto it = aux_data_location_.find(cpu);
+  if (it != aux_data_location_.end()) {
+    auto comp = [](uint64_t aux_offset, const AuxDataLocation& location) {
+      return aux_offset < location.aux_offset;
+    };
+    auto location_it = std::upper_bound(it->second.begin(), it->second.end(), aux_offset, comp);
+    if (location_it != it->second.begin()) {
+      --location_it;
+      if (location_it->aux_offset + location_it->aux_size >= aux_offset + size) {
+        location = &*location_it;
+      }
+    }
+  }
+  if (location == nullptr) {
+    LOG(ERROR) << "failed to find file offset of aux data: cpu " << cpu << ", aux_offset "
+               << aux_offset << ", size " << size;
+    return false;
+  }
+  if (!ReadAtOffset(aux_offset - location->aux_offset + location->file_offset, buf, size)) {
+    return false;
+  }
+  if (fseek(record_fp_, saved_pos, SEEK_SET) != 0) {
+    PLOG(ERROR) << "fseek() failed";
+    return false;
+  }
+  return true;
+}
+
+bool RecordFileReader::BuildAuxDataLocation() {
+  std::vector<uint64_t> auxtrace_offset = ReadAuxTraceFeature();
+  if (auxtrace_offset.empty()) {
+    LOG(ERROR) << "failed to read auxtrace feature section";
+    return false;
+  }
+  std::unique_ptr<char[]> buf(new char[AuxTraceRecord::Size()]);
+  for (auto offset : auxtrace_offset) {
+    if (!ReadAtOffset(offset, buf.get(), AuxTraceRecord::Size())) {
+      return false;
+    }
+    AuxTraceRecord auxtrace(buf.get());
+    aux_data_location_[auxtrace.data->cpu].emplace_back(
+        auxtrace.data->offset, auxtrace.data->aux_size, offset + auxtrace.size());
+  }
+  return true;
 }
 
 std::vector<std::unique_ptr<Record>> RecordFileReader::DataSection() {

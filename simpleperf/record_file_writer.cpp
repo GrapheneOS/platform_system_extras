@@ -210,6 +210,7 @@ bool RecordFileWriter::ReadDataSection(const std::function<void(const Record*)>&
     std::unique_ptr<Record> r = ReadRecordFromBuffer(event_attr_, header.type, record_buf.data());
     if (r->type() == PERF_RECORD_AUXTRACE) {
       auto auxtrace = static_cast<AuxTraceRecord*>(r.get());
+      auxtrace->location.file_offset = data_section_offset_ + read_pos;
       if (fseek(record_fp_, auxtrace->data->aux_size, SEEK_CUR) != 0) {
         PLOG(ERROR) << "fseek() failed";
         return false;
@@ -307,6 +308,16 @@ bool RecordFileWriter::WriteBranchStackFeature() {
     return false;
   }
   return WriteFeatureEnd(FEAT_BRANCH_STACK);
+}
+
+bool RecordFileWriter::WriteAuxTraceFeature(const std::vector<uint64_t>& auxtrace_offset) {
+  std::vector<uint64_t> data;
+  for (auto offset : auxtrace_offset) {
+    data.push_back(offset);
+    data.push_back(AuxTraceRecord::Size());
+  }
+  return WriteFeatureBegin(FEAT_AUXTRACE) && Write(data.data(), data.size() * sizeof(uint64_t)) &&
+         WriteFeatureEnd(FEAT_AUXTRACE);
 }
 
 bool RecordFileWriter::WriteFileFeatures(const std::vector<Dso*>& files) {
