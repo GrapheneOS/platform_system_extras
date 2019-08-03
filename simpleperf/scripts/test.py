@@ -1285,6 +1285,21 @@ class TestReportHtml(TestBase):
                 hit_count += 1
         self.assertEqual(hit_count, len(event_count_for_thread_name))
 
+    def test_no_empty_process(self):
+        """ Test not showing a process having no threads. """
+        perf_data = os.path.join('testdata', 'two_process_perf.data')
+        self.run_cmd(['report_html.py', '-i', perf_data])
+        record_data = self._load_record_data_in_html('report.html')
+        processes = record_data['sampleInfo'][0]['processes']
+        self.assertEqual(len(processes), 2)
+
+        # One process is removed because all its threads are removed for not
+        # reaching the min_func_percent limit.
+        self.run_cmd(['report_html.py', '-i', perf_data, '--min_func_percent', '20'])
+        record_data = self._load_record_data_in_html('report.html')
+        processes = record_data['sampleInfo'][0]['processes']
+        self.assertEqual(len(processes), 1)
+
     def _load_record_data_in_html(self, html_file):
         with open(html_file, 'r') as fh:
             data = fh.read()
