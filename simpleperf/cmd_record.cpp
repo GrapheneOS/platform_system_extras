@@ -93,6 +93,8 @@ constexpr size_t DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE = 8 * 1024 * 1024;
 static constexpr size_t kRecordBufferSize = 64 * 1024 * 1024;
 static constexpr size_t kSystemWideRecordBufferSize = 256 * 1024 * 1024;
 
+static constexpr size_t kDefaultAuxBufferSize = 4 * 1024 * 1024;
+
 struct TimeStat {
   uint64_t prepare_recording_time = 0;
   uint64_t start_recording_time = 0;
@@ -180,6 +182,10 @@ class RecordCommand : public Command {
 "-m mmap_pages   Set the size of the buffer used to receiving sample data from\n"
 "                the kernel. It should be a power of 2. If not set, the max\n"
 "                possible value <= 1024 will be used.\n"
+"--aux-buffer-size <buffer_size>  Set aux buffer size, only used in cs-etm event type.\n"
+"                                 Need to be power of 2 and page size aligned.\n"
+"                                 Used memory size is (buffer_size * (cpu_count + 1).\n"
+"                                 Default is 4M.\n"
 "--no-inherit  Don't record created child threads/processes.\n"
 "--cpu-percent <percent>  Set the max percent of cpu time used for recording.\n"
 "                         percent is in range [1-100], default is 25.\n"
@@ -321,6 +327,7 @@ class RecordCommand : public Command {
   EventSelectionSet event_selection_set_;
 
   std::pair<size_t, size_t> mmap_page_range_;
+  size_t aux_buffer_size_ = kDefaultAuxBufferSize;
 
   ThreadTree thread_tree_;
   std::string record_filename_;
@@ -477,7 +484,8 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   size_t record_buffer_size = system_wide_collection_ ? kSystemWideRecordBufferSize
                                                       : kRecordBufferSize;
   if (!event_selection_set_.MmapEventFiles(mmap_page_range_.first, mmap_page_range_.second,
-                                           record_buffer_size, allow_cutting_samples_)) {
+                                           aux_buffer_size_, record_buffer_size,
+                                           allow_cutting_samples_)) {
     return false;
   }
   auto callback =
@@ -686,6 +694,15 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       app_package_name_ = args[i];
+    } else if (args[i] == "--aux-buffer-size") {
+      if (!GetUintOption(args, &i, &aux_buffer_size_, 0, std::numeric_limits<size_t>::max(),
+                         true)) {
+        return false;
+      }
+      if (!IsPowerOfTwo(aux_buffer_size_) || aux_buffer_size_ % sysconf(_SC_PAGE_SIZE)) {
+        LOG(ERROR) << "invalid aux buffer size: " << args[i];
+        return false;
+      }
     } else if (args[i] == "-b") {
       branch_sampling_ = branch_sampling_type_map["any"];
     } else if (args[i] == "-c" || args[i] == "-f") {
@@ -992,7 +1009,11 @@ bool RecordCommand::AdjustPerfEventLimit() {
     set_prop = true;
   }
   // 3. Adjust perf_event_mlock_kb.
-  uint64_t mlock_kb = sysconf(_SC_NPROCESSORS_CONF) * (mmap_page_range_.second + 1) * 4;
+  long cpus = sysconf(_SC_NPROCESSORS_CONF);
+  uint64_t mlock_kb = cpus * (mmap_page_range_.second + 1) * 4;
+  if (event_selection_set_.HasAuxTrace()) {
+    mlock_kb += cpus * aux_buffer_size_ / 1024;
+  }
   uint64_t cur_mlock_kb;
   if (GetPerfEventMlockKb(&cur_mlock_kb) && cur_mlock_kb < mlock_kb &&
       !SetPerfEventMlockKb(mlock_kb)) {
