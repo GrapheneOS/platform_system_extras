@@ -642,6 +642,7 @@ class RecordData(object):
         hit_func_ids = set()
         for event in self.events.values():
             min_limit = event.event_count * min_func_percent * 0.01
+            to_del_processes = []
             for process in event.processes.values():
                 to_del_threads = []
                 for thread in process.threads.values():
@@ -651,6 +652,10 @@ class RecordData(object):
                         thread.limit_percents(min_limit, min_callchain_percent, hit_func_ids)
                 for thread in to_del_threads:
                     del process.threads[thread]
+                if not process.threads:
+                    to_del_processes.append(process.pid)
+            for process in to_del_processes:
+                del event.processes[process]
         self.functions.trim_functions(hit_func_ids)
 
     def _get_event(self, event_name):
