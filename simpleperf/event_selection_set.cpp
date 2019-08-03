@@ -162,7 +162,7 @@ bool EventSelectionSet::BuildAndCheckEventSelection(const std::string& event_nam
   selection->event_attr.exclude_host = event_type->exclude_host;
   selection->event_attr.exclude_guest = event_type->exclude_guest;
   selection->event_attr.precise_ip = event_type->precise_ip;
-  if (event_type->event_type.name == "cs-etm") {
+  if (IsEtmEventType(event_type->event_type.type)) {
     auto& etm_recorder = ETMRecorder::GetInstance();
     if (!etm_recorder.CheckEtmSupport()) {
       return false;
@@ -227,6 +227,9 @@ bool EventSelectionSet::AddEventGroup(
     EventSelection selection;
     if (!BuildAndCheckEventSelection(event_name, first_event, &selection)) {
       return false;
+    }
+    if (IsEtmEventType(selection.event_attr.type)) {
+      has_aux_trace_ = true;
     }
     first_event = false;
     group.push_back(std::move(selection));
@@ -713,11 +716,6 @@ bool EventSelectionSet::FinishReadMmapEventData() {
     return false;
   }
   return loop_->RunLoop();
-}
-
-void EventSelectionSet::GetLostRecords(size_t* lost_samples, size_t* lost_non_samples,
-                                       size_t* cut_stack_samples) {
-  record_read_thread_->GetLostRecords(lost_samples, lost_non_samples, cut_stack_samples);
 }
 
 bool EventSelectionSet::HandleCpuHotplugEvents(const std::vector<int>& monitored_cpus,
