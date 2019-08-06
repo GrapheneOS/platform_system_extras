@@ -31,6 +31,7 @@ struct ETMPerCpu {
   uint32_t trcidr0;
   uint32_t trcidr1;
   uint32_t trcidr2;
+  uint32_t trcidr4;
   uint32_t trcidr8;
   uint32_t trcauthstatus;
 
@@ -55,6 +56,7 @@ class ETMRecorder {
   bool CheckEtmSupport();
   void SetEtmPerfEventAttr(perf_event_attr* attr);
   AuxTraceInfoRecord CreateAuxTraceInfoRecord();
+  size_t GetAddrFilterPairs();
 
  private:
   bool ReadEtmInfo();

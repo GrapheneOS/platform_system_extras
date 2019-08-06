@@ -565,7 +565,7 @@ bool EventSelectionSet::OpenEventFiles(const std::vector<int>& on_cpus) {
       }
     }
   }
-  return true;
+  return ApplyFilters();
 }
 
 bool EventSelectionSet::IsUserSpaceSamplerGroup(EventSelectionGroup& group) {
@@ -585,6 +585,47 @@ bool EventSelectionSet::OpenUserSpaceSamplersOnGroup(EventSelectionGroup& group,
           return false;
         }
         selection.inplace_samplers.push_back(std::move(sampler));
+      }
+    }
+  }
+  return true;
+}
+
+bool EventSelectionSet::ApplyFilters() {
+  if (include_filters_.empty()) {
+    return true;
+  }
+  if (!has_aux_trace_) {
+    LOG(ERROR) << "include filters only take effect in cs-etm instruction tracing";
+    return false;
+  }
+  size_t supported_pairs = ETMRecorder::GetInstance().GetAddrFilterPairs();
+  if (supported_pairs < include_filters_.size()) {
+    LOG(ERROR) << "filter binary count is " << include_filters_.size()
+               << ", bigger than maximum supported filters on device, which is " << supported_pairs;
+    return false;
+  }
+  std::string filter_str;
+  for (auto& binary : include_filters_) {
+    std::string path;
+    if (!android::base::Realpath(binary, &path)) {
+      PLOG(ERROR) << "failed to find include filter binary: " << binary;
+      return false;
+    }
+    uint64_t file_size = GetFileSize(path);
+    if (!filter_str.empty()) {
+      filter_str += ',';
+    }
+    android::base::StringAppendF(&filter_str, "filter 0/%" PRIu64 "@%s", file_size, path.c_str());
+  }
+  for (auto& group : groups_) {
+    for (auto& selection : group) {
+      if (IsEtmEventType(selection.event_type_modifier.event_type.type)) {
+        for (auto& event_fd : selection.event_fds) {
+          if (!event_fd->SetFilter(filter_str)) {
+            return false;
+          }
+        }
       }
     }
   }
