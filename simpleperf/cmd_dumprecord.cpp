@@ -50,6 +50,7 @@ class DumpRecordCommand : public Command {
   void DumpFileHeader();
   void DumpAttrSection();
   bool DumpDataSection();
+  bool DumpAuxData(const AuxRecord& aux);
   bool DumpFeatureSection();
 
   std::string record_filename_;
@@ -192,10 +193,31 @@ bool DumpRecordCommand::DumpDataSection() {
         PrintIndented(2, "%s (%s[+%" PRIx64 "])\n", symbol_name.c_str(), dso_name.c_str(),
                       vaddr_in_file);
       }
+    } else if (r->type() == PERF_RECORD_AUX) {
+      return DumpAuxData(*static_cast<AuxRecord*>(r.get()));
     }
     return true;
   };
   return record_file_reader_->ReadDataSection(record_callback);
+}
+
+bool DumpRecordCommand::DumpAuxData(const AuxRecord& aux) {
+  size_t size = aux.data->aux_size;
+  if (size > 0) {
+    std::unique_ptr<uint8_t[]> data(new uint8_t[size]);
+    if (!record_file_reader_->ReadAuxData(aux.Cpu(), aux.data->aux_offset, data.get(), size)) {
+      return false;
+    }
+    PrintIndented(1, "aux_data:\n");
+    for (size_t i = 0; i < size; i += 16) {
+      PrintIndented(2, "");
+      for (size_t j = i; j < std::min(i + 16, size); j++) {
+        printf("%02x", data[j]);
+      }
+      printf("\n");
+    }
+  }
+  return true;
 }
 
 bool DumpRecordCommand::DumpFeatureSection() {
@@ -251,6 +273,11 @@ bool DumpRecordCommand::DumpFeatureSection() {
       PrintIndented(1, "meta_info:\n");
       for (auto& pair : record_file_reader_->GetMetaInfoFeature()) {
         PrintIndented(2, "%s = %s\n", pair.first.c_str(), pair.second.c_str());
+      }
+    } else if (feature == FEAT_AUXTRACE) {
+      PrintIndented(1, "file_offsets_of_auxtrace_records:\n");
+      for (auto offset : record_file_reader_->ReadAuxTraceFeature()) {
+        PrintIndented(2, "%" PRIu64 "\n", offset);
       }
     }
   }

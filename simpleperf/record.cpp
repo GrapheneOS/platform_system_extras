@@ -44,6 +44,7 @@ static std::string RecordTypeToString(int record_type) {
       {PERF_RECORD_SAMPLE, "sample"},
       {PERF_RECORD_BUILD_ID, "build_id"},
       {PERF_RECORD_MMAP2, "mmap2"},
+      {PERF_RECORD_AUX, "aux"},
       {PERF_RECORD_TRACING_DATA, "tracing_data"},
       {PERF_RECORD_AUXTRACE_INFO, "auxtrace_info"},
       {PERF_RECORD_AUXTRACE, "auxtrace"},
@@ -876,6 +877,20 @@ std::vector<uint64_t> SampleRecord::GetCallChain(size_t* kernel_ip_count) const 
   return ips;
 }
 
+AuxRecord::AuxRecord(const perf_event_attr& attr, char* p) : Record(p) {
+  const char* end = p + size();
+  p += header_size();
+  data = reinterpret_cast<DataType*>(p);
+  p += sizeof(DataType);
+  sample_id.ReadFromBinaryFormat(attr, p, end);
+}
+
+void AuxRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "aux_offset %" PRIu64 "\n", data->aux_offset);
+  PrintIndented(indent, "aux_size %" PRIu64 "\n", data->aux_size);
+  PrintIndented(indent, "flags 0x%" PRIx64 "\n", data->flags);
+}
+
 BuildIdRecord::BuildIdRecord(char* p) : Record(p) {
   const char* end = p + size();
   p += header_size();
@@ -1295,6 +1310,8 @@ std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr, uint32
       return std::unique_ptr<Record>(new LostRecord(attr, p));
     case PERF_RECORD_SAMPLE:
       return std::unique_ptr<Record>(new SampleRecord(attr, p));
+    case PERF_RECORD_AUX:
+      return std::unique_ptr<Record>(new AuxRecord(attr, p));
     case PERF_RECORD_TRACING_DATA:
       return std::unique_ptr<Record>(new TracingDataRecord(p));
     case PERF_RECORD_AUXTRACE_INFO:
