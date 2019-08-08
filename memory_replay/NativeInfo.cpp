@@ -32,18 +32,18 @@
 
 // This function is not re-entrant since it uses a static buffer for
 // the line data.
-void GetNativeInfo(int smaps_fd, size_t* pss_bytes, size_t* va_bytes) {
+void GetNativeInfo(int smaps_fd, size_t* rss_bytes, size_t* va_bytes) {
   static char map_buffer[65535];
   LineBuffer line_buf(smaps_fd, map_buffer, sizeof(map_buffer));
   char* line;
-  size_t total_pss_bytes = 0;
+  size_t total_rss_bytes = 0;
   size_t total_va_bytes = 0;
   size_t line_len;
   bool native_map = false;
   while (line_buf.GetLine(&line, &line_len)) {
     uintptr_t start, end;
     int name_pos;
-    size_t native_pss_kB;
+    size_t native_rss_kB;
     if (sscanf(line, "%" SCNxPTR "-%" SCNxPTR " %*4s %*x %*x:%*x %*d %n",
         &start, &end, &name_pos) == 2) {
       if (strcmp(line + name_pos, "[anon:libc_malloc]") == 0 ||
@@ -53,16 +53,16 @@ void GetNativeInfo(int smaps_fd, size_t* pss_bytes, size_t* va_bytes) {
       } else {
         native_map = false;
       }
-    } else if (native_map && sscanf(line, "Pss: %zu", &native_pss_kB) == 1) {
-      total_pss_bytes += native_pss_kB * 1024;
+    } else if (native_map && sscanf(line, "Rss: %zu", &native_rss_kB) == 1) {
+      total_rss_bytes += native_rss_kB * 1024;
     }
   }
-  *pss_bytes = total_pss_bytes;
+  *rss_bytes = total_rss_bytes;
   *va_bytes = total_va_bytes;
 }
 
 void PrintNativeInfo(const char* preamble) {
-  size_t pss_bytes;
+  size_t rss_bytes;
   size_t va_bytes;
 
   android::base::unique_fd smaps_fd(open("/proc/self/smaps", O_RDONLY));
@@ -70,8 +70,8 @@ void PrintNativeInfo(const char* preamble) {
     err(1, "Cannot open /proc/self/smaps: %s\n", strerror(errno));
   }
 
-  GetNativeInfo(smaps_fd, &pss_bytes, &va_bytes);
-  printf("%sNative PSS: %zu bytes %0.2fMB\n", preamble, pss_bytes, pss_bytes/(1024*1024.0));
+  GetNativeInfo(smaps_fd, &rss_bytes, &va_bytes);
+  printf("%sNative RSS: %zu bytes %0.2fMB\n", preamble, rss_bytes, rss_bytes/(1024*1024.0));
   printf("%sNative VA Space: %zu bytes %0.2fMB\n", preamble, va_bytes, va_bytes/(1024*1024.0));
   fflush(stdout);
 }
