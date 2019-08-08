@@ -1558,10 +1558,14 @@ bool RecordCommand::DumpAdditionalFeatures(
     Dso::ReadKernelSymbolsFromProc();
     kernel_symbols_available = true;
   }
+  std::vector<uint64_t> auxtrace_offset;
   auto callback = [&](const Record* r) {
     thread_tree_.Update(*r);
     if (r->type() == PERF_RECORD_SAMPLE) {
       CollectHitFileInfo(*reinterpret_cast<const SampleRecord*>(r));
+    } else if (r->type() == PERF_RECORD_AUXTRACE) {
+      auto auxtrace = static_cast<const AuxTraceRecord*>(r);
+      auxtrace_offset.emplace_back(auxtrace->location.file_offset - auxtrace->size());
     }
   };
   if (!record_file_writer_->ReadDataSection(callback)) {
@@ -1570,6 +1574,9 @@ bool RecordCommand::DumpAdditionalFeatures(
 
   size_t feature_count = 6;
   if (branch_sampling_) {
+    feature_count++;
+  }
+  if (!auxtrace_offset.empty()) {
     feature_count++;
   }
   if (!record_file_writer_->BeginWriteFeatures(feature_count)) {
@@ -1609,6 +1616,9 @@ bool RecordCommand::DumpAdditionalFeatures(
     return false;
   }
   if (!DumpMetaInfoFeature(kernel_symbols_available)) {
+    return false;
+  }
+  if (!auxtrace_offset.empty() && !record_file_writer_->WriteAuxTraceFeature(auxtrace_offset)) {
     return false;
   }
 
