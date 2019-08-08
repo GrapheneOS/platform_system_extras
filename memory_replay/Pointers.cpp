@@ -37,7 +37,7 @@ Pointers::Pointers(size_t max_allocs) {
   if (memory == MAP_FAILED) {
     err(1, "Unable to allocate data for pointer hash: %zu total_allocs\n", max_allocs);
   }
-  // Make sure that all of the PSS for this is counted right away.
+  // Make sure that all of the RSS for this is counted right away.
   memset(memory, 0, pointers_size_);
   pointers_ = reinterpret_cast<pointer_data*>(memory);
 }
