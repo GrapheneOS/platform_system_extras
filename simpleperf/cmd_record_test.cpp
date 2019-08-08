@@ -814,14 +814,18 @@ TEST(record_cmd, cs_etm_event) {
   ASSERT_TRUE(reader);
   bool has_auxtrace_info = false;
   bool has_auxtrace = false;
+  bool has_aux = false;
   ASSERT_TRUE(reader->ReadDataSection([&](std::unique_ptr<Record> r) {
     if (r->type() == PERF_RECORD_AUXTRACE_INFO) {
       has_auxtrace_info = true;
     } else if (r->type() == PERF_RECORD_AUXTRACE) {
       has_auxtrace = true;
+    } else if (r->type() == PERF_RECORD_AUX) {
+      has_aux = true;
     }
     return true;
   }));
   ASSERT_TRUE(has_auxtrace_info);
   ASSERT_TRUE(has_auxtrace);
+  ASSERT_TRUE(has_aux);
 }
