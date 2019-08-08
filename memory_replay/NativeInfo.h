@@ -18,7 +18,7 @@
 #define _MEMORY_REPLAY_NATIVE_INFO_H
 
 // This function is not re-entrant.
-void GetNativeInfo(int smaps_fd, size_t* pss_bytes, size_t* va_bytes);
+void GetNativeInfo(int smaps_fd, size_t* rss_bytes, size_t* va_bytes);
 
 // This function is not re-entrant.
 void PrintNativeInfo(const char* preamble);
