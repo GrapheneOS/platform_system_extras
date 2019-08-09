@@ -243,7 +243,7 @@ TEST_F(RecordReadThreadTest, handle_cmds) {
   perf_event_attr attr = CreateFakeEventAttr();
   records_ = CreateFakeRecords(attr, 2, 0, 0);
   std::vector<EventFd*> event_fds = CreateFakeEventFds(attr, 2);
-  RecordReadThread thread(128 * 1024, event_fds[0]->attr(), 1, 1);
+  RecordReadThread thread(128 * 1024, event_fds[0]->attr(), 1, 1, 0);
   IOEventLoop loop;
   bool has_notify = false;
   auto callback = [&]() {
@@ -262,7 +262,7 @@ TEST_F(RecordReadThreadTest, handle_cmds) {
 
 TEST_F(RecordReadThreadTest, read_records) {
   perf_event_attr attr = CreateFakeEventAttr();
-  RecordReadThread thread(128 * 1024, attr, 1, 1);
+  RecordReadThread thread(128 * 1024, attr, 1, 1, 0);
   IOEventLoop loop;
   size_t record_index;
   auto callback = [&]() {
@@ -297,7 +297,7 @@ TEST_F(RecordReadThreadTest, process_sample_record) {
   attr.sample_type |= PERF_SAMPLE_STACK_USER;
   attr.sample_stack_user = 64 * 1024;
   size_t record_buffer_size = 128 * 1024;
-  RecordReadThread thread(record_buffer_size, attr, 1, 1);
+  RecordReadThread thread(record_buffer_size, attr, 1, 1, 0);
   IOEventLoop loop;
   ASSERT_TRUE(thread.RegisterDataCallback(loop, []() { return true; }));
 
@@ -348,7 +348,7 @@ TEST_F(RecordReadThreadTest, process_sample_record) {
 // records even if reading one record at a time.
 TEST_F(RecordReadThreadTest, has_data_notification_until_buffer_empty) {
   perf_event_attr attr = CreateFakeEventAttr();
-  RecordReadThread thread(128 * 1024, attr, 1, 1);
+  RecordReadThread thread(128 * 1024, attr, 1, 1, 0);
   IOEventLoop loop;
   size_t record_index = 0;
   auto read_one_record = [&]() {
@@ -376,7 +376,7 @@ TEST_F(RecordReadThreadTest, no_cut_samples) {
   perf_event_attr attr = CreateFakeEventAttr();
   attr.sample_type |= PERF_SAMPLE_STACK_USER;
   attr.sample_stack_user = 64 * 1024;
-  RecordReadThread thread(128 * 1024, attr, 1, 1, false);
+  RecordReadThread thread(128 * 1024, attr, 1, 1, 0, false);
   IOEventLoop loop;
   ASSERT_TRUE(thread.RegisterDataCallback(loop, []() { return true; }));
   const size_t total_samples = 100;
@@ -438,10 +438,12 @@ TEST_F(RecordReadThreadTest, read_aux_data) {
     return size == aux_data[test_index].buf1.size() + aux_data[test_index].buf2.size();
   };
 
+  const size_t AUX_BUFFER_SIZE = 4096;
+
   perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
   MockEventFd fd(attr, 0, nullptr, 1, true);
   EXPECT_CALL(fd, CreateMappedBuffer(_, _)).Times(1).WillOnce(Return(true));
-  EXPECT_CALL(fd, CreateAuxBuffer(_, _)).Times(1).WillOnce(Return(true));
+  EXPECT_CALL(fd, CreateAuxBuffer(Eq(AUX_BUFFER_SIZE), _)).Times(1).WillOnce(Return(true));
   EXPECT_CALL(fd, StartPolling(_, _)).Times(1).WillOnce(Return(true));
   EXPECT_CALL(fd, GetAvailableMmapDataSize(_)).Times(aux_data.size()).WillRepeatedly(Return(0));
   EXPECT_CALL(fd,
@@ -452,7 +454,7 @@ TEST_F(RecordReadThreadTest, read_aux_data) {
   EXPECT_CALL(fd, DestroyMappedBuffer()).Times(1);
   EXPECT_CALL(fd, DestroyAuxBuffer()).Times(1);
 
-  RecordReadThread thread(1024, attr, 1, 1);
+  RecordReadThread thread(1024, attr, 1, 1, AUX_BUFFER_SIZE);
   IOEventLoop loop;
   ASSERT_TRUE(thread.RegisterDataCallback(loop, []() { return true; }));
   ASSERT_TRUE(thread.AddEventFds({&fd}));
