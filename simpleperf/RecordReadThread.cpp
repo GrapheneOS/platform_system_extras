@@ -32,9 +32,6 @@ namespace simpleperf {
 static constexpr size_t kDefaultLowBufferLevel = 10 * 1024 * 1024u;
 static constexpr size_t kDefaultCriticalBufferLevel = 5 * 1024 * 1024u;
 
-// TODO: add an option to config it.
-static constexpr size_t kDefaultAuxBufferSize = 4 * 1024 * 1024;
-
 RecordBuffer::RecordBuffer(size_t buffer_size)
     : read_head_(0), write_head_(0), buffer_size_(buffer_size), buffer_(new char[buffer_size]) {
 }
@@ -210,9 +207,13 @@ bool KernelRecordReader::MoveToNextRecord(const RecordParser& parser) {
 
 RecordReadThread::RecordReadThread(size_t record_buffer_size, const perf_event_attr& attr,
                                    size_t min_mmap_pages, size_t max_mmap_pages,
-                                   bool allow_cutting_samples)
-    : record_buffer_(record_buffer_size), record_parser_(attr), attr_(attr),
-      min_mmap_pages_(min_mmap_pages), max_mmap_pages_(max_mmap_pages) {
+                                   size_t aux_buffer_size, bool allow_cutting_samples)
+    : record_buffer_(record_buffer_size),
+      record_parser_(attr),
+      attr_(attr),
+      min_mmap_pages_(min_mmap_pages),
+      max_mmap_pages_(max_mmap_pages),
+      aux_buffer_size_(aux_buffer_size) {
   if (attr.sample_type & PERF_SAMPLE_STACK_USER) {
     stack_size_in_sample_record_ = attr.sample_stack_user;
   }
@@ -375,7 +376,7 @@ bool RecordReadThread::HandleAddEventFds(IOEventLoop& loop,
           break;
         }
         if (IsEtmEventType(fd->attr().type)) {
-          if (!fd->CreateAuxBuffer(kDefaultAuxBufferSize, report_error)) {
+          if (!fd->CreateAuxBuffer(aux_buffer_size_, report_error)) {
             fd->DestroyMappedBuffer();
             success = false;
             break;
