@@ -1654,7 +1654,9 @@ bool RecordCommand::DumpBuildIdFeature() {
   BuildId build_id;
   std::vector<Dso*> dso_v = thread_tree_.GetAllDsos();
   for (Dso* dso : dso_v) {
-    if (!dso->HasDumpId()) {
+    // For aux tracing, we don't know which binaries are traced.
+    // So dump build ids for all binaries.
+    if (!dso->HasDumpId() && !event_selection_set_.HasAuxTrace()) {
       continue;
     }
     if (dso->type() == DSO_KERNEL) {

@@ -147,6 +147,37 @@ cc_defaults {
     },
 }
 
+// linked as a separate library because using OpenCSD headers needs to enable exception
+cc_library_static {
+    name: "libsimpleperf_etm_decoder",
+    defaults: [
+        "simpleperf_cflags",
+        "libsimpleperf_elf_read_static_reqs_defaults",
+    ],
+    host_supported: true,
+    srcs: ["ETMDecoder.cpp"],
+    cppflags: [
+        // flags needed to include libopencsd_decoder headers
+        "-Wno-ignored-qualifiers",
+        "-Wno-unused-parameter",
+        "-Wno-switch",
+        "-Wno-unused-private-field",
+        "-Wno-implicit-fallthrough",
+        "-fexceptions",
+    ],
+    rtti: true,
+    static_libs: [
+        "libopencsd_decoder",
+        "libbase",
+        "liblog",
+    ],
+    target: {
+        windows: {
+            enabled: true,
+        }
+    }
+}
+
 cc_defaults {
     name: "simpleperf_static_libs",
     defaults: [
@@ -155,10 +186,12 @@ cc_defaults {
     ],
     host_supported: true,
     static_libs: [
+        "libsimpleperf_etm_decoder",
         "libbase",
         "liblog",
         "libutils",
         "libprotobuf-cpp-lite",
+        "libopencsd_decoder",
     ],
     target: {
         linux: {
@@ -196,6 +229,10 @@ cc_defaults {
         "liblzma",
         "libprotobuf-cpp-lite",
         "libziparchive",
+    ],
+    static_libs: [
+        "libsimpleperf_etm_decoder",
+        "libopencsd_decoder",
     ],
     target: {
         linux: {
