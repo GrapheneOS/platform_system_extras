@@ -814,14 +814,30 @@ TEST(record_cmd, cs_etm_event) {
   ASSERT_TRUE(reader);
   bool has_auxtrace_info = false;
   bool has_auxtrace = false;
+  bool has_aux = false;
   ASSERT_TRUE(reader->ReadDataSection([&](std::unique_ptr<Record> r) {
     if (r->type() == PERF_RECORD_AUXTRACE_INFO) {
       has_auxtrace_info = true;
     } else if (r->type() == PERF_RECORD_AUXTRACE) {
       has_auxtrace = true;
+    } else if (r->type() == PERF_RECORD_AUX) {
+      has_aux = true;
     }
     return true;
   }));
   ASSERT_TRUE(has_auxtrace_info);
   ASSERT_TRUE(has_auxtrace);
+  ASSERT_TRUE(has_aux);
+}
+
+TEST(record_cmd, aux_buffer_size_option) {
+  if (!ETMRecorder::GetInstance().CheckEtmSupport()) {
+    GTEST_LOG_(INFO) << "Omit this test since etm isn't supported on this device";
+    return;
+  }
+  ASSERT_TRUE(RunRecordCmd({"-e", "cs-etm", "--aux-buffer-size", "1m"}));
+  // not page size aligned
+  ASSERT_FALSE(RunRecordCmd({"-e", "cs-etm", "--aux-buffer-size", "1024"}));
+  // not power of two
+  ASSERT_FALSE(RunRecordCmd({"-e", "cs-etm", "--aux-buffer-size", "12k"}));
 }

@@ -124,7 +124,8 @@ class KernelRecordReader {
 class RecordReadThread {
  public:
   RecordReadThread(size_t record_buffer_size, const perf_event_attr& attr, size_t min_mmap_pages,
-                   size_t max_mmap_pages, bool allow_cutting_samples = true);
+                   size_t max_mmap_pages, size_t aux_buffer_size,
+                   bool allow_cutting_samples = true);
   ~RecordReadThread();
   void SetBufferLevels(size_t record_buffer_low_level, size_t record_buffer_critical_level) {
     record_buffer_low_level_ = record_buffer_low_level;
@@ -184,6 +185,7 @@ class RecordReadThread {
   size_t stack_size_in_sample_record_ = 0;
   size_t min_mmap_pages_;
   size_t max_mmap_pages_;
+  size_t aux_buffer_size_;
 
   // Used to pass command notification from the main thread to the read thread.
   android::base::unique_fd write_cmd_fd_;
