@@ -102,6 +102,6 @@ cc_benchmark {
     ],
 
     data: [
-        "dumps/*",
+        "traces/*.zip",
     ],
 }
