@@ -317,7 +317,7 @@ static void RunTrace(benchmark::State& state, std::vector<MallocEntry>& entries,
 // This is not completely realistic, but it is a possible worst case that
 // could happen in an app.
 static void BenchmarkTrace(benchmark::State& state, const char* filename) {
-  std::string full_filename(android::base::GetExecutableDirectory() + "/dumps/" + filename);
+  std::string full_filename(android::base::GetExecutableDirectory() + "/traces/" + filename);
   size_t max_ptrs;
   std::vector<MallocEntry>* entries = GetTraceData(full_filename.c_str(), &max_ptrs);
   if (entries == nullptr) {
@@ -341,10 +341,20 @@ static void BenchmarkTrace(benchmark::State& state, const char* filename) {
       ->Repetitions(4)                \
       ->ReportAggregatesOnly(true)
 
+static void BM_angry_birds2(benchmark::State& state) {
+  BenchmarkTrace(state, "angry_birds2.zip");
+}
+BENCHMARK(BM_angry_birds2)->BENCH_OPTIONS;
+
 static void BM_camera(benchmark::State& state) {
   BenchmarkTrace(state, "camera.zip");
 }
 BENCHMARK(BM_camera)->BENCH_OPTIONS;
+
+static void BM_candy_crush_saga(benchmark::State& state) {
+  BenchmarkTrace(state, "candy_crush_saga.zip");
+}
+BENCHMARK(BM_candy_crush_saga)->BENCH_OPTIONS;
 
 void BM_gmail(benchmark::State& state) {
   BenchmarkTrace(state, "gmail.zip");
@@ -355,6 +365,16 @@ void BM_maps(benchmark::State& state) {
   BenchmarkTrace(state, "maps.zip");
 }
 BENCHMARK(BM_maps)->BENCH_OPTIONS;
+
+void BM_photos(benchmark::State& state) {
+  BenchmarkTrace(state, "photos.zip");
+}
+BENCHMARK(BM_photos)->BENCH_OPTIONS;
+
+void BM_pubg(benchmark::State& state) {
+  BenchmarkTrace(state, "pubg.zip");
+}
+BENCHMARK(BM_pubg)->BENCH_OPTIONS;
 
 void BM_surfaceflinger(benchmark::State& state) {
   BenchmarkTrace(state, "surfaceflinger.zip");
