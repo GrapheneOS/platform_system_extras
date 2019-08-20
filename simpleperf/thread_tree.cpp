@@ -54,6 +54,13 @@ void ThreadTree::ForkThread(int pid, int tid, int ppid, int ptid) {
   }
 }
 
+ThreadEntry* ThreadTree::FindThread(int tid) {
+  if (auto it = thread_tree_.find(tid); it != thread_tree_.end()) {
+    return it->second.get();
+  }
+  return nullptr;
+}
+
 ThreadEntry* ThreadTree::FindThreadOrNew(int pid, int tid) {
   auto it = thread_tree_.find(tid);
   if (it != thread_tree_.end() && pid == it->second.get()->pid) {
