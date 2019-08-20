@@ -351,7 +351,7 @@ cc_binary {
         "simpleperf_static_libs",
     ],
     dist: {
-        targets: ["sdk", "win_sdk", "simpleperf"],
+        targets: ["simpleperf"],
     },
     srcs: [
         "main.cpp",
@@ -455,7 +455,7 @@ cc_library_shared {
         "simpleperf_static_libs",
     ],
     dist: {
-        targets: ["sdk", "win_sdk", "simpleperf"],
+        targets: ["simpleperf"],
     },
     srcs: [
         "report_lib_interface.cpp",
