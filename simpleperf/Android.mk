@@ -45,4 +45,4 @@ SIMPLEPERF_SCRIPT_PATH := \
 $(SIMPLEPERF_SCRIPT_PATH) : $(SOONG_ZIP)
 	$(hide) $(SOONG_ZIP) -d -o $@ -C system/extras/simpleperf $(SIMPLEPERF_SCRIPT_LIST)
 
-$(call dist-for-goals,sdk win_sdk,$(SIMPLEPERF_SCRIPT_PATH):simpleperf/simpleperf_script.zip)
+$(call dist-for-goals,simpleperf,$(SIMPLEPERF_SCRIPT_PATH):simpleperf/simpleperf_script.zip)
