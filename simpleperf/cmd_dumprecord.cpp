@@ -25,6 +25,8 @@
 #include <android-base/strings.h>
 
 #include "command.h"
+#include "dso.h"
+#include "ETMDecoder.h"
 #include "event_attr.h"
 #include "event_type.h"
 #include "perf_regs.h"
@@ -33,15 +35,19 @@
 #include "utils.h"
 
 using namespace PerfFileFormat;
+using namespace simpleperf;
 
 class DumpRecordCommand : public Command {
  public:
   DumpRecordCommand()
       : Command("dump", "dump perf record file",
-                "Usage: simpleperf dumprecord [options] [perf_record_file]\n"
-                "    Dump different parts of a perf record file. Default file is perf.data.\n"),
-        record_filename_("perf.data") {
-  }
+                // clang-format off
+"Usage: simpleperf dumprecord [options] [perf_record_file]\n"
+"    Dump different parts of a perf record file. Default file is perf.data.\n"
+"--dump-etm type1,type2,...   Dump etm data. A type is one of raw, packet and element.\n"
+"--symdir <dir>               Look for binaries in a directory recursively.\n"
+                // clang-format on
+      ) {}
 
   bool Run(const std::vector<std::string>& args);
 
@@ -50,11 +56,12 @@ class DumpRecordCommand : public Command {
   void DumpFileHeader();
   void DumpAttrSection();
   bool DumpDataSection();
-  bool DumpAuxData(const AuxRecord& aux);
+  bool DumpAuxData(const AuxRecord& aux, ETMDecoder& etm_decoder);
   bool DumpFeatureSection();
 
-  std::string record_filename_;
+  std::string record_filename_ = "perf.data";
   std::unique_ptr<RecordFileReader> record_file_reader_;
+  ETMDumpOption etm_dump_option_;
 };
 
 bool DumpRecordCommand::Run(const std::vector<std::string>& args) {
@@ -74,11 +81,30 @@ bool DumpRecordCommand::Run(const std::vector<std::string>& args) {
 }
 
 bool DumpRecordCommand::ParseOptions(const std::vector<std::string>& args) {
-  if (args.size() == 1) {
-    record_filename_ = args[0];
-  } else if (args.size() > 1) {
-    ReportUnknownOption(args, 1);
+  size_t i;
+  for (i = 0; i < args.size() && !args[i].empty() && args[i][0] == '-'; ++i) {
+    if (args[i] == "--dump-etm") {
+      if (!NextArgumentOrError(args, &i) || !ParseEtmDumpOption(args[i], &etm_dump_option_)) {
+        return false;
+      }
+    } else if (args[i] == "--symdir") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (!Dso::AddSymbolDir(args[i])) {
+        return false;
+      }
+    } else {
+      ReportUnknownOption(args, i);
+      return false;
+    }
+  }
+  if (i + 1 < args.size()) {
+    LOG(ERROR) << "too many record files";
     return false;
+  }
+  if (i + 1 == args.size()) {
+    record_filename_ = args[i];
   }
   return true;
 }
@@ -142,6 +168,7 @@ void DumpRecordCommand::DumpAttrSection() {
 }
 
 bool DumpRecordCommand::DumpDataSection() {
+  std::unique_ptr<ETMDecoder> etm_decoder;
   ThreadTree thread_tree;
   thread_tree.ShowIpForUnknownSymbol();
   record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree);
@@ -193,29 +220,29 @@ bool DumpRecordCommand::DumpDataSection() {
         PrintIndented(2, "%s (%s[+%" PRIx64 "])\n", symbol_name.c_str(), dso_name.c_str(),
                       vaddr_in_file);
       }
+    } else if (r->type() == PERF_RECORD_AUXTRACE_INFO) {
+      etm_decoder = ETMDecoder::Create(*static_cast<AuxTraceInfoRecord*>(r.get()), thread_tree);
+      if (!etm_decoder) {
+        return false;
+      }
+      etm_decoder->EnableDump(etm_dump_option_);
     } else if (r->type() == PERF_RECORD_AUX) {
-      return DumpAuxData(*static_cast<AuxRecord*>(r.get()));
+      CHECK(etm_decoder);
+      return DumpAuxData(*static_cast<AuxRecord*>(r.get()), *etm_decoder);
     }
     return true;
   };
   return record_file_reader_->ReadDataSection(record_callback);
 }
 
-bool DumpRecordCommand::DumpAuxData(const AuxRecord& aux) {
+bool DumpRecordCommand::DumpAuxData(const AuxRecord& aux, ETMDecoder& etm_decoder) {
   size_t size = aux.data->aux_size;
   if (size > 0) {
     std::unique_ptr<uint8_t[]> data(new uint8_t[size]);
     if (!record_file_reader_->ReadAuxData(aux.Cpu(), aux.data->aux_offset, data.get(), size)) {
       return false;
     }
-    PrintIndented(1, "aux_data:\n");
-    for (size_t i = 0; i < size; i += 16) {
-      PrintIndented(2, "");
-      for (size_t j = i; j < std::min(i + 16, size); j++) {
-        printf("%02x", data[j]);
-      }
-      printf("\n");
-    }
+    return etm_decoder.ProcessData(data.get(), size);
   }
   return true;
 }
