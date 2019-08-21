@@ -303,3 +303,11 @@ TEST(stat_cmd, app_option_for_profileable_app) {
   TEST_REQUIRE_APPS();
   TestStatingApps("com.android.simpleperf.profileable");
 }
+
+TEST(stat_cmd, use_devfreq_counters_option) {
+#if defined(__ANDROID__)
+  TEST_IN_ROOT(StatCmd()->Run({"--use-devfreq-counters", "sleep", "0.1"}));
+#else
+  GTEST_LOG_(INFO) << "This test tests an option only available on Android.";
+#endif
+}
