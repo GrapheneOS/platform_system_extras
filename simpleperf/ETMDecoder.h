@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -32,13 +33,34 @@ struct ETMDumpOption {
 
 bool ParseEtmDumpOption(const std::string& s, ETMDumpOption* option);
 
+struct ETMInstrRange {
+  // the binary containing the instruction range
+  Dso* dso = nullptr;
+  // the address of the first instruction in the binary
+  uint64_t start_addr = 0;
+  // the address of the last instruction in the binary
+  uint64_t end_addr = 0;
+  // If the last instruction is a branch instruction, and it branches
+  // to a fixed location in the same binary, then branch_to_addr points
+  // to the branched to instruction.
+  uint64_t branch_to_addr = 0;
+  // times the branch is taken
+  uint64_t branch_taken_count = 0;
+  // times the branch isn't taken
+  uint64_t branch_not_taken_count = 0;
+};
+
 class ETMDecoder {
  public:
   static std::unique_ptr<ETMDecoder> Create(const AuxTraceInfoRecord& auxtrace_info,
                                             ThreadTree& thread_tree);
   virtual ~ETMDecoder() {}
   virtual void EnableDump(const ETMDumpOption& option) = 0;
+
+  using CallbackFn = std::function<void(const ETMInstrRange&)>;
+  virtual void RegisterCallback(const CallbackFn& callback) = 0;
+
   virtual bool ProcessData(const uint8_t* data, size_t size) = 0;
 };
 
-}  // namespace
+}  // namespace simpleperf
