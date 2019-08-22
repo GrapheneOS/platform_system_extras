@@ -312,6 +312,107 @@ class DataDumper : public ElementCallback {
   ocsdMsgLogger stdout_logger_;
 };
 
+// Base class for parsing executed instruction ranges from etm data.
+class InstrRangeParser {
+ public:
+  InstrRangeParser(ThreadTree& thread_tree, const ETMDecoder::CallbackFn& callback)
+      : thread_tree_(thread_tree), callback_(callback) {}
+
+  virtual ~InstrRangeParser() {}
+
+ protected:
+  ThreadTree& thread_tree_;
+  ETMDecoder::CallbackFn callback_;
+};
+
+// It decodes each ETMV4IPacket into TraceElements, and generates ETMInstrRanges from TraceElements.
+// Decoding each packet is slow, but ensures correctness.
+class BasicInstrRangeParser : public InstrRangeParser, public ElementCallback {
+ public:
+  BasicInstrRangeParser(ThreadTree& thread_tree, const ETMDecoder::CallbackFn& callback)
+      : InstrRangeParser(thread_tree, callback) {}
+
+  ocsd_datapath_resp_t ProcessElement(const ocsd_trc_index_t, uint8_t trace_id,
+                                      const OcsdTraceElement& elem,
+                                      const ocsd_instr_info* next_instr) override {
+    if (elem.getType() == OCSD_GEN_TRC_ELEM_PE_CONTEXT) {
+      if (elem.getContext().ctxt_id_valid) {
+        // trace_id is associated with a new thread.
+        pid_t new_tid = elem.getContext().context_id;
+        auto& tid = tid_map_[trace_id];
+        if (tid != new_tid) {
+          tid = new_tid;
+          if (trace_id == current_map_.trace_id) {
+            current_map_.Invalidate();
+          }
+        }
+      }
+    } else if (elem.getType() == OCSD_GEN_TRC_ELEM_INSTR_RANGE) {
+      if (!FindMap(trace_id, elem.st_addr)) {
+        return OCSD_RESP_CONT;
+      }
+      instr_range_.dso = current_map_.map->dso;
+      instr_range_.start_addr = current_map_.ToVaddrInFile(elem.st_addr);
+      instr_range_.end_addr = current_map_.ToVaddrInFile(elem.en_addr - elem.last_instr_sz);
+      bool end_with_branch =
+          elem.last_i_type == OCSD_INSTR_BR || elem.last_i_type == OCSD_INSTR_BR_INDIRECT;
+      bool branch_taken = end_with_branch && elem.last_instr_exec;
+      if (elem.last_i_type == OCSD_INSTR_BR && branch_taken) {
+        instr_range_.branch_to_addr = current_map_.ToVaddrInFile(next_instr->branch_addr);
+      } else {
+        instr_range_.branch_to_addr = 0;
+      }
+      instr_range_.branch_taken_count = branch_taken ? 1 : 0;
+      instr_range_.branch_not_taken_count = branch_taken ? 0 : 1;
+      callback_(instr_range_);
+    }
+    return OCSD_RESP_CONT;
+  }
+
+ private:
+  struct CurrentMap {
+    int trace_id = -1;
+    const MapEntry* map = nullptr;
+    uint64_t addr_in_file = 0;
+
+    void Invalidate() { trace_id = -1; }
+
+    bool IsAddrInMap(uint8_t trace_id, uint64_t addr) {
+      return trace_id == this->trace_id && map != nullptr && addr >= map->start_addr &&
+             addr < map->get_end_addr();
+    }
+
+    uint64_t ToVaddrInFile(uint64_t addr) {
+      if (addr >= map->start_addr && addr < map->get_end_addr()) {
+        return addr - map->start_addr + addr_in_file;
+      }
+      return 0;
+    }
+  };
+
+  bool FindMap(uint8_t trace_id, uint64_t addr) {
+    if (current_map_.IsAddrInMap(trace_id, addr)) {
+      return true;
+    }
+    ThreadEntry* thread = thread_tree_.FindThread(tid_map_[trace_id]);
+    if (thread != nullptr) {
+      const MapEntry* map = thread_tree_.FindMap(thread, addr, false);
+      if (map != nullptr && !thread_tree_.IsUnknownDso(map->dso)) {
+        current_map_.trace_id = trace_id;
+        current_map_.map = map;
+        current_map_.addr_in_file =
+            map->dso->IpToVaddrInFile(map->start_addr, map->start_addr, map->pgoff);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  std::unordered_map<uint8_t, pid_t> tid_map_;
+  CurrentMap current_map_;
+  ETMInstrRange instr_range_;
+};
+
 // Etm data decoding in OpenCSD library has two steps:
 // 1. From byte stream to etm packets. Each packet shows an event happened. For example,
 // an Address packet shows the cpu is running the instruction at that address, an Atom
@@ -364,6 +465,12 @@ class ETMDecoderImpl : public ETMDecoder {
     }
   }
 
+  void RegisterCallback(const CallbackFn& callback) {
+    auto parser = std::make_unique<BasicInstrRangeParser>(thread_tree_, callback);
+    InstallElementCallback(parser.get());
+    instr_range_parser_.reset(parser.release());
+  }
+
   bool ProcessData(const uint8_t* data, size_t size) override {
     size_t left_size = size;
     while (left_size > 0) {
@@ -404,6 +511,7 @@ class ETMDecoderImpl : public ETMDecoder {
   std::unique_ptr<DataDumper> dumper_;
   // an index keeping processed etm data size
   size_t data_index_ = 0;
+  std::unique_ptr<InstrRangeParser> instr_range_parser_;
 };
 
 }  // namespace
