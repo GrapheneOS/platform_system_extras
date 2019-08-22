@@ -374,9 +374,7 @@ def open_report_in_browser(report_path):
 def is_elf_file(path):
     if os.path.isfile(path):
         with open(path, 'rb') as fh:
-            data = fh.read(4)
-            if len(data) == 4 and bytes_to_str(data) == '\x7fELF':
-                return True
+            return fh.read(4) == b'\x7fELF'
     return False
 
 def find_real_dso_path(dso_path_in_record_file, binary_cache_path):

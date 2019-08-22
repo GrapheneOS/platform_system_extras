@@ -56,7 +56,7 @@ from binary_cache_builder import BinaryCacheBuilder
 from simpleperf_report_lib import ReportLib
 from utils import log_exit, log_info, log_fatal
 from utils import AdbHelper, Addr2Nearestline, bytes_to_str, find_tool_path, get_script_dir
-from utils import is_python3, is_windows, Objdump, ReadElf, remove, SourceFileSearcher
+from utils import is_elf_file, is_python3, is_windows, Objdump, ReadElf, remove, SourceFileSearcher
 from utils import str_to_bytes
 
 try:
@@ -1187,6 +1187,16 @@ class TestTools(unittest.TestCase):
             format_path('testdata/SimpleperfExampleOfKotlin/app/src/main/java/com/example/' +
                         'simpleperf/simpleperfexampleofkotlin/MainActivity.kt'),
             searcher.get_real_path('MainActivity.kt'))
+
+    def test_is_elf_file(self):
+        self.assertTrue(is_elf_file(os.path.join(
+            'testdata', 'simpleperf_runtest_two_functions_arm')))
+        with open('not_elf', 'wb') as fh:
+            fh.write(b'\x90123')
+        try:
+            self.assertFalse(is_elf_file('not_elf'))
+        finally:
+            remove('not_elf')
 
 
 class TestNativeLibDownloader(unittest.TestCase):
