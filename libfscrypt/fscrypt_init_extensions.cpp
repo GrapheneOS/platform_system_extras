@@ -14,17 +14,7 @@
  * limitations under the License.
  */
 
-#include "fscrypt/fscrypt.h"
 #include "fscrypt/fscrypt_init_extensions.h"
-
-#include <dirent.h>
-#include <errno.h>
-#include <sys/mount.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
-#include <string>
-#include <vector>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
@@ -32,8 +22,19 @@
 #include <android-base/strings.h>
 #include <cutils/properties.h>
 #include <cutils/sockets.h>
+#include <dirent.h>
+#include <errno.h>
+#include <fts.h>
 #include <keyutils.h>
 #include <logwrap/logwrap.h>
+#include <sys/mount.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include <string>
+#include <vector>
+
+#include "fscrypt/fscrypt.h"
 
 #define TAG "fscrypt"
 
@@ -54,9 +55,52 @@ int fscrypt_install_keyring()
     return 0;
 }
 
+// TODO(b/139378601): use a single central implementation of this.
+static void delete_dir_contents(const char* dir) {
+    char* const paths[2] = {const_cast<char*>(dir), nullptr};
+    FTS* fts = fts_open(paths, FTS_PHYSICAL | FTS_NOCHDIR | FTS_XDEV, nullptr);
+    FTSENT* cur;
+    while ((cur = fts_read(fts)) != nullptr) {
+        if (cur->fts_info == FTS_ERR) {
+            PLOG(ERROR) << "fts_read";
+            break;
+        }
+        if (strcmp(dir, cur->fts_path) == 0) {
+            continue;
+        }
+        switch (cur->fts_info) {
+            case FTS_D:
+                break;  // Ignore these
+            case FTS_DP:
+                if (rmdir(cur->fts_path) == -1) {
+                    PLOG(ERROR) << "rmdir " << cur->fts_path;
+                }
+                break;
+            default:
+                PLOG(ERROR) << "FTS unexpected type " << cur->fts_info << " at " << cur->fts_path;
+                if (rmdir(cur->fts_path) != -1) break;
+                // FALLTHRU (for gcc, lint, pcc, etc; and following for clang)
+                FALLTHROUGH_INTENDED;
+            case FTS_F:
+            case FTS_SL:
+            case FTS_SLNONE:
+                if (unlink(cur->fts_path) == -1) {
+                    PLOG(ERROR) << "unlink " << cur->fts_path;
+                }
+                break;
+        }
+    }
+
+    if (fts_close(fts) != 0) {
+        PLOG(ERROR) << "fts_close";
+    }
+}
+
 int fscrypt_set_directory_policy(const char* dir)
 {
-    if (!dir || strncmp(dir, "/data/", 6)) {
+    const std::string prefix = "/data/";
+
+    if (!dir || strncmp(dir, prefix.c_str(), prefix.size())) {
         return 0;
     }
 
@@ -71,7 +115,7 @@ int fscrypt_set_directory_policy(const char* dir)
     // To make this less restrictive, consider using a policy file.
     // However this is overkill for as long as the policy is simply
     // to apply a global policy to all /data folders created via makedir
-    if (strchr(dir + 6, '/')) {
+    if (strchr(dir + prefix.size(), '/')) {
         return 0;
     }
 
@@ -88,14 +132,29 @@ int fscrypt_set_directory_policy(const char* dir)
         "apex", "preloads", "app-staging",
         "gsi",
     };
-    std::string prefix = "/data/";
     for (const auto& d: directories_to_exclude) {
         if ((prefix + d) == dir) {
             LOG(INFO) << "Not setting policy on " << dir;
             return 0;
         }
     }
-    return set_system_de_policy_on(dir);
+    int err = set_system_de_policy_on(dir);
+    if (err == 0) {
+        return 0;
+    }
+    // Empty these directories if policy setting fails.
+    std::vector<std::string> wipe_on_failure = {
+        "rollback", "rollback-observer",  // b/139193659
+    };
+    for (const auto& d : wipe_on_failure) {
+        if ((prefix + d) == dir) {
+            LOG(ERROR) << "Setting policy failed, deleting: " << dir;
+            delete_dir_contents(dir);
+            err = set_system_de_policy_on(dir);
+            break;
+        }
+    }
+    return err;
 }
 
 static int set_system_de_policy_on(char const* dir) {
