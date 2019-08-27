@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,34 @@
 
 #pragma once
 
-void NativeGetInfo(int smaps_fd, size_t* rss_bytes, size_t* va_bytes);
+#include <string>
 
-void NativePrintInfo(const char* preamble);
+// Forward Declarations.
+class Pointers;
 
-// Does not support any floating point specifiers.
-void NativePrintf(const char* fmt, ...) __printflike(1, 2);
+enum AllocEnum : uint8_t {
+  MALLOC = 0,
+  CALLOC,
+  MEMALIGN,
+  REALLOC,
+  FREE,
+  THREAD_DONE,
+};
 
-// Fill buffer as if %0.2f was chosen for value / divisor.
-void NativeFormatFloat(char* buffer, size_t buffer_len, uint64_t value, uint64_t divisor);
+struct AllocEntry {
+  pid_t tid;
+  AllocEnum type;
+  uint64_t ptr = 0;
+  size_t size = 0;
+  union {
+    uint64_t old_ptr = 0;
+    uint64_t n_elements;
+    uint64_t align;
+  } u;
+};
+
+void AllocGetData(const std::string& line, AllocEntry* entry);
+
+bool AllocDoesFree(const AllocEntry& entry);
+
+uint64_t AllocExecute(const AllocEntry& entry, Pointers* pointers);
