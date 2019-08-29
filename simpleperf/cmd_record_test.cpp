@@ -23,6 +23,7 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 
 #include <map>
 #include <memory>
@@ -840,4 +841,37 @@ TEST(record_cmd, aux_buffer_size_option) {
   ASSERT_FALSE(RunRecordCmd({"-e", "cs-etm", "--aux-buffer-size", "1024"}));
   // not power of two
   ASSERT_FALSE(RunRecordCmd({"-e", "cs-etm", "--aux-buffer-size", "12k"}));
+}
+
+TEST(record_cmd, include_filter_option) {
+  TEST_REQUIRE_HW_COUNTER();
+  if (!ETMRecorder::GetInstance().CheckEtmSupport()) {
+    GTEST_LOG_(INFO) << "Omit this test since etm isn't supported on this device";
+    return;
+  }
+  FILE* fp = popen("which sleep", "r");
+  ASSERT_TRUE(fp != nullptr);
+  std::string path;
+  ASSERT_TRUE(android::base::ReadFdToString(fileno(fp), &path));
+  pclose(fp);
+  path = android::base::Trim(path);
+  std::string sleep_exec_path;
+  ASSERT_TRUE(android::base::Realpath(path, &sleep_exec_path));
+  // --include-filter doesn't apply to cpu-cycles.
+  ASSERT_FALSE(RunRecordCmd({"--include-filter", sleep_exec_path}));
+  TemporaryFile record_file;
+  ASSERT_TRUE(
+      RunRecordCmd({"-e", "cs-etm", "--include-filter", sleep_exec_path}, record_file.path));
+  TemporaryFile inject_file;
+  ASSERT_TRUE(
+      CreateCommandInstance("inject")->Run({"-i", record_file.path, "-o", inject_file.path}));
+  std::string data;
+  ASSERT_TRUE(android::base::ReadFileToString(inject_file.path, &data));
+  // Only instructions in sleep_exec_path are traced.
+  for (auto& line : android::base::Split(data, "\n")) {
+    if (android::base::StartsWith(line, "dso ")) {
+      std::string dso = line.substr(strlen("dso "), sleep_exec_path.size());
+      ASSERT_EQ(dso, sleep_exec_path);
+    }
+  }
 }
