@@ -59,6 +59,7 @@ class EventFd {
   // It tells the kernel to start counting and recording events specified by
   // this file.
   bool SetEnableEvent(bool enable);
+  bool SetFilter(const std::string& filter);
 
   bool ReadCounter(PerfCounter* counter);
 

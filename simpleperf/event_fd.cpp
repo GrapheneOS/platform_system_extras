@@ -124,6 +124,14 @@ bool EventFd::SetEnableEvent(bool enable) {
   return true;
 }
 
+bool EventFd::SetFilter(const std::string& filter) {
+  bool success = ioctl(perf_event_fd_, PERF_EVENT_IOC_SET_FILTER, filter.c_str()) >= 0;
+  if (!success) {
+    PLOG(ERROR) << "failed to set filter";
+  }
+  return success;
+}
+
 bool EventFd::InnerReadCounter(PerfCounter* counter) const {
   CHECK(counter != nullptr);
   if (!android::base::ReadFully(perf_event_fd_, counter, sizeof(*counter))) {

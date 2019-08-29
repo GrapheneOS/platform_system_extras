@@ -140,6 +140,7 @@ bool ETMRecorder::ReadEtmInfo() {
           ReadValueInEtmDir(name + "/trcidr/trcidr0", &cpu_info.trcidr0) &&
           ReadValueInEtmDir(name + "/trcidr/trcidr1", &cpu_info.trcidr1) &&
           ReadValueInEtmDir(name + "/trcidr/trcidr2", &cpu_info.trcidr2) &&
+          ReadValueInEtmDir(name + "/trcidr/trcidr4", &cpu_info.trcidr4) &&
           ReadValueInEtmDir(name + "/trcidr/trcidr8", &cpu_info.trcidr8) &&
           ReadValueInEtmDir(name + "/mgmt/trcauthstatus", &cpu_info.trcauthstatus);
       if (!success) {
@@ -207,6 +208,18 @@ AuxTraceInfoRecord ETMRecorder::CreateAuxTraceInfoRecord() {
     e.trcauthstatus = p.second.trcauthstatus;
   }
   return AuxTraceInfoRecord(data, etm4_v);
+}
+
+size_t ETMRecorder::GetAddrFilterPairs() {
+  CHECK(etm_supported_);
+  size_t min_pairs = std::numeric_limits<size_t>::max();
+  for (auto& p : etm_info_) {
+    min_pairs = std::min<size_t>(min_pairs, GetBits(p.second.trcidr4, 0, 3));
+  }
+  if (min_pairs > 0) {
+    --min_pairs;  // One pair is used by the kernel to set default addr filter.
+  }
+  return min_pairs;
 }
 
 }  // namespace simpleperf
