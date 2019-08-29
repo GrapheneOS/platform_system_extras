@@ -72,6 +72,7 @@ static std::string BuildAttributeString(uint32_t attrs) {
     std::vector<std::string> strings;
     if (attrs & LP_PARTITION_ATTR_READONLY) strings.emplace_back("readonly");
     if (attrs & LP_PARTITION_ATTR_SLOT_SUFFIXED) strings.emplace_back("slot-suffixed");
+    if (attrs & LP_PARTITION_ATTR_UPDATED) strings.emplace_back("updated");
     return BuildFlagString(strings);
 }
 
