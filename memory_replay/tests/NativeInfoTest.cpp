@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-#include <gtest/gtest.h>
 #include <stdint.h>
 
 #include <string>
 
 #include <android-base/file.h>
+#include <gtest/gtest.h>
 
 #include "NativeInfo.h"
 
@@ -61,7 +61,7 @@ TEST_F(NativeInfoTest, no_matching) {
 
   size_t rss_bytes = 1;
   size_t va_bytes = 1;
-  GetNativeInfo(tmp_file_->fd, &rss_bytes, &va_bytes);
+  NativeGetInfo(tmp_file_->fd, &rss_bytes, &va_bytes);
   ASSERT_EQ(0U, rss_bytes);
   ASSERT_EQ(0U, va_bytes);
 }
@@ -122,7 +122,7 @@ TEST_F(NativeInfoTest, multiple_anons) {
 
   size_t rss_bytes = 1;
   size_t va_bytes = 1;
-  GetNativeInfo(tmp_file_->fd, &rss_bytes, &va_bytes);
+  NativeGetInfo(tmp_file_->fd, &rss_bytes, &va_bytes);
   ASSERT_EQ(32768U, rss_bytes);
   ASSERT_EQ(12288U, va_bytes);
 }
@@ -183,7 +183,7 @@ TEST_F(NativeInfoTest, multiple_heaps) {
 
   size_t rss_bytes = 1;
   size_t va_bytes = 1;
-  GetNativeInfo(tmp_file_->fd, &rss_bytes, &va_bytes);
+  NativeGetInfo(tmp_file_->fd, &rss_bytes, &va_bytes);
   ASSERT_EQ(45056U, rss_bytes);
   ASSERT_EQ(12288U, va_bytes);
 }
@@ -260,7 +260,7 @@ TEST_F(NativeInfoTest, mix_heap_anon) {
 
   size_t rss_bytes = 1;
   size_t va_bytes = 1;
-  GetNativeInfo(tmp_file_->fd, &rss_bytes, &va_bytes);
+  NativeGetInfo(tmp_file_->fd, &rss_bytes, &va_bytes);
   ASSERT_EQ(73728U, rss_bytes);
   ASSERT_EQ(12288U, va_bytes);
 }
