@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,15 @@
 
 #pragma once
 
-void NativeGetInfo(int smaps_fd, size_t* rss_bytes, size_t* va_bytes);
+#include <stdint.h>
 
-void NativePrintInfo(const char* preamble);
+#include <string>
 
-// Does not support any floating point specifiers.
-void NativePrintf(const char* fmt, ...) __printflike(1, 2);
+// Forward Declarations.
+struct AllocEntry;
 
-// Fill buffer as if %0.2f was chosen for value / divisor.
-void NativeFormatFloat(char* buffer, size_t buffer_len, uint64_t value, uint64_t divisor);
+std::string ZipGetContents(const char* filename);
+
+void ZipGetUnwindInfo(const char* filename, AllocEntry** entries, size_t* num_entries);
+
+void ZipFreeEntries(AllocEntry* entries, size_t num_entries);
