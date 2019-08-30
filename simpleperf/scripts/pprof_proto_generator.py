@@ -442,8 +442,8 @@ class PprofProfileGenerator(object):
         if not self.config.get('binary_cache_dir'):
             log_info("Can't generate line information because binary_cache is missing.")
             return
-        if not find_tool_path('addr2line', self.config['ndk_path']):
-            log_info("Can't generate line information because can't find addr2line.")
+        if not find_tool_path('llvm-symbolizer', self.config['ndk_path']):
+            log_info("Can't generate line information because can't find llvm-symbolizer.")
             return
         addr2line = Addr2Nearestline(self.config['ndk_path'], self.config['binary_cache_dir'], True)
 
