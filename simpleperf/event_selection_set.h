@@ -109,6 +109,9 @@ class EventSelectionSet {
   bool NeedKernelSymbol() const;
   void SetRecordNotExecutableMaps(bool record);
   bool RecordNotExecutableMaps() const;
+  void SetIncludeFilters(std::vector<std::string>&& filters) {
+    include_filters_ = std::move(filters);
+  }
 
   void AddMonitoredProcesses(const std::set<pid_t>& processes) {
     processes_.insert(processes.begin(), processes.end());
@@ -172,6 +175,7 @@ class EventSelectionSet {
                                     const std::map<pid_t, std::set<pid_t>>& process_map);
   bool OpenEventFilesOnGroup(EventSelectionGroup& group, pid_t tid, int cpu,
                              std::string* failed_event_type);
+  bool ApplyFilters();
   bool ReadMmapEventData(bool with_time_limit);
 
   bool DetectCpuHotplugEvents();
@@ -196,6 +200,7 @@ class EventSelectionSet {
   std::unique_ptr<simpleperf::RecordReadThread> record_read_thread_;
 
   bool has_aux_trace_ = false;
+  std::vector<std::string> include_filters_;
 
   DISALLOW_COPY_AND_ASSIGN(EventSelectionSet);
 };

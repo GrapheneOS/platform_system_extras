@@ -189,6 +189,9 @@ class RecordCommand : public Command {
 "--no-inherit  Don't record created child threads/processes.\n"
 "--cpu-percent <percent>  Set the max percent of cpu time used for recording.\n"
 "                         percent is in range [1-100], default is 25.\n"
+"--include-filter binary1,binary2,...\n"
+"                Trace only selected binaries in cs-etm instruction tracing.\n"
+"                Each entry is a binary path.\n"
 "\n"
 "Dwarf unwinding options:\n"
 "--post-unwind=(yes|no) If `--call-graph dwarf` option is used, then the user's\n"
@@ -825,6 +828,11 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       }
     } else if (args[i] == "--in-app") {
       in_app_context_ = true;
+    } else if (args[i] == "--include-filter") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      event_selection_set_.SetIncludeFilters(android::base::Split(args[i], ","));
     } else if (args[i] == "-j") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
