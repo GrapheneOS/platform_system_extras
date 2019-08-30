@@ -11,7 +11,7 @@ Format of dumps:
 <tid>
   The pid_t value that is the gettid() value recorded during the run.
 
-<action_name> 
+<action_name>
   One of:
     malloc - Allocate memory using the malloc function.
     calloc - Allocate memory using the calloc function.
