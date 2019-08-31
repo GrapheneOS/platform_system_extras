@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,23 +14,20 @@
  * limitations under the License.
  */
 
-#ifndef _MEMORY_REPLAY_LINE_BUFFER_H
-#define _MEMORY_REPLAY_LINE_BUFFER_H
+#pragma once
 
 #include <stdint.h>
+#include <time.h>
 
-class LineBuffer {
- public:
-  LineBuffer(int fd, char* buffer, size_t buffer_len);
+static __always_inline uint64_t Nanotime() {
+  struct timespec t = {};
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return static_cast<uint64_t>(t.tv_sec) * 1000000000LL + t.tv_nsec;
+}
 
-  bool GetLine(char** line, size_t* line_len);
-
- private:
-  int fd_;
-  char* buffer_ = nullptr;
-  size_t buffer_len_ = 0;
-  size_t start_ = 0;
-  size_t bytes_ = 0;
-};
-
-#endif // _MEMORY_REPLAY_LINE_BUFFER_H
+static __always_inline void MakeAllocationResident(void* ptr, size_t nbytes, int pagesize) {
+  uint8_t* data = reinterpret_cast<uint8_t*>(ptr);
+  for (size_t i = 0; i < nbytes; i += pagesize) {
+    data[i] = 1;
+  }
+}
