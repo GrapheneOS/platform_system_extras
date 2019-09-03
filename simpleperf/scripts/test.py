@@ -1016,7 +1016,7 @@ class TestTools(unittest.TestCase):
                 {
                     'func_addr': 0x840,
                     'addr': 0x840,
-                    'source': 'system/extras/simpleperf/runtest/two_functions.cpp:7',
+                    'source': 'system/extras/simpleperf/runtest/two_functions.cpp:6',
                     'function': 'Function1()',
                 },
                 {
@@ -1065,7 +1065,7 @@ class TestTools(unittest.TestCase):
                     expected_lines.append(int(items[1]))
                 for line in test_addr['function'].split('\n'):
                     expected_functions.append(line.strip())
-                self.assertEquals(len(expected_files), len(expected_functions))
+                self.assertEqual(len(expected_files), len(expected_functions))
 
                 actual_source = addr2line.get_addr_source(dso, test_addr['addr'])
                 self.assertTrue(actual_source is not None)
