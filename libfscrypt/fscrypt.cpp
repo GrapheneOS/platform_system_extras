@@ -16,24 +16,22 @@
 
 #include "fscrypt/fscrypt.h"
 
-#include <array>
-
+#include <android-base/file.h>
+#include <android-base/logging.h>
+#include <android-base/unique_fd.h>
 #include <asm/ioctl.h>
-#include <dirent.h>
+#include <cutils/properties.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/fs.h>
+#include <logwrap/logwrap.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-#include <android-base/file.h>
-#include <android-base/logging.h>
-#include <cutils/properties.h>
-#include <logwrap/logwrap.h>
 #include <utils/misc.h>
+
+#include <array>
 
 #define FS_KEY_DESCRIPTOR_SIZE_HEX (2 * FS_KEY_DESCRIPTOR_SIZE + 1)
 
@@ -78,36 +76,6 @@ static void policy_to_hex(const char* policy, char* hex) {
     hex[FS_KEY_DESCRIPTOR_SIZE_HEX - 1] = '\0';
 }
 
-static bool is_dir_empty(const char *dirname, bool *is_empty)
-{
-    int n = 0;
-    auto dirp = std::unique_ptr<DIR, int (*)(DIR*)>(opendir(dirname), closedir);
-    if (!dirp) {
-        PLOG(ERROR) << "Unable to read directory: " << dirname;
-        return false;
-    }
-    for (;;) {
-        errno = 0;
-        auto entry = readdir(dirp.get());
-        if (!entry) {
-            if (errno) {
-                PLOG(ERROR) << "Unable to read directory: " << dirname;
-                return false;
-            }
-            break;
-        }
-        if (strcmp(entry->d_name, "lost+found") != 0) { // Skip lost+found
-            ++n;
-            if (n > 2) {
-                *is_empty = false;
-                return true;
-            }
-        }
-    }
-    *is_empty = true;
-    return true;
-}
-
 static uint8_t fscrypt_get_policy_flags(int filenames_encryption_mode) {
     if (filenames_encryption_mode == FS_ENCRYPTION_MODE_AES_256_CTS) {
         // Use legacy padding with our original filenames encryption mode.
@@ -125,107 +93,9 @@ static uint8_t fscrypt_get_policy_flags(int filenames_encryption_mode) {
     return FS_POLICY_FLAGS_PAD_16;
 }
 
-static bool fscrypt_policy_set(const char *directory, const char *policy,
-                               size_t policy_length,
-                               int contents_encryption_mode,
-                               int filenames_encryption_mode) {
-    if (policy_length != FS_KEY_DESCRIPTOR_SIZE) {
-        LOG(ERROR) << "Policy wrong length: " << policy_length;
-        return false;
-    }
-    char policy_hex[FS_KEY_DESCRIPTOR_SIZE_HEX];
-    policy_to_hex(policy, policy_hex);
-
-    int fd = open(directory, O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-    if (fd == -1) {
-        PLOG(ERROR) << "Failed to open directory " << directory;
-        return false;
-    }
-
+static bool fscrypt_is_encrypted(int fd) {
     fscrypt_policy fp;
-    fp.version = 0;
-    fp.contents_encryption_mode = contents_encryption_mode;
-    fp.filenames_encryption_mode = filenames_encryption_mode;
-    fp.flags = fscrypt_get_policy_flags(filenames_encryption_mode);
-    memcpy(fp.master_key_descriptor, policy, FS_KEY_DESCRIPTOR_SIZE);
-    if (ioctl(fd, FS_IOC_SET_ENCRYPTION_POLICY, &fp)) {
-        PLOG(ERROR) << "Failed to set encryption policy for " << directory  << " to " << policy_hex
-            << " modes " << contents_encryption_mode << "/" << filenames_encryption_mode;
-        close(fd);
-        return false;
-    }
-    close(fd);
-
-    LOG(INFO) << "Policy for " << directory << " set to " << policy_hex
-        << " modes " << contents_encryption_mode << "/" << filenames_encryption_mode;
-    return true;
-}
-
-static bool fscrypt_policy_get(const char *directory, char *policy,
-                               size_t policy_length,
-                               int contents_encryption_mode,
-                               int filenames_encryption_mode) {
-    if (policy_length != FS_KEY_DESCRIPTOR_SIZE) {
-        LOG(ERROR) << "Policy wrong length: " << policy_length;
-        return false;
-    }
-
-    int fd = open(directory, O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-    if (fd == -1) {
-        PLOG(ERROR) << "Failed to open directory " << directory;
-        return false;
-    }
-
-    fscrypt_policy fp;
-    memset(&fp, 0, sizeof(fscrypt_policy));
-    if (ioctl(fd, FS_IOC_GET_ENCRYPTION_POLICY, &fp) != 0) {
-        PLOG(ERROR) << "Failed to get encryption policy for " << directory;
-        close(fd);
-        log_ls(directory);
-        return false;
-    }
-    close(fd);
-
-    if ((fp.version != 0)
-            || (fp.contents_encryption_mode != contents_encryption_mode)
-            || (fp.filenames_encryption_mode != filenames_encryption_mode)
-            || (fp.flags !=
-                fscrypt_get_policy_flags(filenames_encryption_mode))) {
-        LOG(ERROR) << "Failed to find matching encryption policy for " << directory;
-        return false;
-    }
-    memcpy(policy, fp.master_key_descriptor, FS_KEY_DESCRIPTOR_SIZE);
-
-    return true;
-}
-
-static bool fscrypt_policy_check(const char *directory, const char *policy,
-                                 size_t policy_length,
-                                 int contents_encryption_mode,
-                                 int filenames_encryption_mode) {
-    if (policy_length != FS_KEY_DESCRIPTOR_SIZE) {
-        LOG(ERROR) << "Policy wrong length: " << policy_length;
-        return false;
-    }
-    char existing_policy[FS_KEY_DESCRIPTOR_SIZE];
-    if (!fscrypt_policy_get(directory, existing_policy, FS_KEY_DESCRIPTOR_SIZE,
-                            contents_encryption_mode,
-                            filenames_encryption_mode)) return false;
-    char existing_policy_hex[FS_KEY_DESCRIPTOR_SIZE_HEX];
-
-    policy_to_hex(existing_policy, existing_policy_hex);
-
-    if (memcmp(policy, existing_policy, FS_KEY_DESCRIPTOR_SIZE) != 0) {
-        char policy_hex[FS_KEY_DESCRIPTOR_SIZE_HEX];
-        policy_to_hex(policy, policy_hex);
-        LOG(ERROR) << "Found policy " << existing_policy_hex << " at " << directory
-                   << " which doesn't match expected value " << policy_hex;
-        log_ls(directory);
-        return false;
-    }
-    LOG(INFO) << "Found policy " << existing_policy_hex << " at " << directory
-              << " which matches expected value";
-    return true;
+    return ioctl(fd, FS_IOC_GET_ENCRYPTION_POLICY, &fp) == 0;
 }
 
 int fscrypt_policy_ensure(const char *directory, const char *policy,
@@ -260,14 +130,55 @@ int fscrypt_policy_ensure(const char *directory, const char *policy,
         return -1;
     }
 
-    bool is_empty;
-    if (!is_dir_empty(directory, &is_empty)) return -1;
-    if (is_empty) {
-        if (!fscrypt_policy_set(directory, policy, policy_length,
-                                contents_mode, filenames_mode)) return -1;
+    if (policy_length != FS_KEY_DESCRIPTOR_SIZE) {
+        LOG(ERROR) << "Policy wrong length: " << policy_length;
+        return -1;
+    }
+    char policy_hex[FS_KEY_DESCRIPTOR_SIZE_HEX];
+    policy_to_hex(policy, policy_hex);
+
+    fscrypt_policy fp;
+    fp.version = 0;
+    fp.contents_encryption_mode = contents_mode;
+    fp.filenames_encryption_mode = filenames_mode;
+    fp.flags = fscrypt_get_policy_flags(filenames_mode);
+    memcpy(fp.master_key_descriptor, policy, FS_KEY_DESCRIPTOR_SIZE);
+
+    android::base::unique_fd fd(open(directory, O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+    if (fd == -1) {
+        PLOG(ERROR) << "Failed to open directory " << directory;
+        return -1;
+    }
+
+    bool already_encrypted = fscrypt_is_encrypted(fd);
+
+    // FS_IOC_SET_ENCRYPTION_POLICY will set the policy if the directory is
+    // unencrypted; otherwise it will verify that the existing policy matches.
+    // Setting the policy will fail if the directory is already nonempty.
+    if (ioctl(fd, FS_IOC_SET_ENCRYPTION_POLICY, &fp) != 0) {
+        std::string reason;
+        switch (errno) {
+            case EEXIST:
+                reason = "The directory already has a different encryption policy.";
+                break;
+            default:
+                reason = strerror(errno);
+                break;
+        }
+        LOG(ERROR) << "Failed to set encryption policy of " << directory << " to " << policy_hex
+                   << " modes " << contents_mode << "/" << filenames_mode << ": " << reason;
+        if (errno == ENOTEMPTY) {
+            log_ls(directory);
+        }
+        return -1;
+    }
+
+    if (already_encrypted) {
+        LOG(INFO) << "Verified that " << directory << " has the encryption policy " << policy_hex
+                  << " modes " << contents_mode << "/" << filenames_mode;
     } else {
-        if (!fscrypt_policy_check(directory, policy, policy_length,
-                                  contents_mode, filenames_mode)) return -1;
+        LOG(INFO) << "Encryption policy of " << directory << " set to " << policy_hex << " modes "
+                  << contents_mode << "/" << filenames_mode;
     }
     return 0;
 }
