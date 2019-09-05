@@ -41,16 +41,6 @@
 #define FS_ENCRYPTION_MODE_AES_256_HEH      126
 #define FS_ENCRYPTION_MODE_PRIVATE          127
 
-/* new definition, not yet in Bionic's <linux/fs.h> */
-#ifndef FS_ENCRYPTION_MODE_ADIANTUM
-#define FS_ENCRYPTION_MODE_ADIANTUM         9
-#endif
-
-/* new definition, not yet in Bionic's <linux/fs.h> */
-#ifndef FS_POLICY_FLAG_DIRECT_KEY
-#define FS_POLICY_FLAG_DIRECT_KEY           0x4
-#endif
-
 #define HEX_LOOKUP "0123456789abcdef"
 
 bool fscrypt_is_native() {
