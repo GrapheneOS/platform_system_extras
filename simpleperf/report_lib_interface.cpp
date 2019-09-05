@@ -293,7 +293,8 @@ void ReportLib::SetCurrentSample() {
   std::vector<std::pair<uint64_t, const MapEntry*>> ip_maps;
   bool near_java_method = false;
   auto is_map_for_interpreter = [](const MapEntry* map) {
-    return android::base::EndsWith(map->dso->Path(), "/libart.so");
+    return android::base::EndsWith(map->dso->Path(), "/libart.so") ||
+      android::base::EndsWith(map->dso->Path(), "/libartd.so");
   };
   for (size_t i = 0; i < ips.size(); ++i) {
     const MapEntry* map = thread_tree_.FindMap(current_thread_, ips[i], i < kernel_ip_count);
