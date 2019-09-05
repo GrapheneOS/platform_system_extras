@@ -469,7 +469,8 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     need_to_check_targets = true;
   }
   // Profiling JITed/interpreted Java code is supported starting from Android P.
-  if (GetAndroidVersion() >= kAndroidVersionP) {
+  // Also support profiling art interpreter on host.
+  if (GetAndroidVersion() >= kAndroidVersionP || GetAndroidVersion() == 0) {
     // JIT symfiles are stored in temporary files, and are deleted after recording. But if
     // `-g --no-unwind` option is used, we want to keep symfiles to support unwinding in
     // the debug-unwind cmd.
@@ -544,7 +545,7 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     if (!jit_debug_reader_->RegisterDebugInfoCallback(loop, callback)) {
       return false;
     }
-    if (!app_package_name_.empty()) {
+    if (!system_wide_collection_) {
       std::set<pid_t> pids = event_selection_set_.GetMonitoredProcesses();
       for (pid_t tid : event_selection_set_.GetMonitoredThreads()) {
         pid_t pid;
