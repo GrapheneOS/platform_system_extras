@@ -58,7 +58,8 @@ static int usage(int /* argc */, char* argv[], std::ostream& cerr) {
             "  -j, --json       Print in JSON format.\n"
             "  -d, --dump-metadata-size\n"
             "                   Print the space reserved for metadata to stdout\n"
-            "                   in bytes.\n";
+            "                   in bytes.\n"
+            "  -a, --all        Dump all slots (not available in JSON mode).\n";
     return EX_USAGE;
 }
 
@@ -336,6 +337,7 @@ static std::unique_ptr<LpMetadata> ReadDeviceOrFile(const std::string& path, uin
 int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
     // clang-format off
     struct option options[] = {
+        { "all", no_argument, nullptr, 'a' },
         { "slot", required_argument, nullptr, 's' },
         { "help", no_argument, nullptr, 'h' },
         { "json", no_argument, nullptr, 'j' },
@@ -352,9 +354,13 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
     int index;
     bool json = false;
     bool dump_metadata_size = false;
+    bool dump_all = false;
     std::optional<uint32_t> slot;
     while ((rv = getopt_long_only(argc, argv, "s:jhde", options, &index)) != -1) {
         switch (rv) {
+            case 'a':
+                dump_all = true;
+                break;
             case 'h':
                 usage(argc, argv, cerr);
                 return EX_OK;
@@ -380,6 +386,20 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
             case ':':
                 return usage(argc, argv, cerr);
         }
+    }
+
+    if (dump_all) {
+        if (slot.has_value()) {
+            cerr << "Cannot specify both --all and --slot.\n";
+            return usage(argc, argv, cerr);
+        }
+        if (json) {
+            cerr << "Cannot specify both --all and --json.\n";
+            return usage(argc, argv, cerr);
+        }
+
+        // When dumping everything always start from the first slot.
+        slot = 0;
     }
 
 #ifdef __ANDROID__
@@ -424,10 +444,36 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
         return DumpMetadataSize(*pt.get(), cout);
     }
 
+    // When running on the device, we can check the slot count. Otherwise we
+    // use the # of metadata slots. (There is an extra slot we don't want to
+    // dump because it is currently unused.)
+#ifdef __ANDROID__
+    uint32_t num_slots = slot_suffix.empty() ? 1 : 2;
+    if (dump_all && num_slots > 1) {
+        cout << "Current slot: " << slot_suffix << "\n";
+    }
+#else
+    uint32_t num_slots = pt->geometry.metadata_slot_count;
+#endif
+
     if (!IsEmptySuperImage(super_path)) {
+        // Empty images don't have slots per se, so only print this for actual
+        // images.
         cout << "Slot " << slot.value() << ":\n";
     }
     PrintMetadata(*pt.get(), cout);
+
+    if (dump_all && !IsEmptySuperImage(super_path)) {
+        for (uint32_t i = 1; i < num_slots; i++) {
+            pt = ReadDeviceOrFile(super_path, i);
+            if (!pt) {
+                continue;
+            }
+
+            cout << "\nSlot " << i << ":\n";
+            PrintMetadata(*pt.get(), cout);
+        }
+    }
     return EX_OK;
 }
 
