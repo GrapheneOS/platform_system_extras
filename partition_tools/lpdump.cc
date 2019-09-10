@@ -56,11 +56,10 @@ static int usage(int /* argc */, char* argv[], std::ostream& cerr) {
             "Options:\n"
             "  -s, --slot=N     Slot number or suffix.\n"
             "  -j, --json       Print in JSON format.\n"
-            "  -e, --is-super-empty\n"
-            "                   The given file is a super_empty.img.\n"
             "  -d, --dump-metadata-size\n"
             "                   Print the space reserved for metadata to stdout\n"
-            "                   in bytes.\n";
+            "                   in bytes.\n"
+            "  -a, --all        Dump all slots (not available in JSON mode).\n";
     return EX_USAGE;
 }
 
@@ -88,11 +87,6 @@ static std::string BuildBlockDeviceFlagString(uint32_t flags) {
     return BuildFlagString(strings);
 }
 
-static bool IsBlockDevice(const char* file) {
-    struct stat s;
-    return !stat(file, &s) && S_ISBLK(s.st_mode);
-}
-
 // Reimplementation of fs_mgr_get_slot_suffix() without reading
 // kernel commandline.
 static std::string GetSlotSuffix() {
@@ -101,7 +95,7 @@ static std::string GetSlotSuffix() {
 
 // Reimplementation of fs_mgr_get_super_partition_name() without reading
 // kernel commandline. Always return the super partition at current slot.
-static std::string GetSuperPartionName() {
+static std::string GetSuperPartitionName() {
     std::string super_partition = base::GetProperty("ro.boot.super_partition", "");
     if (super_partition.empty()) {
         return LP_METADATA_DEFAULT_PARTITION_NAME;
@@ -253,8 +247,8 @@ static int PrintJson(const LpMetadata* metadata, std::ostream& cout,
     return EX_OK;
 }
 
-static int DumpMetadataSize(const LpMetadata* metadata, std::ostream& cout) {
-    auto super_device = GetMetadataSuperBlockDevice(*metadata);
+static int DumpMetadataSize(const LpMetadata& metadata, std::ostream& cout) {
+    auto super_device = GetMetadataSuperBlockDevice(metadata);
     uint64_t metadata_size = super_device->first_logical_sector * LP_SECTOR_SIZE;
     cout << metadata_size << std::endl;
     return EX_OK;
@@ -277,9 +271,73 @@ public:
     }
 };
 
+static void PrintMetadata(const LpMetadata& pt, std::ostream& cout) {
+    cout << "Metadata version: " << pt.header.major_version << "." << pt.header.minor_version
+         << "\n";
+    cout << "Metadata size: " << (pt.header.header_size + pt.header.tables_size) << " bytes\n";
+    cout << "Metadata max size: " << pt.geometry.metadata_max_size << " bytes\n";
+    cout << "Metadata slot count: " << pt.geometry.metadata_slot_count << "\n";
+    cout << "Partition table:\n";
+    cout << "------------------------\n";
+
+    for (const auto& partition : pt.partitions) {
+        std::string name = GetPartitionName(partition);
+        std::string group_name = GetPartitionGroupName(pt.groups[partition.group_index]);
+        cout << "  Name: " << name << "\n";
+        cout << "  Group: " << group_name << "\n";
+        cout << "  Attributes: " << BuildAttributeString(partition.attributes) << "\n";
+        cout << "  Extents:\n";
+        uint64_t first_sector = 0;
+        for (size_t i = 0; i < partition.num_extents; i++) {
+            const LpMetadataExtent& extent = pt.extents[partition.first_extent_index + i];
+            cout << "    " << first_sector << " .. " << (first_sector + extent.num_sectors - 1)
+                 << " ";
+            first_sector += extent.num_sectors;
+            if (extent.target_type == LP_TARGET_TYPE_LINEAR) {
+                const auto& block_device = pt.block_devices[extent.target_source];
+                std::string device_name = GetBlockDevicePartitionName(block_device);
+                cout << "linear " << device_name.c_str() << " " << extent.target_data;
+            } else if (extent.target_type == LP_TARGET_TYPE_ZERO) {
+                cout << "zero";
+            }
+            cout << "\n";
+        }
+        cout << "------------------------\n";
+    }
+
+    cout << "Block device table:\n";
+    cout << "------------------------\n";
+    for (const auto& block_device : pt.block_devices) {
+        std::string partition_name = GetBlockDevicePartitionName(block_device);
+        cout << "  Partition name: " << partition_name << "\n";
+        cout << "  First sector: " << block_device.first_logical_sector << "\n";
+        cout << "  Size: " << block_device.size << " bytes\n";
+        cout << "  Flags: " << BuildBlockDeviceFlagString(block_device.flags) << "\n";
+        cout << "------------------------\n";
+    }
+
+    cout << "Group table:\n";
+    cout << "------------------------\n";
+    for (const auto& group : pt.groups) {
+        std::string group_name = GetPartitionGroupName(group);
+        cout << "  Name: " << group_name << "\n";
+        cout << "  Maximum size: " << group.maximum_size << " bytes\n";
+        cout << "  Flags: " << BuildGroupFlagString(group.flags) << "\n";
+        cout << "------------------------\n";
+    }
+}
+
+static std::unique_ptr<LpMetadata> ReadDeviceOrFile(const std::string& path, uint32_t slot) {
+    if (IsEmptySuperImage(path)) {
+        return ReadFromImageFile(path);
+    }
+    return ReadMetadata(path, slot);
+}
+
 int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
     // clang-format off
     struct option options[] = {
+        { "all", no_argument, nullptr, 'a' },
         { "slot", required_argument, nullptr, 's' },
         { "help", no_argument, nullptr, 'h' },
         { "json", no_argument, nullptr, 'j' },
@@ -294,22 +352,29 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
 
     int rv;
     int index;
-    uint32_t slot = 0;
     bool json = false;
-    bool is_empty = false;
     bool dump_metadata_size = false;
+    bool dump_all = false;
+    std::optional<uint32_t> slot;
     while ((rv = getopt_long_only(argc, argv, "s:jhde", options, &index)) != -1) {
         switch (rv) {
+            case 'a':
+                dump_all = true;
+                break;
             case 'h':
                 usage(argc, argv, cerr);
                 return EX_OK;
-            case 's':
-                if (!android::base::ParseUint(optarg, &slot)) {
+            case 's': {
+                uint32_t slot_arg;
+                if (android::base::ParseUint(optarg, &slot_arg)) {
+                    slot = slot_arg;
+                } else {
                     slot = SlotNumberForSlotSuffix(optarg);
                 }
                 break;
+            }
             case 'e':
-                is_empty = true;
+                // This is ignored, we now derive whether it's empty automatically.
                 break;
             case 'd':
                 dump_metadata_size = true;
@@ -323,27 +388,47 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
         }
     }
 
-    std::unique_ptr<LpMetadata> pt;
-    if (optind < argc) {
-        FileOrBlockDeviceOpener opener;
-        const char* file = argv[optind++];
-        if (!is_empty) {
-            pt = ReadMetadata(opener, file, slot);
-        }
-        if (!pt && !IsBlockDevice(file)) {
-            pt = ReadFromImageFile(file);
-        }
-    } else {
-#ifdef __ANDROID__
-        if (is_empty) {
+    if (dump_all) {
+        if (slot.has_value()) {
+            cerr << "Cannot specify both --all and --slot.\n";
             return usage(argc, argv, cerr);
         }
-        auto slot_number = SlotNumberForSlotSuffix(GetSlotSuffix());
-        pt = ReadMetadata(GetSuperPartionName(), slot_number);
+        if (json) {
+            cerr << "Cannot specify both --all and --json.\n";
+            return usage(argc, argv, cerr);
+        }
+
+        // When dumping everything always start from the first slot.
+        slot = 0;
+    }
+
+#ifdef __ANDROID__
+    // Use the current slot as a default for A/B devices.
+    auto slot_suffix = GetSlotSuffix();
+    if (!slot.has_value() && !slot_suffix.empty()) {
+        slot = SlotNumberForSlotSuffix(slot_suffix);
+    }
+#endif
+
+    // If we still haven't determined a slot yet, use the first one.
+    if (!slot.has_value()) {
+        slot = 0;
+    }
+
+    // Determine the path to the super partition (or image).
+    std::string super_path;
+    if (optind < argc) {
+        super_path = argv[optind++];
+    } else {
+#ifdef __ANDROID__
+        super_path = GetSuperPartitionName();
 #else
+        cerr << "Must specify a super partition image.\n";
         return usage(argc, argv, cerr);
 #endif
     }
+
+    auto pt = ReadDeviceOrFile(super_path, slot.value());
 
     // --json option doesn't require metadata to be present.
     if (json) {
@@ -356,63 +441,39 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
     }
 
     if (dump_metadata_size) {
-        return DumpMetadataSize(pt.get(), cout);
+        return DumpMetadataSize(*pt.get(), cout);
     }
 
-    cout << "Metadata version: " << pt->header.major_version << "." << pt->header.minor_version
-         << "\n";
-    cout << "Metadata size: " << (pt->header.header_size + pt->header.tables_size) << " bytes\n";
-    cout << "Metadata max size: " << pt->geometry.metadata_max_size << " bytes\n";
-    cout << "Metadata slot count: " << pt->geometry.metadata_slot_count << "\n";
-    cout << "Partition table:\n";
-    cout << "------------------------\n";
+    // When running on the device, we can check the slot count. Otherwise we
+    // use the # of metadata slots. (There is an extra slot we don't want to
+    // dump because it is currently unused.)
+#ifdef __ANDROID__
+    uint32_t num_slots = slot_suffix.empty() ? 1 : 2;
+    if (dump_all && num_slots > 1) {
+        cout << "Current slot: " << slot_suffix << "\n";
+    }
+#else
+    uint32_t num_slots = pt->geometry.metadata_slot_count;
+#endif
 
-    for (const auto& partition : pt->partitions) {
-        std::string name = GetPartitionName(partition);
-        std::string group_name = GetPartitionGroupName(pt->groups[partition.group_index]);
-        cout << "  Name: " << name << "\n";
-        cout << "  Group: " << group_name << "\n";
-        cout << "  Attributes: " << BuildAttributeString(partition.attributes) << "\n";
-        cout << "  Extents:\n";
-        uint64_t first_sector = 0;
-        for (size_t i = 0; i < partition.num_extents; i++) {
-            const LpMetadataExtent& extent = pt->extents[partition.first_extent_index + i];
-            cout << "    " << first_sector << " .. " << (first_sector + extent.num_sectors - 1)
-                 << " ";
-            first_sector += extent.num_sectors;
-            if (extent.target_type == LP_TARGET_TYPE_LINEAR) {
-                const auto& block_device = pt->block_devices[extent.target_source];
-                std::string device_name = GetBlockDevicePartitionName(block_device);
-                cout << "linear " << device_name.c_str() << " " << extent.target_data;
-            } else if (extent.target_type == LP_TARGET_TYPE_ZERO) {
-                cout << "zero";
+    if (!IsEmptySuperImage(super_path)) {
+        // Empty images don't have slots per se, so only print this for actual
+        // images.
+        cout << "Slot " << slot.value() << ":\n";
+    }
+    PrintMetadata(*pt.get(), cout);
+
+    if (dump_all && !IsEmptySuperImage(super_path)) {
+        for (uint32_t i = 1; i < num_slots; i++) {
+            pt = ReadDeviceOrFile(super_path, i);
+            if (!pt) {
+                continue;
             }
-            cout << "\n";
+
+            cout << "\nSlot " << i << ":\n";
+            PrintMetadata(*pt.get(), cout);
         }
-        cout << "------------------------\n";
     }
-
-    cout << "Block device table:\n";
-    cout << "------------------------\n";
-    for (const auto& block_device : pt->block_devices) {
-        std::string partition_name = GetBlockDevicePartitionName(block_device);
-        cout << "  Partition name: " << partition_name << "\n";
-        cout << "  First sector: " << block_device.first_logical_sector << "\n";
-        cout << "  Size: " << block_device.size << " bytes\n";
-        cout << "  Flags: " << BuildBlockDeviceFlagString(block_device.flags) << "\n";
-        cout << "------------------------\n";
-    }
-
-    cout << "Group table:\n";
-    cout << "------------------------\n";
-    for (const auto& group : pt->groups) {
-        std::string group_name = GetPartitionGroupName(group);
-        cout << "  Name: " << group_name << "\n";
-        cout << "  Maximum size: " << group.maximum_size << " bytes\n";
-        cout << "  Flags: " << BuildGroupFlagString(group.flags) << "\n";
-        cout << "------------------------\n";
-    }
-
     return EX_OK;
 }
 
