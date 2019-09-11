@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 
 // This file provides a wrapper for getenv that appends the userid (geteuid())
@@ -38,5 +39,6 @@ __attribute__((weak)) char *__wrap_getenv(const char *name) {
   }
 
   sprintf(modified_gcov_prefix, "%s/%u", __real_getenv(name), geteuid());
+  mkdir(modified_gcov_prefix, 0777);
   return modified_gcov_prefix;
 }
