@@ -95,10 +95,13 @@ static std::string GetSlotSuffix() {
 
 // Reimplementation of fs_mgr_get_super_partition_name() without reading
 // kernel commandline. Always return the super partition at current slot.
-static std::string GetSuperPartitionName() {
+static std::string GetSuperPartitionName(const std::optional<uint32_t>& slot = {}) {
     std::string super_partition = base::GetProperty("ro.boot.super_partition", "");
     if (super_partition.empty()) {
         return LP_METADATA_DEFAULT_PARTITION_NAME;
+    }
+    if (slot.has_value()) {
+        return super_partition + SlotSuffixForSlotNumber(slot.value());
     }
     return super_partition + GetSlotSuffix();
 }
@@ -404,9 +407,9 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
 
 #ifdef __ANDROID__
     // Use the current slot as a default for A/B devices.
-    auto slot_suffix = GetSlotSuffix();
-    if (!slot.has_value() && !slot_suffix.empty()) {
-        slot = SlotNumberForSlotSuffix(slot_suffix);
+    auto current_slot_suffix = GetSlotSuffix();
+    if (!slot.has_value() && !current_slot_suffix.empty()) {
+        slot = SlotNumberForSlotSuffix(current_slot_suffix);
     }
 #endif
 
@@ -415,13 +418,16 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
         slot = 0;
     }
 
-    // Determine the path to the super partition (or image).
+    // Determine the path to the super partition (or image). If an explicit
+    // path is given, we use it for everything. Otherwise, we will infer it
+    // at the time we need to read metadata.
     std::string super_path;
-    if (optind < argc) {
+    bool override_super_name = (optind < argc);
+    if (override_super_name) {
         super_path = argv[optind++];
     } else {
 #ifdef __ANDROID__
-        super_path = GetSuperPartitionName();
+        super_path = GetSuperPartitionName(slot);
 #else
         cerr << "Must specify a super partition image.\n";
         return usage(argc, argv, cerr);
@@ -448,23 +454,29 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
     // use the # of metadata slots. (There is an extra slot we don't want to
     // dump because it is currently unused.)
 #ifdef __ANDROID__
-    uint32_t num_slots = slot_suffix.empty() ? 1 : 2;
+    uint32_t num_slots = current_slot_suffix.empty() ? 1 : 2;
     if (dump_all && num_slots > 1) {
-        cout << "Current slot: " << slot_suffix << "\n";
+        cout << "Current slot: " << current_slot_suffix << "\n";
     }
 #else
     uint32_t num_slots = pt->geometry.metadata_slot_count;
 #endif
+    // Empty images only have one slot.
+    if (IsEmptySuperImage(super_path)) {
+        num_slots = 1;
+    }
 
-    if (!IsEmptySuperImage(super_path)) {
-        // Empty images don't have slots per se, so only print this for actual
-        // images.
+    if (num_slots > 1) {
         cout << "Slot " << slot.value() << ":\n";
     }
     PrintMetadata(*pt.get(), cout);
 
-    if (dump_all && !IsEmptySuperImage(super_path)) {
+    if (dump_all) {
         for (uint32_t i = 1; i < num_slots; i++) {
+            if (!override_super_name) {
+                super_path = GetSuperPartitionName(i);
+            }
+
             pt = ReadDeviceOrFile(super_path, i);
             if (!pt) {
                 continue;
