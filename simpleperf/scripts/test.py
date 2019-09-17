@@ -1489,6 +1489,10 @@ class TestPprofProtoGenerator(TestBase):
         self.assertNotIn(key1, output)
         self.assertIn(key2, output)
 
+    def test_build_id(self):
+        """ Test the build ids generated are not padded with zeros. """
+        self.assertIn('build_id: e3e938cc9e40de2cfe1a5ac7595897de(', self.run_generator())
+
 
 def get_all_tests():
     tests = []

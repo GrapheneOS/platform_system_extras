@@ -30,8 +30,8 @@ import os
 import os.path
 
 from simpleperf_report_lib import ReportLib
-from utils import Addr2Nearestline, extant_dir, find_tool_path, flatten_arg_list
-from utils import log_info, log_exit
+from utils import Addr2Nearestline, extant_dir, find_real_dso_path, find_tool_path, flatten_arg_list
+from utils import log_info, log_exit, ReadElf
 try:
     import profile_pb2
 except ImportError:
@@ -281,6 +281,8 @@ class PprofProfileGenerator(object):
         self.mapping_list = []
         self.function_map = {}
         self.function_list = []
+        self.build_id_map = {}  # map from filename to build_id
+        self.read_elf = ReadElf(self.config['ndk_path'])
 
     def gen(self):
         # 1. Process all samples in perf.data, aggregate samples.
@@ -395,9 +397,7 @@ class PprofProfileGenerator(object):
 
     def get_mapping_id(self, report_mapping, filename):
         filename_id = self.get_string_id(filename)
-        build_id = self.lib.GetBuildIdForPath(filename)
-        if build_id and build_id[0:2] == "0x":
-            build_id = build_id[2:]
+        build_id = self.get_build_id(filename)
         build_id_id = self.get_string_id(build_id)
         mapping = Mapping(report_mapping.start, report_mapping.end,
                           report_mapping.pgoff, filename_id, build_id_id)
@@ -409,6 +409,29 @@ class PprofProfileGenerator(object):
         self.mapping_list.append(mapping)
         self.mapping_map[mapping.key] = mapping
         return mapping.id
+
+    def get_build_id(self, filename):
+        build_id = self.build_id_map.get(filename)
+        if build_id is None:
+            build_id = ''
+            # The build ids in perf.data are padded to 20 bytes, but pprof needs without padding.
+            # So read build id from the binary in binary_cache, and check it with build id in
+            # perf.data.
+            build_id_in_perf_data = self.lib.GetBuildIdForPath(filename)
+            if build_id_in_perf_data:
+                elf_path = find_real_dso_path(filename, self.config['binary_cache_dir'])
+                if elf_path:
+                    elf_build_id = self.read_elf.get_build_id(elf_path, False)
+                    if build_id_in_perf_data == self.read_elf.pad_build_id(elf_build_id):
+                        build_id = elf_build_id
+                if not build_id and build_id_in_perf_data.startswith('0x'):
+                    # Fallback to the way used by TrimZeroesFromBuildIDString() in quipper.
+                    build_id = build_id_in_perf_data[2:]  # remove '0x'
+                    padding = '0' * 8
+                    while build_id.endswith(padding):
+                        build_id = build_id[:-len(padding)]
+            self.build_id_map[filename] = build_id
+        return build_id
 
     def get_mapping(self, mapping_id):
         return self.mapping_list[mapping_id - 1] if mapping_id > 0 else None
