@@ -380,8 +380,6 @@ def is_elf_file(path):
 
 def find_real_dso_path(dso_path_in_record_file, binary_cache_path):
     """ Given the path of a shared library in perf.data, find its real path in the file system. """
-    if dso_path_in_record_file[0] != '/' or dso_path_in_record_file == '//anon':
-        return None
     if binary_cache_path:
         tmp_path = os.path.join(binary_cache_path, dso_path_in_record_file[1:])
         if is_elf_file(tmp_path):
