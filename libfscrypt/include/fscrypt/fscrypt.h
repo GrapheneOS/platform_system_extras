@@ -32,6 +32,7 @@ int fscrypt_policy_ensure(const char *directory, const char *policy,
 
 static const char* fscrypt_unencrypted_folder = "/unencrypted";
 static const char* fscrypt_key_ref = "/unencrypted/ref";
+static const char* fscrypt_key_per_boot_ref = "/unencrypted/per_boot_ref";
 static const char* fscrypt_key_mode = "/unencrypted/mode";
 
 __END_DECLS
