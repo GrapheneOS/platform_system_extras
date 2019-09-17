@@ -755,7 +755,7 @@ class ReadElf(object):
                 pass
         return 'unknown'
 
-    def get_build_id(self, elf_file_path):
+    def get_build_id(self, elf_file_path, with_padding=True):
         """ Get build id of an elf file. """
         if is_elf_file(elf_file_path):
             try:
@@ -764,15 +764,21 @@ class ReadElf(object):
                 result = re.search(r'Build ID:\s*(\S+)', output)
                 if result:
                     build_id = result.group(1)
-                    if len(build_id) < 40:
-                        build_id += '0' * (40 - len(build_id))
-                    else:
-                        build_id = build_id[:40]
-                    build_id = '0x' + build_id
+                    if with_padding:
+                        build_id = self.pad_build_id(build_id)
                     return build_id
             except subprocess.CalledProcessError:
                 pass
         return ""
+
+    @staticmethod
+    def pad_build_id(build_id):
+        """ Pad build id to 40 hex numbers (20 bytes). """
+        if len(build_id) < 40:
+            build_id += '0' * (40 - len(build_id))
+        else:
+            build_id = build_id[:40]
+        return '0x' + build_id
 
     def get_sections(self, elf_file_path):
         """ Get sections of an elf file. """
