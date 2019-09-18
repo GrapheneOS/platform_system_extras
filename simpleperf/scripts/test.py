@@ -578,8 +578,13 @@ class TestExampleWithNative(TestExampleBase):
              "__start_thread"])
 
     def test_pprof_proto_generator(self):
+        check_strings_with_lines = [
+            "native-lib.cpp",
+            "BusyLoopThread",
+            # Check if dso name in perf.data is replaced by binary path in binary_cache.
+            'filename: binary_cache/data/app/com.example.simpleperf.simpleperfexamplewithnative-']
         self.common_test_pprof_proto_generator(
-            check_strings_with_lines=["native-lib.cpp", "BusyLoopThread"],
+            check_strings_with_lines,
             check_strings_without_lines=["BusyLoopThread"])
 
     def test_inferno(self):
@@ -1488,6 +1493,10 @@ class TestPprofProtoGenerator(TestBase):
         output = self.run_generator(['--comm', 'e.sample.tunnel'])
         self.assertNotIn(key1, output)
         self.assertIn(key2, output)
+
+    def test_build_id(self):
+        """ Test the build ids generated are not padded with zeros. """
+        self.assertIn('build_id: e3e938cc9e40de2cfe1a5ac7595897de(', self.run_generator())
 
 
 def get_all_tests():
