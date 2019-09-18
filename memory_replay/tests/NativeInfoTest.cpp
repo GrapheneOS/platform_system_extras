@@ -253,7 +253,24 @@ TEST_F(NativeInfoTest, mix_heap_anon) {
       "KernelPageSize:        4 kB\n"
       "MMUPageSize:           4 kB\n"
       "Locked:                0 kB\n"
-      "Name:\n";
+      "Name:\n"
+      "b6f4e000-b6f6f000 rw-p 00000000 00:00 0          [anon:scudo:test]\n"
+      "Size:                  8 kB\n"
+      "Rss:                   52 kB\n"
+      "Pss:                   0 kB\n"
+      "Shared_Clean:          0 kB\n"
+      "Shared_Dirty:          0 kB\n"
+      "Private_Clean:         0 kB\n"
+      "Private_Dirty:         0 kB\n"
+      "Referenced:            0 kB\n"
+      "Anonymous:             0 kB\n"
+      "AnonHugePages:         0 kB\n"
+      "Swap:                  0 kB\n"
+      "KernelPageSize:        4 kB\n"
+      "MMUPageSize:           4 kB\n"
+      "Locked:                0 kB\n"
+      "Name:           [anon:scudo:test]\n";
+
   ASSERT_TRUE(TEMP_FAILURE_RETRY(
       write(tmp_file_->fd, smaps_data.c_str(), smaps_data.size())) != -1);
   ASSERT_TRUE(lseek(tmp_file_->fd, 0, SEEK_SET) != off_t(-1));
@@ -261,6 +278,6 @@ TEST_F(NativeInfoTest, mix_heap_anon) {
   size_t rss_bytes = 1;
   size_t va_bytes = 1;
   NativeGetInfo(tmp_file_->fd, &rss_bytes, &va_bytes);
-  ASSERT_EQ(73728U, rss_bytes);
-  ASSERT_EQ(12288U, va_bytes);
+  EXPECT_EQ(126976U, rss_bytes);
+  EXPECT_EQ(147456U, va_bytes);
 }
