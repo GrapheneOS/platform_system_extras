@@ -578,8 +578,13 @@ class TestExampleWithNative(TestExampleBase):
              "__start_thread"])
 
     def test_pprof_proto_generator(self):
+        check_strings_with_lines = [
+            "native-lib.cpp",
+            "BusyLoopThread",
+            # Check if dso name in perf.data is replaced by binary path in binary_cache.
+            'filename: binary_cache/data/app/com.example.simpleperf.simpleperfexamplewithnative-']
         self.common_test_pprof_proto_generator(
-            check_strings_with_lines=["native-lib.cpp", "BusyLoopThread"],
+            check_strings_with_lines,
             check_strings_without_lines=["BusyLoopThread"])
 
     def test_inferno(self):
