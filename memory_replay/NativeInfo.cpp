@@ -75,7 +75,8 @@ void NativeGetInfo(int smaps_fd, size_t* rss_bytes, size_t* va_bytes) {
       if (sscanf(&buf[buf_start], "%" SCNxPTR "-%" SCNxPTR " %*4s %*x %*x:%*x %*d %n", &start, &end,
                  &name_pos) == 2) {
         char* map_name = &buf[buf_start + name_pos];
-        if (strcmp(map_name, "[anon:libc_malloc]") == 0 || strcmp(map_name, "[heap]") == 0) {
+        if (strcmp(map_name, "[anon:libc_malloc]") == 0 || strcmp(map_name, "[heap]") == 0 ||
+            strncmp(map_name, "[anon:scudo:", 12) == 0) {
           total_va_bytes += end - start;
           native_map = true;
         } else {
