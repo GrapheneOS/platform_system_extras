@@ -48,6 +48,10 @@ python_binary_host {
         "mkuserimg_mke2fs.py",
     ],
 
+    data: [
+        "mke2fs.conf",
+    ],
+
     version: {
         py2: {
             enabled: true,
