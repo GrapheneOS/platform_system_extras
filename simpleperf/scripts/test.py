@@ -63,6 +63,8 @@ from utils import str_to_bytes
 try:
     # pylint: disable=unused-import
     import google.protobuf
+    # pylint: disable=ungrouped-imports
+    from pprof_proto_generator import load_pprof_profile
     HAS_GOOGLE_PROTOBUF = True
 except ImportError:
     HAS_GOOGLE_PROTOBUF = False
@@ -1527,6 +1529,20 @@ class TestPprofProtoGenerator(TestBase):
     def test_build_id(self):
         """ Test the build ids generated are not padded with zeros. """
         self.assertIn('build_id: e3e938cc9e40de2cfe1a5ac7595897de(', self.run_generator())
+
+    def test_location_address(self):
+        """ Test if the address of a location is within the memory range of the corresponding
+            mapping.
+        """
+        self.run_cmd(['pprof_proto_generator.py', '-i',
+                      os.path.join('testdata', 'perf_with_interpreter_frames.data')])
+
+        profile = load_pprof_profile('pprof.profile')
+        # pylint: disable=no-member
+        for location in profile.location:
+            mapping = profile.mapping[location.mapping_id - 1]
+            self.assertLessEqual(mapping.memory_start, location.address)
+            self.assertGreaterEqual(mapping.memory_limit, location.address)
 
 
 def get_all_tests():
