@@ -23,6 +23,7 @@
 #include <sysexits.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <iostream>
 #include <optional>
 #include <regex>
@@ -274,6 +275,16 @@ public:
     }
 };
 
+std::optional<std::tuple<std::string, uint64_t>>
+ParseLinearExtentData(const LpMetadata& pt, const LpMetadataExtent& extent) {
+    if (extent.target_type != LP_TARGET_TYPE_LINEAR) {
+        return std::nullopt;
+    }
+    const auto& block_device = pt.block_devices[extent.target_source];
+    std::string device_name = GetBlockDevicePartitionName(block_device);
+    return std::make_tuple(std::move(device_name), extent.target_data);
+}
+
 static void PrintMetadata(const LpMetadata& pt, std::ostream& cout) {
     cout << "Metadata version: " << pt.header.major_version << "." << pt.header.minor_version
          << "\n";
@@ -282,6 +293,8 @@ static void PrintMetadata(const LpMetadata& pt, std::ostream& cout) {
     cout << "Metadata slot count: " << pt.geometry.metadata_slot_count << "\n";
     cout << "Partition table:\n";
     cout << "------------------------\n";
+
+    std::vector<std::tuple<std::string, const LpMetadataExtent*>> extents;
 
     for (const auto& partition : pt.partitions) {
         std::string name = GetPartitionName(partition);
@@ -303,10 +316,28 @@ static void PrintMetadata(const LpMetadata& pt, std::ostream& cout) {
             } else if (extent.target_type == LP_TARGET_TYPE_ZERO) {
                 cout << "zero";
             }
+            extents.push_back(std::make_tuple(name, &extent));
             cout << "\n";
         }
         cout << "------------------------\n";
     }
+
+    std::sort(extents.begin(), extents.end(), [&](const auto& x, const auto& y) {
+        auto x_data = ParseLinearExtentData(pt, *std::get<1>(x));
+        auto y_data = ParseLinearExtentData(pt, *std::get<1>(y));
+        return x_data < y_data;
+    });
+
+    cout << "Super partition layout:\n";
+    cout << "------------------------\n";
+    for (auto&& [name, extent] : extents) {
+        auto data = ParseLinearExtentData(pt, *extent);
+        if (!data) continue;
+        auto&& [block_device, offset] = *data;
+        cout << block_device << ": " << offset << " .. " << (offset + extent->num_sectors)
+             << ": " << name << " (" << extent->num_sectors << " sectors)\n";
+    }
+    cout << "------------------------\n";
 
     cout << "Block device table:\n";
     cout << "------------------------\n";
