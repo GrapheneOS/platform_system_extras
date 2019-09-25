@@ -51,7 +51,7 @@ static void log_ls(const char* dirname) {
     std::array<const char*, 3> argv = {"ls", "-laZ", dirname};
     int status = 0;
     auto res =
-        android_fork_execvp(argv.size(), const_cast<char**>(argv.data()), &status, false, true);
+        logwrap_fork_execvp(argv.size(), argv.data(), &status, false, LOG_ALOG, false, nullptr);
     if (res != 0) {
         PLOG(ERROR) << argv[0] << " " << argv[1] << " " << argv[2] << "failed";
         return;
