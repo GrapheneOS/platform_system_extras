@@ -143,7 +143,7 @@ static bool puncture_fs (const char * const path, const u64 total_size,
     u64 starting_max = 0;
     u64 ending_max = increments;
     char stay_dir[FILENAME_MAX], delete_dir[FILENAME_MAX];
-    char *rm_bin_argv[] = { "/system/bin/rm", "-rf", ""};
+    const char* rm_bin_argv[] = { "/system/bin/rm", "-rf", ""};
     u64 file_id = 1;
     char *base_file_data;
     u64 i = 0;
@@ -190,8 +190,8 @@ static bool puncture_fs (const char * const path, const u64 total_size,
     fprintf(stderr, "\rSTAGE 2/2: 0%% Complete");
     free(base_file_data);
     rm_bin_argv[2] = delete_dir;
-    if (android_fork_execvp_ext(ARRAY_SIZE(rm_bin_argv), rm_bin_argv,
-                                NULL, 1, LOG_KLOG, 0, NULL, NULL, 0) < 0) {
+    if (logwrap_fork_execvp(ARRAY_SIZE(rm_bin_argv), rm_bin_argv, nullptr,
+                            false, LOG_KLOG, false, nullptr) < 0) {
         fprintf(stderr, "\nFailed to delete %s\n", rm_bin_argv[2]);
         return false;
     }
