@@ -389,12 +389,11 @@ TEST(record_cmd, kernel_symbol) {
   ASSERT_TRUE(success);
 }
 
-// Check if dumped symbols in perf.data matches our expectation.
-static bool CheckDumpedSymbols(const std::string& path, bool allow_dumped_symbols) {
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(path);
-  if (!reader) {
-    return false;
-  }
+static void ProcessSymbolsInPerfDataFile(
+    const std::string& perf_data_file,
+    const std::function<bool(const Symbol&, uint32_t)>& callback) {
+  auto reader = RecordFileReader::CreateInstance(perf_data_file);
+  ASSERT_TRUE(reader);
   std::string file_path;
   uint32_t file_type;
   uint64_t min_vaddr;
@@ -402,13 +401,24 @@ static bool CheckDumpedSymbols(const std::string& path, bool allow_dumped_symbol
   std::vector<Symbol> symbols;
   std::vector<uint64_t> dex_file_offsets;
   size_t read_pos = 0;
-  bool has_dumped_symbols = false;
   while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr,
                                  &file_offset_of_min_vaddr, &symbols, &dex_file_offsets)) {
-    if (!symbols.empty()) {
-      has_dumped_symbols = true;
+    for (const auto& symbol : symbols) {
+      if (callback(symbol, file_type)) {
+        return;
+      }
     }
   }
+}
+
+// Check if dumped symbols in perf.data matches our expectation.
+static bool CheckDumpedSymbols(const std::string& path, bool allow_dumped_symbols) {
+  bool has_dumped_symbols = false;
+  auto callback = [&](const Symbol&, uint32_t) {
+    has_dumped_symbols = true;
+    return true;
+  };
+  ProcessSymbolsInPerfDataFile(path, callback);
   // It is possible that there are no samples hitting functions having symbols.
   // So "allow_dumped_symbols = true" doesn't guarantee "has_dumped_symbols = true".
   if (!allow_dumped_symbols && has_dumped_symbols) {
@@ -444,24 +454,14 @@ TEST(record_cmd, dump_kernel_symbols) {
   }
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({"-a", "-o", tmpfile.path, "sleep", "1"}));
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
-  ASSERT_TRUE(reader != nullptr);
-  std::map<int, SectionDesc> section_map = reader->FeatureSectionDescriptors();
-  ASSERT_NE(section_map.find(FEAT_FILE), section_map.end());
-  std::string file_path;
-  uint32_t file_type;
-  uint64_t min_vaddr;
-  uint64_t file_offset_of_min_vaddr;
-  std::vector<Symbol> symbols;
-  std::vector<uint64_t> dex_file_offsets;
-  size_t read_pos = 0;
   bool has_kernel_symbols = false;
-  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr,
-                                 &file_offset_of_min_vaddr, &symbols, &dex_file_offsets)) {
-    if (file_type == DSO_KERNEL && !symbols.empty()) {
+  auto callback = [&](const Symbol&, uint32_t file_type) {
+    if (file_type == DSO_KERNEL) {
       has_kernel_symbols = true;
     }
-  }
+    return has_kernel_symbols;
+  };
+  ProcessSymbolsInPerfDataFile(tmpfile.path, callback);
   ASSERT_TRUE(has_kernel_symbols);
 }
 
@@ -744,47 +744,68 @@ TEST(record_cmd, cpu_percent_option) {
   ASSERT_FALSE(RunRecordCmd({"--cpu-percent", "101"}));
 }
 
-static void TestRecordingApps(const std::string& app_name) {
-  // Bring the app to foreground to avoid no samples.
-  ASSERT_TRUE(Workload::RunCmd({"am", "start", app_name + "/.MainActivity"}));
-  TemporaryFile tmpfile;
-  ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "--app", app_name, "-g", "--duration", "3"}));
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
-  ASSERT_TRUE(reader);
-  // Check if having samples.
-  bool has_sample = false;
-  ASSERT_TRUE(reader->ReadDataSection([&](std::unique_ptr<Record> r) {
-    if (r->type() == PERF_RECORD_SAMPLE) {
-      has_sample = true;
+class RecordingAppHelper {
+ public:
+  bool InstallApk(const std::string& apk_path, const std::string& package_name) {
+    if (Workload::RunCmd({"pm", "install", "-t", apk_path})) {
+      installed_packages_.emplace_back(package_name);
+      return true;
     }
-    return true;
-  }));
-  ASSERT_TRUE(has_sample);
+    return false;
+  }
+
+  bool StartApp(const std::string& start_cmd) {
+    app_start_proc_ = Workload::CreateWorkload(android::base::Split(start_cmd, " "));
+    return app_start_proc_ && app_start_proc_->Start();
+  }
+
+  bool RecordData(const std::string& record_cmd) {
+    std::vector<std::string> args = android::base::Split(record_cmd, " ");
+    args.emplace_back("-o");
+    args.emplace_back(perf_data_file_.path);
+    return RecordCmd()->Run(args);
+  }
+
+  bool CheckData(const std::function<bool(const char*)>& process_symbol) {
+    bool success = false;
+    auto callback = [&](const Symbol& symbol, uint32_t) {
+      if (process_symbol(symbol.DemangledName())) {
+        success = true;
+      }
+      return success;
+    };
+    ProcessSymbolsInPerfDataFile(perf_data_file_.path, callback);
+    return success;
+  }
+
+  ~RecordingAppHelper() {
+    for (auto& package : installed_packages_) {
+      Workload::RunCmd({"pm", "uninstall", package});
+    }
+  }
+
+ private:
+  std::vector<std::string> installed_packages_;
+  std::unique_ptr<Workload> app_start_proc_;
+  TemporaryFile perf_data_file_;
+};
+
+static void TestRecordingApps(const std::string& app_name) {
+  RecordingAppHelper helper;
+  // Bring the app to foreground to avoid no samples.
+  ASSERT_TRUE(helper.StartApp("am start " + app_name + "/.MainActivity"));
+
+  ASSERT_TRUE(helper.RecordData("--app " + app_name + " -g --duration 3"));
 
   // Check if we can profile Java code by looking for a Java method name in dumped symbols, which
   // is app_name + ".MainActivity$1.run".
   const std::string expected_class_name = app_name + ".MainActivity";
   const std::string expected_method_name = "run";
-  std::string file_path;
-  uint32_t file_type;
-  uint64_t min_vaddr;
-  uint64_t file_offset_of_min_vaddr;
-  std::vector<Symbol> symbols;
-  std::vector<uint64_t> dex_file_offsets;
-  size_t read_pos = 0;
-  bool has_java_symbol = false;
-  ASSERT_TRUE(reader->HasFeature(FEAT_FILE));
-  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr,
-                                 &file_offset_of_min_vaddr, &symbols, &dex_file_offsets)) {
-    for (const auto& symbol : symbols) {
-      const char* name = symbol.DemangledName();
-      if (strstr(name, expected_class_name.c_str()) != nullptr &&
-          strstr(name, expected_method_name.c_str()) != nullptr) {
-        has_java_symbol = true;
-      }
-    }
-  }
-  ASSERT_TRUE(has_java_symbol);
+  auto process_symbol = [&](const char* name) {
+    return strstr(name, expected_class_name.c_str()) != nullptr &&
+        strstr(name, expected_method_name.c_str()) != nullptr;
+  };
+  ASSERT_TRUE(helper.CheckData(process_symbol));
 }
 
 TEST(record_cmd, app_option_for_debuggable_app) {
@@ -797,6 +818,66 @@ TEST(record_cmd, app_option_for_profileable_app) {
   TEST_REQUIRE_HW_COUNTER();
   TEST_REQUIRE_APPS();
   TestRecordingApps("com.android.simpleperf.profileable");
+}
+
+TEST(record_cmd, record_java_app) {
+  RecordingAppHelper helper;
+  // 1. Install apk.
+  ASSERT_TRUE(helper.InstallApk(GetTestData("DisplayBitmaps.apk"),
+                                "com.example.android.displayingbitmaps"));
+  ASSERT_TRUE(helper.InstallApk(GetTestData("DisplayBitmapsTest.apk"),
+                                "com.example.android.displayingbitmaps.test"));
+
+  // 2. Start the app.
+  ASSERT_TRUE(
+      helper.StartApp("am instrument -w -r -e debug false -e class "
+                      "com.example.android.displayingbitmaps.tests.GridViewTest "
+                      "com.example.android.displayingbitmaps.test/"
+                      "androidx.test.runner.AndroidJUnitRunner"));
+
+  // 3. Record perf.data.
+  ASSERT_TRUE(helper.RecordData(
+      "-e cpu-clock --app com.example.android.displayingbitmaps -g --duration 10"));
+
+  // 4. Check perf.data.
+  auto process_symbol = [&](const char* name) {
+#if !defined(IN_CTS_TEST)
+    const char* expected_name_with_keyguard = "androidx.test.runner";  // when screen is locked
+    if (strstr(name, expected_name_with_keyguard) != nullptr) {
+      return true;
+    }
+#endif
+    const char* expected_name = "androidx.test.espresso";  // when screen stays awake
+    return strstr(name, expected_name) != nullptr;
+  };
+  ASSERT_TRUE(helper.CheckData(process_symbol));
+}
+
+TEST(record_cmd, record_native_app) {
+  RecordingAppHelper helper;
+  // 1. Install apk.
+  ASSERT_TRUE(helper.InstallApk(GetTestData("EndlessTunnel.apk"), "com.google.sample.tunnel"));
+
+  // 2. Start the app.
+  ASSERT_TRUE(
+      helper.StartApp("am start -n com.google.sample.tunnel/android.app.NativeActivity -a "
+                      "android.intent.action.MAIN -c android.intent.category.LAUNCHER"));
+
+  // 3. Record perf.data.
+  ASSERT_TRUE(helper.RecordData("-e cpu-clock --app com.google.sample.tunnel -g --duration 10"));
+
+  // 4. Check perf.data.
+  auto process_symbol = [&](const char* name) {
+#if !defined(IN_CTS_TEST)
+    const char* expected_name_with_keyguard = "NativeActivity";  // when screen is locked
+    if (strstr(name, expected_name_with_keyguard) != nullptr) {
+      return true;
+    }
+#endif
+    const char* expected_name = "PlayScene::DoFrame";  // when screen is awake
+    return strstr(name, expected_name) != nullptr;
+  };
+  ASSERT_TRUE(helper.CheckData(process_symbol));
 }
 
 TEST(record_cmd, no_cut_samples_option) {
