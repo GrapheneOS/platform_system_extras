@@ -76,7 +76,10 @@ class TestLogger(object):
     """ Write test progress in sys.stderr and keep verbose log in log file. """
     def __init__(self):
         self.log_file = self.get_log_file(3 if is_python3() else 2)
-        self.log_fh = open(self.log_file, 'w')
+        if os.path.isfile(self.log_file):
+            remove(self.log_file)
+        # Logs can come from multiple processes. So use append mode to avoid overwrite.
+        self.log_fh = open(self.log_file, 'a')
         logging.basicConfig(filename=self.log_file)
 
     @staticmethod
@@ -114,6 +117,13 @@ def is_trace_offcpu_supported():
     return is_trace_offcpu_supported.value
 
 
+def android_version():
+    """ Get Android version on device, like 7 is for Android N, 8 is for Android O."""
+    if not hasattr(android_version, 'value'):
+        android_version.value = AdbHelper().get_android_version()
+    return android_version.value
+
+
 def build_testdata():
     """ Collect testdata from ../testdata and ../demo. """
     from_testdata_path = os.path.join('..', 'testdata')
@@ -122,16 +132,12 @@ def build_testdata():
     if (not os.path.isdir(from_testdata_path) or not os.path.isdir(from_demo_path) or
             not from_script_testdata_path):
         return
-    copy_testdata_list = ['perf_with_symbols.data', 'perf_with_trace_offcpu.data',
-                          'perf_with_tracepoint_event.data', 'perf_with_interpreter_frames.data']
     copy_demo_list = ['SimpleperfExamplePureJava', 'SimpleperfExampleWithNative',
                       'SimpleperfExampleOfKotlin']
 
     testdata_path = "testdata"
     remove(testdata_path)
-    os.mkdir(testdata_path)
-    for testdata in copy_testdata_list:
-        shutil.copy(os.path.join(from_testdata_path, testdata), testdata_path)
+    shutil.copytree(from_testdata_path, testdata_path)
     for demo in copy_demo_list:
         shutil.copytree(os.path.join(from_demo_path, demo), os.path.join(testdata_path, demo))
     for f in os.listdir(from_script_testdata_path):
@@ -200,10 +206,9 @@ class TestExampleBase(TestBase):
         cls.adb_root = adb_root
         cls.compiled = False
         cls.has_perf_data_for_report = False
-        android_version = cls.adb.get_android_version()
         # On Android >= P (version 9), we can profile JITed and interpreted Java code.
         # So only compile Java code on Android <= O (version 8).
-        cls.use_compiled_java_code = android_version <= 8
+        cls.use_compiled_java_code = android_version() <= 8
 
     def setUp(self):
         if self.id().find('TraceOffCpu') != -1 and not is_trace_offcpu_supported():
@@ -1399,7 +1404,7 @@ class TestBinaryCacheBuilder(TestBase):
 class TestApiProfiler(TestBase):
     def run_api_test(self, package_name, apk_name, expected_reports, min_android_version):
         adb = AdbHelper()
-        if adb.get_android_version() < ord(min_android_version) - ord('L') + 5:
+        if android_version() < ord(min_android_version) - ord('L') + 5:
             log_info('skip this test on Android < %s.' % min_android_version)
             return
         # step 1: Prepare profiling.
@@ -1545,6 +1550,51 @@ class TestPprofProtoGenerator(TestBase):
             self.assertGreaterEqual(mapping.memory_limit, location.address)
 
 
+class TestRecordingRealApps(TestBase):
+    def setUp(self):
+        self.adb = AdbHelper(False)
+        self.installed_packages = []
+
+    def tearDown(self):
+        for package in self.installed_packages:
+            self.adb.run(['shell', 'pm', 'uninstall', package])
+
+    def install_apk(self, apk_path, package_name):
+        self.adb.run(['install', '-t', apk_path])
+        self.installed_packages.append(package_name)
+
+    def start_app(self, start_cmd):
+        subprocess.Popen(self.adb.adb_path + ' ' + start_cmd, shell=True,
+                         stdout=TEST_LOGGER.log_fh, stderr=TEST_LOGGER.log_fh)
+
+    def record_data(self, package_name, record_arg):
+        self.run_cmd(['app_profiler.py', '--app', package_name, '-r', record_arg])
+
+    def check_symbol_in_record_file(self, symbol_name):
+        self.run_cmd(['report.py', '--children', '-o', 'report.txt'])
+        self.check_strings_in_file('report.txt', [symbol_name])
+
+    def test_recording_displaybitmaps(self):
+        self.install_apk(os.path.join('testdata', 'DisplayBitmaps.apk'),
+                         'com.example.android.displayingbitmaps')
+        self.install_apk(os.path.join('testdata', 'DisplayBitmapsTest.apk'),
+                         'com.example.android.displayingbitmaps.test')
+        self.start_app('shell am instrument -w -r -e debug false -e class ' +
+                       'com.example.android.displayingbitmaps.tests.GridViewTest ' +
+                       'com.example.android.displayingbitmaps.test/' +
+                       'androidx.test.runner.AndroidJUnitRunner')
+        self.record_data('com.example.android.displayingbitmaps', '-e cpu-clock -g --duration 10')
+        if android_version() >= 9:
+            self.check_symbol_in_record_file('androidx.test.espresso')
+
+    def test_recording_endless_tunnel(self):
+        self.install_apk(os.path.join('testdata', 'EndlessTunnel.apk'), 'com.google.sample.tunnel')
+        self.start_app('shell am start -n com.google.sample.tunnel/android.app.NativeActivity -a ' +
+                       'android.intent.action.MAIN -c android.intent.category.LAUNCHER')
+        self.record_data('com.google.sample.tunnel', '-e cpu-clock -g --duration 10')
+        self.check_symbol_in_record_file('PlayScene::DoFrame')
+
+
 def get_all_tests():
     tests = []
     for name, value in globals().items():
@@ -1602,7 +1652,7 @@ def main():
         if not tests:
             log_exit('No tests are matched.')
 
-    if AdbHelper().get_android_version() < 7:
+    if android_version() < 7:
         print("Skip tests on Android version < N.", file=TEST_LOGGER)
         return False
 
