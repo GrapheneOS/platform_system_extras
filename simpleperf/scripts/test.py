@@ -990,6 +990,31 @@ class TestReportLib(unittest.TestCase):
         report_lib.ShowArtFrames(True)
         self.assertTrue(has_art_frame(report_lib))
 
+    def test_merge_java_methods(self):
+        def parse_dso_names(report_lib):
+            dso_names = set()
+            report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_interpreter_frames.data'))
+            while report_lib.GetNextSample():
+                dso_names.add(report_lib.GetSymbolOfCurrentSample().dso_name)
+                callchain = report_lib.GetCallChainOfCurrentSample()
+                for i in range(callchain.nr):
+                    dso_names.add(callchain.entries[i].symbol.dso_name)
+            report_lib.Close()
+            has_jit_symfiles = any('TemporaryFile-' in name for name in dso_names)
+            has_jit_cache = '[JIT cache]' in dso_names
+            return has_jit_symfiles, has_jit_cache
+
+        report_lib = ReportLib()
+        self.assertEqual(parse_dso_names(report_lib), (False, True))
+
+        report_lib = ReportLib()
+        report_lib.MergeJavaMethods(True)
+        self.assertEqual(parse_dso_names(report_lib), (False, True))
+
+        report_lib = ReportLib()
+        report_lib.MergeJavaMethods(False)
+        self.assertEqual(parse_dso_names(report_lib), (True, False))
+
     def test_tracing_data(self):
         self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_tracepoint_event.data'))
         has_tracing_data = False
