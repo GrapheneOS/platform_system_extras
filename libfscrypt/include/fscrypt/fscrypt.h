@@ -25,10 +25,9 @@ __BEGIN_DECLS
 
 bool fscrypt_is_native();
 
-int fscrypt_policy_ensure(const char *directory, const char *policy,
-                          size_t policy_length,
-                          const char *contents_encryption_mode,
-                          const char *filenames_encryption_mode);
+int fscrypt_policy_ensure(const char* directory, const char* key_raw_ref, size_t key_raw_ref_length,
+                          const char* contents_encryption_mode,
+                          const char* filenames_encryption_mode, int policy_version);
 
 static const char* fscrypt_unencrypted_folder = "/unencrypted";
 static const char* fscrypt_key_ref = "/unencrypted/ref";
