@@ -499,18 +499,6 @@ void JITDebugReader::ReadJITCodeDebugInfo(Process& process,
     if (!IsValidElfFileMagic(data.data(), jit_entry.symfile_size)) {
       continue;
     }
-    uint64_t min_addr = UINT64_MAX;
-    uint64_t max_addr = 0;
-    auto callback = [&](const ElfFileSymbol& symbol) {
-      min_addr = std::min(min_addr, symbol.vaddr);
-      max_addr = std::max(max_addr, symbol.vaddr + symbol.len);
-      LOG(VERBOSE) << "JITSymbol " << symbol.name << " at [" << std::hex << symbol.vaddr
-                   << " - " << (symbol.vaddr + symbol.len) << " with size " << symbol.len;
-    };
-    if (ParseSymbolsFromElfFileInMemory(data.data(), jit_entry.symfile_size, callback) !=
-        ElfStatus::NO_ERROR || min_addr >= max_addr) {
-      continue;
-    }
     std::unique_ptr<TemporaryFile> tmp_file = ScopedTempFiles::CreateTempFile(!keep_symfiles_);
     if (tmp_file == nullptr || !android::base::WriteFully(tmp_file->fd, data.data(),
                                                           jit_entry.symfile_size)) {
@@ -519,8 +507,13 @@ void JITDebugReader::ReadJITCodeDebugInfo(Process& process,
     if (keep_symfiles_) {
       tmp_file->DoNotRemove();
     }
-    debug_info->emplace_back(process.pid, jit_entry.timestamp, min_addr, max_addr - min_addr,
-                             tmp_file->path);
+    auto callback = [&](const ElfFileSymbol& symbol) {
+      LOG(VERBOSE) << "JITSymbol " << symbol.name << " at [" << std::hex << symbol.vaddr
+                   << " - " << (symbol.vaddr + symbol.len) << " with size " << symbol.len;
+      debug_info->emplace_back(process.pid, jit_entry.timestamp, symbol.vaddr, symbol.len,
+                               tmp_file->path);
+    };
+    ParseSymbolsFromElfFileInMemory(data.data(), jit_entry.symfile_size, callback);
   }
 }
 
