@@ -358,7 +358,7 @@ int main(int argc, char* argv[]) {
 
     std::unique_ptr<LpMetadata> metadata = builder->Export();
     if (!images.empty() || force_full_image) {
-        if (block_devices.size() == 1) {
+        if (block_devices.size() == 1 && super_name == "super") {
             if (!WriteToImageFile(output_path.c_str(), *metadata.get(), block_size, images,
                                   output_sparse)) {
                 return EX_CANTCREAT;
