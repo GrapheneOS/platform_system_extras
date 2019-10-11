@@ -49,7 +49,7 @@ static constexpr size_t MAX_JIT_SYMFILE_SIZE = 1024 * 1024u;
 // avoid spending all time checking, wait 100 ms between any two checks.
 static constexpr size_t kUpdateJITDebugInfoIntervalInMs = 100;
 
-// Match the format of JITDescriptor in art/runtime/jit/debugger_itnerface.cc.
+// Match the format of JITDescriptor in art/runtime/jit/debugger_interface.cc.
 template <typename ADDRT>
 struct JITDescriptor {
   uint32_t version;
@@ -63,12 +63,15 @@ struct JITDescriptor {
   uint32_t action_seqlock;  // incremented before and after any modification
   uint64_t action_timestamp;  // CLOCK_MONOTONIC time of last action
 
-  bool Valid() const {
-    return version == 1 && strncmp(reinterpret_cast<const char*>(magic), "Android1", 8) == 0;
+  bool Valid() const;
+
+  int AndroidVersion() const {
+    return magic[7] - '0';
   }
 };
 
-// Match the format of JITCodeEntry in art/runtime/jit/debugger_itnerface.cc.
+// Match the format of JITCodeEntry in art/runtime/jit/debugger_interface.cc
+// with JITDescriptor.magic == "Android1".
 template <typename ADDRT>
 struct JITCodeEntry {
   ADDRT next_addr;
@@ -82,7 +85,8 @@ struct JITCodeEntry {
   }
 };
 
-// Match the format of JITCodeEntry in art/runtime/jit/debugger_interface.cc.
+// Match the format of JITCodeEntry in art/runtime/jit/debugger_interface.cc
+// with JITDescriptor.magic == "Android1".
 template <typename ADDRT>
 struct __attribute__((packed)) PackedJITCodeEntry {
   ADDRT next_addr;
@@ -96,28 +100,110 @@ struct __attribute__((packed)) PackedJITCodeEntry {
   }
 };
 
+// Match the format of JITCodeEntry in art/runtime/jit/debugger_interface.cc
+// with JITDescriptor.magic == "Android2".
+template <typename ADDRT>
+struct JITCodeEntryV2 {
+  ADDRT next_addr;
+  ADDRT prev_addr;
+  ADDRT symfile_addr;
+  uint64_t symfile_size;
+  uint64_t register_timestamp;  // CLOCK_MONOTONIC time of entry registration
+  uint32_t seqlock;  // even value if valid
+
+  bool Valid() const {
+    return (seqlock & 1) == 0;
+  }
+};
+
+// Match the format of JITCodeEntry in art/runtime/jit/debugger_interface.cc
+// with JITDescriptor.magic == "Android2".
+template <typename ADDRT>
+struct __attribute__((packed)) PackedJITCodeEntryV2 {
+  ADDRT next_addr;
+  ADDRT prev_addr;
+  ADDRT symfile_addr;
+  uint64_t symfile_size;
+  uint64_t register_timestamp;
+  uint32_t seqlock;
+
+  bool Valid() const {
+    return (seqlock & 1) == 0;
+  }
+};
+
+// Match the format of JITCodeEntry in art/runtime/jit/debugger_interface.cc
+// with JITDescriptor.magic == "Android2".
+template <typename ADDRT>
+struct __attribute__((packed)) PaddedJITCodeEntryV2 {
+  ADDRT next_addr;
+  ADDRT prev_addr;
+  ADDRT symfile_addr;
+  uint64_t symfile_size;
+  uint64_t register_timestamp;
+  uint32_t seqlock;
+  uint32_t pad;
+
+  bool Valid() const {
+    return (seqlock & 1) == 0;
+  }
+};
+
 using JITDescriptor32 = JITDescriptor<uint32_t>;
 using JITDescriptor64 = JITDescriptor<uint64_t>;
 
 #if defined(__x86_64__)
 // Make sure simpleperf built for i386 and x86_64 see the correct JITCodeEntry layout of i386.
 using JITCodeEntry32 = PackedJITCodeEntry<uint32_t>;
+using JITCodeEntry32V2 = PackedJITCodeEntryV2<uint32_t>;
 #else
 using JITCodeEntry32 = JITCodeEntry<uint32_t>;
+using JITCodeEntry32V2 = JITCodeEntryV2<uint32_t>;
 #endif
+
 using JITCodeEntry64 = JITCodeEntry<uint64_t>;
+#if defined(__i386__)
+// Make sure simpleperf built for i386 and x86_64 see the correct JITCodeEntry layout of x86_64.
+using JITCodeEntry64V2 = PaddedJITCodeEntryV2<uint64_t>;
+#else
+using JITCodeEntry64V2 = JITCodeEntryV2<uint64_t>;
+#endif
+
+template <typename ADDRT>
+bool JITDescriptor<ADDRT>::Valid() const {
+  const char* magic_str = reinterpret_cast<const char*>(magic);
+  if (version != 1 ||
+      !(strncmp(magic_str, "Android1", 8) == 0 || strncmp(magic_str, "Android2", 8) == 0)) {
+    return false;
+  }
+  if (sizeof(*this) != sizeof_descriptor) {
+    return false;
+  }
+  if (sizeof(ADDRT) == 4) {
+    return sizeof_entry == (AndroidVersion() == 1) ? sizeof(JITCodeEntry32)
+                                                   : sizeof(JITCodeEntry32V2);
+  }
+  return sizeof_entry == (AndroidVersion() == 1) ? sizeof(JITCodeEntry64)
+                                                 : sizeof(JITCodeEntry64V2);
+}
 
 // We want to support both 64-bit and 32-bit simpleperf when profiling either 64-bit or 32-bit
 // apps. So using static_asserts to make sure that simpleperf on arm and aarch64 having the same
 // view of structures, and simpleperf on i386 and x86_64 having the same view of structures.
 static_assert(sizeof(JITDescriptor32) == 48, "");
 static_assert(sizeof(JITDescriptor64) == 56, "");
+
 #if defined(__i386__) or defined(__x86_64__)
 static_assert(sizeof(JITCodeEntry32) == 28, "");
+static_assert(sizeof(JITCodeEntry32V2) == 32, "");
+static_assert(sizeof(JITCodeEntry64) == 40, "");
+static_assert(sizeof(JITCodeEntry64V2) == 48, "");
 #else
 static_assert(sizeof(JITCodeEntry32) == 32, "");
-#endif
+static_assert(sizeof(JITCodeEntry32V2) == 40, "");
 static_assert(sizeof(JITCodeEntry64) == 40, "");
+static_assert(sizeof(JITCodeEntry64V2) == 48, "");
+#endif
 
 bool JITDebugReader::RegisterDebugInfoCallback(IOEventLoop* loop,
                                              const debug_info_callback_t& callback) {
@@ -410,22 +496,22 @@ bool JITDebugReader::ReadDescriptors(Process& process, Descriptor* jit_descripto
 
 bool JITDebugReader::LoadDescriptor(bool is_64bit, const char* data, Descriptor* descriptor) {
   if (is_64bit) {
-    return LoadDescriptorImpl<JITDescriptor64, JITCodeEntry64>(data, descriptor);
+    return LoadDescriptorImpl<JITDescriptor64>(data, descriptor);
   }
-  return LoadDescriptorImpl<JITDescriptor32, JITCodeEntry32>(data, descriptor);
+  return LoadDescriptorImpl<JITDescriptor32>(data, descriptor);
 }
 
-template <typename DescriptorT, typename CodeEntryT>
+template <typename DescriptorT>
 bool JITDebugReader::LoadDescriptorImpl(const char* data, Descriptor* descriptor) {
   DescriptorT raw_descriptor;
   MoveFromBinaryFormat(raw_descriptor, data);
-  if (!raw_descriptor.Valid() || sizeof(raw_descriptor) != raw_descriptor.sizeof_descriptor ||
-      sizeof(CodeEntryT) != raw_descriptor.sizeof_entry) {
+  if (!raw_descriptor.Valid()) {
     return false;
   }
   descriptor->action_seqlock = raw_descriptor.action_seqlock;
   descriptor->action_timestamp = raw_descriptor.action_timestamp;
   descriptor->first_entry_addr = raw_descriptor.first_entry_addr;
+  descriptor->version = raw_descriptor.AndroidVersion();
   return true;
 }
 
@@ -435,15 +521,26 @@ bool JITDebugReader::LoadDescriptorImpl(const char* data, Descriptor* descriptor
 bool JITDebugReader::ReadNewCodeEntries(Process& process, const Descriptor& descriptor,
                                         uint64_t last_action_timestamp, uint32_t read_entry_limit,
                                         std::vector<CodeEntry>* new_code_entries) {
-  if (process.is_64bit) {
-    return ReadNewCodeEntriesImpl<JITDescriptor64, JITCodeEntry64>(
+  if (descriptor.version == 1) {
+    if (process.is_64bit) {
+      return ReadNewCodeEntriesImpl<JITCodeEntry64>(
+          process, descriptor, last_action_timestamp, read_entry_limit, new_code_entries);
+    }
+    return ReadNewCodeEntriesImpl<JITCodeEntry32>(
         process, descriptor, last_action_timestamp, read_entry_limit, new_code_entries);
   }
-  return ReadNewCodeEntriesImpl<JITDescriptor32, JITCodeEntry32>(
-      process, descriptor, last_action_timestamp, read_entry_limit, new_code_entries);
+  if (descriptor.version == 2) {
+    if (process.is_64bit) {
+      return ReadNewCodeEntriesImpl<JITCodeEntry64V2>(
+          process, descriptor, last_action_timestamp, read_entry_limit, new_code_entries);
+    }
+    return ReadNewCodeEntriesImpl<JITCodeEntry32V2>(
+        process, descriptor, last_action_timestamp, read_entry_limit, new_code_entries);
+  }
+  return false;
 }
 
-template <typename DescriptorT, typename CodeEntryT>
+template <typename CodeEntryT>
 bool JITDebugReader::ReadNewCodeEntriesImpl(Process& process, const Descriptor& descriptor,
                                             uint64_t last_action_timestamp,
                                             uint32_t read_entry_limit,
@@ -468,6 +565,9 @@ bool JITDebugReader::ReadNewCodeEntriesImpl(Process& process, const Descriptor& 
       // The linked list has entries with timestamp in decreasing order. So stop searching
       // once we hit an entry with timestamp <= last_action_timestmap.
       break;
+    }
+    if (entry.symfile_size == 0) {
+      continue;
     }
     CodeEntry code_entry;
     code_entry.addr = current_entry_addr;
