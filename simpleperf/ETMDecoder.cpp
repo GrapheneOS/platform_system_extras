@@ -30,23 +30,28 @@ class DecoderLogStr : public ocsdMsgLogStrOutI {
   void printOutStr(const std::string& out_str) override { LOG(INFO) << out_str; }
 };
 
-static ocsdDefaultErrorLogger g_err_logger;
-
-static void InitDecoderLogging() {
-  static bool initialized = false;
-  static ocsdMsgLogger msg_logger;
-  static DecoderLogStr log_str;
-  if (!initialized) {
-    msg_logger.setLogOpts(ocsdMsgLogger::OUT_STR_CB);
-    msg_logger.setStrOutFn(&log_str);
-    ocsd_err_severity_t severity = android::base::GetMinimumLogSeverity() <= android::base::DEBUG
-                                       ? OCSD_ERR_SEV_INFO
-                                       : OCSD_ERR_SEV_WARN;
-    g_err_logger.initErrorLogger(severity, false);
-    g_err_logger.setOutputLogger(&msg_logger);
-    initialized = true;
+class DecodeErrorLogger : public ocsdDefaultErrorLogger {
+ public:
+  DecodeErrorLogger(const std::function<void(const ocsdError&)>& error_callback)
+      : error_callback_(error_callback) {
+    initErrorLogger(OCSD_ERR_SEV_INFO, false);
+    msg_logger_.setLogOpts(ocsdMsgLogger::OUT_STR_CB);
+    msg_logger_.setStrOutFn(&log_str_);
+    setOutputLogger(&msg_logger_);
   }
-}
+
+  void LogError(const ocsd_hndl_err_log_t handle, const ocsdError* error) override {
+    ocsdDefaultErrorLogger::LogError(handle, error);
+    if (error != nullptr) {
+      error_callback_(*error);
+    }
+  }
+
+ private:
+  std::function<void(const ocsdError&)> error_callback_;
+  DecoderLogStr log_str_;
+  ocsdMsgLogger msg_logger_;
+};
 
 static bool IsRespError(ocsd_datapath_resp_t resp) { return resp >= OCSD_RESP_ERR_CONT; }
 
@@ -54,16 +59,17 @@ static bool IsRespError(ocsd_datapath_resp_t resp) { return resp >= OCSD_RESP_ER
 // in OpenCSD.
 class ETMV4IDecodeTree {
  public:
-  ETMV4IDecodeTree() {
+  ETMV4IDecodeTree()
+      : error_logger_(std::bind(&ETMV4IDecodeTree::ProcessError, this, std::placeholders::_1)) {
     frame_decoder_.Configure(OCSD_DFRMTR_FRAME_MEM_ALIGN);
-    frame_decoder_.getErrLogAttachPt()->attach(&g_err_logger);
+    frame_decoder_.getErrLogAttachPt()->attach(&error_logger_);
   }
 
   bool CreateDecoder(const EtmV4Config& config) {
     uint8_t trace_id = config.getTraceID();
     auto packet_decoder = std::make_unique<TrcPktProcEtmV4I>(trace_id);
     packet_decoder->setProtocolConfig(&config);
-    packet_decoder->getErrorLogAttachPt()->replace_first(&g_err_logger);
+    packet_decoder->getErrorLogAttachPt()->replace_first(&error_logger_);
     frame_decoder_.getIDStreamAttachPt(trace_id)->attach(packet_decoder.get());
     auto result = packet_decoders_.emplace(trace_id, packet_decoder.release());
     if (!result.second) {
@@ -91,7 +97,22 @@ class ETMV4IDecodeTree {
 
   ITrcDataIn& GetDataIn() { return frame_decoder_; }
 
+  void ProcessError(const ocsdError& error) {
+    if (error.getErrorCode() == OCSD_ERR_INVALID_PCKT_HDR) {
+      // Found an invalid packet header, following packets for this trace id may also be invalid.
+      // So reset the decoder to find I_ASYNC packet in the data stream.
+      if (auto it = packet_decoders_.find(error.getErrorChanID()); it != packet_decoders_.end()) {
+        auto& packet_decoder = it->second;
+        CHECK(packet_decoder);
+        packet_decoder->TraceDataIn(OCSD_OP_RESET, error.getErrorIndex(), 0, nullptr, nullptr);
+      }
+    }
+  }
+
+  DecodeErrorLogger& ErrorLogger() { return error_logger_; }
+
  private:
+  DecodeErrorLogger error_logger_;
   TraceFormatterFrameDecoder frame_decoder_;
   std::unordered_map<uint8_t, std::unique_ptr<TrcPktProcEtmV4I>> packet_decoders_;
 };
@@ -232,7 +253,8 @@ struct ElementCallback {
 // Decode packets into elements.
 class PacketToElement : public PacketCallback, public ITrcGenElemIn {
  public:
-  PacketToElement(ThreadTree& thread_tree, const std::unordered_map<uint8_t, EtmV4Config>& configs)
+  PacketToElement(ThreadTree& thread_tree, const std::unordered_map<uint8_t, EtmV4Config>& configs,
+                  DecodeErrorLogger& error_logger)
       : mem_access_(thread_tree) {
     for (auto& p : configs) {
       uint8_t trace_id = p.first;
@@ -240,7 +262,7 @@ class PacketToElement : public PacketCallback, public ITrcGenElemIn {
       element_decoders_.emplace(trace_id, trace_id);
       auto& decoder = element_decoders_[trace_id];
       decoder.setProtocolConfig(&config);
-      decoder.getErrorLogAttachPt()->replace_first(&g_err_logger);
+      decoder.getErrorLogAttachPt()->replace_first(&error_logger);
       decoder.getInstrDecodeAttachPt()->replace_first(&instruction_decoder_);
       decoder.getMemoryAccessAttachPt()->replace_first(&mem_access_);
       decoder.getTraceElemOutAttachPt()->replace_first(this);
@@ -252,7 +274,9 @@ class PacketToElement : public PacketCallback, public ITrcGenElemIn {
   ocsd_datapath_resp_t ProcessPacket(uint8_t trace_id, ocsd_datapath_op_t op,
                                      ocsd_trc_index_t index_sop,
                                      const EtmV4ITrcPacket* pkt) override {
-    mem_access_.ProcessPacket(trace_id, pkt);
+    if (pkt != nullptr) {
+      mem_access_.ProcessPacket(trace_id, pkt);
+    }
     return element_decoders_[trace_id].PacketDataIn(op, index_sop, pkt);
   }
 
@@ -472,14 +496,27 @@ class ETMDecoderImpl : public ETMDecoder {
   }
 
   bool ProcessData(const uint8_t* data, size_t size) override {
+    // Reset decoders before processing each data block. Because:
+    // 1. Data blocks are not continuous. So decoders shouldn't keep previous states when
+    //    processing a new block.
+    // 2. The beginning part of a data block may be truncated if kernel buffer is temporarily full.
+    //    So we may see garbage data, which can cause decoding errors if we don't reset decoders.
+    auto resp =
+        decode_tree_.GetDataIn().TraceDataIn(OCSD_OP_RESET, data_index_, 0, nullptr, nullptr);
+    if (IsRespError(resp)) {
+      LOG(ERROR) << "failed to reset decoder, resp " << resp;
+      return false;
+    }
     size_t left_size = size;
     while (left_size > 0) {
       uint32_t processed;
       auto resp = decode_tree_.GetDataIn().TraceDataIn(OCSD_OP_DATA, data_index_, left_size, data,
                                                        &processed);
       if (IsRespError(resp)) {
-        LOG(ERROR) << "failed to process etm data, resp " << resp;
-        return false;
+        // A decoding error shouldn't ruin all data. Reset decoders to recover from it.
+        LOG(INFO) << "reset etm decoders for seeing a decode failure, resp " << resp;
+        decode_tree_.GetDataIn().TraceDataIn(OCSD_OP_RESET, data_index_ + processed, 0, nullptr,
+                                             nullptr);
       }
       data += processed;
       left_size -= processed;
@@ -491,7 +528,8 @@ class ETMDecoderImpl : public ETMDecoder {
  private:
   void InstallElementCallback(ElementCallback* callback) {
     if (!packet_to_element_) {
-      packet_to_element_.reset(new PacketToElement(thread_tree_, configs_));
+      packet_to_element_.reset(
+          new PacketToElement(thread_tree_, configs_, decode_tree_.ErrorLogger()));
       for (auto& p : packet_sinks_) {
         p.second.AddCallback(packet_to_element_.get());
       }
@@ -536,7 +574,6 @@ bool ParseEtmDumpOption(const std::string& s, ETMDumpOption* option) {
 
 std::unique_ptr<ETMDecoder> ETMDecoder::Create(const AuxTraceInfoRecord& auxtrace_info,
                                                ThreadTree& thread_tree) {
-  InitDecoderLogging();
   auto decoder = std::make_unique<ETMDecoderImpl>(thread_tree);
   decoder->CreateDecodeTree(auxtrace_info);
   return std::unique_ptr<ETMDecoder>(decoder.release());
