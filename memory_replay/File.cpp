@@ -24,10 +24,12 @@
 
 #include <string>
 
+#include <android-base/file.h>
+#include <android-base/strings.h>
 #include <ziparchive/zip_archive.h>
 
 #include "Alloc.h"
-#include "Zip.h"
+#include "File.h"
 
 std::string ZipGetContents(const char* filename) {
   ZipArchiveHandle archive;
@@ -54,7 +56,7 @@ std::string ZipGetContents(const char* filename) {
   return contents;
 }
 
-void WaitPid(pid_t pid) {
+static void WaitPid(pid_t pid) {
   int wstatus;
   pid_t wait_pid = TEMP_FAILURE_RETRY(waitpid(pid, &wstatus, 0));
   if (wait_pid != pid) {
@@ -74,7 +76,7 @@ void WaitPid(pid_t pid) {
 
 // This function should not do any memory allocations in the main function.
 // Any true allocation should happen in fork'd code.
-void ZipGetUnwindInfo(const char* filename, AllocEntry** entries, size_t* num_entries) {
+void GetUnwindInfo(const char* filename, AllocEntry** entries, size_t* num_entries) {
   void* mem =
       mmap(nullptr, sizeof(size_t), PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED, -1, 0);
   if (mem == MAP_FAILED) {
@@ -87,10 +89,16 @@ void ZipGetUnwindInfo(const char* filename, AllocEntry** entries, size_t* num_en
     // First get the number of lines in the trace file. It is assumed
     // that there are no blank lines, and every line contains a valid
     // allocation operation.
-    std::string contents = ZipGetContents(filename);
+    std::string contents;
+    if (android::base::EndsWith(filename, ".zip")) {
+      contents = ZipGetContents(filename);
+    } else if (!android::base::ReadFileToString(filename, &contents)) {
+      errx(1, "Unable to get contents of %s", filename);
+    }
     if (contents.empty()) {
       errx(1, "Unable to get contents of %s", filename);
     }
+
     size_t lines = 0;
     size_t index = 0;
     while (true) {
@@ -122,10 +130,16 @@ void ZipGetUnwindInfo(const char* filename, AllocEntry** entries, size_t* num_en
   *entries = reinterpret_cast<AllocEntry*>(mem);
 
   if ((pid = fork()) == 0) {
-    std::string contents = ZipGetContents(filename);
+    std::string contents;
+    if (android::base::EndsWith(filename, ".zip")) {
+      contents = ZipGetContents(filename);
+    } else if (!android::base::ReadFileToString(filename, &contents)) {
+      errx(1, "Unable to get contents of %s", filename);
+    }
     if (contents.empty()) {
       errx(1, "Contents of zip file %s is empty.", filename);
     }
+
     size_t entry_idx = 0;
     size_t start_str = 0;
     size_t end_str = 0;
@@ -152,6 +166,6 @@ void ZipGetUnwindInfo(const char* filename, AllocEntry** entries, size_t* num_en
   WaitPid(pid);
 }
 
-void ZipFreeEntries(AllocEntry* entries, size_t num_entries) {
+void FreeEntries(AllocEntry* entries, size_t num_entries) {
   munmap(entries, num_entries * sizeof(AllocEntry));
 }
