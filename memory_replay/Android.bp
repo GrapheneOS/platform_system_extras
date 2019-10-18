@@ -33,11 +33,11 @@ cc_defaults {
 
     srcs: [
         "Alloc.cpp",
+        "File.cpp",
         "NativeInfo.cpp",
         "Pointers.cpp",
         "Thread.cpp",
         "Threads.cpp",
-        "Zip.cpp",
     ],
 
     shared_libs: [
@@ -73,11 +73,11 @@ cc_test {
 
     srcs: [
         "tests/AllocTest.cpp",
+        "tests/FileTest.cpp",
         "tests/NativeInfoTest.cpp",
         "tests/PointersTest.cpp",
         "tests/ThreadTest.cpp",
         "tests/ThreadsTest.cpp",
-        "tests/ZipTest.cpp",
     ],
 
     local_include_dirs: ["tests"],
@@ -89,6 +89,7 @@ cc_test {
     },
 
     data: [
+        "tests/test.txt",
         "tests/test.zip",
     ],
 }
@@ -100,7 +101,7 @@ cc_benchmark {
     srcs: [
         "Alloc.cpp",
         "TraceBenchmark.cpp",
-        "Zip.cpp",
+        "File.cpp",
     ],
 
     shared_libs: [
