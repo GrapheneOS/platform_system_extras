@@ -35,8 +35,8 @@
 #include <benchmark/benchmark.h>
 
 #include "Alloc.h"
+#include "File.h"
 #include "Utils.h"
-#include "Zip.h"
 
 struct TraceAllocEntry {
   TraceAllocEntry(AllocEnum type, size_t idx, size_t size, size_t last_arg)

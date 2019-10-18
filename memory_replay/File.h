@@ -25,6 +25,7 @@ struct AllocEntry;
 
 std::string ZipGetContents(const char* filename);
 
-void ZipGetUnwindInfo(const char* filename, AllocEntry** entries, size_t* num_entries);
+// If filename ends with .zip, treat as a zip file to decompress.
+void GetUnwindInfo(const char* filename, AllocEntry** entries, size_t* num_entries);
 
-void ZipFreeEntries(AllocEntry* entries, size_t num_entries);
+void FreeEntries(AllocEntry* entries, size_t num_entries);
