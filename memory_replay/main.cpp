@@ -28,13 +28,13 @@
 #include <unistd.h>
 
 #include "Alloc.h"
+#include "File.h"
 #include "NativeInfo.h"
 #include "Pointers.h"
 #include "Thread.h"
 #include "Threads.h"
-#include "Zip.h"
 
-constexpr size_t DEFAULT_MAX_THREADS = 512;
+constexpr size_t kDefaultMaxThreads = 512;
 
 static size_t GetMaxAllocs(const AllocEntry* entries, size_t num_entries) {
   size_t num_allocs = 0;
@@ -136,6 +136,13 @@ int main(int argc, char** argv) {
       fprintf(stderr, "Requires at least one argument.\n");
     }
     fprintf(stderr, "Usage: %s MEMORY_LOG_FILE [MAX_THREADS]\n", basename(argv[0]));
+    fprintf(stderr, "  MEMORY_LOG_FILE\n");
+    fprintf(stderr, "    This can either be a text file or a zipped text file.\n");
+    fprintf(stderr, "  MAX_THREADs\n");
+    fprintf(stderr, "    The maximum number of threads in the trace. The default is %zu.\n",
+            kDefaultMaxThreads);
+    fprintf(stderr, "    This pre-allocates the memory for thread data to avoid allocating\n");
+    fprintf(stderr, "    while the trace is being replayed.\n");
     return 1;
   }
 
@@ -150,20 +157,20 @@ int main(int argc, char** argv) {
   mallopt(M_DECAY_TIME, 1);
 #endif
 
-  size_t max_threads = DEFAULT_MAX_THREADS;
+  size_t max_threads = kDefaultMaxThreads;
   if (argc == 3) {
     max_threads = atoi(argv[2]);
   }
 
   AllocEntry* entries;
   size_t num_entries;
-  ZipGetUnwindInfo(argv[1], &entries, &num_entries);
+  GetUnwindInfo(argv[1], &entries, &num_entries);
 
   NativePrintf("Processing: %s\n", argv[1]);
 
   ProcessDump(entries, num_entries, max_threads);
 
-  ZipFreeEntries(entries, num_entries);
+  FreeEntries(entries, num_entries);
 
   return 0;
 }
