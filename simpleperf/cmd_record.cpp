@@ -95,6 +95,10 @@ static constexpr size_t kSystemWideRecordBufferSize = 256 * 1024 * 1024;
 
 static constexpr size_t kDefaultAuxBufferSize = 4 * 1024 * 1024;
 
+// On Pixel 3, it takes about 1ms to enable ETM, and 16-40ms to disable ETM and copy 4M ETM data.
+// So make default period to 100ms.
+static constexpr double kDefaultEtmDataFlushPeriodInSec = 0.1;
+
 struct TimeStat {
   uint64_t prepare_recording_time = 0;
   uint64_t start_recording_time = 0;
@@ -561,6 +565,21 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
       if (!jit_debug_reader_->ReadAllProcesses()) {
         return false;
       }
+    }
+  }
+  if (event_selection_set_.HasAuxTrace()) {
+    // ETM data is dumped to kernel buffer only when there is no thread traced by ETM. It happens
+    // either when all monitored threads are scheduled off cpu, or when all etm perf events are
+    // disabled.
+    // If ETM data isn't dumped to kernel buffer in time, overflow parts will be dropped. This
+    // makes less than expected data, especially in system wide recording. So add a periodic event
+    // to flush etm data by temporarily disable all perf events.
+    auto etm_flush = [this]() {
+      return event_selection_set_.SetEnableEvents(false) &&
+             event_selection_set_.SetEnableEvents(true);
+    };
+    if (!loop->AddPeriodicEvent(SecondToTimeval(kDefaultEtmDataFlushPeriodInSec), etm_flush)) {
+      return false;
     }
   }
   return true;
