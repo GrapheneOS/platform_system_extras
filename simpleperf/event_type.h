@@ -71,6 +71,7 @@ class ScopedEventTypes {
 
  private:
   std::set<EventType> saved_event_types_;
+  uint32_t saved_etm_event_type_;
 };
 
 const std::set<EventType>& GetAllEventTypes();
