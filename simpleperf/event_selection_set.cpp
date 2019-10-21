@@ -174,6 +174,11 @@ bool EventSelectionSet::BuildAndCheckEventSelection(const std::string& event_nam
     if (event_type->event_type.type == PERF_TYPE_TRACEPOINT) {
       selection->event_attr.freq = 0;
       selection->event_attr.sample_period = DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT;
+    } else if (IsEtmEventType(event_type->event_type.type)) {
+      // ETM recording has no sample frequency to adjust. Using sample frequency only wastes time
+      // enabling/disabling etm devices. So don't adjust frequency by default.
+      selection->event_attr.freq = 0;
+      selection->event_attr.sample_period = 1;
     } else {
       selection->event_attr.freq = 1;
       // Set default sample freq here may print msg "Adjust sample freq to max allowed sample
