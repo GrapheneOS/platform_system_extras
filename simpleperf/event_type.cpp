@@ -129,6 +129,7 @@ std::string ScopedEventTypes::BuildString(const std::vector<const EventType*>& e
 
 ScopedEventTypes::ScopedEventTypes(const std::string& event_type_str) {
   saved_event_types_ = std::move(g_event_types);
+  saved_etm_event_type_ = g_etm_event_type;
   g_event_types.clear();
   for (auto& s : android::base::Split(event_type_str, "\n")) {
     std::string name = s.substr(0, s.find(','));
@@ -144,6 +145,7 @@ ScopedEventTypes::ScopedEventTypes(const std::string& event_type_str) {
 
 ScopedEventTypes::~ScopedEventTypes() {
   g_event_types = std::move(saved_event_types_);
+  g_etm_event_type = saved_etm_event_type_;
 }
 
 const std::set<EventType>& GetAllEventTypes() {
