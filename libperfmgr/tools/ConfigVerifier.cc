@@ -96,7 +96,7 @@ static void printUsage(const char* exec_name) {
     LOG(INFO) << usage;
 }
 
-static void execConfig(const std::string& json_file) {
+static void execConfig(const std::string& json_file, const std::string& hint_name, unsigned long hint_duration) {
     std::unique_ptr<android::perfmgr::HintManager> hm =
         android::perfmgr::HintManager::GetFromJSON(json_file);
     if (!hm.get() || !hm->IsRunning()) {
@@ -104,37 +104,43 @@ static void execConfig(const std::string& json_file) {
     }
     std::vector<std::string> hints = hm->GetHints();
     for (const auto& hint : hints) {
+        if (!hint_name.empty() && hint_name != hint)
+            continue;
         LOG(INFO) << "Do hint: " << hint;
-        hm->DoHint(hint);
+        hm->DoHint(hint, std::chrono::milliseconds(hint_duration));
         std::this_thread::yield();
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(hint_duration));
         LOG(INFO) << "End hint: " << hint;
         hm->EndHint(hint);
         std::this_thread::yield();
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 }
 
 int main(int argc, char* argv[]) {
-    android::base::InitLogging(argv, android::base::StderrLogger);
+    android::base::InitLogging(argv, android::base::StdioLogger);
 
     if (getuid() == 0) {
         LOG(WARNING) << "Running as root might mask node permission";
     }
 
     std::string config_path;
+    std::string hint_name;
     bool exec_hint = false;
+    unsigned long hint_duration = 100;
+
     while (true) {
         static struct option opts[] = {
             {"config", required_argument, nullptr, 'c'},
             {"exec_hint", no_argument, nullptr, 'e'},
+            {"hint_name", required_argument, nullptr, 'i'},
+            {"hint_duration", required_argument, nullptr, 'd'},
             {"help", no_argument, nullptr, 'h'},
             {"verbose", no_argument, nullptr, 'v'},
             {0, 0, 0, 0}  // termination of the option list
         };
 
         int option_index = 0;
-        int c = getopt_long(argc, argv, "c:ehv", opts, &option_index);
+        int c = getopt_long(argc, argv, "c:ei:d:hv", opts, &option_index);
         if (c == -1) {
             break;
         }
@@ -145,6 +151,12 @@ int main(int argc, char* argv[]) {
                 break;
             case 'e':
                 exec_hint = true;
+                break;
+            case 'i':
+                hint_name = optarg;
+                break;
+            case 'd':
+                hint_duration = strtoul(optarg, NULL, 10);
                 break;
             case 'v':
                 android::base::SetMinimumLogSeverity(android::base::VERBOSE);
@@ -165,7 +177,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (exec_hint) {
-        execConfig(config_path);
+        execConfig(config_path, hint_name, hint_duration);
         return 0;
     }
 
