@@ -51,6 +51,10 @@ struct EventType {
     return strcasecmp(name.c_str(), other.name.c_str()) < 0;
   }
 
+  bool IsPmuEvent() const {
+    return name.find("/") != std::string::npos;
+  }
+
   std::string name;
   uint32_t type;
   uint64_t config;
