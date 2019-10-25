@@ -44,23 +44,6 @@ class NodeVerifier : public HintManager {
             return false;
         }
 
-        for (const auto& node : nodes) {
-            std::vector<std::string> values = node->GetValues();
-            std::string default_value = values[node->GetDefaultIndex()];
-            // Always set to default first
-            values.insert(values.begin(), default_value);
-            // And reset to default after test
-            values.push_back(default_value);
-            for (const auto& value : values) {
-                if (!android::base::WriteStringToFile(value, node->GetPath())) {
-                    LOG(ERROR) << "Failed to write to node: " << node->GetPath()
-                               << " with value: " << value;
-                    return false;
-                }
-                LOG(VERBOSE) << "Wrote to node: " << node->GetPath()
-                             << " with value: " << value;
-            }
-        }
         return true;
     }
 
