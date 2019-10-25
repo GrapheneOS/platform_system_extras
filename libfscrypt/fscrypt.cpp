@@ -212,46 +212,32 @@ bool ParseOptions(const std::string& options_string, EncryptionOptions* options)
     if (parts.size() < 1 || parts.size() > 3) {
         return false;
     }
-    if (parts.size() < 2) {
-        if (parts[0] == "adiantum") {
-            parts.emplace_back("adiantum");
-        } else {
-            parts.emplace_back("aes-256-cts");
+    if (!LookupModeByName(contents_modes, parts[0], &options->contents_mode)) {
+        LOG(ERROR) << "Invalid file contents encryption mode: " << parts[0];
+        return false;
+    }
+    if (parts.size() >= 2) {
+        if (!LookupModeByName(filenames_modes, parts[1], &options->filenames_mode)) {
+            LOG(ERROR) << "Invalid file names encryption mode: " << parts[1];
+            return false;
         }
-    }
-    if (parts.size() < 3) {
-        parts.emplace_back("v1");
-    }
-
-    return ParseOptionsParts(parts[0], parts[1], parts[2], options);
-}
-
-bool ParseOptionsParts(const std::string& contents_mode, const std::string& filenames_mode,
-                       const std::string& flags, EncryptionOptions* options) {
-    int policy_version;
-    if (flags == "v1") {
-        policy_version = 1;
-    } else if (flags == "v2") {
-        policy_version = 2;
+    } else if (options->contents_mode == FS_ENCRYPTION_MODE_ADIANTUM) {
+        options->filenames_mode = FS_ENCRYPTION_MODE_ADIANTUM;
     } else {
-        LOG(ERROR) << "Unknown flag: " << flags;
-        return false;
+        options->filenames_mode = FS_ENCRYPTION_MODE_AES_256_CTS;
     }
-    return ParseOptionsParts(contents_mode, filenames_mode, policy_version, options);
-}
-
-bool ParseOptionsParts(const std::string& contents_mode, const std::string& filenames_mode,
-                       int policy_version, EncryptionOptions* options) {
-    if (!LookupModeByName(contents_modes, contents_mode, &options->contents_mode)) {
-        LOG(ERROR) << "Invalid file contents encryption mode: " << contents_mode;
-        return false;
+    if (parts.size() >= 3) {
+        if (parts[2] == "v1") {
+            options->version = 1;
+        } else if (parts[2] == "v2") {
+            options->version = 2;
+        } else {
+            LOG(ERROR) << "Unknown flag: " << parts[2];
+            return false;
+        }
+    } else {
+        options->version = 1;
     }
-    if (!LookupModeByName(filenames_modes, filenames_mode, &options->filenames_mode)) {
-        LOG(ERROR) << "Invalid file names encryption mode: " << filenames_mode;
-        return false;
-    }
-
-    options->version = policy_version;
     return true;
 }
 
