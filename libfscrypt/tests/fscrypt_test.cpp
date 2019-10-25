@@ -37,6 +37,7 @@ TEST(fscrypt, ParseOptions) {
     EXPECT_EQ(1, options.version);
     EXPECT_EQ(FS_ENCRYPTION_MODE_AES_256_XTS, options.contents_mode);
     EXPECT_EQ(FS_ENCRYPTION_MODE_AES_256_CTS, options.filenames_mode);
+    EXPECT_EQ(FS_POLICY_FLAGS_PAD_4, options.flags);
     EXPECT_TRUE(OptionsToString(options, &options_string));
     EXPECT_EQ("aes-256-xts:aes-256-cts:v1", options_string);
 
@@ -44,6 +45,7 @@ TEST(fscrypt, ParseOptions) {
     EXPECT_EQ(1, options.version);
     EXPECT_EQ(FS_ENCRYPTION_MODE_AES_256_XTS, options.contents_mode);
     EXPECT_EQ(FS_ENCRYPTION_MODE_AES_256_CTS, options.filenames_mode);
+    EXPECT_EQ(FS_POLICY_FLAGS_PAD_4, options.flags);
     EXPECT_TRUE(OptionsToString(options, &options_string));
     EXPECT_EQ("aes-256-xts:aes-256-cts:v1", options_string);
 
@@ -51,6 +53,7 @@ TEST(fscrypt, ParseOptions) {
     EXPECT_EQ(1, options.version);
     EXPECT_EQ(FS_ENCRYPTION_MODE_ADIANTUM, options.contents_mode);
     EXPECT_EQ(FS_ENCRYPTION_MODE_ADIANTUM, options.filenames_mode);
+    EXPECT_EQ(FS_POLICY_FLAGS_PAD_16 | FS_POLICY_FLAG_DIRECT_KEY, options.flags);
     EXPECT_TRUE(OptionsToString(options, &options_string));
     EXPECT_EQ("adiantum:adiantum:v1", options_string);
 
@@ -58,6 +61,7 @@ TEST(fscrypt, ParseOptions) {
     EXPECT_EQ(1, options.version);
     EXPECT_EQ(FS_ENCRYPTION_MODE_ADIANTUM, options.contents_mode);
     EXPECT_EQ(FS_ENCRYPTION_MODE_AES_256_HEH, options.filenames_mode);
+    EXPECT_EQ(FS_POLICY_FLAGS_PAD_16, options.flags);
     EXPECT_TRUE(OptionsToString(options, &options_string));
     EXPECT_EQ("adiantum:aes-256-heh:v1", options_string);
 
@@ -65,6 +69,7 @@ TEST(fscrypt, ParseOptions) {
     EXPECT_EQ(1, options.version);
     EXPECT_EQ(FS_ENCRYPTION_MODE_PRIVATE, options.contents_mode);
     EXPECT_EQ(FS_ENCRYPTION_MODE_AES_256_CTS, options.filenames_mode);
+    EXPECT_EQ(FS_POLICY_FLAGS_PAD_4, options.flags);
     EXPECT_TRUE(OptionsToString(options, &options_string));
     EXPECT_EQ("ice:aes-256-cts:v1", options_string);
 
@@ -74,6 +79,7 @@ TEST(fscrypt, ParseOptions) {
     EXPECT_EQ(1, options.version);
     EXPECT_EQ(FS_ENCRYPTION_MODE_PRIVATE, options.contents_mode);
     EXPECT_EQ(FS_ENCRYPTION_MODE_AES_256_CTS, options.filenames_mode);
+    EXPECT_EQ(FS_POLICY_FLAGS_PAD_4, options.flags);
     EXPECT_TRUE(OptionsToString(options, &options_string));
     EXPECT_EQ("ice:aes-256-cts:v1", options_string);
 
@@ -81,6 +87,7 @@ TEST(fscrypt, ParseOptions) {
     EXPECT_EQ(1, options.version);
     EXPECT_EQ(FS_ENCRYPTION_MODE_PRIVATE, options.contents_mode);
     EXPECT_EQ(FS_ENCRYPTION_MODE_AES_256_HEH, options.filenames_mode);
+    EXPECT_EQ(FS_POLICY_FLAGS_PAD_16, options.flags);
     EXPECT_TRUE(OptionsToString(options, &options_string));
     EXPECT_EQ("ice:aes-256-heh:v1", options_string);
 
@@ -88,6 +95,7 @@ TEST(fscrypt, ParseOptions) {
     EXPECT_EQ(1, options.version);
     EXPECT_EQ(FS_ENCRYPTION_MODE_PRIVATE, options.contents_mode);
     EXPECT_EQ(FS_ENCRYPTION_MODE_ADIANTUM, options.filenames_mode);
+    EXPECT_EQ(FS_POLICY_FLAGS_PAD_16 | FS_POLICY_FLAG_DIRECT_KEY, options.flags);
     EXPECT_TRUE(OptionsToString(options, &options_string));
     EXPECT_EQ("ice:adiantum:v1", options_string);
 
@@ -95,6 +103,7 @@ TEST(fscrypt, ParseOptions) {
     EXPECT_EQ(1, options.version);
     EXPECT_EQ(FS_ENCRYPTION_MODE_AES_256_XTS, options.contents_mode);
     EXPECT_EQ(FS_ENCRYPTION_MODE_AES_256_CTS, options.filenames_mode);
+    EXPECT_EQ(FS_POLICY_FLAGS_PAD_4, options.flags);
     EXPECT_TRUE(OptionsToString(options, &options_string));
     EXPECT_EQ("aes-256-xts:aes-256-cts:v1", options_string);
 
@@ -102,6 +111,7 @@ TEST(fscrypt, ParseOptions) {
     EXPECT_EQ(1, options.version);
     EXPECT_EQ(FS_ENCRYPTION_MODE_AES_256_XTS, options.contents_mode);
     EXPECT_EQ(FS_ENCRYPTION_MODE_AES_256_CTS, options.filenames_mode);
+    EXPECT_EQ(FS_POLICY_FLAGS_PAD_4, options.flags);
     EXPECT_TRUE(OptionsToString(options, &options_string));
     EXPECT_EQ("aes-256-xts:aes-256-cts:v1", options_string);
 
@@ -109,6 +119,7 @@ TEST(fscrypt, ParseOptions) {
     EXPECT_EQ(2, options.version);
     EXPECT_EQ(FS_ENCRYPTION_MODE_AES_256_XTS, options.contents_mode);
     EXPECT_EQ(FS_ENCRYPTION_MODE_AES_256_CTS, options.filenames_mode);
+    EXPECT_EQ(FS_POLICY_FLAGS_PAD_16, options.flags);
     EXPECT_TRUE(OptionsToString(options, &options_string));
     EXPECT_EQ("aes-256-xts:aes-256-cts:v2", options_string);
 

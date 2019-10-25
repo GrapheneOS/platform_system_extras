@@ -150,31 +150,6 @@ void BytesToHex(const std::string& bytes, std::string* hex) {
     }
 }
 
-static uint8_t fscrypt_get_policy_flags(const EncryptionOptions& options) {
-    uint8_t flags = 0;
-
-    // In the original setting of v1 policies and AES-256-CTS we used 4-byte
-    // padding of filenames, so we have to retain that for compatibility.
-    //
-    // For everything else, use 16-byte padding.  This is more secure (it helps
-    // hide the length of filenames), and it makes the inputs evenly divisible
-    // into cipher blocks which is more efficient for encryption and decryption.
-    if (options.version == 1 && options.filenames_mode == FS_ENCRYPTION_MODE_AES_256_CTS) {
-        flags |= FS_POLICY_FLAGS_PAD_4;
-    } else {
-        flags |= FS_POLICY_FLAGS_PAD_16;
-    }
-
-    // Use DIRECT_KEY for Adiantum, since it's much more efficient but just as
-    // secure since Android doesn't reuse the same master key for multiple
-    // encryption modes.
-    if (options.filenames_mode == FS_ENCRYPTION_MODE_ADIANTUM) {
-        flags |= FS_POLICY_FLAG_DIRECT_KEY;
-    }
-
-    return flags;
-}
-
 static bool fscrypt_is_encrypted(int fd) {
     fscrypt_policy_v1 policy;
 
@@ -238,6 +213,26 @@ bool ParseOptions(const std::string& options_string, EncryptionOptions* options)
     } else {
         options->version = 1;
     }
+    options->flags = 0;
+
+    // In the original setting of v1 policies and AES-256-CTS we used 4-byte
+    // padding of filenames, so we have to retain that for compatibility.
+    //
+    // For everything else, use 16-byte padding.  This is more secure (it helps
+    // hide the length of filenames), and it makes the inputs evenly divisible
+    // into cipher blocks which is more efficient for encryption and decryption.
+    if (options->version == 1 && options->filenames_mode == FS_ENCRYPTION_MODE_AES_256_CTS) {
+        options->flags |= FS_POLICY_FLAGS_PAD_4;
+    } else {
+        options->flags |= FS_POLICY_FLAGS_PAD_16;
+    }
+
+    // Use DIRECT_KEY for Adiantum, since it's much more efficient but just as
+    // secure since Android doesn't reuse the same master key for multiple
+    // encryption modes.
+    if (options->filenames_mode == FS_ENCRYPTION_MODE_ADIANTUM) {
+        options->flags |= FS_POLICY_FLAG_DIRECT_KEY;
+    }
     return true;
 }
 
@@ -248,6 +243,7 @@ static std::string PolicyDebugString(const EncryptionPolicy& policy) {
     ss << ref_hex;
     ss << " v" << policy.options.version;
     ss << " modes " << policy.options.contents_mode << "/" << policy.options.filenames_mode;
+    ss << std::hex << " flags 0x" << policy.options.flags;
     return ss.str();
 }
 
@@ -270,7 +266,7 @@ bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory) 
             kern_policy.v1.version = FSCRYPT_POLICY_V1;
             kern_policy.v1.contents_encryption_mode = policy.options.contents_mode;
             kern_policy.v1.filenames_encryption_mode = policy.options.filenames_mode;
-            kern_policy.v1.flags = fscrypt_get_policy_flags(policy.options);
+            kern_policy.v1.flags = policy.options.flags;
             policy.key_raw_ref.copy(reinterpret_cast<char*>(kern_policy.v1.master_key_descriptor),
                                     FSCRYPT_KEY_DESCRIPTOR_SIZE);
             break;
@@ -283,7 +279,7 @@ bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory) 
             kern_policy.v2.version = FSCRYPT_POLICY_V2;
             kern_policy.v2.contents_encryption_mode = policy.options.contents_mode;
             kern_policy.v2.filenames_encryption_mode = policy.options.filenames_mode;
-            kern_policy.v2.flags = fscrypt_get_policy_flags(policy.options);
+            kern_policy.v2.flags = policy.options.flags;
             policy.key_raw_ref.copy(reinterpret_cast<char*>(kern_policy.v2.master_key_identifier),
                                     FSCRYPT_KEY_IDENTIFIER_SIZE);
             break;

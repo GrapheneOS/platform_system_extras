@@ -33,7 +33,9 @@ struct EncryptionOptions {
     int version;
     int contents_mode;
     int filenames_mode;
+    int flags;
 
+    // Ensure that "version" is not valid on creation and so must be explicitly set
     EncryptionOptions() : version(0) {}
 };
 
