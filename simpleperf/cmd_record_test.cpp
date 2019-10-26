@@ -894,6 +894,13 @@ TEST(record_cmd, cs_etm_event) {
   ASSERT_TRUE(RunRecordCmd({"-e", "cs-etm"}, tmpfile.path));
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
   ASSERT_TRUE(reader);
+
+  // cs-etm uses sample period instead of sample freq.
+  ASSERT_EQ(reader->AttrSection().size(), 1u);
+  const perf_event_attr* attr = reader->AttrSection()[0].attr;
+  ASSERT_EQ(attr->freq, 0);
+  ASSERT_EQ(attr->sample_period, 1);
+
   bool has_auxtrace_info = false;
   bool has_auxtrace = false;
   bool has_aux = false;
