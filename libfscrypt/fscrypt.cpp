@@ -66,6 +66,9 @@ struct fscrypt_policy_v2 {
 
 #endif /* FSCRYPT_POLICY_V1 */
 
+// TODO: switch to <linux/fscrypt.h> once it's in Bionic
+#define FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64 0x08
+
 /* modes not supported by upstream kernel, so not in <linux/fs.h> */
 #define FS_ENCRYPTION_MODE_AES_256_HEH      126
 #define FS_ENCRYPTION_MODE_PRIVATE          127
@@ -168,6 +171,9 @@ bool OptionsToString(const EncryptionOptions& options, std::string* options_stri
         return false;
     }
     *options_string = contents_mode + ":" + filenames_mode + ":v" + std::to_string(options.version);
+    if ((options.flags & FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64)) {
+        *options_string += "+inlinecrypt_optimized";
+    }
     EncryptionOptions options_check;
     if (!ParseOptions(*options_string, &options_check)) {
         LOG(ERROR) << "Internal error serializing options as string: " << *options_string;
@@ -201,19 +207,23 @@ bool ParseOptions(const std::string& options_string, EncryptionOptions* options)
     } else {
         options->filenames_mode = FS_ENCRYPTION_MODE_AES_256_CTS;
     }
-    if (parts.size() >= 3) {
-        if (parts[2] == "v1") {
-            options->version = 1;
-        } else if (parts[2] == "v2") {
-            options->version = 2;
-        } else {
-            LOG(ERROR) << "Unknown flag: " << parts[2];
-            return false;
-        }
-    } else {
-        options->version = 1;
-    }
+    options->version = 1;
     options->flags = 0;
+    if (parts.size() >= 3) {
+        auto flags = android::base::Split(parts[2], "+");
+        for (const auto& flag : flags) {
+            if (flag == "v1") {
+                options->version = 1;
+            } else if (flag == "v2") {
+                options->version = 2;
+            } else if (flag == "inlinecrypt_optimized") {
+                options->flags |= FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64;
+            } else {
+                LOG(ERROR) << "Unknown flag: " << flag;
+                return false;
+            }
+        }
+    }
 
     // In the original setting of v1 policies and AES-256-CTS we used 4-byte
     // padding of filenames, so we have to retain that for compatibility.
