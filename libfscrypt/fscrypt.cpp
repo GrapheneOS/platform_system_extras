@@ -72,8 +72,6 @@ struct fscrypt_policy_v2 {
 
 #define HEX_LOOKUP "0123456789abcdef"
 
-#define MAX_KEY_REF_SIZE_HEX (2 * FSCRYPT_KEY_IDENTIFIER_SIZE + 1)
-
 struct ModeLookupEntry {
     std::string name;
     int id;
@@ -195,13 +193,35 @@ bool OptionsToString(const EncryptionOptions& options, std::string* options_stri
         return false;
     }
     *options_string = contents_mode + ":" + filenames_mode + ":v" + std::to_string(options.version);
+    EncryptionOptions options_check;
+    if (!ParseOptions(*options_string, &options_check)) {
+        LOG(ERROR) << "Internal error serializing options as string: " << *options_string;
+        return false;
+    }
+    if (memcmp(&options, &options_check, sizeof(options_check)) != 0) {
+        LOG(ERROR) << "Internal error serializing options as string, round trip failed: "
+                   << *options_string;
+        return false;
+    }
     return true;
 }
 
 bool ParseOptions(const std::string& options_string, EncryptionOptions* options) {
+    memset(options, '\0', sizeof(*options));
     auto parts = android::base::Split(options_string, ":");
-
-    if (parts.size() != 3) return false;
+    if (parts.size() < 1 || parts.size() > 3) {
+        return false;
+    }
+    if (parts.size() < 2) {
+        if (parts[0] == "adiantum") {
+            parts.emplace_back("adiantum");
+        } else {
+            parts.emplace_back("aes-256-cts");
+        }
+    }
+    if (parts.size() < 3) {
+        parts.emplace_back("v1");
+    }
 
     return ParseOptionsParts(parts[0], parts[1], parts[2], options);
 }
@@ -233,6 +253,16 @@ bool ParseOptionsParts(const std::string& contents_mode, const std::string& file
 
     options->version = policy_version;
     return true;
+}
+
+static std::string PolicyDebugString(const EncryptionPolicy& policy) {
+    std::stringstream ss;
+    std::string ref_hex;
+    BytesToHex(policy.key_raw_ref, &ref_hex);
+    ss << ref_hex;
+    ss << " v" << policy.options.version;
+    ss << " modes " << policy.options.contents_mode << "/" << policy.options.filenames_mode;
+    return ss.str();
 }
 
 bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory) {
@@ -276,11 +306,6 @@ bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory) 
             return false;
     }
 
-    std::string policy_descr;
-    BytesToHex(policy.key_raw_ref, &policy_descr);
-    policy_descr += " modes "s + std::to_string(policy.options.contents_mode) + "/" +
-                    std::to_string(policy.options.filenames_mode);
-
     android::base::unique_fd fd(open(directory.c_str(), O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
     if (fd == -1) {
         PLOG(ERROR) << "Failed to open directory " << directory;
@@ -302,8 +327,8 @@ bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory) 
                 reason = strerror(errno);
                 break;
         }
-        LOG(ERROR) << "Failed to set encryption policy of " << directory << " to " << policy_descr
-                   << ": " << reason;
+        LOG(ERROR) << "Failed to set encryption policy of " << directory << " to "
+                   << PolicyDebugString(policy) << ": " << reason;
         if (errno == ENOTEMPTY) {
             log_ls(directory.c_str());
         }
@@ -311,9 +336,11 @@ bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory) 
     }
 
     if (already_encrypted) {
-        LOG(INFO) << "Verified that " << directory << " has the encryption policy " << policy_descr;
+        LOG(INFO) << "Verified that " << directory << " has the encryption policy "
+                  << PolicyDebugString(policy);
     } else {
-        LOG(INFO) << "Encryption policy of " << directory << " set to " << policy_descr;
+        LOG(INFO) << "Encryption policy of " << directory << " set to "
+                  << PolicyDebugString(policy);
     }
     return true;
 }
