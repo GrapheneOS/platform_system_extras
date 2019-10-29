@@ -150,31 +150,6 @@ void BytesToHex(const std::string& bytes, std::string* hex) {
     }
 }
 
-static uint8_t fscrypt_get_policy_flags(const EncryptionOptions& options) {
-    uint8_t flags = 0;
-
-    // In the original setting of v1 policies and AES-256-CTS we used 4-byte
-    // padding of filenames, so we have to retain that for compatibility.
-    //
-    // For everything else, use 16-byte padding.  This is more secure (it helps
-    // hide the length of filenames), and it makes the inputs evenly divisible
-    // into cipher blocks which is more efficient for encryption and decryption.
-    if (options.version == 1 && options.filenames_mode == FS_ENCRYPTION_MODE_AES_256_CTS) {
-        flags |= FS_POLICY_FLAGS_PAD_4;
-    } else {
-        flags |= FS_POLICY_FLAGS_PAD_16;
-    }
-
-    // Use DIRECT_KEY for Adiantum, since it's much more efficient but just as
-    // secure since Android doesn't reuse the same master key for multiple
-    // encryption modes.
-    if (options.filenames_mode == FS_ENCRYPTION_MODE_ADIANTUM) {
-        flags |= FS_POLICY_FLAG_DIRECT_KEY;
-    }
-
-    return flags;
-}
-
 static bool fscrypt_is_encrypted(int fd) {
     fscrypt_policy_v1 policy;
 
@@ -212,46 +187,52 @@ bool ParseOptions(const std::string& options_string, EncryptionOptions* options)
     if (parts.size() < 1 || parts.size() > 3) {
         return false;
     }
-    if (parts.size() < 2) {
-        if (parts[0] == "adiantum") {
-            parts.emplace_back("adiantum");
-        } else {
-            parts.emplace_back("aes-256-cts");
+    if (!LookupModeByName(contents_modes, parts[0], &options->contents_mode)) {
+        LOG(ERROR) << "Invalid file contents encryption mode: " << parts[0];
+        return false;
+    }
+    if (parts.size() >= 2) {
+        if (!LookupModeByName(filenames_modes, parts[1], &options->filenames_mode)) {
+            LOG(ERROR) << "Invalid file names encryption mode: " << parts[1];
+            return false;
         }
-    }
-    if (parts.size() < 3) {
-        parts.emplace_back("v1");
-    }
-
-    return ParseOptionsParts(parts[0], parts[1], parts[2], options);
-}
-
-bool ParseOptionsParts(const std::string& contents_mode, const std::string& filenames_mode,
-                       const std::string& flags, EncryptionOptions* options) {
-    int policy_version;
-    if (flags == "v1") {
-        policy_version = 1;
-    } else if (flags == "v2") {
-        policy_version = 2;
+    } else if (options->contents_mode == FS_ENCRYPTION_MODE_ADIANTUM) {
+        options->filenames_mode = FS_ENCRYPTION_MODE_ADIANTUM;
     } else {
-        LOG(ERROR) << "Unknown flag: " << flags;
-        return false;
+        options->filenames_mode = FS_ENCRYPTION_MODE_AES_256_CTS;
     }
-    return ParseOptionsParts(contents_mode, filenames_mode, policy_version, options);
-}
+    if (parts.size() >= 3) {
+        if (parts[2] == "v1") {
+            options->version = 1;
+        } else if (parts[2] == "v2") {
+            options->version = 2;
+        } else {
+            LOG(ERROR) << "Unknown flag: " << parts[2];
+            return false;
+        }
+    } else {
+        options->version = 1;
+    }
+    options->flags = 0;
 
-bool ParseOptionsParts(const std::string& contents_mode, const std::string& filenames_mode,
-                       int policy_version, EncryptionOptions* options) {
-    if (!LookupModeByName(contents_modes, contents_mode, &options->contents_mode)) {
-        LOG(ERROR) << "Invalid file contents encryption mode: " << contents_mode;
-        return false;
-    }
-    if (!LookupModeByName(filenames_modes, filenames_mode, &options->filenames_mode)) {
-        LOG(ERROR) << "Invalid file names encryption mode: " << filenames_mode;
-        return false;
+    // In the original setting of v1 policies and AES-256-CTS we used 4-byte
+    // padding of filenames, so we have to retain that for compatibility.
+    //
+    // For everything else, use 16-byte padding.  This is more secure (it helps
+    // hide the length of filenames), and it makes the inputs evenly divisible
+    // into cipher blocks which is more efficient for encryption and decryption.
+    if (options->version == 1 && options->filenames_mode == FS_ENCRYPTION_MODE_AES_256_CTS) {
+        options->flags |= FS_POLICY_FLAGS_PAD_4;
+    } else {
+        options->flags |= FS_POLICY_FLAGS_PAD_16;
     }
 
-    options->version = policy_version;
+    // Use DIRECT_KEY for Adiantum, since it's much more efficient but just as
+    // secure since Android doesn't reuse the same master key for multiple
+    // encryption modes.
+    if (options->filenames_mode == FS_ENCRYPTION_MODE_ADIANTUM) {
+        options->flags |= FS_POLICY_FLAG_DIRECT_KEY;
+    }
     return true;
 }
 
@@ -262,6 +243,7 @@ static std::string PolicyDebugString(const EncryptionPolicy& policy) {
     ss << ref_hex;
     ss << " v" << policy.options.version;
     ss << " modes " << policy.options.contents_mode << "/" << policy.options.filenames_mode;
+    ss << std::hex << " flags 0x" << policy.options.flags;
     return ss.str();
 }
 
@@ -284,7 +266,7 @@ bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory) 
             kern_policy.v1.version = FSCRYPT_POLICY_V1;
             kern_policy.v1.contents_encryption_mode = policy.options.contents_mode;
             kern_policy.v1.filenames_encryption_mode = policy.options.filenames_mode;
-            kern_policy.v1.flags = fscrypt_get_policy_flags(policy.options);
+            kern_policy.v1.flags = policy.options.flags;
             policy.key_raw_ref.copy(reinterpret_cast<char*>(kern_policy.v1.master_key_descriptor),
                                     FSCRYPT_KEY_DESCRIPTOR_SIZE);
             break;
@@ -297,7 +279,7 @@ bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory) 
             kern_policy.v2.version = FSCRYPT_POLICY_V2;
             kern_policy.v2.contents_encryption_mode = policy.options.contents_mode;
             kern_policy.v2.filenames_encryption_mode = policy.options.filenames_mode;
-            kern_policy.v2.flags = fscrypt_get_policy_flags(policy.options);
+            kern_policy.v2.flags = policy.options.flags;
             policy.key_raw_ref.copy(reinterpret_cast<char*>(kern_policy.v2.master_key_identifier),
                                     FSCRYPT_KEY_IDENTIFIER_SIZE);
             break;
