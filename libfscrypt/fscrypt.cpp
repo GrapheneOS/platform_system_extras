@@ -193,13 +193,35 @@ bool OptionsToString(const EncryptionOptions& options, std::string* options_stri
         return false;
     }
     *options_string = contents_mode + ":" + filenames_mode + ":v" + std::to_string(options.version);
+    EncryptionOptions options_check;
+    if (!ParseOptions(*options_string, &options_check)) {
+        LOG(ERROR) << "Internal error serializing options as string: " << *options_string;
+        return false;
+    }
+    if (memcmp(&options, &options_check, sizeof(options_check)) != 0) {
+        LOG(ERROR) << "Internal error serializing options as string, round trip failed: "
+                   << *options_string;
+        return false;
+    }
     return true;
 }
 
 bool ParseOptions(const std::string& options_string, EncryptionOptions* options) {
+    memset(options, '\0', sizeof(*options));
     auto parts = android::base::Split(options_string, ":");
-
-    if (parts.size() != 3) return false;
+    if (parts.size() < 1 || parts.size() > 3) {
+        return false;
+    }
+    if (parts.size() < 2) {
+        if (parts[0] == "adiantum") {
+            parts.emplace_back("adiantum");
+        } else {
+            parts.emplace_back("aes-256-cts");
+        }
+    }
+    if (parts.size() < 3) {
+        parts.emplace_back("v1");
+    }
 
     return ParseOptionsParts(parts[0], parts[1], parts[2], options);
 }
