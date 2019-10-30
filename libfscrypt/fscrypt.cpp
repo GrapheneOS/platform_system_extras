@@ -66,13 +66,14 @@ struct fscrypt_policy_v2 {
 
 #endif /* FSCRYPT_POLICY_V1 */
 
+// TODO: switch to <linux/fscrypt.h> once it's in Bionic
+#define FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64 0x08
+
 /* modes not supported by upstream kernel, so not in <linux/fs.h> */
 #define FS_ENCRYPTION_MODE_AES_256_HEH      126
 #define FS_ENCRYPTION_MODE_PRIVATE          127
 
 #define HEX_LOOKUP "0123456789abcdef"
-
-#define MAX_KEY_REF_SIZE_HEX (2 * FSCRYPT_KEY_IDENTIFIER_SIZE + 1)
 
 struct ModeLookupEntry {
     std::string name;
@@ -152,31 +153,6 @@ void BytesToHex(const std::string& bytes, std::string* hex) {
     }
 }
 
-static uint8_t fscrypt_get_policy_flags(const EncryptionOptions& options) {
-    uint8_t flags = 0;
-
-    // In the original setting of v1 policies and AES-256-CTS we used 4-byte
-    // padding of filenames, so we have to retain that for compatibility.
-    //
-    // For everything else, use 16-byte padding.  This is more secure (it helps
-    // hide the length of filenames), and it makes the inputs evenly divisible
-    // into cipher blocks which is more efficient for encryption and decryption.
-    if (options.version == 1 && options.filenames_mode == FS_ENCRYPTION_MODE_AES_256_CTS) {
-        flags |= FS_POLICY_FLAGS_PAD_4;
-    } else {
-        flags |= FS_POLICY_FLAGS_PAD_16;
-    }
-
-    // Use DIRECT_KEY for Adiantum, since it's much more efficient but just as
-    // secure since Android doesn't reuse the same master key for multiple
-    // encryption modes.
-    if (options.filenames_mode == FS_ENCRYPTION_MODE_ADIANTUM) {
-        flags |= FS_POLICY_FLAG_DIRECT_KEY;
-    }
-
-    return flags;
-}
-
 static bool fscrypt_is_encrypted(int fd) {
     fscrypt_policy_v1 policy;
 
@@ -195,44 +171,90 @@ bool OptionsToString(const EncryptionOptions& options, std::string* options_stri
         return false;
     }
     *options_string = contents_mode + ":" + filenames_mode + ":v" + std::to_string(options.version);
+    if ((options.flags & FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64)) {
+        *options_string += "+inlinecrypt_optimized";
+    }
+    EncryptionOptions options_check;
+    if (!ParseOptions(*options_string, &options_check)) {
+        LOG(ERROR) << "Internal error serializing options as string: " << *options_string;
+        return false;
+    }
+    if (memcmp(&options, &options_check, sizeof(options_check)) != 0) {
+        LOG(ERROR) << "Internal error serializing options as string, round trip failed: "
+                   << *options_string;
+        return false;
+    }
     return true;
 }
 
 bool ParseOptions(const std::string& options_string, EncryptionOptions* options) {
+    memset(options, '\0', sizeof(*options));
     auto parts = android::base::Split(options_string, ":");
-
-    if (parts.size() != 3) return false;
-
-    return ParseOptionsParts(parts[0], parts[1], parts[2], options);
-}
-
-bool ParseOptionsParts(const std::string& contents_mode, const std::string& filenames_mode,
-                       const std::string& flags, EncryptionOptions* options) {
-    int policy_version;
-    if (flags == "v1") {
-        policy_version = 1;
-    } else if (flags == "v2") {
-        policy_version = 2;
+    if (parts.size() < 1 || parts.size() > 3) {
+        return false;
+    }
+    if (!LookupModeByName(contents_modes, parts[0], &options->contents_mode)) {
+        LOG(ERROR) << "Invalid file contents encryption mode: " << parts[0];
+        return false;
+    }
+    if (parts.size() >= 2) {
+        if (!LookupModeByName(filenames_modes, parts[1], &options->filenames_mode)) {
+            LOG(ERROR) << "Invalid file names encryption mode: " << parts[1];
+            return false;
+        }
+    } else if (options->contents_mode == FS_ENCRYPTION_MODE_ADIANTUM) {
+        options->filenames_mode = FS_ENCRYPTION_MODE_ADIANTUM;
     } else {
-        LOG(ERROR) << "Unknown flag: " << flags;
-        return false;
+        options->filenames_mode = FS_ENCRYPTION_MODE_AES_256_CTS;
     }
-    return ParseOptionsParts(contents_mode, filenames_mode, policy_version, options);
+    options->version = 1;
+    options->flags = 0;
+    if (parts.size() >= 3) {
+        auto flags = android::base::Split(parts[2], "+");
+        for (const auto& flag : flags) {
+            if (flag == "v1") {
+                options->version = 1;
+            } else if (flag == "v2") {
+                options->version = 2;
+            } else if (flag == "inlinecrypt_optimized") {
+                options->flags |= FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64;
+            } else {
+                LOG(ERROR) << "Unknown flag: " << flag;
+                return false;
+            }
+        }
+    }
+
+    // In the original setting of v1 policies and AES-256-CTS we used 4-byte
+    // padding of filenames, so we have to retain that for compatibility.
+    //
+    // For everything else, use 16-byte padding.  This is more secure (it helps
+    // hide the length of filenames), and it makes the inputs evenly divisible
+    // into cipher blocks which is more efficient for encryption and decryption.
+    if (options->version == 1 && options->filenames_mode == FS_ENCRYPTION_MODE_AES_256_CTS) {
+        options->flags |= FS_POLICY_FLAGS_PAD_4;
+    } else {
+        options->flags |= FS_POLICY_FLAGS_PAD_16;
+    }
+
+    // Use DIRECT_KEY for Adiantum, since it's much more efficient but just as
+    // secure since Android doesn't reuse the same master key for multiple
+    // encryption modes.
+    if (options->filenames_mode == FS_ENCRYPTION_MODE_ADIANTUM) {
+        options->flags |= FS_POLICY_FLAG_DIRECT_KEY;
+    }
+    return true;
 }
 
-bool ParseOptionsParts(const std::string& contents_mode, const std::string& filenames_mode,
-                       int policy_version, EncryptionOptions* options) {
-    if (!LookupModeByName(contents_modes, contents_mode, &options->contents_mode)) {
-        LOG(ERROR) << "Invalid file contents encryption mode: " << contents_mode;
-        return false;
-    }
-    if (!LookupModeByName(filenames_modes, filenames_mode, &options->filenames_mode)) {
-        LOG(ERROR) << "Invalid file names encryption mode: " << filenames_mode;
-        return false;
-    }
-
-    options->version = policy_version;
-    return true;
+static std::string PolicyDebugString(const EncryptionPolicy& policy) {
+    std::stringstream ss;
+    std::string ref_hex;
+    BytesToHex(policy.key_raw_ref, &ref_hex);
+    ss << ref_hex;
+    ss << " v" << policy.options.version;
+    ss << " modes " << policy.options.contents_mode << "/" << policy.options.filenames_mode;
+    ss << std::hex << " flags 0x" << policy.options.flags;
+    return ss.str();
 }
 
 bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory) {
@@ -254,7 +276,7 @@ bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory) 
             kern_policy.v1.version = FSCRYPT_POLICY_V1;
             kern_policy.v1.contents_encryption_mode = policy.options.contents_mode;
             kern_policy.v1.filenames_encryption_mode = policy.options.filenames_mode;
-            kern_policy.v1.flags = fscrypt_get_policy_flags(policy.options);
+            kern_policy.v1.flags = policy.options.flags;
             policy.key_raw_ref.copy(reinterpret_cast<char*>(kern_policy.v1.master_key_descriptor),
                                     FSCRYPT_KEY_DESCRIPTOR_SIZE);
             break;
@@ -267,7 +289,7 @@ bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory) 
             kern_policy.v2.version = FSCRYPT_POLICY_V2;
             kern_policy.v2.contents_encryption_mode = policy.options.contents_mode;
             kern_policy.v2.filenames_encryption_mode = policy.options.filenames_mode;
-            kern_policy.v2.flags = fscrypt_get_policy_flags(policy.options);
+            kern_policy.v2.flags = policy.options.flags;
             policy.key_raw_ref.copy(reinterpret_cast<char*>(kern_policy.v2.master_key_identifier),
                                     FSCRYPT_KEY_IDENTIFIER_SIZE);
             break;
@@ -275,11 +297,6 @@ bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory) 
             LOG(ERROR) << "Invalid encryption policy version: " << policy.options.version;
             return false;
     }
-
-    std::string policy_descr;
-    BytesToHex(policy.key_raw_ref, &policy_descr);
-    policy_descr += " modes "s + std::to_string(policy.options.contents_mode) + "/" +
-                    std::to_string(policy.options.filenames_mode);
 
     android::base::unique_fd fd(open(directory.c_str(), O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
     if (fd == -1) {
@@ -302,8 +319,8 @@ bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory) 
                 reason = strerror(errno);
                 break;
         }
-        LOG(ERROR) << "Failed to set encryption policy of " << directory << " to " << policy_descr
-                   << ": " << reason;
+        LOG(ERROR) << "Failed to set encryption policy of " << directory << " to "
+                   << PolicyDebugString(policy) << ": " << reason;
         if (errno == ENOTEMPTY) {
             log_ls(directory.c_str());
         }
@@ -311,9 +328,11 @@ bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory) 
     }
 
     if (already_encrypted) {
-        LOG(INFO) << "Verified that " << directory << " has the encryption policy " << policy_descr;
+        LOG(INFO) << "Verified that " << directory << " has the encryption policy "
+                  << PolicyDebugString(policy);
     } else {
-        LOG(INFO) << "Encryption policy of " << directory << " set to " << policy_descr;
+        LOG(INFO) << "Encryption policy of " << directory << " set to "
+                  << PolicyDebugString(policy);
     }
     return true;
 }

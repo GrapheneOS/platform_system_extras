@@ -33,7 +33,9 @@ struct EncryptionOptions {
     int version;
     int contents_mode;
     int filenames_mode;
+    int flags;
 
+    // Ensure that "version" is not valid on creation and so must be explicitly set
     EncryptionOptions() : version(0) {}
 };
 
@@ -46,15 +48,8 @@ void BytesToHex(const std::string& bytes, std::string* hex);
 
 bool OptionsToString(const EncryptionOptions& options, std::string* options_string);
 
-// Note that right now this parses only the output from OptionsToString, not the
-// more general format that appears in fstabs.
 bool ParseOptions(const std::string& options_string, EncryptionOptions* options);
 
-bool ParseOptionsParts(const std::string& contents_mode, const std::string& filenames_mode,
-                       const std::string& flags, EncryptionOptions* options);
-
-bool ParseOptionsParts(const std::string& contents_mode, const std::string& filenames_mode,
-                       int policy_version, EncryptionOptions* options);
 bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory);
 
 }  // namespace fscrypt
