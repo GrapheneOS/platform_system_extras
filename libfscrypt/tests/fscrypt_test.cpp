@@ -22,9 +22,6 @@
 
 using namespace android::fscrypt;
 
-// TODO: switch to <linux/fscrypt.h> once it's in Bionic
-#define FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64 0x08
-
 /* modes not supported by upstream kernel, so not in <linux/fs.h> */
 #define FS_ENCRYPTION_MODE_AES_256_HEH 126
 #define FS_ENCRYPTION_MODE_PRIVATE 127
