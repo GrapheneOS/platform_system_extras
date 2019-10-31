@@ -566,15 +566,14 @@ bool JITDebugReader::ReadNewCodeEntriesImpl(Process& process, const Descriptor& 
       // once we hit an entry with timestamp <= last_action_timestmap.
       break;
     }
-    if (entry.symfile_size == 0) {
-      continue;
+    if (entry.symfile_size > 0) {
+      CodeEntry code_entry;
+      code_entry.addr = current_entry_addr;
+      code_entry.symfile_addr = entry.symfile_addr;
+      code_entry.symfile_size = entry.symfile_size;
+      code_entry.timestamp = entry.register_timestamp;
+      new_code_entries->push_back(code_entry);
     }
-    CodeEntry code_entry;
-    code_entry.addr = current_entry_addr;
-    code_entry.symfile_addr = entry.symfile_addr;
-    code_entry.symfile_size = entry.symfile_size;
-    code_entry.timestamp = entry.register_timestamp;
-    new_code_entries->push_back(code_entry);
     entry_addr_set.insert(current_entry_addr);
     prev_entry_addr = current_entry_addr;
     current_entry_addr = entry.next_addr;
@@ -608,6 +607,9 @@ void JITDebugReader::ReadJITCodeDebugInfo(Process& process,
       tmp_file->DoNotRemove();
     }
     auto callback = [&](const ElfFileSymbol& symbol) {
+      if (symbol.len == 0) {  // Some arm labels can have zero length.
+        return;
+      }
       LOG(VERBOSE) << "JITSymbol " << symbol.name << " at [" << std::hex << symbol.vaddr
                    << " - " << (symbol.vaddr + symbol.len) << " with size " << symbol.len;
       debug_info->emplace_back(process.pid, jit_entry.timestamp, symbol.vaddr, symbol.len,
