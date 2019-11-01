@@ -747,7 +747,7 @@ TEST(record_cmd, cpu_percent_option) {
 class RecordingAppHelper {
  public:
   bool InstallApk(const std::string& apk_path, const std::string& package_name) {
-    if (Workload::RunCmd({"pm", "install", "-t", apk_path})) {
+    if (Workload::RunCmd({"pm", "install", "-t", "--abi", GetABI(), apk_path})) {
       installed_packages_.emplace_back(package_name);
       return true;
     }
@@ -785,6 +785,20 @@ class RecordingAppHelper {
   }
 
  private:
+  const char* GetABI() {
+#if defined(__i386__)
+    return "x86";
+#elif defined(__x86_64__)
+    return "x86_64";
+#elif defined(__aarch64__)
+    return "arm64-v8a";
+#elif defined(__arm__)
+    return "armeabi-v7a";
+#else
+    #error "unrecognized ABI"
+#endif
+  }
+
   std::vector<std::string> installed_packages_;
   std::unique_ptr<Workload> app_start_proc_;
   TemporaryFile perf_data_file_;
