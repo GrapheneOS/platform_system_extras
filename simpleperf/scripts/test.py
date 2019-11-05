@@ -102,51 +102,91 @@ class TestLogger(object):
 TEST_LOGGER = TestLogger()
 
 
-def get_device_features():
-    adb = AdbHelper()
-    adb.check_run_and_return_output(['push',
-                                     'bin/android/%s/simpleperf' % adb.get_device_arch(),
-                                     '/data/local/tmp'])
-    adb.check_run_and_return_output(['shell', 'chmod', 'a+x', '/data/local/tmp/simpleperf'])
-    return adb.check_run_and_return_output(['shell', '/data/local/tmp/simpleperf', 'list',
-                                            '--show-features'])
+class TestHelper(object):
+    """ Keep global test info. """
 
-def is_trace_offcpu_supported():
-    if not hasattr(is_trace_offcpu_supported, 'value'):
-        is_trace_offcpu_supported.value = 'trace-offcpu' in get_device_features()
-    return is_trace_offcpu_supported.value
+    def __init__(self):
+        self.python_version = 3 if is_python3() else 2
+        self.repeat_count = 0
+        self.script_dir = os.path.abspath(get_script_dir())
+        self.cur_dir = os.getcwd()
+        self.testdata_dir = os.path.join(self.cur_dir, 'testdata')
+        self.test_base_dir = self.get_test_base_dir(self.python_version)
+        self.adb = AdbHelper(enable_switch_to_root=True)
+        self.android_version = self.adb.get_android_version()
+        self.device_features = None
+
+    def get_test_base_dir(self, python_version):
+        """ Return the dir of generated data for a python version. """
+        return os.path.join(self.cur_dir, 'test_python_%d' % python_version)
+
+    def testdata_path(self, testdata_name):
+        """ Return the path of a test data. """
+        return os.path.join(self.testdata_dir, testdata_name.replace('/', os.sep))
+
+    def test_dir(self, test_name):
+        """ Return the dir to run a test. """
+        return os.path.join(
+            self.test_base_dir, 'repeat_%d' % TEST_HELPER.repeat_count, test_name)
+
+    def script_path(self, script_name):
+        """ Return the dir of python scripts. """
+        return os.path.join(self.script_dir, script_name)
+
+    def get_device_features(self):
+        if self.device_features is None:
+            args = [sys.executable, self.script_path(
+                'run_simpleperf_on_device.py'), 'list', '--show-features']
+            output = subprocess.check_output(args, stderr=TEST_LOGGER.log_fh)
+            output = bytes_to_str(output)
+            self.device_features = output.split()
+        return self.device_features
+
+    def is_trace_offcpu_supported(self):
+        return 'trace-offcpu' in self.get_device_features()
+
+    def build_testdata(self):
+        """ Collect testdata in self.testdata_dir.
+            In system/extras/simpleperf/scripts, testdata comes from:
+                <script_dir>/../testdata, <script_dir>/script_testdata, <script_dir>/../demo
+            In prebuilts/simpleperf, testdata comes from:
+                <script_dir>/testdata
+        """
+        if os.path.isdir(self.testdata_dir):
+            return  # already built
+        os.makedirs(self.testdata_dir)
+
+        source_dirs = [os.path.join('..', 'testdata'), 'script_testdata',
+                       os.path.join('..', 'demo'), 'testdata']
+        source_dirs = [os.path.join(self.script_dir, x) for x in source_dirs]
+        source_dirs = [x for x in source_dirs if os.path.isdir(x)]
+
+        for source_dir in source_dirs:
+            for name in os.listdir(source_dir):
+                source = os.path.join(source_dir, name)
+                target = os.path.join(self.testdata_dir, name)
+                if os.path.exists(target):
+                    continue
+                if os.path.isfile(source):
+                    shutil.copyfile(source, target)
+                elif os.path.isdir(source):
+                    shutil.copytree(source, target)
 
 
-def android_version():
-    """ Get Android version on device, like 7 is for Android N, 8 is for Android O."""
-    if not hasattr(android_version, 'value'):
-        android_version.value = AdbHelper().get_android_version()
-    return android_version.value
+TEST_HELPER = TestHelper()
 
-
-def build_testdata():
-    """ Collect testdata from ../testdata and ../demo. """
-    from_testdata_path = os.path.join('..', 'testdata')
-    from_demo_path = os.path.join('..', 'demo')
-    from_script_testdata_path = 'script_testdata'
-    if (not os.path.isdir(from_testdata_path) or not os.path.isdir(from_demo_path) or
-            not from_script_testdata_path):
-        return
-    copy_demo_list = ['SimpleperfExamplePureJava', 'SimpleperfExampleWithNative',
-                      'SimpleperfExampleOfKotlin']
-
-    testdata_path = "testdata"
-    remove(testdata_path)
-    shutil.copytree(from_testdata_path, testdata_path)
-    for demo in copy_demo_list:
-        shutil.copytree(os.path.join(from_demo_path, demo), os.path.join(testdata_path, demo))
-    for f in os.listdir(from_script_testdata_path):
-        shutil.copy(os.path.join(from_script_testdata_path, f), testdata_path)
 
 class TestBase(unittest.TestCase):
+    def setUp(self):
+        """ Run each test in a separate dir. """
+        self.test_dir = TEST_HELPER.test_dir('%s.%s' % (
+            self.__class__.__name__, self._testMethodName))
+        os.makedirs(self.test_dir)
+        os.chdir(self.test_dir)
+
     def run_cmd(self, args, return_output=False):
         if args[0].endswith('.py'):
-            args = [sys.executable] + args
+            args = [sys.executable, TEST_HELPER.script_path(args[0])] + args[1:]
         use_shell = args[0].endswith('.bat')
         try:
             if not return_output:
@@ -184,7 +224,7 @@ class TestExampleBase(TestBase):
     @classmethod
     def prepare(cls, example_name, package_name, activity_name, abi=None, adb_root=False):
         cls.adb = AdbHelper(enable_switch_to_root=adb_root)
-        cls.example_path = os.path.join("testdata", example_name)
+        cls.example_path = TEST_HELPER.testdata_path(example_name)
         if not os.path.isdir(cls.example_path):
             log_fatal("can't find " + cls.example_path)
         for root, _, files in os.walk(cls.example_path):
@@ -195,64 +235,49 @@ class TestExampleBase(TestBase):
             log_fatal("can't find app-profiling.apk under " + cls.example_path)
         cls.package_name = package_name
         cls.activity_name = activity_name
-        cls.abi = "arm64"
-        if abi and abi != "arm64" and abi.find("arm") != -1:
-            cls.abi = "arm"
         args = ["install", "-r"]
         if abi:
             args += ["--abi", abi]
         args.append(cls.apk_path)
         cls.adb.check_run(args)
         cls.adb_root = adb_root
-        cls.compiled = False
         cls.has_perf_data_for_report = False
         # On Android >= P (version 9), we can profile JITed and interpreted Java code.
         # So only compile Java code on Android <= O (version 8).
-        cls.use_compiled_java_code = android_version() <= 8
-
-    def setUp(self):
-        if self.id().find('TraceOffCpu') != -1 and not is_trace_offcpu_supported():
-            self.skipTest('trace-offcpu is not supported on device')
-        cls = self.__class__
-        if not cls.has_perf_data_for_report:
-            cls.has_perf_data_for_report = True
-            self.run_app_profiler()
-            shutil.copy('perf.data', 'perf.data_for_report')
-            remove('binary_cache_for_report')
-            shutil.copytree('binary_cache', 'binary_cache_for_report')
-        else:
-            shutil.copy('perf.data_for_report', 'perf.data')
-            remove('binary_cache')
-            shutil.copytree('binary_cache_for_report', 'binary_cache')
+        cls.use_compiled_java_code = TEST_HELPER.android_version <= 8
+        cls.testcase_dir = TEST_HELPER.test_dir(cls.__name__)
 
     @classmethod
     def tearDownClass(cls):
-        if hasattr(cls, 'test_result') and cls.test_result and not cls.test_result.wasSuccessful():
-            return
+        remove(cls.testcase_dir)
         if hasattr(cls, 'package_name'):
             cls.adb.check_run(["uninstall", cls.package_name])
-        remove("binary_cache")
-        remove("annotated_files")
-        remove("perf.data")
-        remove("report.txt")
-        remove("pprof.profile")
-        if cls.has_perf_data_for_report:
-            cls.has_perf_data_for_report = False
-            remove('perf.data_for_report')
-            remove('binary_cache_for_report')
+
+    def setUp(self):
+        super(TestExampleBase, self).setUp()
+        if 'TraceOffCpu' in self.id() and not TEST_HELPER.is_trace_offcpu_supported():
+            self.skipTest('trace-offcpu is not supported on device')
+        # Use testcase_dir to share a common perf.data for reporting. So we don't need to
+        # generate it for each test.
+        if not os.path.isdir(self.testcase_dir):
+            os.makedirs(self.testcase_dir)
+            os.chdir(self.testcase_dir)
+            self.run_app_profiler(compile_java_code=self.use_compiled_java_code)
+        remove(self.test_dir)
+        shutil.copytree(self.testcase_dir, self.test_dir)
+        os.chdir(self.test_dir)
 
     def run(self, result=None):
         self.__class__.test_result = result
         super(TestExampleBase, self).run(result)
 
     def run_app_profiler(self, record_arg="-g --duration 10", build_binary_cache=True,
-                         start_activity=True):
+                         start_activity=True, compile_java_code=False):
         args = ['app_profiler.py', '--app', self.package_name, '-r', record_arg, '-o', 'perf.data']
         if not build_binary_cache:
             args.append("-nb")
-        if self.use_compiled_java_code and not self.__class__.compiled:
+        if compile_java_code:
             args.append('--compile_java_code')
-            self.__class__.compiled = True
         if start_activity:
             args += ["-a", self.activity_name]
         args += ["-lib", self.example_path]
@@ -384,7 +409,6 @@ class TestExampleBase(TestBase):
         shutil.move('perf.data', 'perf2.data')
         self.run_app_profiler(record_arg='-g -f 1000 --duration 3 -e task-clock:u')
         self.run_cmd(['report_html.py', '-i', 'perf.data', 'perf2.data'])
-        remove('perf2.data')
 
 
 class TestExamplePureJava(TestExampleBase):
@@ -419,8 +443,8 @@ class TestExamplePureJava(TestExampleBase):
             return
         self.adb.check_run(['shell', 'am', 'start', '-n', self.package_name + '/.MainActivity'])
         time.sleep(1)
-        args = [sys.executable, "app_profiler.py", "--app", self.package_name,
-                "-r", "--duration 10000", "--disable_adb_root"]
+        args = [sys.executable, TEST_HELPER.script_path("app_profiler.py"),
+                "--app", self.package_name, "-r", "--duration 10000", "--disable_adb_root"]
         subproc = subprocess.Popen(args)
         time.sleep(3)
 
@@ -432,8 +456,9 @@ class TestExamplePureJava(TestExampleBase):
     def test_app_profiler_stop_after_app_exit(self):
         self.adb.check_run(['shell', 'am', 'start', '-n', self.package_name + '/.MainActivity'])
         time.sleep(1)
-        subproc = subprocess.Popen([sys.executable, 'app_profiler.py', '--app', self.package_name,
-                                    '-r', '--duration 10000', '--disable_adb_root'])
+        subproc = subprocess.Popen(
+            [sys.executable, TEST_HELPER.script_path('app_profiler.py'),
+             '--app', self.package_name, '-r', '--duration 10000', '--disable_adb_root'])
         time.sleep(3)
         self.adb.check_run(['shell', 'am', 'force-stop', self.package_name])
         subproc.wait()
@@ -502,20 +527,15 @@ class TestExamplePureJava(TestExampleBase):
         self.check_inferno_report_html(
             [('com.example.simpleperf.simpleperfexamplepurejava.MainActivity$1.run', 80)],
             "report2.html")
-        remove("report2.html")
 
     def test_inferno_in_another_dir(self):
         test_dir = 'inferno_testdir'
-        saved_dir = os.getcwd()
-        remove(test_dir)
         os.mkdir(test_dir)
         os.chdir(test_dir)
-        self.run_cmd(['python', os.path.join(saved_dir, 'app_profiler.py'),
-                      '--app', self.package_name, '-r', '-e task-clock:u -g --duration 3'])
+        self.run_cmd(['app_profiler.py', '--app', self.package_name,
+                      '-r', '-e task-clock:u -g --duration 3'])
         self.check_exist(filename="perf.data")
         self.run_cmd([INFERNO_SCRIPT, "-sc"])
-        os.chdir(saved_dir)
-        remove(test_dir)
 
     def test_report_html(self):
         self.common_test_report_html()
@@ -855,8 +875,8 @@ class TestExampleOfKotlinTraceOffCpu(TestExampleBase):
 
 class TestNativeProfiling(TestBase):
     def setUp(self):
-        self.adb = AdbHelper()
-        self.is_rooted_device = self.adb.switch_to_root()
+        super(TestNativeProfiling, self).setUp()
+        self.is_rooted_device = TEST_HELPER.adb.switch_to_root()
 
     def test_profile_cmd(self):
         self.run_cmd(["app_profiler.py", "-cmd", "pm -l", "--disable_adb_root"])
@@ -873,7 +893,7 @@ class TestNativeProfiling(TestBase):
     def test_profile_pids(self):
         if not self.is_rooted_device:
             return
-        pid = int(self.adb.check_run_and_return_output(['shell', 'pidof', 'system_server']))
+        pid = int(TEST_HELPER.adb.check_run_and_return_output(['shell', 'pidof', 'system_server']))
         self.run_cmd(['app_profiler.py', '--pid', str(pid), '-r', '--duration 1'])
         self.run_cmd(['app_profiler.py', '--pid', str(pid), str(pid), '-r', '--duration 1'])
         self.run_cmd(['app_profiler.py', '--tid', str(pid), '-r', '--duration 1'])
@@ -886,13 +906,15 @@ class TestNativeProfiling(TestBase):
         self.run_cmd(['app_profiler.py', '--system_wide', '-r', '--duration 1'])
 
 
-class TestReportLib(unittest.TestCase):
+class TestReportLib(TestBase):
     def setUp(self):
+        super(TestReportLib, self).setUp()
         self.report_lib = ReportLib()
-        self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_symbols.data'))
+        self.report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_symbols.data'))
 
     def tearDown(self):
         self.report_lib.Close()
+        super(TestReportLib, self).tearDown()
 
     def test_build_id(self):
         build_id = self.report_lib.GetBuildIdForPath('/data/t2')
@@ -926,7 +948,7 @@ class TestReportLib(unittest.TestCase):
         self.assertTrue(found_sample)
 
     def test_meta_info(self):
-        self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_trace_offcpu.data'))
+        self.report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_trace_offcpu.data'))
         meta_info = self.report_lib.MetaInfo()
         self.assertTrue("simpleperf_version" in meta_info)
         self.assertEqual(meta_info["system_wide_collection"], "false")
@@ -935,7 +957,7 @@ class TestReportLib(unittest.TestCase):
         self.assertTrue("product_props" in meta_info)
 
     def test_event_name_from_meta_info(self):
-        self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_tracepoint_event.data'))
+        self.report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_tracepoint_event.data'))
         event_names = set()
         while self.report_lib.GetNextSample():
             event_names.add(self.report_lib.GetEventOfCurrentSample().name)
@@ -943,13 +965,13 @@ class TestReportLib(unittest.TestCase):
         self.assertTrue('cpu-cycles' in event_names)
 
     def test_record_cmd(self):
-        self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_trace_offcpu.data'))
+        self.report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_trace_offcpu.data'))
         self.assertEqual(self.report_lib.GetRecordCmd(),
                          "/data/local/tmp/simpleperf record --trace-offcpu --duration 2 -g " +
                          "./simpleperf_runtest_run_and_sleep64")
 
     def test_offcpu(self):
-        self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_trace_offcpu.data'))
+        self.report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_trace_offcpu.data'))
         total_period = 0
         sleep_function_period = 0
         sleep_function_name = "SleepFunction(unsigned long long)"
@@ -970,7 +992,7 @@ class TestReportLib(unittest.TestCase):
 
     def test_show_art_frames(self):
         def has_art_frame(report_lib):
-            report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_interpreter_frames.data'))
+            report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_interpreter_frames.data'))
             result = False
             while report_lib.GetNextSample():
                 callchain = report_lib.GetCallChainOfCurrentSample()
@@ -993,7 +1015,7 @@ class TestReportLib(unittest.TestCase):
     def test_merge_java_methods(self):
         def parse_dso_names(report_lib):
             dso_names = set()
-            report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_interpreter_frames.data'))
+            report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_interpreter_frames.data'))
             while report_lib.GetNextSample():
                 dso_names.add(report_lib.GetSymbolOfCurrentSample().dso_name)
                 callchain = report_lib.GetCallChainOfCurrentSample()
@@ -1016,7 +1038,7 @@ class TestReportLib(unittest.TestCase):
         self.assertEqual(parse_dso_names(report_lib), (True, False))
 
     def test_tracing_data(self):
-        self.report_lib.SetRecordFile(os.path.join('testdata', 'perf_with_tracepoint_event.data'))
+        self.report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_tracepoint_event.data'))
         has_tracing_data = False
         while self.report_lib.GetNextSample():
             event = self.report_lib.GetEventOfCurrentSample()
@@ -1037,13 +1059,13 @@ class TestRunSimpleperfOnDevice(TestBase):
         self.run_cmd(['run_simpleperf_on_device.py', 'list', '--show-features'])
 
 
-class TestTools(unittest.TestCase):
+class TestTools(TestBase):
     def test_addr2nearestline(self):
         self.run_addr2nearestline_test(True)
         self.run_addr2nearestline_test(False)
 
     def run_addr2nearestline_test(self, with_function_name):
-        binary_cache_path = 'testdata'
+        binary_cache_path = TEST_HELPER.testdata_dir
         test_map = {
             '/simpleperf_runtest_two_functions_arm64': [
                 {
@@ -1145,7 +1167,7 @@ class TestTools(unittest.TestCase):
                         self.assertEqual(source[2], expected_functions[i])
 
     def test_objdump(self):
-        binary_cache_path = 'testdata'
+        binary_cache_path = TEST_HELPER.testdata_dir
         test_map = {
             '/simpleperf_runtest_two_functions_arm64': {
                 'start_addr': 0x668,
@@ -1196,7 +1218,7 @@ class TestTools(unittest.TestCase):
 
     def test_readelf(self):
         test_map = {
-            '/simpleperf_runtest_two_functions_arm64': {
+            'simpleperf_runtest_two_functions_arm64': {
                 'arch': 'arm64',
                 'build_id': '0xe8ecb3916d989dbdc068345c30f0c24300000000',
                 'sections': ['.interp', '.note.android.ident', '.note.gnu.build-id', '.dynsym',
@@ -1208,21 +1230,21 @@ class TestTools(unittest.TestCase):
                              '.debug_pubnames', '.debug_pubtypes', '.debug_line',
                              '.note.gnu.gold-version', '.symtab', '.strtab', '.shstrtab'],
             },
-            '/simpleperf_runtest_two_functions_arm': {
+            'simpleperf_runtest_two_functions_arm': {
                 'arch': 'arm',
                 'build_id': '0x718f5b36c4148ee1bd3f51af89ed2be600000000',
             },
-            '/simpleperf_runtest_two_functions_x86_64': {
+            'simpleperf_runtest_two_functions_x86_64': {
                 'arch': 'x86_64',
             },
-            '/simpleperf_runtest_two_functions_x86': {
+            'simpleperf_runtest_two_functions_x86': {
                 'arch': 'x86',
             }
         }
         readelf = ReadElf(None)
         for dso_path in test_map:
             dso_info = test_map[dso_path]
-            path = 'testdata' + dso_path
+            path = os.path.join(TEST_HELPER.testdata_dir, dso_path)
             self.assertEqual(dso_info['arch'], readelf.get_arch(path))
             if 'build_id' in dso_info:
                 self.assertEqual(dso_info['build_id'], readelf.get_build_id(path))
@@ -1233,31 +1255,33 @@ class TestTools(unittest.TestCase):
         self.assertEqual(readelf.get_sections('not_exist_file'), [])
 
     def test_source_file_searcher(self):
-        searcher = SourceFileSearcher(['testdata'])
+        searcher = SourceFileSearcher(
+            [TEST_HELPER.testdata_path('SimpleperfExampleWithNative'),
+             TEST_HELPER.testdata_path('SimpleperfExampleOfKotlin')])
         def format_path(path):
-            return path.replace('/', os.sep)
+            return os.path.join(TEST_HELPER.testdata_dir, path.replace('/', os.sep))
         # Find a C++ file with pure file name.
         self.assertEqual(
-            format_path('testdata/SimpleperfExampleWithNative/app/src/main/cpp/native-lib.cpp'),
+            format_path('SimpleperfExampleWithNative/app/src/main/cpp/native-lib.cpp'),
             searcher.get_real_path('native-lib.cpp'))
         # Find a C++ file with an absolute file path.
         self.assertEqual(
-            format_path('testdata/SimpleperfExampleWithNative/app/src/main/cpp/native-lib.cpp'),
+            format_path('SimpleperfExampleWithNative/app/src/main/cpp/native-lib.cpp'),
             searcher.get_real_path('/data/native-lib.cpp'))
         # Find a Java file.
         self.assertEqual(
-            format_path('testdata/SimpleperfExampleWithNative/app/src/main/java/com/example/' +
+            format_path('SimpleperfExampleWithNative/app/src/main/java/com/example/' +
                         'simpleperf/simpleperfexamplewithnative/MainActivity.java'),
             searcher.get_real_path('simpleperfexamplewithnative/MainActivity.java'))
         # Find a Kotlin file.
         self.assertEqual(
-            format_path('testdata/SimpleperfExampleOfKotlin/app/src/main/java/com/example/' +
+            format_path('SimpleperfExampleOfKotlin/app/src/main/java/com/example/' +
                         'simpleperf/simpleperfexampleofkotlin/MainActivity.kt'),
             searcher.get_real_path('MainActivity.kt'))
 
     def test_is_elf_file(self):
-        self.assertTrue(is_elf_file(os.path.join(
-            'testdata', 'simpleperf_runtest_two_functions_arm')))
+        self.assertTrue(is_elf_file(TEST_HELPER.testdata_path(
+            'simpleperf_runtest_two_functions_arm')))
         with open('not_elf', 'wb') as fh:
             fh.write(b'\x90123')
         try:
@@ -1266,13 +1290,15 @@ class TestTools(unittest.TestCase):
             remove('not_elf')
 
 
-class TestNativeLibDownloader(unittest.TestCase):
+class TestNativeLibDownloader(TestBase):
     def setUp(self):
-        self.adb = AdbHelper()
+        super(TestNativeLibDownloader, self).setUp()
+        self.adb = TEST_HELPER.adb
         self.adb.check_run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
 
     def tearDown(self):
         self.adb.check_run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
+        super(TestNativeLibDownloader, self).tearDown()
 
     def test_smoke(self):
         def is_lib_on_device(path):
@@ -1280,9 +1306,8 @@ class TestNativeLibDownloader(unittest.TestCase):
 
         # Sync all native libs on device.
         downloader = NativeLibDownloader(None, 'arm64', self.adb)
-        downloader.collect_native_libs_on_host(os.path.join(
-            'testdata', 'SimpleperfExampleWithNative', 'app', 'build', 'intermediates', 'cmake',
-            'profiling'))
+        downloader.collect_native_libs_on_host(TEST_HELPER.testdata_path(
+            'SimpleperfExampleWithNative/app/build/intermediates/cmake/profiling'))
         self.assertEqual(len(downloader.host_build_id_map), 2)
         for entry in downloader.host_build_id_map.values():
             self.assertEqual(entry.score, 3)
@@ -1330,15 +1355,15 @@ class TestNativeLibDownloader(unittest.TestCase):
 class TestReportHtml(TestBase):
     def test_long_callchain(self):
         self.run_cmd(['report_html.py', '-i',
-                      os.path.join('testdata', 'perf_with_long_callchain.data')])
+                      TEST_HELPER.testdata_path('perf_with_long_callchain.data')])
 
     def test_aggregated_by_thread_name(self):
         # Calculate event_count for each thread name before aggregation.
         event_count_for_thread_name = collections.defaultdict(lambda: 0)
         # use "--min_func_percent 0" to avoid cutting any thread.
         self.run_cmd(['report_html.py', '--min_func_percent', '0', '-i',
-                      os.path.join('testdata', 'aggregatable_perf1.data'),
-                      os.path.join('testdata', 'aggregatable_perf2.data')])
+                      TEST_HELPER.testdata_path('aggregatable_perf1.data'),
+                      TEST_HELPER.testdata_path('aggregatable_perf2.data')])
         record_data = self._load_record_data_in_html('report.html')
         event = record_data['sampleInfo'][0]
         for process in event['processes']:
@@ -1349,8 +1374,8 @@ class TestReportHtml(TestBase):
         # Check event count for each thread after aggregation.
         self.run_cmd(['report_html.py', '--aggregate-by-thread-name',
                       '--min_func_percent', '0', '-i',
-                      os.path.join('testdata', 'aggregatable_perf1.data'),
-                      os.path.join('testdata', 'aggregatable_perf2.data')])
+                      TEST_HELPER.testdata_path('aggregatable_perf1.data'),
+                      TEST_HELPER.testdata_path('aggregatable_perf2.data')])
         record_data = self._load_record_data_in_html('report.html')
         event = record_data['sampleInfo'][0]
         hit_count = 0
@@ -1364,7 +1389,7 @@ class TestReportHtml(TestBase):
 
     def test_no_empty_process(self):
         """ Test not showing a process having no threads. """
-        perf_data = os.path.join('testdata', 'two_process_perf.data')
+        perf_data = TEST_HELPER.testdata_path('two_process_perf.data')
         self.run_cmd(['report_html.py', '-i', perf_data])
         record_data = self._load_record_data_in_html('report.html')
         processes = record_data['sampleInfo'][0]['processes']
@@ -1398,11 +1423,11 @@ class TestBinaryCacheBuilder(TestBase):
         readelf = ReadElf(None)
         strip = find_tool_path('strip', arch='arm')
         self.assertIsNotNone(strip)
-        symfs_dir = os.path.join('testdata', 'symfs_dir')
+        symfs_dir = os.path.join(self.test_dir, 'symfs_dir')
         remove(symfs_dir)
         os.mkdir(symfs_dir)
         filename = 'simpleperf_runtest_two_functions_arm'
-        origin_file = os.path.join('testdata', filename)
+        origin_file = TEST_HELPER.testdata_path(filename)
         source_file = os.path.join(symfs_dir, filename)
         target_file = os.path.join('binary_cache', filename)
         expected_build_id = readelf.get_build_id(origin_file)
@@ -1428,14 +1453,14 @@ class TestBinaryCacheBuilder(TestBase):
 
 class TestApiProfiler(TestBase):
     def run_api_test(self, package_name, apk_name, expected_reports, min_android_version):
-        adb = AdbHelper()
-        if android_version() < ord(min_android_version) - ord('L') + 5:
+        adb = TEST_HELPER.adb
+        if TEST_HELPER.android_version < ord(min_android_version) - ord('L') + 5:
             log_info('skip this test on Android < %s.' % min_android_version)
             return
         # step 1: Prepare profiling.
         self.run_cmd(['api_profiler.py', 'prepare'])
         # step 2: Install and run the app.
-        apk_path = os.path.join('testdata', apk_name)
+        apk_path = TEST_HELPER.testdata_path(apk_name)
         adb.run(['uninstall', package_name])
         adb.check_run(['install', '-t', apk_path])
         adb.check_run(['shell', 'am', 'start', '-n', package_name + '/.MainActivity'])
@@ -1458,8 +1483,6 @@ class TestApiProfiler(TestBase):
             self.run_cmd(['report.py', '-g', '-o', 'report.txt', '-i', path])
             self.check_strings_in_file('report.txt', expected_reports)
         # step 6: Clean up.
-        remove('report.txt')
-        remove('simpleperf_data')
         adb.check_run(['uninstall', package_name])
 
     def run_cpp_api_test(self, apk_name, min_android_version):
@@ -1504,12 +1527,13 @@ class TestApiProfiler(TestBase):
 
 class TestPprofProtoGenerator(TestBase):
     def setUp(self):
+        super(TestPprofProtoGenerator, self).setUp()
         if not HAS_GOOGLE_PROTOBUF:
             raise unittest.SkipTest(
                 'Skip test for pprof_proto_generator because google.protobuf is missing')
 
     def run_generator(self, options=None, testdata_file='perf_with_interpreter_frames.data'):
-        testdata_path = os.path.join('testdata', testdata_file)
+        testdata_path = TEST_HELPER.testdata_path(testdata_file)
         options = options or []
         self.run_cmd(['pprof_proto_generator.py', '-i', testdata_path] + options)
         return self.run_cmd(['pprof_proto_generator.py', '--show'], return_output=True)
@@ -1565,7 +1589,7 @@ class TestPprofProtoGenerator(TestBase):
             mapping.
         """
         self.run_cmd(['pprof_proto_generator.py', '-i',
-                      os.path.join('testdata', 'perf_with_interpreter_frames.data')])
+                      TEST_HELPER.testdata_path('perf_with_interpreter_frames.data')])
 
         profile = load_pprof_profile('pprof.profile')
         # pylint: disable=no-member
@@ -1577,12 +1601,14 @@ class TestPprofProtoGenerator(TestBase):
 
 class TestRecordingRealApps(TestBase):
     def setUp(self):
-        self.adb = AdbHelper(False)
+        super(TestRecordingRealApps, self).setUp()
+        self.adb = TEST_HELPER.adb
         self.installed_packages = []
 
     def tearDown(self):
         for package in self.installed_packages:
             self.adb.run(['shell', 'pm', 'uninstall', package])
+        super(TestRecordingRealApps, self).tearDown()
 
     def install_apk(self, apk_path, package_name):
         self.adb.run(['install', '-t', apk_path])
@@ -1600,20 +1626,21 @@ class TestRecordingRealApps(TestBase):
         self.check_strings_in_file('report.txt', [symbol_name])
 
     def test_recording_displaybitmaps(self):
-        self.install_apk(os.path.join('testdata', 'DisplayBitmaps.apk'),
+        self.install_apk(TEST_HELPER.testdata_path('DisplayBitmaps.apk'),
                          'com.example.android.displayingbitmaps')
-        self.install_apk(os.path.join('testdata', 'DisplayBitmapsTest.apk'),
+        self.install_apk(TEST_HELPER.testdata_path('DisplayBitmapsTest.apk'),
                          'com.example.android.displayingbitmaps.test')
         self.start_app('shell am instrument -w -r -e debug false -e class ' +
                        'com.example.android.displayingbitmaps.tests.GridViewTest ' +
                        'com.example.android.displayingbitmaps.test/' +
                        'androidx.test.runner.AndroidJUnitRunner')
         self.record_data('com.example.android.displayingbitmaps', '-e cpu-clock -g --duration 10')
-        if android_version() >= 9:
+        if TEST_HELPER.android_version >= 9:
             self.check_symbol_in_record_file('androidx.test.espresso')
 
     def test_recording_endless_tunnel(self):
-        self.install_apk(os.path.join('testdata', 'EndlessTunnel.apk'), 'com.google.sample.tunnel')
+        self.install_apk(TEST_HELPER.testdata_path(
+            'EndlessTunnel.apk'), 'com.google.sample.tunnel')
         self.start_app('shell am start -n com.google.sample.tunnel/android.app.NativeActivity -a ' +
                        'android.intent.action.MAIN -c android.intent.category.LAUNCHER')
         self.record_data('com.google.sample.tunnel', '-e cpu-clock -g --duration 10')
@@ -1631,18 +1658,19 @@ def get_all_tests():
     return sorted(tests)
 
 
-def run_tests(tests, repeats, python_version):
-    os.chdir(get_script_dir())
-    build_testdata()
+def run_tests(tests, repeats):
+    TEST_HELPER.build_testdata()
     argv = [sys.argv[0]] + tests
     test_runner = unittest.TextTestRunner(stream=TEST_LOGGER, verbosity=2)
-    for repeat in range(repeats):
+    success = True
+    for repeat in range(1, repeats + 1):
         print('Run tests with python %d for %dth time\n%s' % (
-            python_version, repeat + 1, '\n'.join(tests)), file=TEST_LOGGER)
+            TEST_HELPER.python_version, repeat, '\n'.join(tests)), file=TEST_LOGGER)
+        TEST_HELPER.repeat_count = repeat
         test_program = unittest.main(argv=argv, testRunner=test_runner, exit=False)
         if not test_program.result.wasSuccessful():
-            return False
-    return True
+            success = False
+    return success
 
 
 def main():
@@ -1677,7 +1705,7 @@ def main():
         if not tests:
             log_exit('No tests are matched.')
 
-    if android_version() < 7:
+    if TEST_HELPER.android_version < 7:
         print("Skip tests on Android version < N.", file=TEST_LOGGER)
         return False
 
@@ -1685,14 +1713,18 @@ def main():
         python_versions = [2, 3]
     else:
         python_versions = [int(args.python_version)]
+
+    for python_version in python_versions:
+        remove(TEST_HELPER.get_test_base_dir(python_version))
+
     test_results = []
-    current_version = 3 if is_python3() else 2
     for version in python_versions:
-        if version == current_version:
-            test_result = run_tests(tests, args.repeat[0], version)
+        os.chdir(TEST_HELPER.cur_dir)
+        if version == TEST_HELPER.python_version:
+            test_result = run_tests(tests, args.repeat[0])
         else:
             argv = ['python3' if version == 3 else 'python']
-            argv.append(os.path.join(get_script_dir(), 'test.py'))
+            argv.append(TEST_HELPER.script_path('test.py'))
             argv += sys.argv[1:]
             argv += ['--python-version', str(version), '--no-test-result']
             test_result = subprocess.call(argv) == 0
