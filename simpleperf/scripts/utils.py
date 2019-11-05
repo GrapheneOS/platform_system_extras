@@ -326,6 +326,7 @@ class AdbHelper(object):
 
 
     def get_android_version(self):
+        """ Get Android version on device, like 7 is for Android N, 8 is for Android O."""
         build_version = self.get_property('ro.build.version.release')
         android_version = 0
         if build_version:
