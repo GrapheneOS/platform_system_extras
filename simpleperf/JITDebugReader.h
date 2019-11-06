@@ -169,6 +169,10 @@ class JITDebugReader {
   bool ReadNewCodeEntriesImpl(Process& process, const Descriptor& descriptor,
                               uint64_t last_action_timestamp, uint32_t read_entry_limit,
                               std::vector<CodeEntry>* new_code_entries);
+  template <typename CodeEntryT>
+  bool ReadNewCodeEntriesImplV2(Process& process, const Descriptor& descriptor,
+                              uint64_t last_action_timestamp, uint32_t read_entry_limit,
+                              std::vector<CodeEntry>* new_code_entries);
 
   void ReadJITCodeDebugInfo(Process& process, const std::vector<CodeEntry>& jit_entries,
                        std::vector<JITDebugInfo>* debug_info);
