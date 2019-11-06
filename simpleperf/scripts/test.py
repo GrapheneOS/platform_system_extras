@@ -115,6 +115,7 @@ class TestHelper(object):
         self.adb = AdbHelper(enable_switch_to_root=True)
         self.android_version = self.adb.get_android_version()
         self.device_features = None
+        self.browser_option = []
 
     def get_test_base_dir(self, python_version):
         """ Return the dir of generated data for a python version. """
@@ -185,6 +186,8 @@ class TestBase(unittest.TestCase):
         os.chdir(self.test_dir)
 
     def run_cmd(self, args, return_output=False):
+        if args[0] == 'report_html.py' or args[0] == INFERNO_SCRIPT:
+            args += TEST_HELPER.browser_option
         if args[0].endswith('.py'):
             args = [sys.executable, TEST_HELPER.script_path(args[0])] + args[1:]
         use_shell = args[0].endswith('.bat')
@@ -1682,6 +1685,7 @@ def main():
     parser.add_argument('--repeat', type=int, nargs=1, default=[1], help='run test multiple times')
     parser.add_argument('--no-test-result', dest='report_test_result',
                         action='store_false', help="Don't report test result.")
+    parser.add_argument('--browser', action='store_true', help='pop report html file in browser.')
     parser.add_argument('pattern', nargs='*', help='Run tests matching the selected pattern.')
     args = parser.parse_args()
     tests = get_all_tests()
@@ -1716,6 +1720,9 @@ def main():
 
     for python_version in python_versions:
         remove(TEST_HELPER.get_test_base_dir(python_version))
+
+    if not args.browser:
+        TEST_HELPER.browser_option = ['--no_browser']
 
     test_results = []
     for version in python_versions:
