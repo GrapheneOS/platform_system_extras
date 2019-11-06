@@ -1700,12 +1700,8 @@ def main():
             log_exit("Can't find test %s" % args.test_from[0])
         tests = tests[start_pos:]
     if args.pattern:
-        pattern = re.compile(fnmatch.translate(args.pattern[0]))
-        new_tests = []
-        for test in tests:
-            if pattern.match(test):
-                new_tests.append(test)
-        tests = new_tests
+        patterns = [re.compile(fnmatch.translate(x)) for x in args.pattern]
+        tests = [t for t in tests if any(pattern.match(t) for pattern in patterns)]
         if not tests:
             log_exit('No tests are matched.')
 
