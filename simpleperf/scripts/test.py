@@ -115,6 +115,7 @@ class TestHelper(object):
         self.adb = AdbHelper(enable_switch_to_root=True)
         self.android_version = self.adb.get_android_version()
         self.device_features = None
+        self.browser_option = []
 
     def get_test_base_dir(self, python_version):
         """ Return the dir of generated data for a python version. """
@@ -172,6 +173,9 @@ class TestHelper(object):
                 elif os.path.isdir(source):
                     shutil.copytree(source, target)
 
+    def get_32bit_abi(self):
+        return self.adb.get_property('ro.product.cpu.abilist32').strip().split(',')[0]
+
 
 TEST_HELPER = TestHelper()
 
@@ -185,6 +189,8 @@ class TestBase(unittest.TestCase):
         os.chdir(self.test_dir)
 
     def run_cmd(self, args, return_output=False):
+        if args[0] == 'report_html.py' or args[0] == INFERNO_SCRIPT:
+            args += TEST_HELPER.browser_option
         if args[0].endswith('.py'):
             args = [sys.executable, TEST_HELPER.script_path(args[0])] + args[1:]
         use_shell = args[0].endswith('.bat')
@@ -731,32 +737,32 @@ class TestExampleWithNativeJniCall(TestExampleBase):
         self.run_cmd([INFERNO_SCRIPT, "-sc"])
 
 
-class TestExampleWithNativeForceArm(TestExampleWithNative):
+class TestExampleWithNativeForce32Bit(TestExampleWithNative):
     @classmethod
     def setUpClass(cls):
         cls.prepare("SimpleperfExampleWithNative",
                     "com.example.simpleperf.simpleperfexamplewithnative",
                     ".MainActivity",
-                    abi="armeabi-v7a")
+                    abi=TEST_HELPER.get_32bit_abi())
 
 
-class TestExampleWithNativeForceArmRoot(TestExampleWithNativeRoot):
+class TestExampleWithNativeRootForce32Bit(TestExampleWithNativeRoot):
     @classmethod
     def setUpClass(cls):
         cls.prepare("SimpleperfExampleWithNative",
                     "com.example.simpleperf.simpleperfexamplewithnative",
                     ".MainActivity",
-                    abi="armeabi-v7a",
+                    abi=TEST_HELPER.get_32bit_abi(),
                     adb_root=False)
 
 
-class TestExampleWithNativeTraceOffCpuForceArm(TestExampleWithNativeTraceOffCpu):
+class TestExampleWithNativeTraceOffCpuForce32Bit(TestExampleWithNativeTraceOffCpu):
     @classmethod
     def setUpClass(cls):
         cls.prepare("SimpleperfExampleWithNative",
                     "com.example.simpleperf.simpleperfexamplewithnative",
                     ".SleepActivity",
-                    abi="armeabi-v7a")
+                    abi=TEST_HELPER.get_32bit_abi())
 
 
 class TestExampleOfKotlin(TestExampleBase):
@@ -1682,6 +1688,7 @@ def main():
     parser.add_argument('--repeat', type=int, nargs=1, default=[1], help='run test multiple times')
     parser.add_argument('--no-test-result', dest='report_test_result',
                         action='store_false', help="Don't report test result.")
+    parser.add_argument('--browser', action='store_true', help='pop report html file in browser.')
     parser.add_argument('pattern', nargs='*', help='Run tests matching the selected pattern.')
     args = parser.parse_args()
     tests = get_all_tests()
@@ -1696,12 +1703,8 @@ def main():
             log_exit("Can't find test %s" % args.test_from[0])
         tests = tests[start_pos:]
     if args.pattern:
-        pattern = re.compile(fnmatch.translate(args.pattern[0]))
-        new_tests = []
-        for test in tests:
-            if pattern.match(test):
-                new_tests.append(test)
-        tests = new_tests
+        patterns = [re.compile(fnmatch.translate(x)) for x in args.pattern]
+        tests = [t for t in tests if any(pattern.match(t) for pattern in patterns)]
         if not tests:
             log_exit('No tests are matched.')
 
@@ -1716,6 +1719,9 @@ def main():
 
     for python_version in python_versions:
         remove(TEST_HELPER.get_test_base_dir(python_version))
+
+    if not args.browser:
+        TEST_HELPER.browser_option = ['--no_browser']
 
     test_results = []
     for version in python_versions:
