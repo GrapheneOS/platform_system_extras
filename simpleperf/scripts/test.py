@@ -173,6 +173,9 @@ class TestHelper(object):
                 elif os.path.isdir(source):
                     shutil.copytree(source, target)
 
+    def get_32bit_abi(self):
+        return self.adb.get_property('ro.product.cpu.abilist32').strip().split(',')[0]
+
 
 TEST_HELPER = TestHelper()
 
@@ -734,32 +737,32 @@ class TestExampleWithNativeJniCall(TestExampleBase):
         self.run_cmd([INFERNO_SCRIPT, "-sc"])
 
 
-class TestExampleWithNativeForceArm(TestExampleWithNative):
+class TestExampleWithNativeForce32Bit(TestExampleWithNative):
     @classmethod
     def setUpClass(cls):
         cls.prepare("SimpleperfExampleWithNative",
                     "com.example.simpleperf.simpleperfexamplewithnative",
                     ".MainActivity",
-                    abi="armeabi-v7a")
+                    abi=TEST_HELPER.get_32bit_abi())
 
 
-class TestExampleWithNativeForceArmRoot(TestExampleWithNativeRoot):
+class TestExampleWithNativeRootForce32Bit(TestExampleWithNativeRoot):
     @classmethod
     def setUpClass(cls):
         cls.prepare("SimpleperfExampleWithNative",
                     "com.example.simpleperf.simpleperfexamplewithnative",
                     ".MainActivity",
-                    abi="armeabi-v7a",
+                    abi=TEST_HELPER.get_32bit_abi(),
                     adb_root=False)
 
 
-class TestExampleWithNativeTraceOffCpuForceArm(TestExampleWithNativeTraceOffCpu):
+class TestExampleWithNativeTraceOffCpuForce32Bit(TestExampleWithNativeTraceOffCpu):
     @classmethod
     def setUpClass(cls):
         cls.prepare("SimpleperfExampleWithNative",
                     "com.example.simpleperf.simpleperfexamplewithnative",
                     ".SleepActivity",
-                    abi="armeabi-v7a")
+                    abi=TEST_HELPER.get_32bit_abi())
 
 
 class TestExampleOfKotlin(TestExampleBase):
