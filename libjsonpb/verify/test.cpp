@@ -287,7 +287,7 @@ static const std::vector<ScalarTestErrorParam> gScalarTestErrorParams = {
     {"{\"e\": 1}", "Should not allow integers for enums"},
 };
 
-INSTANTIATE_TEST_SUITE_P(, ScalarTestError,
+INSTANTIATE_TEST_SUITE_P(Jsonpb, ScalarTestError,
                          ::testing::ValuesIn(gScalarTestErrorParams));
 
 int main(int argc, char** argv) {
