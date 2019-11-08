@@ -1111,7 +1111,7 @@ class TestTools(TestBase):
                 {
                     'func_addr': 0x840,
                     'addr': 0x840,
-                    'source': 'system/extras/simpleperf/runtest/two_functions.cpp:6',
+                    'source': 'system/extras/simpleperf/runtest/two_functions.cpp:7',
                     'function': 'Function1()',
                 },
                 {
