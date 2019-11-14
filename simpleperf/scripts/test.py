@@ -595,7 +595,7 @@ class TestExamplePureJavaTraceOffCpu(TestExampleBase):
                 ("run", 80, 0),
                 ("RunFunction", 20, 20),
                 ("SleepFunction", 20, 0),
-                ("line 24", 20, 0),
+                ("line 24", 1, 0),
                 ("line 32", 20, 0)])
         self.run_cmd([INFERNO_SCRIPT, "-sc"])
         self.check_inferno_report_html(
