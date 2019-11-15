@@ -1456,6 +1456,17 @@ class TestBinaryCacheBuilder(TestBase):
         binary_cache_builder.copy_binaries_from_symfs_dirs([symfs_dir])
         self.assertTrue(filecmp.cmp(target_file, source_file))
 
+    def test_copy_elf_without_build_id_from_symfs_dir(self):
+        binary_cache_builder = BinaryCacheBuilder(None, False)
+        binary_cache_builder.binaries['elf'] = ''
+        symfs_dir = TEST_HELPER.testdata_path('data/symfs_without_build_id')
+        source_file = os.path.join(symfs_dir, 'elf')
+        target_file = os.path.join('binary_cache', 'elf')
+        binary_cache_builder.copy_binaries_from_symfs_dirs([symfs_dir])
+        self.assertTrue(filecmp.cmp(target_file, source_file))
+        binary_cache_builder._pull_binaries_from_device()
+        self.assertTrue(filecmp.cmp(target_file, source_file))
+
 
 class TestApiProfiler(TestBase):
     def run_api_test(self, package_name, apk_name, expected_reports, min_android_version):
