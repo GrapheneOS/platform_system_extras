@@ -111,16 +111,19 @@ std::string DebugElfFileFinder::FindDebugFile(const std::string& dso_path, bool 
       return vdso_32bit_;
     }
   }
+  if (build_id.IsEmpty()) {
+    // Try reading build id from file if we don't already have one.
+    GetBuildIdFromDsoPath(dso_path, &build_id);
+  }
   auto check_path = [&](const std::string& path) {
     BuildId debug_build_id;
-    if (GetBuildIdFromDsoPath(path, &debug_build_id)) {
-      if (!build_id.IsEmpty() || GetBuildIdFromDsoPath(dso_path, &build_id)) {
-        if (build_id == debug_build_id) {
-          return true;
-        }
-      }
+    GetBuildIdFromDsoPath(path, &debug_build_id);
+    if (build_id.IsEmpty()) {
+      // Native libraries in apks may not have build ids. When looking for a debug elf file without
+      // build id (build id is empty), the debug file should exist and also not have build id.
+      return IsRegularFile(path) && debug_build_id.IsEmpty();
     }
-    return false;
+    return build_id == debug_build_id;
   };
 
   // 1. Try build_id_to_file_map.
