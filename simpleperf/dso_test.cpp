@@ -106,6 +106,16 @@ TEST(DebugElfFileFinder, build_id_list) {
   ASSERT_EQ(finder.FindDebugFile("elf", false, CHECK_ELF_FILE_BUILD_ID), "elf");
 }
 
+TEST(DebugElfFileFinder, no_build_id) {
+  DebugElfFileFinder finder;
+  // If not given a build id, we should match an elf in symfs without build id.
+  // Find file in symfs dir without build id.
+  std::string symfs_dir = ConvertPathSeparator(GetTestDataDir() + "data/symfs_without_build_id");
+  ASSERT_TRUE(finder.SetSymFsDir(symfs_dir));
+  BuildId build_id;
+  ASSERT_EQ(finder.FindDebugFile("elf", false, build_id), symfs_dir + OS_PATH_SEPARATOR + "elf");
+}
+
 TEST(dso, dex_file_dso) {
 #if defined(__linux__)
   for (DsoType dso_type : {DSO_DEX_FILE, DSO_ELF_FILE}) {
