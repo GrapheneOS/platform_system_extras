@@ -595,7 +595,7 @@ class TestExamplePureJavaTraceOffCpu(TestExampleBase):
                 ("run", 80, 0),
                 ("RunFunction", 20, 20),
                 ("SleepFunction", 20, 0),
-                ("line 24", 20, 0),
+                ("line 24", 1, 0),
                 ("line 32", 20, 0)])
         self.run_cmd([INFERNO_SCRIPT, "-sc"])
         self.check_inferno_report_html(
@@ -1454,6 +1454,17 @@ class TestBinaryCacheBuilder(TestBase):
         # Copy binary if target file doesn't have .debug_line and source_files has .debug_line.
         shutil.copy(origin_file, source_file)
         binary_cache_builder.copy_binaries_from_symfs_dirs([symfs_dir])
+        self.assertTrue(filecmp.cmp(target_file, source_file))
+
+    def test_copy_elf_without_build_id_from_symfs_dir(self):
+        binary_cache_builder = BinaryCacheBuilder(None, False)
+        binary_cache_builder.binaries['elf'] = ''
+        symfs_dir = TEST_HELPER.testdata_path('data/symfs_without_build_id')
+        source_file = os.path.join(symfs_dir, 'elf')
+        target_file = os.path.join('binary_cache', 'elf')
+        binary_cache_builder.copy_binaries_from_symfs_dirs([symfs_dir])
+        self.assertTrue(filecmp.cmp(target_file, source_file))
+        binary_cache_builder._pull_binaries_from_device()
         self.assertTrue(filecmp.cmp(target_file, source_file))
 
 

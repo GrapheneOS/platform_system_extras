@@ -106,8 +106,6 @@ class BinaryCacheBuilder(object):
                     if not paths:
                         continue
                     build_id = self._read_build_id(os.path.join(root, filename))
-                    if not build_id:
-                        continue
                     for binary in paths:
                         expected_build_id = self.binaries.get(binary)
                         if expected_build_id == build_id:
