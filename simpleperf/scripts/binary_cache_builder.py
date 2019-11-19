@@ -46,7 +46,7 @@ class BinaryCacheBuilder(object):
     def build_binary_cache(self, perf_data_path, symfs_dirs):
         self._collect_used_binaries(perf_data_path)
         self.copy_binaries_from_symfs_dirs(symfs_dirs)
-        self._pull_binaries_from_device()
+        self.pull_binaries_from_device()
         self._pull_kernel_symbols()
 
 
@@ -148,7 +148,7 @@ class BinaryCacheBuilder(object):
         return 2
 
 
-    def _pull_binaries_from_device(self):
+    def pull_binaries_from_device(self):
         """pull binaries needed in perf.data to binary_cache."""
         for binary in self.binaries:
             build_id = self.binaries[binary]

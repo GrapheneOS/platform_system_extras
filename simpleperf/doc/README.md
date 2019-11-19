@@ -11,17 +11,20 @@ The latest document is [here](https://android.googlesource.com/platform/system/e
 
 ## Table of Contents
 
-- [Introduction](#introduction)
-- [Tools in simpleperf](#tools-in-simpleperf)
-- [Android application profiling](#android-application-profiling)
-- [Android platform profiling](#android-platform-profiling)
-- [Executable commands reference](#executable-commands-reference)
-- [Scripts reference](#scripts-reference)
-- [Answers to common issues](#answers-to-common-issues)
-    - [Why we suggest profiling on android >= N devices](#why-we-suggest-profiling-on-android-n-devices)
+- [Simpleperf](#simpleperf)
+  - [Table of Contents](#table-of-contents)
+  - [Introduction](#introduction)
+  - [Tools in simpleperf](#tools-in-simpleperf)
+  - [Android application profiling](#android-application-profiling)
+  - [Android platform profiling](#android-platform-profiling)
+  - [Executable commands reference](#executable-commands-reference)
+  - [Scripts reference](#scripts-reference)
+  - [Answers to common issues](#answers-to-common-issues)
+    - [Why we suggest profiling on Android >= N devices?](#why-we-suggest-profiling-on-android--n-devices)
     - [Suggestions about recording call graphs](#suggestions-about-recording-call-graphs)
-    - [How to solve missing symbols in report](#how-to-solve-missing-symbols-in-report)
-- [Bugs and contribution](#bugs-and-contribution)
+    - [How to solve missing symbols in report?](#how-to-solve-missing-symbols-in-report)
+    - [Fix broken callchain stopped at C functions](#fix-broken-callchain-stopped-at-c-functions)
+  - [Bugs and contribution](#bugs-and-contribution)
 
 
 ## Introduction
@@ -150,15 +153,10 @@ better. After all, you can always try dwarf based call graph first, because it a
 reasonable results when given unstripped binaries properly. If it doesn't work well enough, then
 try stack frame based call graphs instead.
 
-Simpleperf needs to have unstripped native binaries on the device to generate good dwarf based call
+Simpleperf may need unstripped native binaries on the device to generate good dwarf based call
 graphs. It can be supported in two ways:
 1. Use unstripped native binaries when building the apk, as [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo/SimpleperfExampleWithNative/app/profiling.gradle).
-2. Pass directory containing unstripped native libraries to app_profiler.py via -lib. And it will
-   download the unstripped native libraries on the device.
-
-```sh
-$ python app_profiler.py -lib NATIVE_LIB_DIR
-```
+2. Download unstripped native libraries on device, as [here](#fix-broken-callchain-stopped-at-c-functions).
 
 ### How to solve missing symbols in report?
 
@@ -181,6 +179,29 @@ $ python report.py --symfs binary_cache
 # report_html.py searches binary_cache/ automatically, so you don't need to
 # pass it any argument.
 $ python report_html.py
+```
+
+### Fix broken callchain stopped at C functions
+
+When using dwarf based call graphs, simpleperf generates callchains during recording to save space.
+The debug information needed to unwind C functions is in .debug_frame section, which is usually
+stripped in native libraries in apks. To fix this, we can download unstripped version of native
+libraries on device, and ask simpleperf to use them when recording.
+
+To use simpleperf directly:
+
+```sh
+# create native_libs dir on device, and push unstripped libs in it (nested dirs are not supported).
+$ adb shell mkdir /data/local/tmp/native_libs
+$ adb push <unstripped_dir>/*.so /data/local/tmp/native_libs
+# run simpleperf record with --symfs option.
+$ adb shell simpleperf record xxx --symfs /data/local/tmp/native_libs
+```
+
+To use app_profiler.py:
+
+```sh
+$ python app_profiler.py -lib <unstripped_dir>
 ```
 
 ## Bugs and contribution

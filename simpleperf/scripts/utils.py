@@ -243,24 +243,21 @@ class AdbHelper(object):
         return self.run_and_return_output(adb_args)[0]
 
 
-    def run_and_return_output(self, adb_args, stdout_file=None, log_output=True):
+    def run_and_return_output(self, adb_args, log_output=True, log_stderr=True):
         adb_args = [self.adb_path] + adb_args
         log_debug('run adb cmd: %s' % adb_args)
-        if stdout_file:
-            with open(stdout_file, 'wb') as stdout_fh:
-                returncode = subprocess.call(adb_args, stdout=stdout_fh)
-            stdoutdata = ''
-        else:
-            subproc = subprocess.Popen(adb_args, stdout=subprocess.PIPE)
-            (stdoutdata, _) = subproc.communicate()
-            stdoutdata = bytes_to_str(stdoutdata)
-            returncode = subproc.returncode
+        subproc = subprocess.Popen(adb_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout_data, stderr_data = subproc.communicate()
+        stdout_data = bytes_to_str(stdout_data)
+        stderr_data = bytes_to_str(stderr_data)
+        returncode = subproc.returncode
         result = (returncode == 0)
-        if stdoutdata and adb_args[1] != 'push' and adb_args[1] != 'pull':
-            if log_output:
-                log_debug(stdoutdata)
+        if log_output and stdout_data and adb_args[1] != 'push' and adb_args[1] != 'pull':
+            log_debug(stdout_data)
+        if log_stderr and stderr_data:
+            log_warning(stderr_data)
         log_debug('run adb cmd: %s  [result %s]' % (adb_args, result))
-        return (result, stdoutdata)
+        return (result, stdout_data)
 
     def check_run(self, adb_args):
         self.check_run_and_return_output(adb_args)
