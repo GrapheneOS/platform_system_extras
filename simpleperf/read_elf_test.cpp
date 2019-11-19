@@ -177,3 +177,17 @@ TEST(read_elf, ReadMinExecutableVirtualAddressFromElfFile) {
   ASSERT_EQ(min_vaddr, 0x29000u);
   ASSERT_EQ(file_offset_of_min_vaddr, 0x29000u);
 }
+
+TEST(read_elf, NoUndefinedSymbol) {
+  // Check if we read undefined symbols (like dlerror) from libc.so.
+  bool has_dlerror = false;
+  auto parse_symbol = [&](const ElfFileSymbol& symbol) {
+    if (symbol.name == "dlerror") {
+      has_dlerror = true;
+    }
+  };
+
+  ASSERT_EQ(ElfStatus::NO_ERROR,
+            ParseSymbolsFromElfFile(GetTestData("libc.so"), BuildId(), parse_symbol));
+  ASSERT_FALSE(has_dlerror);
+}

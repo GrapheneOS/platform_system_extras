@@ -276,6 +276,10 @@ void ReadSymbolTable(llvm::object::symbol_iterator sym_begin,
   for (; sym_begin != sym_end; ++sym_begin) {
     ElfFileSymbol symbol;
     auto symbol_ref = static_cast<const llvm::object::ELFSymbolRef*>(&*sym_begin);
+    // Exclude undefined symbols, otherwise we may wrongly use them as labels in functions.
+    if (symbol_ref->getFlags() & symbol_ref->SF_Undefined) {
+      continue;
+    }
     llvm::Expected<llvm::object::section_iterator> section_it_or_err = symbol_ref->getSection();
     if (!section_it_or_err) {
       continue;
