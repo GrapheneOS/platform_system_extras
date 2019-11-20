@@ -109,11 +109,28 @@ TEST(DebugElfFileFinder, build_id_list) {
 TEST(DebugElfFileFinder, no_build_id) {
   DebugElfFileFinder finder;
   // If not given a build id, we should match an elf in symfs without build id.
-  // Find file in symfs dir without build id.
   std::string symfs_dir = ConvertPathSeparator(GetTestDataDir() + "data/symfs_without_build_id");
   ASSERT_TRUE(finder.SetSymFsDir(symfs_dir));
   BuildId build_id;
   ASSERT_EQ(finder.FindDebugFile("elf", false, build_id), symfs_dir + OS_PATH_SEPARATOR + "elf");
+}
+
+TEST(DebugElfFileFinder, find_basename_in_symfs_dir) {
+  DebugElfFileFinder finder;
+  // Find normal elf file.
+  finder.SetSymFsDir(GetTestDataDir());
+  BuildId build_id(ELF_FILE_BUILD_ID);
+  ASSERT_EQ(finder.FindDebugFile("random_dir/elf", false, build_id), GetTestData("elf"));
+
+  // Find embedded native library.
+  ASSERT_EQ(finder.FindDebugFile("base.apk!/lib/x86_64/elf", false, build_id), GetTestData("elf"));
+
+  // Find elf file without build id.
+  std::string symfs_dir = ConvertPathSeparator(GetTestDataDir() + "data/symfs_without_build_id");
+  finder.SetSymFsDir(symfs_dir);
+  build_id = BuildId();
+  ASSERT_EQ(finder.FindDebugFile("random_dir/elf", false, build_id),
+            symfs_dir + OS_PATH_SEPARATOR + "elf");
 }
 
 TEST(dso, dex_file_dso) {

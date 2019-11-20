@@ -1306,10 +1306,12 @@ class TestNativeLibDownloader(TestBase):
         self.adb.check_run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
         super(TestNativeLibDownloader, self).tearDown()
 
-    def test_smoke(self):
-        def is_lib_on_device(path):
-            return self.adb.run(['shell', 'ls', path])
+    def list_lib_on_device(self, path):
+        result, output = self.adb.run_and_return_output(
+            ['shell', 'ls', '-llc', path], log_output=False)
+        return output if result else ''
 
+    def test_smoke(self):
         # Sync all native libs on device.
         downloader = NativeLibDownloader(None, 'arm64', self.adb)
         downloader.collect_native_libs_on_host(TEST_HELPER.testdata_path(
@@ -1326,7 +1328,7 @@ class TestNativeLibDownloader(TestBase):
             for i in range(sync_count):
                 build_id_map[lib_list[i][0]] = lib_list[i][1]
             downloader.host_build_id_map = build_id_map
-            downloader.sync_natives_libs_on_device()
+            downloader.sync_native_libs_on_device()
             downloader.collect_native_libs_on_device()
             self.assertEqual(len(downloader.device_build_id_map), sync_count)
             for i, item in enumerate(lib_list):
@@ -1335,10 +1337,10 @@ class TestNativeLibDownloader(TestBase):
                 if i < sync_count:
                     self.assertTrue(build_id in downloader.device_build_id_map)
                     self.assertEqual(name, downloader.device_build_id_map[build_id])
-                    self.assertTrue(is_lib_on_device(downloader.dir_on_device + name))
+                    self.assertTrue(self.list_lib_on_device(downloader.dir_on_device + name))
                 else:
                     self.assertTrue(build_id not in downloader.device_build_id_map)
-                    self.assertFalse(is_lib_on_device(downloader.dir_on_device + name))
+                    self.assertFalse(self.list_lib_on_device(downloader.dir_on_device + name))
             if sync_count == 1:
                 self.adb.run(['pull', '/data/local/tmp/native_libs/build_id_list',
                               'build_id_list'])
@@ -1356,6 +1358,29 @@ class TestNativeLibDownloader(TestBase):
         downloader = NativeLibDownloader(None, 'arm64', self.adb)
         downloader.collect_native_libs_on_device()
         self.assertEqual(len(downloader.device_build_id_map), 0)
+
+    def test_download_file_without_build_id(self):
+        downloader = NativeLibDownloader(None, 'x86_64', self.adb)
+        name = 'elf.so'
+        shutil.copyfile(TEST_HELPER.testdata_path('data/symfs_without_build_id/elf'), name)
+        downloader.collect_native_libs_on_host('.')
+        downloader.collect_native_libs_on_device()
+        self.assertIn(name, downloader.no_build_id_file_map)
+        # Check if file wihtout build id can be downloaded.
+        downloader.sync_native_libs_on_device()
+        target_file = downloader.dir_on_device + name
+        target_file_stat = self.list_lib_on_device(target_file)
+        self.assertTrue(target_file_stat)
+
+        # No need to re-download if file size doesn't change.
+        downloader.sync_native_libs_on_device()
+        self.assertEqual(target_file_stat, self.list_lib_on_device(target_file))
+
+        # Need to re-download if file size changes.
+        self.adb.check_run(['shell', 'truncate', '-s', '0', target_file])
+        target_file_stat = self.list_lib_on_device(target_file)
+        downloader.sync_native_libs_on_device()
+        self.assertNotEqual(target_file_stat, self.list_lib_on_device(target_file))
 
 
 class TestReportHtml(TestBase):
@@ -1464,7 +1489,7 @@ class TestBinaryCacheBuilder(TestBase):
         target_file = os.path.join('binary_cache', 'elf')
         binary_cache_builder.copy_binaries_from_symfs_dirs([symfs_dir])
         self.assertTrue(filecmp.cmp(target_file, source_file))
-        binary_cache_builder._pull_binaries_from_device()
+        binary_cache_builder.pull_binaries_from_device()
         self.assertTrue(filecmp.cmp(target_file, source_file))
 
 

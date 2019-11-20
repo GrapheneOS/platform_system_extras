@@ -135,14 +135,19 @@ std::string DebugElfFileFinder::FindDebugFile(const std::string& dso_path, bool 
       }
     }
   }
-  // 2. Try concatenating symfs_dir and dso_path.
   if (!symfs_dir_.empty()) {
+    // 2. Try concatenating symfs_dir and dso_path.
     std::string path = GetPathInSymFsDir(dso_path);
     if (check_path(path)) {
       return path;
     }
+    // 3. Try concatenating symfs_dir and basename of dso_path.
+    path = symfs_dir_ + OS_PATH_SEPARATOR + android::base::Basename(dso_path);
+    if (check_path(path)) {
+      return path;
+    }
   }
-  // 3. Try concatenating /usr/lib/debug and dso_path.
+  // 4. Try concatenating /usr/lib/debug and dso_path.
   // Linux host can store debug shared libraries in /usr/lib/debug.
   if (check_path("/usr/lib/debug" + dso_path)) {
     return "/usr/lib/debug" + dso_path;
