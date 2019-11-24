@@ -396,7 +396,7 @@ int LpdumpMain(int argc, char* argv[], std::ostream& cout, std::ostream& cerr) {
                 dump_all = true;
                 break;
             case 'h':
-                usage(argc, argv, cerr);
+                usage(argc, argv, cout);
                 return EX_OK;
             case 's': {
                 uint32_t slot_arg;

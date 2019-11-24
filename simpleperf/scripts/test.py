@@ -1505,6 +1505,8 @@ class TestApiProfiler(TestBase):
         apk_path = TEST_HELPER.testdata_path(apk_name)
         adb.run(['uninstall', package_name])
         adb.check_run(['install', '-t', apk_path])
+        # Without sleep, the activity may be killed by post install intent ACTION_PACKAGE_CHANGED.
+        time.sleep(3)
         adb.check_run(['shell', 'am', 'start', '-n', package_name + '/.MainActivity'])
         # step 3: Wait until the app exits.
         time.sleep(4)
