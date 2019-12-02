@@ -51,6 +51,7 @@ cc_binary_host {
     static_libs: [
         "libfec",
         "libfec_rs",
+        "libavb",
         "libcrypto_utils",
         "libcrypto",
         "libext4_utils",

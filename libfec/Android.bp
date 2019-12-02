@@ -25,6 +25,7 @@ cc_library {
     ],
 
     static_libs: [
+        "libavb",
         "libfec_rs",
     ],
 
