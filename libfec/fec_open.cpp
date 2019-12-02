@@ -80,7 +80,8 @@ static int find_offset(uint64_t file_size, int roots, uint64_t *offset,
 /* returns verity metadata size for a `size' byte file */
 static uint64_t get_verity_size(uint64_t size, int)
 {
-    return VERITY_METADATA_SIZE + verity_get_size(size, NULL, NULL);
+    return VERITY_METADATA_SIZE +
+           verity_get_size(size, NULL, NULL, SHA256_DIGEST_LENGTH);
 }
 
 /* computes the verity metadata offset for a file with size `f->size' */
@@ -328,7 +329,7 @@ static int load_verity(fec_handle *f)
     if (rc == 0) {
         debug("file system size = %" PRIu64, offset);
         /* Jump over the verity tree appended to the filesystem */
-        offset += verity_get_size(offset, NULL, NULL);
+        offset += verity_get_size(offset, NULL, NULL, SHA256_DIGEST_LENGTH);
         rc = verity_parse_header(f, offset);
 
         if (rc == 0) {
