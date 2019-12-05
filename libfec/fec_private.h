@@ -74,26 +74,24 @@ struct ecc_info {
     uint64_t start; /* offset in file */
 };
 
-struct verity_info {
-    bool disabled;
-    char *table;
+struct hashtree_info {
+    uint64_t data_blocks;
     uint32_t hash_data_blocks;
     uint32_t hash_size;
     uint64_t hash_data_offset;
     uint64_t hash_start;
-    uint8_t *hash;
-    uint32_t salt_size;
-    uint8_t *salt;
-    uint64_t data_blocks;
-    uint64_t metadata_start; /* offset in file */
-    uint8_t zero_hash[SHA256_DIGEST_LENGTH];
-    verity_header header;
-    verity_header ecc_header;
+    std::vector<uint8_t> hash;
+    std::vector<uint8_t> salt;
+    std::vector<uint8_t> zero_hash;
 };
 
-struct verity_block_info {
-    uint64_t index;
-    bool valid;
+struct verity_info {
+    bool disabled;
+    std::string table;
+    uint64_t metadata_start; /* offset in file */
+    hashtree_info hashtree;
+    verity_header header;
+    verity_header ecc_header;
 };
 
 struct fec_handle {
@@ -107,13 +105,15 @@ struct fec_handle {
     uint64_t pos;
     uint64_t size;
     verity_info verity;
+
+    hashtree_info hashtree() const {
+        return verity.hashtree;
+    }
 };
 
 /* I/O helpers */
-extern bool raw_pread(fec_handle *f, void *buf, size_t count,
-        uint64_t offset);
-extern bool raw_pwrite(fec_handle *f, const void *buf, size_t count,
-        uint64_t offset);
+extern bool raw_pread(int fd, void *buf, size_t count, uint64_t offset);
+extern bool raw_pwrite(int fd, const void *buf, size_t count, uint64_t offset);
 
 /* processing functions */
 typedef ssize_t (*read_func)(fec_handle *f, uint8_t *dest, size_t count,
@@ -128,8 +128,8 @@ extern uint64_t verity_get_size(uint64_t file_size, uint32_t *verity_levels,
 
 extern int verity_parse_header(fec_handle *f, uint64_t offset);
 
-extern bool verity_check_block(fec_handle *f, const uint8_t *expected,
-        const uint8_t *block);
+extern bool check_block_hash(const uint8_t *expected, const uint8_t *block,
+                             const std::vector<uint8_t> &salt);
 
 /* helper macros */
 #ifndef unlikely
