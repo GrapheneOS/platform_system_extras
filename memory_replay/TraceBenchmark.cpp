@@ -251,7 +251,7 @@ static void RunTrace(benchmark::State& state, std::vector<TraceAllocEntry>& entr
 // Run a trace as if all of the allocations occurred in a single thread.
 // This is not completely realistic, but it is a possible worst case that
 // could happen in an app.
-static void BenchmarkTrace(benchmark::State& state, const char* filename) {
+static void BenchmarkTrace(benchmark::State& state, const char* filename, bool enable_decay_time) {
   std::string full_filename(android::base::GetExecutableDirectory() + "/traces/" + filename);
   size_t max_ptrs;
   std::vector<TraceAllocEntry>* entries = GetTraceData(full_filename.c_str(), &max_ptrs);
@@ -260,8 +260,11 @@ static void BenchmarkTrace(benchmark::State& state, const char* filename) {
   }
 
 #if defined(__BIONIC__)
-  // Need to set the decay time the same as how an app would operate.
-  mallopt(M_DECAY_TIME, 1);
+  if (enable_decay_time) {
+    mallopt(M_DECAY_TIME, 1);
+  } else {
+    mallopt(M_DECAY_TIME, 0);
+  }
 #endif
 
   for (auto _ : state) {
@@ -277,59 +280,136 @@ static void BenchmarkTrace(benchmark::State& state, const char* filename) {
       ->ReportAggregatesOnly(true)
 
 static void BM_angry_birds2(benchmark::State& state) {
-  BenchmarkTrace(state, "angry_birds2.zip");
+  BenchmarkTrace(state, "angry_birds2.zip", true);
 }
 BENCHMARK(BM_angry_birds2)->BENCH_OPTIONS;
 
+#if defined(__BIONIC__)
+static void BM_angry_birds2_no_decay(benchmark::State& state) {
+  BenchmarkTrace(state, "angry_birds2.zip", false);
+}
+BENCHMARK(BM_angry_birds2_no_decay)->BENCH_OPTIONS;
+#endif
+
 static void BM_camera(benchmark::State& state) {
-  BenchmarkTrace(state, "camera.zip");
+  BenchmarkTrace(state, "camera.zip", true);
 }
 BENCHMARK(BM_camera)->BENCH_OPTIONS;
 
+#if defined(__BIONIC__)
+static void BM_camera_no_decay(benchmark::State& state) {
+  BenchmarkTrace(state, "camera.zip", false);
+}
+BENCHMARK(BM_camera_no_decay)->BENCH_OPTIONS;
+#endif
+
 static void BM_candy_crush_saga(benchmark::State& state) {
-  BenchmarkTrace(state, "candy_crush_saga.zip");
+  BenchmarkTrace(state, "candy_crush_saga.zip", true);
 }
 BENCHMARK(BM_candy_crush_saga)->BENCH_OPTIONS;
 
+#if defined(__BIONIC__)
+static void BM_candy_crush_saga_no_decay(benchmark::State& state) {
+  BenchmarkTrace(state, "candy_crush_saga.zip", false);
+}
+BENCHMARK(BM_candy_crush_saga_no_decay)->BENCH_OPTIONS;
+#endif
+
 void BM_gmail(benchmark::State& state) {
-  BenchmarkTrace(state, "gmail.zip");
+  BenchmarkTrace(state, "gmail.zip", true);
 }
 BENCHMARK(BM_gmail)->BENCH_OPTIONS;
 
+#if defined(__BIONIC__)
+void BM_gmail_no_decay(benchmark::State& state) {
+  BenchmarkTrace(state, "gmail.zip", false);
+}
+BENCHMARK(BM_gmail_no_decay)->BENCH_OPTIONS;
+#endif
+
 void BM_maps(benchmark::State& state) {
-  BenchmarkTrace(state, "maps.zip");
+  BenchmarkTrace(state, "maps.zip", true);
 }
 BENCHMARK(BM_maps)->BENCH_OPTIONS;
 
+#if defined(__BIONIC__)
+void BM_maps_no_decay(benchmark::State& state) {
+  BenchmarkTrace(state, "maps.zip", false);
+}
+BENCHMARK(BM_maps_no_decay)->BENCH_OPTIONS;
+#endif
+
 void BM_photos(benchmark::State& state) {
-  BenchmarkTrace(state, "photos.zip");
+  BenchmarkTrace(state, "photos.zip", true);
 }
 BENCHMARK(BM_photos)->BENCH_OPTIONS;
 
+#if defined(__BIONIC__)
+void BM_photos_no_decay(benchmark::State& state) {
+  BenchmarkTrace(state, "photos.zip", false);
+}
+BENCHMARK(BM_photos_no_decay)->BENCH_OPTIONS;
+#endif
+
 void BM_pubg(benchmark::State& state) {
-  BenchmarkTrace(state, "pubg.zip");
+  BenchmarkTrace(state, "pubg.zip", true);
 }
 BENCHMARK(BM_pubg)->BENCH_OPTIONS;
 
+#if defined(__BIONIC__)
+void BM_pubg_no_decay(benchmark::State& state) {
+  BenchmarkTrace(state, "pubg.zip", false);
+}
+BENCHMARK(BM_pubg_no_decay)->BENCH_OPTIONS;
+#endif
+
 void BM_surfaceflinger(benchmark::State& state) {
-  BenchmarkTrace(state, "surfaceflinger.zip");
+  BenchmarkTrace(state, "surfaceflinger.zip", true);
 }
 BENCHMARK(BM_surfaceflinger)->BENCH_OPTIONS;
 
+#if defined(__BIONIC__)
+void BM_surfaceflinger_no_decay(benchmark::State& state) {
+  BenchmarkTrace(state, "surfaceflinger.zip", false);
+}
+BENCHMARK(BM_surfaceflinger_no_decay)->BENCH_OPTIONS;
+#endif
+
 void BM_system_server(benchmark::State& state) {
-  BenchmarkTrace(state, "system_server.zip");
+  BenchmarkTrace(state, "system_server.zip", true);
 }
 BENCHMARK(BM_system_server)->BENCH_OPTIONS;
 
+#if defined(__BIONIC__)
+void BM_system_server_no_decay(benchmark::State& state) {
+  BenchmarkTrace(state, "system_server.zip", false);
+}
+BENCHMARK(BM_system_server_no_decay)->BENCH_OPTIONS;
+#endif
+
 void BM_systemui(benchmark::State& state) {
-  BenchmarkTrace(state, "systemui.zip");
+  BenchmarkTrace(state, "systemui.zip", true);
 }
 BENCHMARK(BM_systemui)->BENCH_OPTIONS;
 
+#if defined(__BIONIC__)
+void BM_systemui_no_decay(benchmark::State& state) {
+  BenchmarkTrace(state, "systemui.zip", false);
+}
+BENCHMARK(BM_systemui_no_decay)->BENCH_OPTIONS;
+#endif
+
 void BM_youtube(benchmark::State& state) {
-  BenchmarkTrace(state, "youtube.zip");
+  BenchmarkTrace(state, "youtube.zip", true);
 }
 BENCHMARK(BM_youtube)->BENCH_OPTIONS;
+
+#if defined(__BIONIC__)
+void BM_youtube_no_decay(benchmark::State& state) {
+  BenchmarkTrace(state, "youtube.zip", false);
+}
+BENCHMARK(BM_youtube_no_decay)->BENCH_OPTIONS;
+#endif
 
 int main(int argc, char** argv) {
   std::vector<char*> args;
