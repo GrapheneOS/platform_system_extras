@@ -19,6 +19,7 @@
 #include <inttypes.h>
 #include <sys/mman.h>
 #include <sys/uio.h>
+#include <sys/user.h>
 
 #include <algorithm>
 #include <unordered_map>
@@ -432,6 +433,9 @@ const JITDebugReader::DescriptorsLocation* JITDebugReader::GetDescriptorsLocatio
     LOG(ERROR) << "ReadMinExecutableVirtualAddress failed, status = " << status;
     return nullptr;
   }
+  // min_vaddr_in_file is the min vaddr of executable segments. It may not be page aligned.
+  // And dynamic linker will create map mapping to (segment.p_vaddr & PAGE_MASK).
+  uint64_t aligned_segment_vaddr = min_vaddr_in_file & PAGE_MASK;
   const char* jit_str = "__jit_debug_descriptor";
   const char* dex_str = "__dex_debug_descriptor";
   uint64_t jit_addr = 0u;
@@ -439,9 +443,9 @@ const JITDebugReader::DescriptorsLocation* JITDebugReader::GetDescriptorsLocatio
 
   auto callback = [&](const ElfFileSymbol& symbol) {
     if (symbol.name == jit_str) {
-      jit_addr = symbol.vaddr - min_vaddr_in_file;
+      jit_addr = symbol.vaddr - aligned_segment_vaddr;
     } else if (symbol.name == dex_str) {
-      dex_addr = symbol.vaddr - min_vaddr_in_file;
+      dex_addr = symbol.vaddr - aligned_segment_vaddr;
     }
   };
   if (ParseDynamicSymbolsFromElfFile(art_lib_path, callback) != ElfStatus::NO_ERROR) {
