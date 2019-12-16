@@ -82,24 +82,44 @@ static int usage(int /* argc */, char* argv[]) {
     return EX_USAGE;
 }
 
+enum class Option : int {
+    // Short character codes.
+    kDeviceSize = 'd',
+    kMetadataSize = 'm',
+    kMetadataSlots = 's',
+    kPartition = 'p',
+    kOutput = 'o',
+    kHelp = 'h',
+    kAlignmentOffset = 'O',
+    kAlignment = 'a',
+    kSparse = 'S',
+    kBlockSize = 'b',
+    kImage = 'i',
+    kGroup = 'g',
+    kDevice = 'D',
+    kSuperName = 'n',
+    kAutoSlotSuffixing = 'x',
+    kForceFullImage = 'F',
+};
+
 int main(int argc, char* argv[]) {
     struct option options[] = {
-        { "device-size", required_argument, nullptr, 'd' },
-        { "metadata-size", required_argument, nullptr, 'm' },
-        { "metadata-slots", required_argument, nullptr, 's' },
-        { "partition", required_argument, nullptr, 'p' },
-        { "output", required_argument, nullptr, 'o' },
-        { "help", no_argument, nullptr, 'h' },
-        { "alignment-offset", required_argument, nullptr, 'O' },
-        { "alignment", required_argument, nullptr, 'a' },
-        { "sparse", no_argument, nullptr, 'S' },
-        { "block-size", required_argument, nullptr, 'b' },
-        { "image", required_argument, nullptr, 'i' },
-        { "group", required_argument, nullptr, 'g' },
-        { "device", required_argument, nullptr, 'D' },
-        { "super-name", required_argument, nullptr, 'n' },
-        { "auto-slot-suffixing", no_argument, nullptr, 'x' },
-        { "force-full-image", no_argument, nullptr, 'F' },
+        { "device-size", required_argument, nullptr, (int)Option::kDeviceSize },
+        { "metadata-size", required_argument, nullptr, (int)Option::kMetadataSize },
+        { "metadata-slots", required_argument, nullptr, (int)Option::kMetadataSlots },
+        { "partition", required_argument, nullptr, (int)Option::kPartition },
+        { "output", required_argument, nullptr, (int)Option::kOutput },
+        { "help", no_argument, nullptr, (int)Option::kOutput },
+        { "alignment-offset", required_argument, nullptr, (int)Option::kAlignmentOffset },
+        { "alignment", required_argument, nullptr, (int)Option::kAlignment },
+        { "sparse", no_argument, nullptr, (int)Option::kSparse },
+        { "block-size", required_argument, nullptr, (int)Option::kBlockSize },
+        { "image", required_argument, nullptr, (int)Option::kImage },
+        { "group", required_argument, nullptr, (int)Option::kGroup },
+        { "device", required_argument, nullptr, (int)Option::kDevice },
+        { "super-name", required_argument, nullptr, (int)Option::kSuperName },
+        { "auto-slot-suffixing", no_argument, nullptr, (int)Option::kAutoSlotSuffixing },
+        { "force-full-image", no_argument, nullptr, (int)Option::kForceFullImage },
         { nullptr, 0, nullptr, 0 },
     };
 
@@ -123,61 +143,61 @@ int main(int argc, char* argv[]) {
     int rv;
     int index;
     while ((rv = getopt_long_only(argc, argv, "d:m:s:p:o:h:FSx", options, &index)) != -1) {
-        switch (rv) {
-            case 'h':
+        switch ((Option)rv) {
+            case Option::kHelp:
                 return usage(argc, argv);
-            case 'd':
+            case Option::kDeviceSize:
                 if (!android::base::ParseUint(optarg, &blockdevice_size) || !blockdevice_size) {
                     fprintf(stderr, "Invalid argument to --device-size.\n");
                     return EX_USAGE;
                 }
                 has_implied_super = true;
                 break;
-            case 'm':
+            case Option::kMetadataSize:
                 if (!android::base::ParseUint(optarg, &metadata_size)) {
                     fprintf(stderr, "Invalid argument to --metadata-size.\n");
                     return EX_USAGE;
                 }
                 break;
-            case 's':
+            case Option::kMetadataSlots:
                 if (!android::base::ParseUint(optarg, &metadata_slots)) {
                     fprintf(stderr, "Invalid argument to --metadata-slots.\n");
                     return EX_USAGE;
                 }
                 break;
-            case 'p':
+            case Option::kPartition:
                 partitions.push_back(optarg);
                 break;
-            case 'g':
+            case Option::kGroup:
                 groups.push_back(optarg);
                 break;
-            case 'o':
+            case Option::kOutput:
                 output_path = optarg;
                 break;
-            case 'O':
+            case Option::kAlignmentOffset:
                 if (!android::base::ParseUint(optarg, &alignment_offset)) {
                     fprintf(stderr, "Invalid argument to --alignment-offset.\n");
                     return EX_USAGE;
                 }
                 has_implied_super = true;
                 break;
-            case 'a':
+            case Option::kAlignment:
                 if (!android::base::ParseUint(optarg, &alignment)) {
                     fprintf(stderr, "Invalid argument to --alignment.\n");
                     return EX_USAGE;
                 }
                 has_implied_super = true;
                 break;
-            case 'S':
+            case Option::kSparse:
                 output_sparse = true;
                 break;
-            case 'b':
+            case Option::kBlockSize:
                 if (!android::base::ParseUint(optarg, &block_size) || !block_size) {
                     fprintf(stderr, "Invalid argument to --block-size.\n");
                     return EX_USAGE;
                 }
                 break;
-            case 'i':
+            case Option::kImage:
             {
                 char* separator = strchr(optarg, '=');
                 if (!separator || separator == optarg || !strlen(separator + 1)) {
@@ -191,10 +211,10 @@ int main(int argc, char* argv[]) {
                 images[partition_name] = file;
                 break;
             }
-            case 'n':
+            case Option::kSuperName:
                 super_name = optarg;
                 break;
-            case 'D':
+            case Option::kDevice:
             {
                 std::vector<std::string> parts = android::base::Split(optarg, ":");
                 if (parts.size() < 2) {
@@ -222,10 +242,10 @@ int main(int argc, char* argv[]) {
                 block_devices.emplace_back(info);
                 break;
             }
-            case 'x':
+            case Option::kAutoSlotSuffixing:
                 auto_slot_suffixing = true;
                 break;
-            case 'F':
+            case Option::kForceFullImage:
                 force_full_image = true;
                 break;
             default:
