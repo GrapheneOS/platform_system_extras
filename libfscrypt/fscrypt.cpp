@@ -24,7 +24,7 @@
 #include <cutils/properties.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <linux/fs.h>
+#include <linux/fscrypt.h>
 #include <logwrap/logwrap.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -38,37 +38,9 @@
 
 using namespace std::string_literals;
 
-// TODO: switch to <linux/fscrypt.h> once it's in Bionic
-#ifndef FSCRYPT_POLICY_V1
-
-// Careful: due to an API quirk this is actually 0, not 1.  We use 1 everywhere
-// else, so make sure to only use this constant in the ioctl itself.
-#define FSCRYPT_POLICY_V1 0
-#define FSCRYPT_KEY_DESCRIPTOR_SIZE 8
-struct fscrypt_policy_v1 {
-    __u8 version;
-    __u8 contents_encryption_mode;
-    __u8 filenames_encryption_mode;
-    __u8 flags;
-    __u8 master_key_descriptor[FSCRYPT_KEY_DESCRIPTOR_SIZE];
-};
-
-#define FSCRYPT_POLICY_V2 2
-#define FSCRYPT_KEY_IDENTIFIER_SIZE 16
-struct fscrypt_policy_v2 {
-    __u8 version;
-    __u8 contents_encryption_mode;
-    __u8 filenames_encryption_mode;
-    __u8 flags;
-    __u8 __reserved[4];
-    __u8 master_key_identifier[FSCRYPT_KEY_IDENTIFIER_SIZE];
-};
-
-#endif /* FSCRYPT_POLICY_V1 */
-
-/* modes not supported by upstream kernel, so not in <linux/fs.h> */
-#define FS_ENCRYPTION_MODE_AES_256_HEH      126
-#define FS_ENCRYPTION_MODE_PRIVATE          127
+/* modes not supported by upstream kernel, so not in <linux/fscrypt.h> */
+#define FSCRYPT_MODE_AES_256_HEH 126
+#define FSCRYPT_MODE_PRIVATE 127
 
 #define HEX_LOOKUP "0123456789abcdef"
 
@@ -78,16 +50,16 @@ struct ModeLookupEntry {
 };
 
 static const auto contents_modes = std::vector<ModeLookupEntry>{
-        {"aes-256-xts"s, FS_ENCRYPTION_MODE_AES_256_XTS},
-        {"software"s, FS_ENCRYPTION_MODE_AES_256_XTS},
-        {"adiantum"s, FS_ENCRYPTION_MODE_ADIANTUM},
-        {"ice"s, FS_ENCRYPTION_MODE_PRIVATE},
+        {"aes-256-xts"s, FSCRYPT_MODE_AES_256_XTS},
+        {"software"s, FSCRYPT_MODE_AES_256_XTS},
+        {"adiantum"s, FSCRYPT_MODE_ADIANTUM},
+        {"ice"s, FSCRYPT_MODE_PRIVATE},
 };
 
 static const auto filenames_modes = std::vector<ModeLookupEntry>{
-        {"aes-256-cts"s, FS_ENCRYPTION_MODE_AES_256_CTS},
-        {"aes-256-heh"s, FS_ENCRYPTION_MODE_AES_256_HEH},
-        {"adiantum"s, FS_ENCRYPTION_MODE_ADIANTUM},
+        {"aes-256-cts"s, FSCRYPT_MODE_AES_256_CTS},
+        {"aes-256-heh"s, FSCRYPT_MODE_AES_256_HEH},
+        {"adiantum"s, FSCRYPT_MODE_ADIANTUM},
 };
 
 static bool LookupModeByName(const std::vector<struct ModeLookupEntry>& modes,
@@ -199,10 +171,10 @@ bool ParseOptions(const std::string& options_string, EncryptionOptions* options)
             LOG(ERROR) << "Invalid file names encryption mode: " << parts[1];
             return false;
         }
-    } else if (options->contents_mode == FS_ENCRYPTION_MODE_ADIANTUM) {
-        options->filenames_mode = FS_ENCRYPTION_MODE_ADIANTUM;
+    } else if (options->contents_mode == FSCRYPT_MODE_ADIANTUM) {
+        options->filenames_mode = FSCRYPT_MODE_ADIANTUM;
     } else {
-        options->filenames_mode = FS_ENCRYPTION_MODE_AES_256_CTS;
+        options->filenames_mode = FSCRYPT_MODE_AES_256_CTS;
     }
     options->version = 1;
     options->flags = 0;
@@ -228,17 +200,17 @@ bool ParseOptions(const std::string& options_string, EncryptionOptions* options)
     // For everything else, use 16-byte padding.  This is more secure (it helps
     // hide the length of filenames), and it makes the inputs evenly divisible
     // into cipher blocks which is more efficient for encryption and decryption.
-    if (options->version == 1 && options->filenames_mode == FS_ENCRYPTION_MODE_AES_256_CTS) {
-        options->flags |= FS_POLICY_FLAGS_PAD_4;
+    if (options->version == 1 && options->filenames_mode == FSCRYPT_MODE_AES_256_CTS) {
+        options->flags |= FSCRYPT_POLICY_FLAGS_PAD_4;
     } else {
-        options->flags |= FS_POLICY_FLAGS_PAD_16;
+        options->flags |= FSCRYPT_POLICY_FLAGS_PAD_16;
     }
 
     // Use DIRECT_KEY for Adiantum, since it's much more efficient but just as
     // secure since Android doesn't reuse the same master key for multiple
     // encryption modes.
-    if (options->filenames_mode == FS_ENCRYPTION_MODE_ADIANTUM) {
-        options->flags |= FS_POLICY_FLAG_DIRECT_KEY;
+    if (options->filenames_mode == FSCRYPT_MODE_ADIANTUM) {
+        options->flags |= FSCRYPT_POLICY_FLAG_DIRECT_KEY;
     }
     return true;
 }
