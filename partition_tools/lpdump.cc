@@ -72,7 +72,7 @@ static std::string BuildHeaderFlagString(uint32_t flags) {
     std::vector<std::string> strings;
 
     for (uint32_t i = 0; i < sizeof(flags) * 8; i++) {
-        if (!(flags & (1 << i))) {
+        if (!(flags & (1U << i))) {
             continue;
         }
         strings.emplace_back("unknown_flag_bit_" + std::to_string(i));
