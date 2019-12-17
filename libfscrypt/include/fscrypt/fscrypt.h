@@ -19,9 +19,6 @@
 
 #include <string>
 
-// TODO: switch to <linux/fscrypt.h> once it's in Bionic
-#define FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64 0x08
-
 bool fscrypt_is_native();
 
 static const char* fscrypt_unencrypted_folder = "/unencrypted";
