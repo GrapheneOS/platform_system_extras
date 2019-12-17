@@ -92,34 +92,6 @@ std::vector<int> GetOnlineCpus() {
   return result;
 }
 
-std::vector<int> GetCpusFromString(const std::string& s) {
-  std::set<int> cpu_set;
-  bool have_dash = false;
-  const char* p = s.c_str();
-  char* endp;
-  int last_cpu;
-  int cpu;
-  // Parse line like: 0,1-3, 5, 7-8
-  while ((cpu = static_cast<int>(strtol(p, &endp, 10))) != 0 || endp != p) {
-    if (have_dash && !cpu_set.empty()) {
-      for (int t = last_cpu + 1; t < cpu; ++t) {
-        cpu_set.insert(t);
-      }
-    }
-    have_dash = false;
-    cpu_set.insert(cpu);
-    last_cpu = cpu;
-    p = endp;
-    while (!isdigit(*p) && *p != '\0') {
-      if (*p == '-') {
-        have_dash = true;
-      }
-      ++p;
-    }
-  }
-  return std::vector<int>(cpu_set.begin(), cpu_set.end());
-}
-
 static std::vector<KernelMmap> GetLoadedModules() {
   std::vector<KernelMmap> result;
   FILE* fp = fopen("/proc/modules", "re");
