@@ -67,6 +67,9 @@ static int usage(int /* argc */, char* argv[]) {
             "                                would produce a minimal super_empty.img which\n"
             "                                cannot be flashed; force-full-image will produce\n"
             "                                a flashable image.\n"
+            "  --virtual-ab                  Add the VIRTUAL_AB_DEVICE flag to the metadata\n"
+            "                                header. Note that the resulting super.img will\n"
+            "                                require a liblp capable of parsing a v1.2 header.\n"
             "\n"
             "Partition data format:\n"
             "  <name>:<attributes>:<size>[:group]\n"
@@ -83,6 +86,9 @@ static int usage(int /* argc */, char* argv[]) {
 }
 
 enum class Option : int {
+    // Long-only options.
+    kVirtualAB = 1,
+
     // Short character codes.
     kDeviceSize = 'd',
     kMetadataSize = 'm',
@@ -120,6 +126,7 @@ int main(int argc, char* argv[]) {
         { "super-name", required_argument, nullptr, (int)Option::kSuperName },
         { "auto-slot-suffixing", no_argument, nullptr, (int)Option::kAutoSlotSuffixing },
         { "force-full-image", no_argument, nullptr, (int)Option::kForceFullImage },
+        { "virtual-ab", no_argument, nullptr, (int)Option::kVirtualAB },
         { nullptr, 0, nullptr, 0 },
     };
 
@@ -139,6 +146,7 @@ int main(int argc, char* argv[]) {
     bool has_implied_super = false;
     bool auto_slot_suffixing = false;
     bool force_full_image = false;
+    bool virtual_ab = false;
 
     int rv;
     int index;
@@ -248,6 +256,9 @@ int main(int argc, char* argv[]) {
             case Option::kForceFullImage:
                 force_full_image = true;
                 break;
+            case Option::kVirtualAB:
+                virtual_ab = true;
+                break;
             default:
                 break;
         }
@@ -304,6 +315,9 @@ int main(int argc, char* argv[]) {
 
     if (auto_slot_suffixing) {
         builder->SetAutoSlotSuffixing();
+    }
+    if (virtual_ab) {
+        builder->SetVirtualABDeviceFlag();
     }
 
     for (const auto& group_info : groups) {

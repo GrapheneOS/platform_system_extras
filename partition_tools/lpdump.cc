@@ -71,6 +71,11 @@ static std::string BuildFlagString(const std::vector<std::string>& strings) {
 static std::string BuildHeaderFlagString(uint32_t flags) {
     std::vector<std::string> strings;
 
+    if (flags & LP_HEADER_FLAG_VIRTUAL_AB_DEVICE) {
+        strings.emplace_back("virtual_ab_device");
+        flags &= ~LP_HEADER_FLAG_VIRTUAL_AB_DEVICE;
+    }
+
     for (uint32_t i = 0; i < sizeof(flags) * 8; i++) {
         if (!(flags & (1U << i))) {
             continue;
