@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 
+#include <optional>
+#include <sstream>
+
 #include <sysexits.h>
-#include <android/hardware/boot/1.0/IBootControl.h>
+#include <android/hardware/boot/1.1/IBootControl.h>
 
 using android::sp;
 
@@ -23,9 +26,10 @@ using android::hardware::hidl_string;
 using android::hardware::Return;
 
 using android::hardware::boot::V1_0::BoolResult;
-using android::hardware::boot::V1_0::IBootControl;
 using android::hardware::boot::V1_0::CommandResult;
 using android::hardware::boot::V1_0::Slot;
+using android::hardware::boot::V1_1::IBootControl;
+using android::hardware::boot::V1_1::MergeStatus;
 
 static void usage(FILE* where, int /* argc */, char* argv[])
 {
@@ -36,19 +40,23 @@ static void usage(FILE* where, int /* argc */, char* argv[])
             "  %s COMMAND\n"
             "\n"
             "Commands:\n"
-            "  %s hal-info                       - Show info about boot_control HAL used.\n"
-            "  %s get-number-slots               - Prints number of slots.\n"
-            "  %s get-current-slot               - Prints currently running SLOT.\n"
-            "  %s mark-boot-successful           - Mark current slot as GOOD.\n"
-            "  %s set-active-boot-slot SLOT      - On next boot, load and execute SLOT.\n"
-            "  %s set-slot-as-unbootable SLOT    - Mark SLOT as invalid.\n"
-            "  %s is-slot-bootable SLOT          - Returns 0 only if SLOT is bootable.\n"
-            "  %s is-slot-marked-successful SLOT - Returns 0 only if SLOT is marked GOOD.\n"
-            "  %s get-suffix SLOT                - Prints suffix for SLOT.\n"
+            "  hal-info                       - Show info about boot_control HAL used.\n"
+            "  get-number-slots               - Prints number of slots.\n"
+            "  get-current-slot               - Prints currently running SLOT.\n"
+            "  mark-boot-successful           - Mark current slot as GOOD.\n"
+            "  set-active-boot-slot SLOT      - On next boot, load and execute SLOT.\n"
+            "  set-slot-as-unbootable SLOT    - Mark SLOT as invalid.\n"
+            "  is-slot-bootable SLOT          - Returns 0 only if SLOT is bootable.\n"
+            "  is-slot-marked-successful SLOT - Returns 0 only if SLOT is marked GOOD.\n"
+            "  get-suffix SLOT                - Prints suffix for SLOT.\n"
+            "  set-snapshot-merge-status STAT - Sets whether a snapshot-merge of any dynamic\n"
+            "                                   partition is in progress. Valid STAT values\n"
+            "                                   are: none, unknown, snapshotted, merging,\n"
+            "                                   or cancelled.\n"
+            "  get-snapshot-merge-status      - Prints the current snapshot-merge status.\n"
             "\n"
             "SLOT parameter is the zero-based slot-number.\n",
-            argv[0], argv[0], argv[0], argv[0], argv[0], argv[0],
-            argv[0], argv[0], argv[0], argv[0], argv[0]);
+            argv[0], argv[0]);
 }
 
 static int do_hal_info(const sp<IBootControl> module) {
@@ -140,6 +148,59 @@ static int do_is_slot_marked_successful(sp<IBootControl> module,
     return handle_return(ret, "Error calling isSlotMarkedSuccessful(): %s\n");
 }
 
+std::optional<MergeStatus> stringToMergeStatus(const std::string &status) {
+    if (status == "cancelled") return MergeStatus::CANCELLED;
+    if (status == "merging") return MergeStatus::MERGING;
+    if (status == "none") return MergeStatus::NONE;
+    if (status == "snapshotted") return MergeStatus::SNAPSHOTTED;
+    if (status == "unknown") return MergeStatus::UNKNOWN;
+    return {};
+}
+
+static int do_set_snapshot_merge_status(sp<IBootControl> module, int argc, char *argv[]) {
+    if (argc != 3) {
+        usage(stderr, argc, argv);
+        exit(EX_USAGE);
+        return -1;
+    }
+
+    auto status = stringToMergeStatus(argv[2]);
+    if (!status.has_value()) {
+        usage(stderr, argc, argv);
+        exit(EX_USAGE);
+        return -1;
+    }
+
+    if (!module->setSnapshotMergeStatus(status.value())) {
+        return EX_SOFTWARE;
+    }
+    return EX_OK;
+}
+
+std::ostream& operator<<(std::ostream& os, MergeStatus state) {
+    switch (state) {
+        case MergeStatus::CANCELLED:
+            return os << "cancelled";
+        case MergeStatus::MERGING:
+            return os << "merging";
+        case MergeStatus::NONE:
+            return os << "none";
+        case MergeStatus::SNAPSHOTTED:
+            return os << "snapshotted";
+        case MergeStatus::UNKNOWN:
+            return os << "unknown";
+        default:
+            return os;
+    }
+}
+
+static int do_get_snapshot_merge_status(sp<IBootControl> module) {
+    MergeStatus ret = module->getSnapshotMergeStatus();
+    std::stringstream ss;
+    ss << ret;
+    fprintf(stdout, "%s\n", ss.str().c_str());
+    return EX_OK;
+}
 
 static int do_get_suffix(sp<IBootControl> module, Slot slot_number) {
     std::function<void(hidl_string)> cb = [](hidl_string suffix){
@@ -204,6 +265,10 @@ int main(int argc, char *argv[])
         return do_get_suffix(module, parse_slot(2, argc, argv));
     } else if (strcmp(argv[1], "is-slot-marked-successful") == 0) {
         return do_is_slot_marked_successful(module, parse_slot(2, argc, argv));
+    } else if (strcmp(argv[1], "set-snapshot-merge-status") == 0) {
+        return do_set_snapshot_merge_status(module, argc, argv);
+    } else if (strcmp(argv[1], "get-snapshot-merge-status") == 0) {
+        return do_get_snapshot_merge_status(module);
     } else {
         usage(stderr, argc, argv);
         return EX_USAGE;
