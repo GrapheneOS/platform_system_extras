@@ -79,8 +79,7 @@ static inline bool is_erasure(fec_handle *f, uint64_t offset,
 
     uint64_t n = offset / FEC_BLOCKSIZE;
 
-    return !check_block_hash(&f->hashtree().hash[n * SHA256_DIGEST_LENGTH],
-                             data, f->hashtree().salt);
+    return !f->hashtree().check_block_hash_with_index(n, data);
 }
 
 /* check if `offset' is within a block expected to contain zeros */
@@ -88,18 +87,18 @@ static inline bool is_zero(fec_handle *f, uint64_t offset)
 {
     auto hashtree = f->hashtree();
 
-    if (hashtree.hash.empty() || unlikely(offset >= f->data_size)) {
+    if (hashtree.hash_data.empty() || unlikely(offset >= f->data_size)) {
         return false;
     }
 
     uint64_t hash_offset = (offset / FEC_BLOCKSIZE) * SHA256_DIGEST_LENGTH;
 
-    if (unlikely(hash_offset > hashtree.hash_data_blocks * FEC_BLOCKSIZE -
-                                   SHA256_DIGEST_LENGTH)) {
+    if (unlikely(hash_offset >
+                 hashtree.hash_data.size() - SHA256_DIGEST_LENGTH)) {
         return false;
     }
 
-    return !memcmp(hashtree.zero_hash.data(), &hashtree.hash[hash_offset],
+    return !memcmp(hashtree.zero_hash.data(), &hashtree.hash_data[hash_offset],
                    SHA256_DIGEST_LENGTH);
 }
 
@@ -120,7 +119,7 @@ static int __ecc_read(fec_handle *f, void *rs, uint8_t *dest, uint64_t offset,
     int neras = 0;
 
     /* verity is required to check for erasures */
-    check(!use_erasures || !f->hashtree().hash.empty());
+    check(!use_erasures || !f->hashtree().hash_data.empty());
 
     for (int i = 0; i < e->rsn; ++i) {
         uint64_t interleaved = fec_ecc_interleave(rsb * e->rsn + i, e->rsn,
@@ -181,7 +180,7 @@ static int __ecc_read(fec_handle *f, void *rs, uint8_t *dest, uint64_t offset,
                 error("RS block %" PRIu64 ": decoding failed (%d erasures)",
                     rsb, neras);
                 dump("raw RS block", rsb, copy, FEC_RSM);
-            } else if (f->hashtree().hash.empty()) {
+            } else if (f->hashtree().hash_data.empty()) {
                 warn("RS block %" PRIu64 ": decoding failed", rsb);
             } else {
                 debug("RS block %" PRIu64 ": decoding failed", rsb);
@@ -290,7 +289,7 @@ static ssize_t verity_read(fec_handle *f, uint8_t *dest, size_t count,
     check(dest);
     check(offset < f->data_size);
     check(offset + count <= f->data_size);
-    check(!f->hashtree().hash.empty());
+    check(!f->hashtree().hash_data.empty());
     check(errors);
 
     debug("[%" PRIu64 ", %" PRIu64 ")", offset, offset + count);
@@ -307,14 +306,12 @@ static ssize_t verity_read(fec_handle *f, uint8_t *dest, size_t count,
     size_t left = count;
     uint8_t data[FEC_BLOCKSIZE];
 
-    uint64_t max_hash_block = (f->hashtree().hash_data_blocks * FEC_BLOCKSIZE -
-                               SHA256_DIGEST_LENGTH) /
-                              SHA256_DIGEST_LENGTH;
+    uint64_t max_hash_block =
+        (f->hashtree().hash_data.size() - SHA256_DIGEST_LENGTH) /
+        SHA256_DIGEST_LENGTH;
 
     while (left > 0) {
         check(curr <= max_hash_block);
-
-        uint8_t *hash = &f->hashtree().hash[curr * SHA256_DIGEST_LENGTH];
         uint64_t curr_offset = curr * FEC_BLOCKSIZE;
 
         bool expect_zeros = is_zero(f, curr_offset);
@@ -332,7 +329,7 @@ static ssize_t verity_read(fec_handle *f, uint8_t *dest, size_t count,
             return -1;
         }
 
-        if (likely(check_block_hash(hash, data, f->hashtree().salt))) {
+        if (likely(f->hashtree().check_block_hash_with_index(curr, data))) {
             goto valid;
         }
 
@@ -357,14 +354,14 @@ static ssize_t verity_read(fec_handle *f, uint8_t *dest, size_t count,
            erasure locations is slower */
         if (__ecc_read(f, rs.get(), data, curr_offset, false, ecc_data.get(),
                        errors) == FEC_BLOCKSIZE &&
-            check_block_hash(hash, data, f->hashtree().salt)) {
+            f->hashtree().check_block_hash_with_index(curr, data)) {
             goto corrected;
         }
 
         /* try to correct with erasures */
         if (__ecc_read(f, rs.get(), data, curr_offset, true, ecc_data.get(),
                        errors) == FEC_BLOCKSIZE &&
-            check_block_hash(hash, data, f->hashtree().salt)) {
+            f->hashtree().check_block_hash_with_index(curr, data)) {
             goto corrected;
         }
 
@@ -527,7 +524,7 @@ ssize_t fec_pread(struct fec_handle *f, void *buf, size_t count,
         return -1;
     }
 
-    if (!f->hashtree().hash.empty()) {
+    if (!f->hashtree().hash_data.empty()) {
         return process(f, (uint8_t *)buf,
                        get_max_count(offset, count, f->data_size), offset,
                        verity_read);
