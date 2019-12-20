@@ -36,7 +36,6 @@
 #include "perf_regs.h"
 
 std::vector<int> GetOnlineCpus();
-std::vector<int> GetCpusFromString(const std::string& s);
 
 struct KernelMmap {
   std::string name;
