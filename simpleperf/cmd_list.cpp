@@ -156,6 +156,7 @@ bool ListCommand::Run(const std::vector<std::string>& args) {
       {"tracepoint", {PERF_TYPE_TRACEPOINT, "tracepoint events"}},
       {"user-space-sampler", {SIMPLEPERF_TYPE_USER_SPACE_SAMPLERS, "user-space samplers"}},
       {"cs-etm", {-1, "coresight etm events"}},
+      {"pmu", {SIMPLEPERF_TYPE_PMU, "pmu events"}}
   };
 
   std::vector<std::string> names;
