@@ -46,6 +46,5 @@ TEST_F(ListCommandTest, show_features_option) {
 }
 
 TEST_F(ListCommandTest, pmu_option) {
-  TEST_REQUIRE_PMU_COUNTER();
-  TEST_IN_ROOT(ASSERT_TRUE(list_cmd->Run({"pmu"})));
+  ASSERT_TRUE(list_cmd->Run({"pmu"}));
 }
