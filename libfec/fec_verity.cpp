@@ -135,8 +135,6 @@ int hashtree_info::get_hash(const uint8_t *block, uint8_t *hash) {
     EVP_MD_CTX_free(mdctx);
 
     check(hash_size == digest_length_)
-
-    std::fill(hash + hash_size, hash + padded_digest_length_, 0);
     return 0;
 }
 
