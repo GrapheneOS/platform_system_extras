@@ -69,6 +69,15 @@ bool HasHardwareCounter();
     } \
   } while (0)
 
+bool HasPmuCounter();
+#define TEST_REQUIRE_PMU_COUNTER() \
+  do { \
+    if (!HasPmuCounter()) { \
+      GTEST_LOG_(INFO) << "Skip this test as the machine doesn't have low-level PMU counters."; \
+      return; \
+    } \
+  } while (0)
+
 #if defined(IN_CTS_TEST)
 #define TEST_REQUIRE_APPS()
 #else
