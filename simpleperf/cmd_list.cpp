@@ -33,6 +33,10 @@
 using namespace simpleperf;
 
 static bool IsEventTypeSupported(const EventType& event_type) {
+  // Because PMU events are provided by kernel, we assume it's supported.
+  if (event_type.IsPmuEvent()) {
+    return true;
+  }
   if (event_type.type != PERF_TYPE_RAW) {
     perf_event_attr attr = CreateDefaultPerfEventAttr(event_type);
     // Exclude kernel to list supported events even when
@@ -89,7 +93,8 @@ static void PrintEventTypesOfType(uint32_t type, const std::string& type_name,
     }
   }
   for (auto& event_type : event_types) {
-    if (event_type.type == type) {
+    if (event_type.type == type ||
+        (type == SIMPLEPERF_TYPE_PMU && event_type.IsPmuEvent())) {
       bool supported = IsEventTypeSupported(event_type);
       // For raw events, we may not be able to detect whether it is supported on device.
       // So always print them.
@@ -114,7 +119,7 @@ class ListCommand : public Command {
   ListCommand()
       : Command("list", "list available event types",
                 // clang-format off
-"Usage: simpleperf list [options] [hw|sw|cache|raw|tracepoint]\n"
+"Usage: simpleperf list [options] [hw|sw|cache|raw|tracepoint|pmu]\n"
 "       List all available event types.\n"
 "       Filters can be used to show only event types belong to selected types:\n"
 "         hw          hardware events\n"
@@ -123,6 +128,7 @@ class ListCommand : public Command {
 "         raw         raw cpu pmu events\n"
 "         tracepoint  tracepoint events\n"
 "         cs-etm      coresight etm instruction tracing events\n"
+"         pmu         system-specific pmu events\n"
 "Options:\n"
 "--show-features    Show features supported on the device, including:\n"
 "                     dwarf-based-call-graph\n"
