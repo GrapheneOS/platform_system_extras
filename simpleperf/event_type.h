@@ -55,6 +55,8 @@ struct EventType {
     return name.find("/") != std::string::npos;
   }
 
+  std::vector<int> GetPmuCpumask();
+
   std::string name;
   uint32_t type;
   uint64_t config;

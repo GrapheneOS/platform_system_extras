@@ -197,7 +197,8 @@ bool EventSelectionSet::BuildAndCheckEventSelection(const std::string& event_nam
       }
     }
   }
-  if (!IsEventAttrSupported(selection->event_attr)) {
+  // PMU events are provided by kernel, so they should be supported
+  if (!event_type->event_type.IsPmuEvent() && !IsEventAttrSupported(selection->event_attr)) {
     LOG(ERROR) << "Event type '" << event_type->name
                << "' is not supported on the device";
     return false;
@@ -228,6 +229,7 @@ bool EventSelectionSet::AddEventGroup(
     const std::vector<std::string>& event_names, size_t* group_id) {
   EventSelectionGroup group;
   bool first_event = groups_.empty();
+  bool first_in_group = true;
   for (const auto& event_name : event_names) {
     EventSelection selection;
     if (!BuildAndCheckEventSelection(event_name, first_event, &selection)) {
@@ -236,7 +238,14 @@ bool EventSelectionSet::AddEventGroup(
     if (IsEtmEventType(selection.event_attr.type)) {
       has_aux_trace_ = true;
     }
+    if (first_in_group) {
+      auto& event_type = selection.event_type_modifier.event_type;
+      if (event_type.IsPmuEvent()) {
+        selection.allowed_cpus = event_type.GetPmuCpumask();
+      }
+    }
     first_event = false;
+    first_in_group = false;
     group.push_back(std::move(selection));
   }
   groups_.push_back(std::move(group));
@@ -550,6 +559,11 @@ bool EventSelectionSet::OpenEventFiles(const std::vector<int>& on_cpus) {
         size_t success_count = 0;
         std::string failed_event_type;
         for (const auto& tid : pair.second) {
+          // override cpu list if event's PMU has a cpumask as those PMUs are
+          // agnostic to cpu and it's meaningless to specify cpus for them.
+          auto& evsel = group[0];
+          if (!evsel.allowed_cpus.empty())
+            cpus = evsel.allowed_cpus;
           for (const auto& cpu : cpus) {
             if (OpenEventFilesOnGroup(group, tid, cpu, &failed_event_type)) {
               success_count++;

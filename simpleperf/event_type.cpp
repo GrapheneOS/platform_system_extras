@@ -219,6 +219,21 @@ static std::vector<EventType> GetPmuEventTypes() {
   return result;
 }
 
+std::vector<int> EventType::GetPmuCpumask() {
+  std::vector<int> empty_result;
+  if (!IsPmuEvent())
+    return empty_result;
+
+  std::string pmu = name.substr(0, name.find("/"));
+  std::string cpumask_path = "/sys/bus/event_source/devices/" + pmu + "/cpumask";
+  std::string cpumask_content;
+  if (!android::base::ReadFileToString(cpumask_path, &cpumask_content)) {
+    LOG(DEBUG) << "cannot read cpumask content in " << pmu;
+    return empty_result;
+  }
+  return GetCpusFromString(cpumask_content);
+}
+
 std::string ScopedEventTypes::BuildString(const std::vector<const EventType*>& event_types) {
   std::string result;
   for (auto type : event_types) {
