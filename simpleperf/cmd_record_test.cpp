@@ -995,6 +995,7 @@ TEST(record_cmd, include_filter_option) {
 
 TEST(record_cmd, pmu_event_option) {
   TEST_REQUIRE_PMU_COUNTER();
+  TEST_REQUIRE_HW_COUNTER();
   std::string event_string;
   if (GetBuildArch() == ARCH_X86_64) {
     event_string = "cpu/cpu-cycles/";
