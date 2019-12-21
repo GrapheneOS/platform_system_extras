@@ -281,6 +281,20 @@ bool HasHardwareCounter() {
   return has_hw_counter == 1;
 }
 
+bool HasPmuCounter() {
+  static int has_pmu_counter = -1;
+  if (has_pmu_counter == -1) {
+    has_pmu_counter = 0;
+    for (auto& event_type : GetAllEventTypes()) {
+      if (event_type.IsPmuEvent()) {
+        has_pmu_counter = 1;
+        break;
+      }
+    }
+  }
+  return has_pmu_counter == 1;
+}
+
 TEST(record_cmd, dwarf_callchain_sampling) {
   TEST_REQUIRE_HW_COUNTER();
   OMIT_TEST_ON_NON_NATIVE_ABIS();
@@ -977,4 +991,19 @@ TEST(record_cmd, include_filter_option) {
       ASSERT_EQ(dso, sleep_exec_path);
     }
   }
+}
+
+TEST(record_cmd, pmu_event_option) {
+  TEST_REQUIRE_PMU_COUNTER();
+  TEST_REQUIRE_HW_COUNTER();
+  std::string event_string;
+  if (GetBuildArch() == ARCH_X86_64) {
+    event_string = "cpu/cpu-cycles/";
+  } else if (GetBuildArch() == ARCH_ARM64) {
+    event_string = "armv8_pmuv3/cpu_cycles/";
+  } else {
+    GTEST_LOG_(INFO) << "Omit arch " << GetBuildArch();
+    return;
+  }
+  TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-e", event_string})));
 }

@@ -71,6 +71,22 @@ TEST(stat_cmd, rN_event) {
   ASSERT_TRUE(StatCmd()->Run({"-e", event_name, "sleep", "1"}));
 }
 
+TEST(stat_cmd, pmu_event) {
+  TEST_REQUIRE_PMU_COUNTER();
+  TEST_REQUIRE_HW_COUNTER();
+  std::string event_string;
+  if (GetBuildArch() == ARCH_X86_64) {
+    event_string = "cpu/instructions/";
+  } else if (GetBuildArch() == ARCH_ARM64) {
+    event_string = "armv8_pmuv3/inst_retired/";
+  } else {
+    GTEST_LOG_(INFO) << "Omit arch " << GetBuildArch();
+    return;
+  }
+  TEST_IN_ROOT(ASSERT_TRUE(
+      StatCmd()->Run({"-a", "-e", event_string, "sleep", "1"})));
+}
+
 TEST(stat_cmd, event_modifier) {
   TEST_REQUIRE_HW_COUNTER();
   ASSERT_TRUE(

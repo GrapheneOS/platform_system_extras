@@ -164,6 +164,7 @@ class EventSelectionSet {
     std::vector<std::unique_ptr<InplaceSamplerClient>> inplace_samplers;
     // counters for event files closed for cpu hotplug events
     std::vector<CounterInfo> hotplugged_counters;
+    std::vector<int> allowed_cpus;
   };
   typedef std::vector<EventSelection> EventSelectionGroup;
 

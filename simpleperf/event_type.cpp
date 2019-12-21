@@ -34,6 +34,16 @@
 
 using namespace simpleperf;
 
+struct EventFormat {
+  EventFormat(const std::string& name, const std::string& attr, int shift)
+      : name(name), attr(attr), shift(shift) {
+  }
+
+  std::string name;
+  std::string attr;
+  int shift;
+};
+
 #define EVENT_TYPE_TABLE_ENTRY(name, type, config, description, limited_arch) \
           {name, type, config, description, limited_arch},
 
@@ -115,6 +125,115 @@ static std::vector<EventType> GetTracepointEventTypes() {
   return result;
 }
 
+static std::vector<EventFormat> ParseEventFormats(const std::string& evtdev_path) {
+  std::vector<EventFormat> v;
+  std::string formats_dirname = evtdev_path + "/format/";
+  for (const auto& format_name : GetEntriesInDir(formats_dirname)) {
+    std::string format_path = formats_dirname + format_name;
+    std::string format_content;
+    if (!android::base::ReadFileToString(format_path, &format_content)) {
+      continue;
+    }
+
+    // format files look like below (currently only 'config' is supported) :
+    //   # cat armv8_pmuv3/format/event
+    //   config:0-15
+    int shift;
+    if (sscanf(format_content.c_str(), "config:%d", &shift) != 1) {
+      LOG(DEBUG) << "Invalid or unsupported event format: " << format_content;
+      continue;
+    }
+
+    v.emplace_back(EventFormat(format_name, "config", shift));
+  }
+  return v;
+}
+
+static uint64_t MakeEventConfig(const std::string& event_str, std::vector<EventFormat>& formats) {
+  uint64_t config = 0;
+
+  // event files might have multiple terms, but usually have a term like:
+  //   # cat armv8_pmuv3/events/cpu_cycles
+  //   event=0x011
+  for (auto& s : android::base::Split(event_str, ",")) {
+    auto pos = s.find("=");
+    if (pos == std::string::npos)
+      continue;
+
+    auto format = s.substr(0, pos);
+    long val;
+    if (!android::base::ParseInt(android::base::Trim(s.substr(pos+1)), &val)) {
+      LOG(DEBUG) << "Invalid event format '" << s << "'";
+      continue;
+    }
+
+    for (auto& f : formats) {
+      if (f.name == format) {
+        if (f.attr != "config") {
+          LOG(DEBUG) << "cannot support other attribute: " << s;
+          return ~0ULL;
+        }
+
+        config |= val << f.shift;
+        break;
+      }
+    }
+  }
+  return config;
+}
+
+static std::vector<EventType> GetPmuEventTypes() {
+  std::vector<EventType> result;
+  const std::string evtsrc_dirname = "/sys/bus/event_source/devices/";
+  for (const auto& device_name : GetSubDirs(evtsrc_dirname)) {
+    std::string evtdev_path = evtsrc_dirname + device_name;
+    std::string type_path = evtdev_path + "/type";
+    std::string type_content;
+
+    if (!android::base::ReadFileToString(type_path, &type_content)) {
+      LOG(DEBUG) << "cannot read event type: " << device_name;
+      continue;
+    }
+    uint64_t type_id = strtoull(type_content.c_str(), NULL, 10);
+
+    std::vector<EventFormat> formats = ParseEventFormats(evtdev_path);
+
+    std::string events_dirname = evtdev_path + "/events/";
+    for (const auto& event_name : GetEntriesInDir(events_dirname)) {
+      std::string event_path = events_dirname + event_name;
+      std::string event_content;
+      if (!android::base::ReadFileToString(event_path, &event_content)) {
+        LOG(DEBUG) << "cannot read event content in " << event_name;
+        continue;
+      }
+
+      uint64_t config = MakeEventConfig(event_content, formats);
+      if (config == ~0ULL) {
+        LOG(DEBUG) << "cannot handle config format in " << event_name;
+        continue;
+      }
+      result.emplace_back(EventType(device_name + "/" + event_name + "/",
+                                    type_id, config, "", ""));
+    }
+  }
+  return result;
+}
+
+std::vector<int> EventType::GetPmuCpumask() {
+  std::vector<int> empty_result;
+  if (!IsPmuEvent())
+    return empty_result;
+
+  std::string pmu = name.substr(0, name.find("/"));
+  std::string cpumask_path = "/sys/bus/event_source/devices/" + pmu + "/cpumask";
+  std::string cpumask_content;
+  if (!android::base::ReadFileToString(cpumask_path, &cpumask_content)) {
+    LOG(DEBUG) << "cannot read cpumask content in " << pmu;
+    return empty_result;
+  }
+  return GetCpusFromString(cpumask_content);
+}
+
 std::string ScopedEventTypes::BuildString(const std::vector<const EventType*>& event_types) {
   std::string result;
   for (auto type : event_types) {
@@ -153,6 +272,8 @@ const std::set<EventType>& GetAllEventTypes() {
     g_event_types.insert(static_event_type_array.begin(), static_event_type_array.end());
     std::vector<EventType> tracepoint_array = GetTracepointEventTypes();
     g_event_types.insert(tracepoint_array.begin(), tracepoint_array.end());
+    std::vector<EventType> pmu_array = GetPmuEventTypes();
+    g_event_types.insert(pmu_array.begin(), pmu_array.end());
 #if defined(__linux__)
     std::unique_ptr<EventType> etm_type = ETMRecorder::GetInstance().BuildEventType();
     if (etm_type) {
