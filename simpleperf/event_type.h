@@ -27,7 +27,6 @@
 // A uint32_t value far from 0 is picked, so it is unlikely to conflict with further
 // PERF_TYPE_* events.
 static constexpr uint32_t SIMPLEPERF_TYPE_USER_SPACE_SAMPLERS = 32768;
-static constexpr uint32_t SIMPLEPERF_TYPE_PMU = 32769;
 
 enum {
   SIMPLEPERF_CONFIG_INPLACE_SAMPLER,
