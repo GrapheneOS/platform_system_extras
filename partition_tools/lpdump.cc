@@ -90,6 +90,7 @@ static std::string BuildAttributeString(uint32_t attrs) {
     if (attrs & LP_PARTITION_ATTR_READONLY) strings.emplace_back("readonly");
     if (attrs & LP_PARTITION_ATTR_SLOT_SUFFIXED) strings.emplace_back("slot-suffixed");
     if (attrs & LP_PARTITION_ATTR_UPDATED) strings.emplace_back("updated");
+    if (attrs & LP_PARTITION_ATTR_DISABLED) strings.emplace_back("disabled");
     return BuildFlagString(strings);
 }
 
