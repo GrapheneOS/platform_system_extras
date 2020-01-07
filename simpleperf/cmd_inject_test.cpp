@@ -43,10 +43,24 @@ TEST(cmd_inject, binary_option) {
   ASSERT_TRUE(android::base::ReadFileToString(tmpfile.path, &data));
   ASSERT_NE(data.find("etm_test_loop"), std::string::npos);
 
+  // Test that data for etm_test_loop is generated when selected by regex.
+  ASSERT_TRUE(InjectCmd()->Run({"--symdir", GetTestDataDir() + "etm", "-i",
+                                GetTestData(PERF_DATA_ETM_TEST_LOOP), "--binary", "etm_t.*_loop",
+                                "-o", tmpfile.path}));
+  ASSERT_TRUE(android::base::ReadFileToString(tmpfile.path, &data));
+  ASSERT_NE(data.find("etm_test_loop"), std::string::npos);
+
   // Test that data for etm_test_loop isn't generated when not selected by --binary.
   ASSERT_TRUE(InjectCmd()->Run({"--symdir", GetTestDataDir() + "etm", "-i",
                                 GetTestData(PERF_DATA_ETM_TEST_LOOP), "--binary",
                                 "no_etm_test_loop", "-o", tmpfile.path}));
+  ASSERT_TRUE(android::base::ReadFileToString(tmpfile.path, &data));
+  ASSERT_EQ(data.find("etm_test_loop"), std::string::npos);
+
+  // Test that data for etm_test_loop isn't generated when not selected by regex.
+  ASSERT_TRUE(InjectCmd()->Run({"--symdir", GetTestDataDir() + "etm", "-i",
+                                GetTestData(PERF_DATA_ETM_TEST_LOOP), "--binary",
+                                "no_etm_test_.*", "-o", tmpfile.path}));
   ASSERT_TRUE(android::base::ReadFileToString(tmpfile.path, &data));
   ASSERT_EQ(data.find("etm_test_loop"), std::string::npos);
 }
