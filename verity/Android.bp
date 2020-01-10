@@ -54,6 +54,7 @@ cc_binary_host {
         "libcrypto_utils",
         "libcrypto",
         "libext4_utils",
+        "liblog",
         "libsparse",
         "libsquashfs_utils",
         "libbase",
