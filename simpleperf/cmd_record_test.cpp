@@ -702,6 +702,7 @@ TEST(record_cmd, kernel_bug_making_zero_dyn_size) {
   // Test a kernel bug that makes zero dyn_size in kernel < 3.13. If it fails, please cherry pick
   // below kernel patch: 0a196848ca365e perf: Fix arch_perf_out_copy_user default
   TEST_REQUIRE_HW_COUNTER();
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(1, &workloads);
   std::string pid = std::to_string(workloads[0]->GetPid());
@@ -729,6 +730,7 @@ TEST(record_cmd, kernel_bug_making_zero_dyn_size_for_kernel_samples) {
   // kernels. If it fails, please cherry pick below kernel patch:
   // 02e184476eff8 perf/core: Force USER_DS when recording user stack data
   TEST_REQUIRE_HW_COUNTER();
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   TEST_REQUIRE_HOST_ROOT();
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(1, &workloads);
