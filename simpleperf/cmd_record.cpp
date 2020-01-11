@@ -1174,21 +1174,29 @@ bool RecordCommand::DumpKernelMaps() {
 }
 
 bool RecordCommand::DumpUserSpaceMaps() {
-  // For system_wide profiling, maps of a process is dumped when needed (first time a sample hits
-  // that process).
-  if (system_wide_collection_) {
+  // For system_wide profiling:
+  //   If no aux tracing, maps of a process is dumped when needed (first time a sample hits
+  //     that process).
+  //   If aux tracing, we don't know which maps will be needed, so dump all process maps.
+  if (system_wide_collection_ && !event_selection_set_.HasAuxTrace()) {
     return true;
   }
   // Map from process id to a set of thread ids in that process.
   std::unordered_map<pid_t, std::unordered_set<pid_t>> process_map;
-  for (pid_t pid : event_selection_set_.GetMonitoredProcesses()) {
-    std::vector<pid_t> tids = GetThreadsInProcess(pid);
-    process_map[pid].insert(tids.begin(), tids.end());
-  }
-  for (pid_t tid : event_selection_set_.GetMonitoredThreads()) {
-    pid_t pid;
-    if (GetProcessForThread(tid, &pid)) {
-      process_map[pid].insert(tid);
+  if (system_wide_collection_) {
+    for (auto pid : GetAllProcesses()) {
+      process_map[pid] = std::unordered_set<pid_t>();
+    }
+  } else {
+    for (pid_t pid : event_selection_set_.GetMonitoredProcesses()) {
+      std::vector<pid_t> tids = GetThreadsInProcess(pid);
+      process_map[pid].insert(tids.begin(), tids.end());
+    }
+    for (pid_t tid : event_selection_set_.GetMonitoredThreads()) {
+      pid_t pid;
+      if (GetProcessForThread(tid, &pid)) {
+        process_map[pid].insert(tid);
+      }
     }
   }
 
