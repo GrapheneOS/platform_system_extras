@@ -63,8 +63,6 @@ EVENT_TYPE_TABLE_ENTRY("node-store-misses", PERF_TYPE_HW_CACHE, ((PERF_COUNT_HW_
 EVENT_TYPE_TABLE_ENTRY("node-prefetches", PERF_TYPE_HW_CACHE, ((PERF_COUNT_HW_CACHE_NODE) | (PERF_COUNT_HW_CACHE_OP_PREFETCH << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16)), "", "")
 EVENT_TYPE_TABLE_ENTRY("node-prefetch-misses", PERF_TYPE_HW_CACHE, ((PERF_COUNT_HW_CACHE_NODE) | (PERF_COUNT_HW_CACHE_OP_PREFETCH << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16)), "", "")
 
-EVENT_TYPE_TABLE_ENTRY("inplace-sampler", SIMPLEPERF_TYPE_USER_SPACE_SAMPLERS, SIMPLEPERF_CONFIG_INPLACE_SAMPLER, "", "")
-
 EVENT_TYPE_TABLE_ENTRY("raw-sw-incr", PERF_TYPE_RAW, 0x0, "Instruction architecturally executed, Condition code check pass, software increment", "arm")
 EVENT_TYPE_TABLE_ENTRY("raw-l1i-cache-refill", PERF_TYPE_RAW, 0x1, "Level 1 instruction cache refill", "arm")
 EVENT_TYPE_TABLE_ENTRY("raw-l1i-tlb-refill", PERF_TYPE_RAW, 0x2, "Attributable Level 1 instruction TLB refill", "arm")

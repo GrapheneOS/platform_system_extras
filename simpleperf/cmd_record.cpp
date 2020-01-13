@@ -451,13 +451,6 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     if (workload != nullptr) {
       event_selection_set_.AddMonitoredProcesses({workload->GetPid()});
       event_selection_set_.SetEnableOnExec(true);
-      if (event_selection_set_.HasInplaceSampler()) {
-        // Start worker early, because the worker process has to setup inplace-sampler server
-        // before we try to connect it.
-        if (!workload->Start()) {
-          return false;
-        }
-      }
     } else if (!app_package_name_.empty()) {
       // If app process is not created, wait for it. This allows simpleperf starts before
       // app process. In this way, we can have a better support of app start-up time profiling.
