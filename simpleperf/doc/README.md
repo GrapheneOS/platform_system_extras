@@ -20,10 +20,11 @@ The latest document is [here](https://android.googlesource.com/platform/system/e
   - [Executable commands reference](#executable-commands-reference)
   - [Scripts reference](#scripts-reference)
   - [Answers to common issues](#answers-to-common-issues)
-    - [Why we suggest profiling on Android >= N devices?](#why-we-suggest-profiling-on-android--n-devices)
+    - [Why we suggest profiling on Android &gt;= N devices?](#why-we-suggest-profiling-on-android-gt-n-devices)
     - [Suggestions about recording call graphs](#suggestions-about-recording-call-graphs)
     - [How to solve missing symbols in report?](#how-to-solve-missing-symbols-in-report)
     - [Fix broken callchain stopped at C functions](#fix-broken-callchain-stopped-at-c-functions)
+    - [Show annotated source code and disassembly](#show-annotated-source-code-and-disassembly)
   - [Bugs and contribution](#bugs-and-contribution)
 
 
@@ -203,6 +204,27 @@ To use app_profiler.py:
 ```sh
 $ python app_profiler.py -lib <unstripped_dir>
 ```
+
+### Show annotated source code and disassembly
+
+To show hot places at source code and instruction level, we need to show source code and
+disassembly with event count annotation. Simpleperf supports showing annotated source code and
+disassembly for C++ code and fully compiled Java code. Simpleperf supports two ways to do it:
+
+1. Through report_html.py:
+
+  a. Generate perf.data and pull it on host.
+  b. Generate binary_cache, containing elf files with debug information. Use -lib option to add
+     libs with debug info. Do it with
+     `binary_cache_builder.py -i perf.data -lib <dir_of_lib_with_debug_info>`.
+  c. Use report_html.py to generate report.html with annotated source code and disassembly,
+     as described [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/scripts_reference.md#report_html_py).
+
+2. Through pprof.
+
+  a. Generate perf.data and binary_cache as above.
+  b. Use pprof_proto_generator.py to generate pprof proto file. `pprof_proto_generator.py`.
+  c. Use pprof to report a function with annotated source code, as described [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/scripts_reference.md#pprof_proto_generator_py).
 
 ## Bugs and contribution
 
