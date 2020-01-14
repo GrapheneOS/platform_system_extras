@@ -169,9 +169,6 @@ bool ListCommand::Run(const std::vector<std::string>& args) {
           {"tracepoint",
            {"tracepoint events",
             [](const EventType& e) { return e.type == PERF_TYPE_TRACEPOINT; }}},
-          {"user-space-sampler",
-           {"user-space samplers",
-            [](const EventType& e) { return e.type == SIMPLEPERF_TYPE_USER_SPACE_SAMPLERS; }}},
 #if defined(__arm__) || defined(__aarch64__)
           {"cs-etm",
            {"coresight etm events",
