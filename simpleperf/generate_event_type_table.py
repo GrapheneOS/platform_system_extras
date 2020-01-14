@@ -111,11 +111,6 @@ def gen_hw_cache_events():
 
   return generated_str
 
-def gen_user_space_events():
-  generated_str = gen_event_type_entry_str("inplace-sampler",
-                                           "SIMPLEPERF_TYPE_USER_SPACE_SAMPLERS",
-                                           "SIMPLEPERF_CONFIG_INPLACE_SAMPLER")
-  return generated_str
 
 def gen_arm_raw_events():
   raw_types = [
@@ -301,7 +296,6 @@ def gen_events():
   generated_str += gen_hardware_events() + '\n'
   generated_str += gen_software_events() + '\n'
   generated_str += gen_hw_cache_events() + '\n'
-  generated_str += gen_user_space_events() + '\n'
   generated_str += gen_arm_raw_events() + '\n'
   return generated_str
 
