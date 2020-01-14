@@ -28,7 +28,6 @@
 #include "event_attr.h"
 #include "event_fd.h"
 #include "event_type.h"
-#include "InplaceSamplerClient.h"
 #include "IOEventLoop.h"
 #include "perf_event.h"
 #include "record.h"
@@ -94,7 +93,6 @@ class EventSelectionSet {
   std::vector<const EventType*> GetTracepointEvents() const;
   bool ExcludeKernel() const;
   bool HasAuxTrace() const { return has_aux_trace_; }
-  bool HasInplaceSampler() const;
   std::vector<EventAttrWithId> GetEventAttrWithId() const;
 
   void SetEnableOnExec(bool enable);
@@ -161,7 +159,6 @@ class EventSelectionSet {
     EventTypeAndModifier event_type_modifier;
     perf_event_attr event_attr;
     std::vector<std::unique_ptr<EventFd>> event_fds;
-    std::vector<std::unique_ptr<InplaceSamplerClient>> inplace_samplers;
     // counters for event files closed for cpu hotplug events
     std::vector<CounterInfo> hotplugged_counters;
     std::vector<int> allowed_cpus;
@@ -171,9 +168,6 @@ class EventSelectionSet {
   bool BuildAndCheckEventSelection(const std::string& event_name, bool first_event,
                                    EventSelection* selection);
   void UnionSampleType();
-  bool IsUserSpaceSamplerGroup(EventSelectionGroup& group);
-  bool OpenUserSpaceSamplersOnGroup(EventSelectionGroup& group,
-                                    const std::map<pid_t, std::set<pid_t>>& process_map);
   bool OpenEventFilesOnGroup(EventSelectionGroup& group, pid_t tid, int cpu,
                              std::string* failed_event_type);
   bool ApplyFilters();

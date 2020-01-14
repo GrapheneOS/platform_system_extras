@@ -295,14 +295,12 @@ cc_defaults {
                 "ETMRecorder.cpp",
                 "event_fd.cpp",
                 "event_selection_set.cpp",
-                "InplaceSamplerClient.cpp",
                 "IOEventLoop.cpp",
                 "JITDebugReader.cpp",
                 "OfflineUnwinder.cpp",
                 "read_dex_file.cpp",
                 "record_file_writer.cpp",
                 "RecordReadThread.cpp",
-                "UnixSocket.cpp",
                 "workload.cpp",
             ],
         },
@@ -509,29 +507,6 @@ cc_library_shared {
     },
 }
 
-// It's the shared library linked with user's app and get samples from signal handlers in each
-// thread. Doesn't work yet.
-cc_library_shared {
-    name: "libsimpleperf_inplace_sampler",
-    defaults: [
-        "simpleperf_static_libs",
-    ],
-    export_include_dirs: ["include"],
-    ldflags: ["-Wl,--exclude-libs,ALL"],
-    srcs: [
-        "inplace_sampler_lib.cpp",
-    ],
-    static_libs: ["libsimpleperf"],
-    target: {
-        darwin: {
-            enabled: false,
-        },
-        windows: {
-            enabled: false,
-        },
-    },
-}
-
 cc_defaults {
     name: "simpleperf_test_srcs",
     srcs: [
@@ -564,7 +539,6 @@ cc_defaults {
                 "read_dex_file_test.cpp",
                 "record_file_test.cpp",
                 "RecordReadThread_test.cpp",
-                "UnixSocket_test.cpp",
                 "workload_test.cpp",
             ],
         },
