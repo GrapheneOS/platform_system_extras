@@ -17,8 +17,8 @@
 #include <stdio.h>
 
 #include <memory>
-#include <string>
 #include <regex>
+#include <string>
 
 #include "ETMDecoder.h"
 #include "command.h"
@@ -147,10 +147,23 @@ class InjectCommand : public Command {
     return true;
   }
 
+  std::unordered_map<Dso*, bool> dso_filter_cache;
+  bool FilterInstrRange(const ETMInstrRange& instr_range) {
+    auto lookup = dso_filter_cache.find(instr_range.dso);
+    if (lookup != dso_filter_cache.end()) {
+      return lookup->second;
+    }
+    bool match = std::regex_search(instr_range.dso->GetDebugFilePath(),
+                                   binary_name_regex_);
+    dso_filter_cache.insert({instr_range.dso, match});
+    return match;
+  }
+
   void ProcessInstrRange(const ETMInstrRange& instr_range) {
-    if (!std::regex_search(instr_range.dso->GetDebugFilePath(), binary_name_regex_)) {
+    if (!FilterInstrRange(instr_range)) {
       return;
     }
+
     auto& binary = binary_map_[instr_range.dso->GetDebugFilePath()];
     binary.range_count_map[AddrPair(instr_range.start_addr, instr_range.end_addr)] +=
         instr_range.branch_taken_count + instr_range.branch_not_taken_count;
