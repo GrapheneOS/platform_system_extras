@@ -6,9 +6,9 @@ function usage() {
 cat<<EOT
 Usage:
 ${0##*/} OUTPUT_FILE SIZE
-         [-C FS_CONFIG] [-f SRC_DIR] [-D PRODUCT_OUT]
+         [-S] [-C FS_CONFIG] [-f SRC_DIR] [-D PRODUCT_OUT]
          [-s FILE_CONTEXTS] [-t MOUNT_POINT] [-T TIMESTAMP]
-         [-L LABEL] [-S]
+         [-L LABEL]
 EOT
 }
 
