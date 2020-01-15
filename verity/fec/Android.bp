@@ -23,6 +23,7 @@ cc_binary_host {
         "libfec",
         "libfec_rs",
         "libext4_utils",
+        "liblog",
         "libsquashfs_utils",
     ],
     cflags: [
