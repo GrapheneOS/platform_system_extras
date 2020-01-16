@@ -564,11 +564,6 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   }
   std::chrono::time_point<std::chrono::steady_clock> start_time;
   std::vector<CountersInfo> counters;
-  if (system_wide_collection_ || (!cpus_.empty() && cpus_[0] != -1)) {
-    if (!event_selection_set_.HandleCpuHotplugEvents(cpus_)) {
-      return false;
-    }
-  }
   if (need_to_check_targets && !event_selection_set_.StopWhenNoMoreTargets()) {
     return false;
   }
