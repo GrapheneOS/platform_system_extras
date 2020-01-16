@@ -33,7 +33,6 @@
 #include "record.h"
 #include "RecordReadThread.h"
 
-constexpr double DEFAULT_PERIOD_TO_DETECT_CPU_HOTPLUG_EVENTS_IN_SEC = 0.5;
 constexpr double DEFAULT_PERIOD_TO_CHECK_MONITORED_TARGETS_IN_SEC = 1;
 constexpr uint64_t DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT = 4000;
 constexpr uint64_t DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT = 1;
@@ -143,11 +142,6 @@ class EventSelectionSet {
     return record_read_thread_->GetStat();
   }
 
-  // If monitored_cpus is empty, monitor all cpus.
-  bool HandleCpuHotplugEvents(const std::vector<int>& monitored_cpus,
-                              double check_interval_in_sec =
-                                  DEFAULT_PERIOD_TO_DETECT_CPU_HOTPLUG_EVENTS_IN_SEC);
-
   // Stop profiling if all monitored processes/threads don't exist.
   bool StopWhenNoMoreTargets(double check_interval_in_sec =
                                  DEFAULT_PERIOD_TO_CHECK_MONITORED_TARGETS_IN_SEC);
@@ -173,10 +167,6 @@ class EventSelectionSet {
   bool ApplyFilters();
   bool ReadMmapEventData(bool with_time_limit);
 
-  bool DetectCpuHotplugEvents();
-  bool HandleCpuOnlineEvent(int cpu);
-  bool HandleCpuOfflineEvent(int cpu);
-  bool CreateMappedBufferForCpu(int cpu);
   bool CheckMonitoredTargets();
   bool HasSampler();
 
@@ -188,9 +178,6 @@ class EventSelectionSet {
 
   std::unique_ptr<IOEventLoop> loop_;
   std::function<bool(Record*)> record_callback_;
-
-  std::set<int> monitored_cpus_;
-  std::vector<int> online_cpus_;
 
   std::unique_ptr<simpleperf::RecordReadThread> record_read_thread_;
 
