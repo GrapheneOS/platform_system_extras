@@ -293,6 +293,10 @@ static bool ReadPerfEventParanoid(int* value) {
 }
 
 bool CanRecordRawData() {
+  if (GetAndroidVersion() >= 11) {
+    // On Android R, tracepoint raw data is disabled by selinux.
+    return IsRoot();
+  }
   int value;
   return ReadPerfEventParanoid(&value) && value == -1;
 }
