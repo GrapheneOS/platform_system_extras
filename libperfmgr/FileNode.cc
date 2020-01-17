@@ -16,6 +16,7 @@
 
 #define LOG_TAG "libperfmgr"
 
+#include <android-base/chrono_utils.h>
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
@@ -55,6 +56,7 @@ std::chrono::milliseconds FileNode::Update(bool log_error) {
         const std::string& req_value =
             req_sorted_[value_index].GetRequestValue();
 
+        android::base::Timer t;
         fd_.reset(TEMP_FAILURE_RETRY(
             open(node_path_.c_str(), O_WRONLY | O_CLOEXEC | O_TRUNC)));
 
@@ -75,6 +77,12 @@ std::chrono::milliseconds FileNode::Update(bool log_error) {
             // release the fd.
             if ((!hold_fd_) || value_index == default_val_index_) {
                 fd_.reset();
+            }
+            auto duration = t.duration();
+            if (duration > 50ms) {
+                LOG(WARNING) << "Slow writing to file: '" << node_path_
+                             << "' with value: '" << req_value
+                             << "' took: " << duration.count() << " ms";
             }
             // Update current index only when succeed
             current_val_index_ = value_index;
