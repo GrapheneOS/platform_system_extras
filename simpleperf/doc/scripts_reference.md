@@ -2,17 +2,19 @@
 
 ## Table of Contents
 
-- [app_profiler.py](#app_profilerpy)
+- [Scripts reference](#scripts-reference)
+  - [Table of Contents](#table-of-contents)
+  - [app_profiler.py](#appprofilerpy)
     - [Profile from launch of an application](#profile-from-launch-of-an-application)
-- [run_simpleperf_without_usb_connection.py](#run_simpleperf_without_usb_connectionpy)
-- [binary_cache_builder.py](#binary_cache_builderpy)
-- [run_simpleperf_on_device.py](#run_simpleperf_on_devicepy)
-- [report.py](#reportpy)
-- [report_html.py](#report_htmlpy)
-- [inferno](#inferno)
-- [pprof_proto_generator.py](#pprof_proto_generatorpy)
-- [report_sample.py](#report_samplepy)
-- [simpleperf_report_lib.py](#simpleperf_report_libpy)
+    - [run_simpleperf_without_usb_connection.py](#runsimpleperfwithoutusbconnectionpy)
+  - [binary_cache_builder.py](#binarycachebuilderpy)
+  - [run_simpleperf_on_device.py](#runsimpleperfondevicepy)
+  - [report.py](#reportpy)
+  - [report_html.py](#reporthtmlpy)
+  - [inferno](#inferno)
+  - [pprof_proto_generator.py](#pprofprotogeneratorpy)
+  - [report_sample.py](#reportsamplepy)
+  - [simpleperf_report_lib.py](#simpleperfreportlibpy)
 
 
 ## app_profiler.py
@@ -204,7 +206,14 @@ It converts a profiling data file into pprof.proto, a format used by [pprof](htt
 ```sh
 # Convert perf.data in the current directory to pprof.proto format.
 $ python pprof_proto_generator.py
+# Show report in pdf format.
 $ pprof -pdf pprof.profile
+
+# Show report in html format. To show disassembly, add --tools option like:
+#  --tools=objdump:<ndk_path>/toolchains/llvm/prebuilt/linux-x86_64/aarch64-linux-android/bin
+# To show annotated source or disassembly, select `top` in the view menu, click a function and
+# select `source` or `disassemble` in the view menu.
+$ pprof -http=:8080 pprof.profile
 ```
 
 ## report_sample.py
