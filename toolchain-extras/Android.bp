@@ -35,6 +35,42 @@ cc_library_static {
     sdk_version: "minimum",
 }
 
+cc_defaults {
+    name: "libprofile-clang-defaults",
+    srcs: [
+        "profile-clang-extras.cpp",
+    ],
+    native_coverage: false,
+}
+
+cc_library_static {
+    name: "libprofile-clang-extras",
+    defaults: ["libprofile-clang-defaults"],
+
+    native_bridge_supported: true,
+    vendor_available: true,
+    vndk: {
+        enabled: true,
+    },
+    recovery_available: true,
+
+    stl: "none",
+    system_shared_libs: [],
+    header_libs: ["libc_headers"],
+}
+
+cc_library_static {
+    name: "libprofile-clang-extras_ndk",
+    defaults: ["libprofile-clang-defaults"],
+    native_bridge_supported: true,
+    vendor_available: true,
+    vndk: {
+        enabled: true,
+    },
+
+    sdk_version: "minimum",
+}
+
 cc_test {
     name: "libprofile-extras-test",
     srcs: [
