@@ -131,7 +131,7 @@ static unwindstack::MapInfo* CreateMapInfo(const MapEntry* entry) {
       pgoff += elf->entry_offset();
     }
   }
-  return new unwindstack::MapInfo(nullptr, entry->start_addr, entry->get_end_addr(), pgoff,
+  return new unwindstack::MapInfo(nullptr, nullptr, entry->start_addr, entry->get_end_addr(), pgoff,
                                   PROT_READ | entry->flags, name);
 }
 
