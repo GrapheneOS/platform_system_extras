@@ -815,7 +815,7 @@ bool StatCommand::AddDefaultMeasuredEventTypes() {
     // supported by the kernel.
     const EventType* type = FindEventTypeByName(name);
     if (type != nullptr &&
-        IsEventAttrSupported(CreateDefaultPerfEventAttr(*type))) {
+        IsEventAttrSupported(CreateDefaultPerfEventAttr(*type), name)) {
       if (!event_selection_set_.AddEventType(name)) {
         return false;
       }
