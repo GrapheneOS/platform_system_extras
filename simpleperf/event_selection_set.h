@@ -110,17 +110,24 @@ class EventSelectionSet {
     include_filters_ = std::move(filters);
   }
 
-  void AddMonitoredProcesses(const std::set<pid_t>& processes) {
+  template <typename Collection = std::vector<pid_t>>
+  void AddMonitoredProcesses(const Collection& processes) {
     processes_.insert(processes.begin(), processes.end());
   }
 
-  void AddMonitoredThreads(const std::set<pid_t>& threads) {
+  template <typename Collection = std::vector<pid_t>>
+  void AddMonitoredThreads(const Collection& threads) {
     threads_.insert(threads.begin(), threads.end());
   }
 
   const std::set<pid_t>& GetMonitoredProcesses() const { return processes_; }
 
   const std::set<pid_t>& GetMonitoredThreads() const { return threads_; }
+
+  void ClearMonitoredTargets() {
+    processes_.clear();
+    threads_.clear();
+  }
 
   bool HasMonitoredTarget() const {
     return !processes_.empty() || !threads_.empty();
@@ -130,7 +137,10 @@ class EventSelectionSet {
     return loop_.get();
   }
 
-  bool OpenEventFiles(const std::vector<int>& on_cpus);
+  // If cpus = {}, monitor on all cpus, with a perf event file for each cpu.
+  // If cpus = {-1}, monitor on all cpus, with a perf event file shared by all cpus.
+  // Otherwise, monitor on selected cpus, with a perf event file for each cpu.
+  bool OpenEventFiles(const std::vector<int>& cpus);
   bool ReadCounters(std::vector<CountersInfo>* counters);
   bool MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pages, size_t aux_buffer_size,
                       size_t record_buffer_size, bool allow_cutting_samples);
