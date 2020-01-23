@@ -2,29 +2,32 @@
 
 ## Table of Contents
 
-- [How simpleperf works](#how-simpleperf-works)
-- [Commands](#commands)
-- [The list command](#the-list-command)
-- [The stat command](#the-stat-command)
+- [Executable commands reference](#executable-commands-reference)
+  - [Table of Contents](#table-of-contents)
+  - [How simpleperf works](#how-simpleperf-works)
+  - [Commands](#commands)
+  - [The list command](#the-list-command)
+  - [The stat command](#the-stat-command)
     - [Select events to stat](#select-events-to-stat)
     - [Select target to stat](#select-target-to-stat)
     - [Decide how long to stat](#decide-how-long-to-stat)
     - [Decide the print interval](#decide-the-print-interval)
     - [Display counters in systrace](#display-counters-in-systrace)
-- [The record command](#the-record-command)
+    - [Show event count per thread](#show-event-count-per-thread)
+  - [The record command](#the-record-command)
     - [Select events to record](#select-events-to-record)
     - [Select target to record](#select-target-to-record)
     - [Set the frequency to record](#set-the-frequency-to-record)
     - [Decide how long to record](#decide-how-long-to-record)
     - [Set the path to store profiling data](#set-the-path-to-store-profiling-data)
-    - [Record call graphs](#record-call-graphs)
+      - [Record call graphs](#record-call-graphs)
     - [Record both on CPU time and off CPU time](#record-both-on-cpu-time-and-off-cpu-time)
-- [The report command](#the-report-command)
+  - [The report command](#the-report-command)
     - [Set the path to read profiling data](#set-the-path-to-read-profiling-data)
     - [Set the path to find binaries](#set-the-path-to-find-binaries)
     - [Filter samples](#filter-samples)
     - [Group samples into sample entries](#group-samples-into-sample-entries)
-    - [Report call graphs](#report-call-graphs)
+      - [Report call graphs](#report-call-graphs)
 
 
 ## How simpleperf works
@@ -260,6 +263,29 @@ $ su 0 simpleperf stat -e instructions:k,cache-misses -a --interval 300 --durati
 # On host launch systrace to collect trace for 10 seconds.
 (HOST)$ external/chromium-trace/systrace.py --time=10 -o new.html sched gfx view
 # Open the collected new.html in browser and perf counters will be shown up.
+```
+
+### Show event count per thread
+
+By default, stat cmd outputs an event count sum for all monitored targets. But when `--per-thread`
+option is used, stat cmd outputs an event count for each thread in monitored targets. It can be
+used to find busy threads in a process or system wide. With `--per-thread` option, stat cmd opens
+a perf_event_file for each exisiting thread. If a monitored thread creates new threads, event
+count for new threads will be added to the monitored thread by default, otherwise omitted if
+`--no-inherit` option is also used.
+
+```sh
+# Print event counts for each thread in process 11904. Event counts for threads created after
+# stat cmd will be added to threads creating them.
+$ simpleperf stat --per-thread -p 11904 --duration 1
+
+# Print event counts for all threads running in the system every 1s. Threads not running will not
+# be reported.
+$ su 0 simpleperf stat --per-thread -a --interval 1000 --interval-only-values
+
+# Print event counts for all threads running in the system every 1s. Event counts for threads
+# created after stat cmd will be omitted.
+$ su 0 simpleperf stat --per-thread -a --interval 1000 --interval-only-values --no-inherit
 ```
 
 ## The record command
