@@ -327,3 +327,8 @@ TEST(stat_cmd, use_devfreq_counters_option) {
   GTEST_LOG_(INFO) << "This test tests an option only available on Android.";
 #endif
 }
+
+TEST(stat_cmd, per_thread_option) {
+  ASSERT_TRUE(StatCmd()->Run({"--per-thread", "sleep", "0.1"}));
+  TEST_IN_ROOT(StatCmd()->Run({"--per-thread", "-a", "--duration", "0.1"}));
+}
