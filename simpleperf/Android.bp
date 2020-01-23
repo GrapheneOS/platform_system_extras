@@ -536,6 +536,7 @@ cc_defaults {
                 "cmd_trace_sched_test.cpp",
                 "environment_test.cpp",
                 "IOEventLoop_test.cpp",
+                "OfflineUnwinder_test.cpp",
                 "read_dex_file_test.cpp",
                 "record_file_test.cpp",
                 "RecordReadThread_test.cpp",
