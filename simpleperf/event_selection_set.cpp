@@ -501,65 +501,52 @@ bool EventSelectionSet::OpenEventFilesOnGroup(EventSelectionGroup& group,
   return true;
 }
 
-static std::map<pid_t, std::set<pid_t>> PrepareThreads(const std::set<pid_t>& processes,
-                                                       const std::set<pid_t>& threads) {
-  std::map<pid_t, std::set<pid_t>> result;
+static std::set<pid_t> PrepareThreads(const std::set<pid_t>& processes,
+                                      const std::set<pid_t>& threads) {
+  std::set<pid_t> result = threads;
   for (auto& pid : processes) {
     std::vector<pid_t> tids = GetThreadsInProcess(pid);
-    std::set<pid_t>& threads_in_process = result[pid];
-    threads_in_process.insert(tids.begin(), tids.end());
-  }
-  for (auto& tid : threads) {
-    // tid = -1 means monitoring all threads.
-    if (tid == -1) {
-      result[-1].insert(-1);
-    } else {
-      pid_t pid;
-      if (GetProcessForThread(tid, &pid)) {
-        result[pid].insert(tid);
-      }
-    }
+    result.insert(tids.begin(), tids.end());
   }
   return result;
 }
 
-bool EventSelectionSet::OpenEventFiles(const std::vector<int>& on_cpus) {
-  std::vector<int> cpus = on_cpus;
-  if (!cpus.empty()) {
-    // cpus = {-1} means open an event file for all cpus.
-    if (!(cpus.size() == 1 && cpus[0] == -1) && !CheckIfCpusOnline(cpus)) {
+bool EventSelectionSet::OpenEventFiles(const std::vector<int>& cpus) {
+  std::vector<int> monitored_cpus;
+  if (cpus.empty()) {
+    monitored_cpus = GetOnlineCpus();
+  } else if (cpus.size() == 1 && cpus[0] == -1) {
+    monitored_cpus = {-1};
+  } else {
+    if (!CheckIfCpusOnline(cpus)) {
       return false;
     }
-  } else {
-    cpus = GetOnlineCpus();
+    monitored_cpus = cpus;
   }
-  std::map<pid_t, std::set<pid_t>> process_map = PrepareThreads(processes_, threads_);
+  std::set<pid_t> threads = PrepareThreads(processes_, threads_);
   for (auto& group : groups_) {
-    for (const auto& pair : process_map) {
-      size_t success_count = 0;
-      std::string failed_event_type;
-      for (const auto& tid : pair.second) {
+    size_t success_count = 0;
+    std::string failed_event_type;
+    for (const auto tid : threads) {
+      const std::vector<int>* pcpus = &monitored_cpus;
+      if (!group[0].allowed_cpus.empty()) {
         // override cpu list if event's PMU has a cpumask as those PMUs are
         // agnostic to cpu and it's meaningless to specify cpus for them.
-        auto& evsel = group[0];
-        if (!evsel.allowed_cpus.empty()) cpus = evsel.allowed_cpus;
-        for (const auto& cpu : cpus) {
-          if (OpenEventFilesOnGroup(group, tid, cpu, &failed_event_type)) {
-            success_count++;
-          }
+        pcpus = &group[0].allowed_cpus;
+      }
+      for (const auto& cpu : *pcpus) {
+        if (OpenEventFilesOnGroup(group, tid, cpu, &failed_event_type)) {
+          success_count++;
         }
       }
-      // We can't guarantee to open perf event file successfully for each thread on each cpu.
-      // Because threads may exit between PrepareThreads() and OpenEventFilesOnGroup(), and
-      // cpus may be offlined between GetOnlineCpus() and OpenEventFilesOnGroup().
-      // So we only check that we can at least monitor one thread for each process.
-      if (success_count == 0) {
-        PLOG(ERROR) << "failed to open perf event file for event_type " << failed_event_type
-                    << " for "
-                    << (pair.first == -1 ? "all threads"
-                                         : "threads in process " + std::to_string(pair.first));
-        return false;
-      }
+    }
+    // We can't guarantee to open perf event file successfully for each thread on each cpu.
+    // Because threads may exit between PrepareThreads() and OpenEventFilesOnGroup(), and
+    // cpus may be offlined between GetOnlineCpus() and OpenEventFilesOnGroup().
+    // So we only check that we can at least monitor one thread for each event group.
+    if (success_count == 0) {
+      PLOG(ERROR) << "failed to open perf event file for event_type " << failed_event_type;
+      return false;
     }
   }
   return ApplyFilters();
