@@ -41,7 +41,7 @@ bool IsBranchSamplingSupported() {
   perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
   attr.sample_type |= PERF_SAMPLE_BRANCH_STACK;
   attr.branch_sample_type = PERF_SAMPLE_BRANCH_ANY;
-  return IsEventAttrSupported(attr);
+  return IsEventAttrSupported(attr, type->name);
 }
 
 bool IsDwarfCallChainSamplingSupported() {
@@ -55,7 +55,7 @@ bool IsDwarfCallChainSamplingSupported() {
   attr.exclude_callchain_user = 1;
   attr.sample_regs_user = GetSupportedRegMask(GetBuildArch());
   attr.sample_stack_user = 8192;
-  return IsEventAttrSupported(attr);
+  return IsEventAttrSupported(attr, type->name);
 }
 
 bool IsDumpingRegsForTracepointEventsSupported() {
@@ -79,7 +79,7 @@ bool IsDumpingRegsForTracepointEventsSupported() {
   attr.freq = 0;
   attr.sample_period = 1;
   std::unique_ptr<EventFd> event_fd =
-      EventFd::OpenEventFile(attr, thread_id, -1, nullptr);
+      EventFd::OpenEventFile(attr, thread_id, -1, nullptr, event_type->name);
   if (event_fd == nullptr) {
     return false;
   }
@@ -116,7 +116,7 @@ bool IsSettingClockIdSupported() {
       perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
       attr.use_clockid = 1;
       attr.clockid = CLOCK_MONOTONIC;
-      is_supported = IsEventAttrSupported(attr) ? 1 : 0;
+      is_supported = IsEventAttrSupported(attr, type->name) ? 1 : 0;
     }
   }
   return is_supported;
@@ -129,7 +129,7 @@ bool IsMmap2Supported() {
   }
   perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
   attr.mmap2 = 1;
-  return IsEventAttrSupported(attr);
+  return IsEventAttrSupported(attr, type->name);
 }
 
 EventSelectionSet::EventSelectionSet(bool for_stat_cmd)
@@ -198,7 +198,8 @@ bool EventSelectionSet::BuildAndCheckEventSelection(const std::string& event_nam
     }
   }
   // PMU events are provided by kernel, so they should be supported
-  if (!event_type->event_type.IsPmuEvent() && !IsEventAttrSupported(selection->event_attr)) {
+  if (!event_type->event_type.IsPmuEvent() &&
+      !IsEventAttrSupported(selection->event_attr, selection->event_type_modifier.name)) {
     LOG(ERROR) << "Event type '" << event_type->name
                << "' is not supported on the device";
     return false;
@@ -483,8 +484,8 @@ bool EventSelectionSet::OpenEventFilesOnGroup(EventSelectionGroup& group,
   // successfully or all failed to open.
   EventFd* group_fd = nullptr;
   for (auto& selection : group) {
-    std::unique_ptr<EventFd> event_fd =
-        EventFd::OpenEventFile(selection.event_attr, tid, cpu, group_fd, false);
+    std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(
+        selection.event_attr, tid, cpu, group_fd, selection.event_type_modifier.name, false);
     if (!event_fd) {
         *failed_event_type = selection.event_type_modifier.name;
         return false;
