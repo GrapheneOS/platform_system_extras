@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 The Android Open Source Project
+ * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,21 @@
  * limitations under the License.
  */
 
-#include <signal.h>
+#pragma once
 
-#define COVERAGE_FLUSH_SIGNAL (__SIGRTMIN + 5)
+#include <unwindstack/Maps.h>
+
+#include "thread_tree.h"
+
+namespace simpleperf {
+
+class UnwindMaps : public unwindstack::Maps {
+ public:
+  void UpdateMaps(const MapSet& map_set);
+
+ private:
+  uint64_t version_ = 0u;
+  std::vector<const MapEntry*> entries_;
+};
+
+}  // namespace simpleperf

@@ -92,7 +92,7 @@ static size_t prop_watch_num_disabled_procs = \
 __attribute__((weak)) int init_profile_extras_once = 0;
 
 // Initialize libprofile-extras:
-// - Install a signal handler that triggers __gcov_flush on <GCOV_FLUSH_SIGNAL>.
+// - Install a signal handler that triggers __gcov_flush on <COVERAGE_FLUSH_SIGNAL>.
 // - Create a thread that calls __gcov_flush when <kCoveragePropName> sysprop
 // transistions to "1" after a transistion to "0".
 //
@@ -113,7 +113,7 @@ __attribute__((constructor)) int init_profile_extras(void) {
   if (chained_gcov_signal_handler != SIG_ERR) {
     return -1;
   }
-  sighandler_t ret1 = signal(GCOV_FLUSH_SIGNAL, gcov_signal_handler);
+  sighandler_t ret1 = signal(COVERAGE_FLUSH_SIGNAL, gcov_signal_handler);
   if (ret1 == SIG_ERR) {
     return -1;
   }

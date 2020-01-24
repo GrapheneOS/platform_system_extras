@@ -38,6 +38,7 @@
 #include <unwindstack/UserX86_64.h>
 
 #include "environment.h"
+#include "OfflineUnwinder_impl.h"
 #include "perf_regs.h"
 #include "read_apk.h"
 #include "thread_tree.h"
@@ -131,18 +132,9 @@ static unwindstack::MapInfo* CreateMapInfo(const MapEntry* entry) {
       pgoff += elf->entry_offset();
     }
   }
-  return new unwindstack::MapInfo(nullptr, entry->start_addr, entry->get_end_addr(), pgoff,
+  return new unwindstack::MapInfo(nullptr, nullptr, entry->start_addr, entry->get_end_addr(), pgoff,
                                   PROT_READ | entry->flags, name);
 }
-
-class UnwindMaps : public unwindstack::Maps {
- public:
-  void UpdateMaps(const MapSet& map_set);
-
- private:
-  uint64_t version_ = 0u;
-  std::vector<const MapEntry*> entries_;
-};
 
 void UnwindMaps::UpdateMaps(const MapSet& map_set) {
   if (version_ == map_set.version) {
@@ -151,6 +143,7 @@ void UnwindMaps::UpdateMaps(const MapSet& map_set) {
   version_ = map_set.version;
   size_t i = 0;
   size_t old_size = entries_.size();
+  bool has_removed_entry = false;
   for (auto it = map_set.maps.begin(); it != map_set.maps.end();) {
     const MapEntry* entry = it->second;
     if (i < old_size && entry == entries_[i]) {
@@ -163,34 +156,30 @@ void UnwindMaps::UpdateMaps(const MapSet& map_set) {
       ++it;
     } else {
       // Remove an entry.
+      has_removed_entry = true;
       entries_[i] = nullptr;
       maps_[i++] = nullptr;
     }
   }
   while (i < old_size) {
+    has_removed_entry = true;
     entries_[i] = nullptr;
     maps_[i++] = nullptr;
   }
+
+  if (has_removed_entry) {
+    entries_.resize(std::remove(entries_.begin(), entries_.end(), nullptr) - entries_.begin());
+    maps_.resize(std::remove(maps_.begin(), maps_.end(), std::unique_ptr<unwindstack::MapInfo>()) -
+                 maps_.begin());
+  }
+
   std::sort(entries_.begin(), entries_.end(), [](const auto& e1, const auto& e2) {
-    if (e1 == nullptr || e2 == nullptr) {
-      return e1 != nullptr;
-    }
     return e1->start_addr < e2->start_addr;
   });
-  std::sort(maps_.begin(), maps_.end(),
-            [](const auto& m1, const auto& m2) {
-    if (m1 == nullptr || m2 == nullptr) {
-      return m1 != nullptr;
-    }
-    return m1->start < m2->start;
-  });
-  entries_.resize(map_set.maps.size());
-  maps_.resize(map_set.maps.size());
-  // prev_map is needed by libunwindstack to find the start of an embedded lib in an apk.
+  // Use Sort() to sort maps_ and create prev_real_map links.
+  // prev_real_map is needed by libunwindstack to find the start of an embedded lib in an apk.
   // See http://b/120981155.
-  for (size_t i = 1; i < maps_.size(); ++i) {
-    maps_[i]->prev_map = maps_[i-1].get();
-  }
+  Sort();
 }
 
 class OfflineUnwinderImpl : public OfflineUnwinder {
