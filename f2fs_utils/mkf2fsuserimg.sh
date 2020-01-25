@@ -8,7 +8,7 @@ Usage:
 ${0##*/} OUTPUT_FILE SIZE
          [-S] [-C FS_CONFIG] [-f SRC_DIR] [-D PRODUCT_OUT]
          [-s FILE_CONTEXTS] [-t MOUNT_POINT] [-T TIMESTAMP]
-         [-L LABEL]
+         [-L LABEL] [--prjquota] [--casefold]
 EOT
 }
 
@@ -74,6 +74,15 @@ fi
 if [[ "$1" == "-L" ]]; then
   MKFS_OPTS+=" -l $2"
   shift; shift
+fi
+
+if [[ "$1" == "--prjquota" ]]; then
+  MKFS_OPTS+=" -O project_quota,extra_attr"
+  shift;
+fi
+if [[ "$1" == "--casefold" ]]; then
+  MKFS_OPTS+=" -O casefold -C utf8"
+  shift;
 fi
 
 if [ -z $SIZE ]; then

@@ -50,7 +50,8 @@ static EventTypeStatus IsEventTypeSupported(const EventType& event_type) {
     // Exclude kernel to list supported events even when
     // /proc/sys/kernel/perf_event_paranoid is 2.
     attr.exclude_kernel = 1;
-    return IsEventAttrSupported(attr) ? EventTypeStatus::SUPPORTED : EventTypeStatus::NOT_SUPPORTED;
+    return IsEventAttrSupported(attr, event_type.name) ? EventTypeStatus::SUPPORTED
+                                                       : EventTypeStatus::NOT_SUPPORTED;
   }
   if (event_type.limited_arch == "arm" && GetBuildArch() != ARCH_ARM &&
       GetBuildArch() != ARCH_ARM64) {
@@ -60,7 +61,8 @@ static EventTypeStatus IsEventTypeSupported(const EventType& event_type) {
   // We can't decide whether the raw event is supported by calling perf_event_open().
   // Instead, we can check if it can collect some real number.
   perf_event_attr attr = CreateDefaultPerfEventAttr(event_type);
-  std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(attr, gettid(), -1, nullptr, false);
+  std::unique_ptr<EventFd> event_fd =
+      EventFd::OpenEventFile(attr, gettid(), -1, nullptr, event_type.name, false);
   if (event_fd == nullptr) {
     return EventTypeStatus::NOT_SUPPORTED;
   }
