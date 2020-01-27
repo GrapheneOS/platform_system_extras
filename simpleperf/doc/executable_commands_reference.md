@@ -14,6 +14,7 @@
     - [Decide the print interval](#decide-the-print-interval)
     - [Display counters in systrace](#display-counters-in-systrace)
     - [Show event count per thread](#show-event-count-per-thread)
+    - [Show event count per core](#show-event-count-per-core)
   - [The record command](#the-record-command)
     - [Select events to record](#select-events-to-record)
     - [Select target to record](#select-target-to-record)
@@ -286,6 +287,23 @@ $ su 0 simpleperf stat --per-thread -a --interval 1000 --interval-only-values
 # Print event counts for all threads running in the system every 1s. Event counts for threads
 # created after stat cmd will be omitted.
 $ su 0 simpleperf stat --per-thread -a --interval 1000 --interval-only-values --no-inherit
+```
+
+### Show event count per core
+
+By default, stat cmd outputs an event count sum for all monitored cpu cores. But when `--per-core`
+option is used, stat cmd outputs an event count for each core. It can be used to see how events
+are distributed on different cores.
+
+```sh
+# Print event counts for each cpu running threads in process 11904.
+$ simpleperf stat --per-core -p 11904 --duration 1
+
+# Print event counts for each cpu system wide.
+$ su 0 simpleperf stat --per-core -a --duration 1
+
+# Print cpu-cycle event counts for each cpu for each thread running in the system.
+$ su 0 simpleperf stat -e cpu-cycles -a --per-thread --per-core --duration 1
 ```
 
 ## The record command
