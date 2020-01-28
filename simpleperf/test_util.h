@@ -78,6 +78,15 @@ bool HasPmuCounter();
     } \
   } while (0)
 
+bool HasTracepointEvents();
+#define TEST_REQUIRE_TRACEPOINT_EVENTS() \
+  do { \
+    if (!HasTracepointEvents()) { \
+      GTEST_LOG_(INFO) << "Skip this test as the machine doesn't support tracepoint events."; \
+      return; \
+    } \
+  } while (0)
+
 #if defined(IN_CTS_TEST)
 #define TEST_REQUIRE_APPS()
 #else
