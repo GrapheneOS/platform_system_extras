@@ -135,4 +135,6 @@ bool MappedFileOnlyExistInMemory(const char* filename);
 
 std::string GetCompleteProcessName(pid_t pid);
 
+const char* GetTraceFsDir();
+
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_
