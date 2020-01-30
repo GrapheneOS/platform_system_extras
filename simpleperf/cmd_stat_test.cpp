@@ -332,3 +332,8 @@ TEST(stat_cmd, per_thread_option) {
   ASSERT_TRUE(StatCmd()->Run({"--per-thread", "sleep", "0.1"}));
   TEST_IN_ROOT(StatCmd()->Run({"--per-thread", "-a", "--duration", "0.1"}));
 }
+
+TEST(stat_cmd, per_core_option) {
+  ASSERT_TRUE(StatCmd()->Run({"--per-core", "sleep", "0.1"}));
+  TEST_IN_ROOT(StatCmd()->Run({"--per-core", "-a", "--duration", "0.1"}));
+}
