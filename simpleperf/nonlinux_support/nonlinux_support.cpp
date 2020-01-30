@@ -39,6 +39,10 @@ bool ReadSymbolsFromDexFile(const std::string&, const std::vector<uint64_t>&,
   return true;
 }
 
+const char* GetTraceFsDir() {
+  return nullptr;
+}
+
 namespace simpleperf {
 
 class DummyOfflineUnwinder : public OfflineUnwinder {
