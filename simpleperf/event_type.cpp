@@ -28,6 +28,7 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
+#include "environment.h"
 #include "ETMRecorder.h"
 #include "event_attr.h"
 #include "utils.h"
@@ -92,7 +93,11 @@ static std::vector<EventType> GetTracepointEventTypesFromString(const std::strin
 
 static std::vector<EventType> GetTracepointEventTypesFromTraceFs() {
   std::vector<EventType> result;
-  const std::string tracepoint_dirname = "/sys/kernel/debug/tracing/events";
+  const char* tracefs_dir = GetTraceFsDir();
+  if (tracefs_dir == nullptr) {
+    return result;
+  }
+  const std::string tracepoint_dirname = tracefs_dir + std::string("/events");
   for (const auto& system_name : GetSubDirs(tracepoint_dirname)) {
     std::string system_path = tracepoint_dirname + "/" + system_name;
     for (const auto& event_name : GetSubDirs(system_path)) {
