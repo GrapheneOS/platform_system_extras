@@ -81,6 +81,8 @@ class SampleTreeBuilder {
     }
   }
 
+  OfflineUnwinder* GetUnwinder() { return offline_unwinder_.get(); }
+
   void ProcessSampleRecord(const SampleRecord& r) {
     if (use_branch_address_ && (r.sample_type & PERF_SAMPLE_BRANCH_STACK)) {
       for (uint64_t i = 0; i < r.branch_stack_data.stack_nr; ++i) {

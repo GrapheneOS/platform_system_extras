@@ -52,6 +52,8 @@ struct UnwindingResult {
 
 class OfflineUnwinder {
  public:
+  static constexpr const char* META_KEY_ARM64_PAC_MASK = "arm64_pac_mask";
+
   static std::unique_ptr<OfflineUnwinder> Create(bool collect_stat);
   virtual ~OfflineUnwinder() {}
 
@@ -66,6 +68,9 @@ class OfflineUnwinder {
   bool IsCallChainBrokenForIncompleteJITDebugInfo() {
     return is_callchain_broken_for_incomplete_jit_debug_info_;
   }
+
+  static void CollectMetaInfo(std::unordered_map<std::string, std::string>* info_map);
+  virtual void LoadMetaInfo(const std::unordered_map<std::string, std::string>&) {}
 
  protected:
   OfflineUnwinder() {}
