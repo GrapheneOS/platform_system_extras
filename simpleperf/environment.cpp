@@ -911,3 +911,15 @@ std::string GetCompleteProcessName(pid_t pid) {
   }
   return s;
 }
+
+const char* GetTraceFsDir() {
+  static const char* tracefs_dirs[] = {
+    "/sys/kernel/debug/tracing", "/sys/kernel/tracing"
+  };
+  for (const char* path : tracefs_dirs) {
+    if (IsDir(path)) {
+      return path;
+    }
+  }
+  return nullptr;
+}
