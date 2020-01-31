@@ -545,7 +545,11 @@ bool EventSelectionSet::OpenEventFiles(const std::vector<int>& cpus) {
     // cpus may be offlined between GetOnlineCpus() and OpenEventFilesOnGroup().
     // So we only check that we can at least monitor one thread for each event group.
     if (success_count == 0) {
+      int error_number = errno;
       PLOG(ERROR) << "failed to open perf event file for event_type " << failed_event_type;
+      if (error_number == EMFILE) {
+        LOG(ERROR) << "Please increase hard limit of open file numbers.";
+      }
       return false;
     }
   }
