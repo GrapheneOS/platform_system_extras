@@ -43,58 +43,10 @@ static void gcov_signal_handler(int signum) {
   }
 }
 
-static const char kCoveragePropName[] = "debug.coverage.flush";
-
-// In a loop, wait for any change to sysprops and trigger a __gcov_flush when
-// <kCoveragePropName> sysprop transistions to "1" after a transistion to "0".
-void *property_watch_loop(__unused void *arg) {
-  uint32_t serial = 0;
-
-  // __gcov_flush is called on a state transition from 0 to 1.  Initialize state
-  // to 1 so a process spinning up when the sysprop is already set does not
-  // immediately dump its coverage.
-  int previous_state = 1;
-
-  while (true) {
-    // Use deprecated __system_property_wait_any for backward compatibility.
-    serial = __system_property_wait_any(serial);
-    const struct prop_info *pi = __system_property_find(kCoveragePropName);
-    if (!pi)
-      continue;
-
-    char value[PROP_VALUE_MAX];
-    __system_property_read(pi, nullptr, value);
-    if (strcmp(value, "0") == 0) {
-      previous_state = 0;
-    } else if (strcmp(value, "1") == 0) {
-      if (previous_state == 0) {
-        __gcov_flush();
-      }
-      previous_state = 1;
-    }
-  }
-}
-
-#if defined(__ANDROID_API__) && __ANDROID_API__ >= __ANDROID_API_L__
-static char prop_watch_disabled_procs[][128] = {
-  "zygote",
-  "zygote32",
-  "app_process",
-  "app_process32",
-  "adbd",
-  "init",
-};
-
-static size_t prop_watch_num_disabled_procs = \
-  sizeof(prop_watch_disabled_procs) / sizeof(prop_watch_disabled_procs[0]);
-#endif
-
 __attribute__((weak)) int init_profile_extras_once = 0;
 
 // Initialize libprofile-extras:
 // - Install a signal handler that triggers __gcov_flush on <COVERAGE_FLUSH_SIGNAL>.
-// - Create a thread that calls __gcov_flush when <kCoveragePropName> sysprop
-// transistions to "1" after a transistion to "0".
 //
 // We want this initiazlier to run during load time.
 //
@@ -119,24 +71,6 @@ __attribute__((constructor)) int init_profile_extras(void) {
   }
   chained_gcov_signal_handler = ret1;
 
-  // Do not create thread running property_watch_loop for zygote (it can get
-  // invoked as zygote or app_process).  This check is only needed for the
-  // platform, but can be done on any version after Android L, when
-  // getprogname() was added.
-#if defined(__ANDROID_API__) && __ANDROID_API__ >= __ANDROID_API_L__
-  const char *prog_basename = basename(getprogname());
-  for (size_t i = 0; i < prop_watch_num_disabled_procs; i ++) {
-    if (strcmp(prog_basename, prop_watch_disabled_procs[i]) == 0) {
-      return 0;
-    }
-  }
-#endif
-
-  pthread_t thread;
-  int error = pthread_create(&thread, nullptr, property_watch_loop, nullptr);
-  if (error != 0) {
-    return -1;
-  }
   return 0;
 }
 }
