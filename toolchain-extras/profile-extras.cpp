@@ -31,8 +31,16 @@ extern "C" {
 
 void __gcov_flush(void);
 
-static void gcov_signal_handler(__unused int signum) {
+// storing SIG_ERR helps us detect (unlikely) looping.
+static sighandler_t chained_gcov_signal_handler = SIG_ERR;
+
+static void gcov_signal_handler(int signum) {
   __gcov_flush();
+  if (chained_gcov_signal_handler != SIG_ERR &&
+      chained_gcov_signal_handler != SIG_IGN &&
+      chained_gcov_signal_handler != SIG_DFL) {
+    (chained_gcov_signal_handler)(signum);
+  }
 }
 
 static const char kCoveragePropName[] = "debug.coverage.flush";
@@ -101,10 +109,15 @@ __attribute__((constructor)) int init_profile_extras(void) {
     return 0;
   init_profile_extras_once = 1;
 
+  // is this instance already registered?
+  if (chained_gcov_signal_handler != SIG_ERR) {
+    return -1;
+  }
   sighandler_t ret1 = signal(GCOV_FLUSH_SIGNAL, gcov_signal_handler);
   if (ret1 == SIG_ERR) {
     return -1;
   }
+  chained_gcov_signal_handler = ret1;
 
   // Do not create thread running property_watch_loop for zygote (it can get
   // invoked as zygote or app_process).  This check is only needed for the
