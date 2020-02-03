@@ -486,7 +486,7 @@ TEST(record_cmd, dump_kernel_symbols) {
     return;
   }
   TemporaryFile tmpfile;
-  ASSERT_TRUE(RunRecordCmd({"-a", "-o", tmpfile.path, "sleep", "1"}));
+  ASSERT_TRUE(RecordCmd()->Run({"-a", "-o", tmpfile.path, "-e", GetDefaultEvent(), "sleep", "1"}));
   bool has_kernel_symbols = false;
   auto callback = [&](const Symbol&, uint32_t file_type) {
     if (file_type == DSO_KERNEL) {
