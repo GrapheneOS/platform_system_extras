@@ -132,8 +132,8 @@ static void GetTraceData(const std::string& filename, TraceDataType* trace_data)
             errx(1, "File Error: Unable to find free pointer %" PRIx64, entry->ptr);
           }
           free_indices.push(idx_entry->second);
-          ptr_to_index.erase(idx_entry);
           entry->ptr = idx_entry->second + 1;
+          ptr_to_index.erase(idx_entry);
         }
         break;
       case THREAD_DONE:
