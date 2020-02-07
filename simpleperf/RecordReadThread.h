@@ -70,6 +70,8 @@ class RecordParser {
  public:
   RecordParser(const perf_event_attr& attr);
 
+  // Return pos of the pid field in the sample record. If not available, return 0.
+  size_t GetPidPosInSampleRecord() const { return pid_pos_in_sample_records_; }
   // Return pos of the time field in the record. If not available, return 0.
   size_t GetTimePos(const perf_event_header& header) const;
   // Return pos of the user stack size field in the sample record. If not available, return 0.
@@ -78,6 +80,7 @@ class RecordParser {
  private:
   uint64_t sample_type_;
   uint64_t sample_regs_count_;
+  size_t pid_pos_in_sample_records_ = 0;
   size_t time_pos_in_sample_records_ = 0;
   size_t time_rpos_in_non_sample_records_ = 0;
   size_t callchain_pos_in_sample_records_ = 0;
@@ -125,7 +128,7 @@ class RecordReadThread {
  public:
   RecordReadThread(size_t record_buffer_size, const perf_event_attr& attr, size_t min_mmap_pages,
                    size_t max_mmap_pages, size_t aux_buffer_size,
-                   bool allow_cutting_samples = true);
+                   bool allow_cutting_samples = true, bool exclude_perf = false);
   ~RecordReadThread();
   void SetBufferLevels(size_t record_buffer_low_level, size_t record_buffer_critical_level) {
     record_buffer_low_level_ = record_buffer_low_level;
@@ -203,6 +206,7 @@ class RecordReadThread {
 
   std::unique_ptr<std::thread> read_thread_;
   std::vector<KernelRecordReader> kernel_record_readers_;
+  pid_t exclude_pid_ = -1;
 
   RecordStat stat_;
 };
