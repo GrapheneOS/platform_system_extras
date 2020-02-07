@@ -118,7 +118,8 @@ class RecordCommand : public Command {
 "       can be used to change target of sampling information.\n"
 "       The default options are: -e cpu-cycles -f 4000 -o perf.data.\n"
 "Select monitored threads:\n"
-"-a     System-wide collection.\n"
+"-a     System-wide collection. Use with --exclude-perf to exclude samples for\n"
+"       simpleperf process.\n"
 #if defined(__ANDROID__)
 "--app package_name    Profile the process of an Android application.\n"
 "                      On non-rooted devices, the app must be debuggable,\n"
@@ -127,6 +128,7 @@ class RecordCommand : public Command {
 "-p pid1,pid2,...       Record events on existing processes. Mutually exclusive\n"
 "                       with -a.\n"
 "-t tid1,tid2,... Record events on existing threads. Mutually exclusive with -a.\n"
+"--exclude-perf   Exclude samples for simpleperf process.\n"
 "\n"
 "Select monitored event types:\n"
 "-e event1[:modifier1],event2[:modifier2],...\n"
@@ -367,6 +369,7 @@ class RecordCommand : public Command {
   EventAttrWithId dumping_attr_id_;
   // In system wide recording, record if we have dumped map info for a process.
   std::unordered_set<pid_t> dumped_processes_;
+  bool exclude_perf_ = false;
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
@@ -486,7 +489,7 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
                                                       : kRecordBufferSize;
   if (!event_selection_set_.MmapEventFiles(mmap_page_range_.first, mmap_page_range_.second,
                                            aux_buffer_size_, record_buffer_size,
-                                           allow_cutting_samples_)) {
+                                           allow_cutting_samples_, exclude_perf_)) {
     return false;
   }
   auto callback =
@@ -820,6 +823,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
           wait_setting_speed_event_groups_.push_back(group_id);
         }
       }
+    } else if (args[i] == "--exclude-perf") {
+      exclude_perf_ = true;
     } else if (args[i] == "--exit-with-parent") {
       prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
     } else if (args[i] == "-g") {

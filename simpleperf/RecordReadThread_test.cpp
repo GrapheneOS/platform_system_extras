@@ -22,6 +22,7 @@
 #include "event_type.h"
 #include "get_test_data.h"
 #include "record.h"
+#include "record_equal_test.h"
 #include "record_file.h"
 
 using ::testing::_;
@@ -91,11 +92,18 @@ TEST(RecordParser, smoke) {
       read_record_fn(pos, sizeof(time), &time);
       ASSERT_EQ(record->Timestamp(), time);
       if (record->type() == PERF_RECORD_SAMPLE) {
+        auto sr = static_cast<SampleRecord*>(record.get());
         pos = parser.GetStackSizePos(read_record_fn);
         ASSERT_NE(0u, pos);
         uint64_t stack_size;
         read_record_fn(pos, sizeof(stack_size), &stack_size);
-        ASSERT_EQ(static_cast<SampleRecord*>(record.get())->stack_user_data.size, stack_size);
+        ASSERT_EQ(sr->stack_user_data.size, stack_size);
+
+        // Test pid pos in sample records.
+        pos = parser.GetPidPosInSampleRecord();
+        uint32_t pid;
+        read_record_fn(pos, sizeof(pid), &pid);
+        ASSERT_EQ(sr->tid_data.pid, pid);
       }
     }
   };
@@ -393,6 +401,45 @@ TEST_F(RecordReadThreadTest, no_cut_samples) {
   ASSERT_GT(thread.GetStat().lost_samples, 0u);
   ASSERT_EQ(thread.GetStat().lost_samples, total_samples - received_samples);
   ASSERT_EQ(thread.GetStat().cut_stack_samples, 0u);
+}
+
+TEST_F(RecordReadThreadTest, exclude_perf) {
+  perf_event_attr attr = CreateFakeEventAttr();
+  attr.sample_type |= PERF_SAMPLE_STACK_USER;
+  size_t stack_size = 1024;
+  attr.sample_stack_user = stack_size;
+  records_.emplace_back(new SampleRecord(attr, 0, 1, getpid(), 3, 4, 5, 6, {},
+                                         std::vector<char>(stack_size), stack_size));
+  records_.emplace_back(new SampleRecord(attr, 0, 1, getpid() + 1, 3, 4, 5, 6, {},
+                                         std::vector<char>(stack_size), stack_size));
+
+  auto read_records = [&](RecordReadThread& thread, std::vector<std::unique_ptr<Record>>& records) {
+    records.clear();
+    std::vector<EventFd*> event_fds = CreateFakeEventFds(attr, 1);
+    ASSERT_TRUE(thread.AddEventFds(event_fds));
+    ASSERT_TRUE(thread.SyncKernelBuffer());
+    ASSERT_TRUE(thread.RemoveEventFds(event_fds));
+    while (auto r = thread.GetRecord()) {
+      records.emplace_back(std::move(r));
+    }
+  };
+
+  // By default, no samples are excluded.
+  RecordReadThread thread(128 * 1024, attr, 1, 1, 0);
+  IOEventLoop loop;
+  ASSERT_TRUE(thread.RegisterDataCallback(loop, []() { return true; }));
+  std::vector<std::unique_ptr<Record>> received_records;
+  read_records(thread, received_records);
+  ASSERT_EQ(received_records.size(), 2);
+  CheckRecordEqual(*received_records[0], *records_[0]);
+  CheckRecordEqual(*received_records[1], *records_[1]);
+
+  // With exclude_perf, the first sample is excluded.
+  RecordReadThread thread2(128 * 1024, attr, 1, 1, 0, true, true);
+  ASSERT_TRUE(thread2.RegisterDataCallback(loop, []() { return true; }));
+  read_records(thread2, received_records);
+  ASSERT_EQ(received_records.size(), 1);
+  CheckRecordEqual(*received_records[0], *records_[1]);
 }
 
 struct FakeAuxData {
