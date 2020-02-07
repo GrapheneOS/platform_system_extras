@@ -110,8 +110,12 @@ RecordParser::RecordParser(const perf_event_attr& attr)
     : sample_type_(attr.sample_type),
       sample_regs_count_(__builtin_popcountll(attr.sample_regs_user)) {
   size_t pos = sizeof(perf_event_header);
-  uint64_t mask = PERF_SAMPLE_IDENTIFIER | PERF_SAMPLE_IP | PERF_SAMPLE_TID;
+  uint64_t mask = PERF_SAMPLE_IDENTIFIER | PERF_SAMPLE_IP;
   pos += __builtin_popcountll(sample_type_ & mask) * sizeof(uint64_t);
+  if (sample_type_ & PERF_SAMPLE_TID) {
+    pid_pos_in_sample_records_ = pos;
+    pos += sizeof(uint64_t);
+  }
   if (sample_type_ & PERF_SAMPLE_TIME) {
     time_pos_in_sample_records_ = pos;
     pos += sizeof(uint64_t);
@@ -207,7 +211,8 @@ bool KernelRecordReader::MoveToNextRecord(const RecordParser& parser) {
 
 RecordReadThread::RecordReadThread(size_t record_buffer_size, const perf_event_attr& attr,
                                    size_t min_mmap_pages, size_t max_mmap_pages,
-                                   size_t aux_buffer_size, bool allow_cutting_samples)
+                                   size_t aux_buffer_size, bool allow_cutting_samples,
+                                   bool exclude_perf)
     : record_buffer_(record_buffer_size),
       record_parser_(attr),
       attr_(attr),
@@ -221,6 +226,9 @@ RecordReadThread::RecordReadThread(size_t record_buffer_size, const perf_event_a
   record_buffer_critical_level_ = std::min(record_buffer_size / 6, kDefaultCriticalBufferLevel);
   if (!allow_cutting_samples) {
     record_buffer_low_level_ = record_buffer_critical_level_;
+  }
+  if (exclude_perf) {
+    exclude_pid_ = getpid();
   }
 }
 
@@ -488,6 +496,13 @@ bool RecordReadThread::ReadRecordsFromKernelBuffer() {
 
 void RecordReadThread::PushRecordToRecordBuffer(KernelRecordReader* kernel_record_reader) {
   const perf_event_header& header = kernel_record_reader->RecordHeader();
+  if (header.type == PERF_RECORD_SAMPLE && exclude_pid_ != -1) {
+    uint32_t pid;
+    kernel_record_reader->ReadRecord(record_parser_.GetPidPosInSampleRecord(), sizeof(pid), &pid);
+    if (pid == exclude_pid_) {
+      return;
+    }
+  }
   if (header.type == PERF_RECORD_SAMPLE && stack_size_in_sample_record_ > 1024) {
     size_t free_size = record_buffer_.GetFreeSize();
     if (free_size < record_buffer_critical_level_) {
