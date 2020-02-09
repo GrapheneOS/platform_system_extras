@@ -1019,3 +1019,23 @@ TEST(record_cmd, pmu_event_option) {
   }
   TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-e", event_string})));
 }
+
+TEST(record_cmd, exclude_perf_option) {
+  ASSERT_TRUE(RunRecordCmd({"--exclude-perf"}));
+  if (IsRoot()) {
+    TemporaryFile tmpfile;
+    ASSERT_TRUE(RecordCmd()->Run(
+        {"-a", "--exclude-perf", "--duration", "1", "-e", GetDefaultEvent(), "-o", tmpfile.path}));
+    std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+    ASSERT_TRUE(reader);
+    pid_t perf_pid = getpid();
+    ASSERT_TRUE(reader->ReadDataSection([&](std::unique_ptr<Record> r) {
+      if (r->type() == PERF_RECORD_SAMPLE) {
+        if (static_cast<SampleRecord*>(r.get())->tid_data.pid == perf_pid) {
+          return false;
+        }
+      }
+      return true;
+    }));
+  }
+}
