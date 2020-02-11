@@ -528,6 +528,7 @@ cc_defaults {
         linux: {
             srcs: [
                 "CallChainJoiner_test.cpp",
+                "cmd_api_test.cpp",
                 "cmd_debug_unwind_test.cpp",
                 "cmd_dumprecord_test.cpp",
                 "cmd_list_test.cpp",
