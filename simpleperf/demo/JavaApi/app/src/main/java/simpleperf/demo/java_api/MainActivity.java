@@ -49,12 +49,12 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 RecordOptions recordOptions = new RecordOptions();
-                recordOptions.recordDwarfCallGraph().setDuration(100);
+                recordOptions.recordDwarfCallGraph().setDuration(100).setEvent("cpu-clock");
                 ProfileSession profileSession = new ProfileSession();
                 try {
                     Log.e("simpleperf", "startRecording");
                     profileSession.startRecording(recordOptions);
-                    for (int i = 0; i < 3; i++) {
+                    for (int i = 0; i < 1; i++) {
                         Thread.sleep(1000);
                         Log.e("simpleperf", "pauseRecording");
                         profileSession.pauseRecording();
@@ -99,6 +99,9 @@ public class MainActivity extends AppCompatActivity {
                         }
                     });
                 }
+                // Exit after recording. So we can build test apk, and expect profiling data file
+                // after app exits.
+                System.exit(0);
             }
 
             private int callFunction(int a) {
