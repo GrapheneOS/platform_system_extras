@@ -131,6 +131,12 @@ static bool fscrypt_is_encrypted(int fd) {
     return ioctl(fd, FS_IOC_GET_ENCRYPTION_POLICY, &policy) == 0 || errno == EINVAL;
 }
 
+bool operator!=(const EncryptionOptions& lhs, const EncryptionOptions& rhs) {
+    return !((lhs.version == rhs.version) && (lhs.contents_mode == rhs.contents_mode) &&
+             (lhs.filenames_mode == rhs.filenames_mode) && (lhs.flags == rhs.flags) &&
+             (lhs.use_hw_wrapped_key == rhs.use_hw_wrapped_key));
+}
+
 bool OptionsToString(const EncryptionOptions& options, std::string* options_string) {
     std::string contents_mode, filenames_mode;
     if (!LookupModeById(contents_modes, options.contents_mode, &contents_mode)) {
@@ -143,12 +149,15 @@ bool OptionsToString(const EncryptionOptions& options, std::string* options_stri
     if ((options.flags & FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64)) {
         *options_string += "+inlinecrypt_optimized";
     }
+    if (options.use_hw_wrapped_key) {
+        *options_string += "+wrappedkey_v0";
+    }
     EncryptionOptions options_check;
     if (!ParseOptions(*options_string, &options_check)) {
         LOG(ERROR) << "Internal error serializing options as string: " << *options_string;
         return false;
     }
-    if (memcmp(&options, &options_check, sizeof(options_check)) != 0) {
+    if (options != options_check) {
         LOG(ERROR) << "Internal error serializing options as string, round trip failed: "
                    << *options_string;
         return false;
@@ -187,6 +196,8 @@ bool ParseOptions(const std::string& options_string, EncryptionOptions* options)
                 options->version = 2;
             } else if (flag == "inlinecrypt_optimized") {
                 options->flags |= FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64;
+            } else if (flag == "wrappedkey_v0") {
+                options->use_hw_wrapped_key = true;
             } else {
                 LOG(ERROR) << "Unknown flag: " << flag;
                 return false;
