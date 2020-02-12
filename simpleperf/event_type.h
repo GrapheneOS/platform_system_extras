@@ -44,7 +44,7 @@ struct EventType {
   }
 
   bool IsPmuEvent() const {
-    return name.find("/") != std::string::npos;
+    return name.find('/') != std::string::npos;
   }
 
   std::vector<int> GetPmuCpumask();
