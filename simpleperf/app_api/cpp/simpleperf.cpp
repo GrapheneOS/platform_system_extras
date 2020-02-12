@@ -359,8 +359,14 @@ std::string ProfileSessionImpl::FindSimpleperfInTempDir() {
   if (!RunCmd({"/system/bin/cp", path.c_str(), to_path.c_str()}, nullptr)) {
     return "";
   }
-  // For apps with target sdk >= 29, executing app data file isn't allowed. So test executing it.
-  if (!RunCmd({to_path.c_str()}, nullptr)) {
+  // For apps with target sdk >= 29, executing app data file isn't allowed.
+  // For android R, app context isn't allowed to use perf_event_open.
+  // So test executing downloaded simpleperf.
+  std::string s;
+  if (!RunCmd({to_path.c_str(), "list", "sw"}, &s)) {
+    return "";
+  }
+  if (s.find("cpu-clock") == std::string::npos) {
     return "";
   }
   return to_path;

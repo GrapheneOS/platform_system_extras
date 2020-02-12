@@ -769,16 +769,11 @@ TEST(record_cmd, cpu_percent_option) {
 class RecordingAppHelper {
  public:
   bool InstallApk(const std::string& apk_path, const std::string& package_name) {
-    if (Workload::RunCmd({"pm", "install", "-t", "--abi", GetABI(), apk_path})) {
-      installed_packages_.emplace_back(package_name);
-      return true;
-    }
-    return false;
+    return app_helper_.InstallApk(apk_path, package_name);
   }
 
   bool StartApp(const std::string& start_cmd) {
-    app_start_proc_ = Workload::CreateWorkload(android::base::Split(start_cmd, " "));
-    return app_start_proc_ && app_start_proc_->Start();
+    return app_helper_.StartApp(start_cmd);
   }
 
   bool RecordData(const std::string& record_cmd) {
@@ -800,29 +795,8 @@ class RecordingAppHelper {
     return success;
   }
 
-  ~RecordingAppHelper() {
-    for (auto& package : installed_packages_) {
-      Workload::RunCmd({"pm", "uninstall", package});
-    }
-  }
-
  private:
-  const char* GetABI() {
-#if defined(__i386__)
-    return "x86";
-#elif defined(__x86_64__)
-    return "x86_64";
-#elif defined(__aarch64__)
-    return "arm64-v8a";
-#elif defined(__arm__)
-    return "armeabi-v7a";
-#else
-    #error "unrecognized ABI"
-#endif
-  }
-
-  std::vector<std::string> installed_packages_;
-  std::unique_ptr<Workload> app_start_proc_;
+  AppHelper app_helper_;
   TemporaryFile perf_data_file_;
 };
 

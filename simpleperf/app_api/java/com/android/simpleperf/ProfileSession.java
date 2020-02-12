@@ -248,12 +248,16 @@ public class ProfileSession {
         if (!isExecutableFile(toPath)) {
             return null;
         }
-        // For apps with target sdk >= 29, executing app data file isn't allowed. So test executing
-        // it.
+        // For apps with target sdk >= 29, executing app data file isn't allowed.
+        // For android R, app context isn't allowed to use perf_event_open.
+        // So test executing downloaded simpleperf.
         try {
-            Process process = new ProcessBuilder()
-                    .command(toPath).start();
+            Process process = new ProcessBuilder().command(toPath + "list sw").start();
             process.waitFor();
+            String data = readInputStream(process.getInputStream());
+            if (data.indexOf("cpu-clock") == -1) {
+                return null;
+            }
         } catch (Exception e) {
             return null;
         }
