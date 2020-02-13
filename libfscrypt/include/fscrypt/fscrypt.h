@@ -34,6 +34,7 @@ struct EncryptionOptions {
     int contents_mode;
     int filenames_mode;
     int flags;
+    bool use_hw_wrapped_key;
 
     // Ensure that "version" is not valid on creation and so must be explicitly set
     EncryptionOptions() : version(0) {}
