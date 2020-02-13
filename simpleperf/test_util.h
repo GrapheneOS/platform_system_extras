@@ -20,6 +20,7 @@
 #include <vector>
 
 #include <android-base/file.h>
+#include <android-base/strings.h>
 
 #include "environment.h"
 #include "read_elf.h"
@@ -137,4 +138,44 @@ class CaptureStdout {
   bool started_;
   int old_stdout_;
   std::unique_ptr<TemporaryFile> tmpfile_;
+};
+
+class AppHelper {
+ public:
+  ~AppHelper() {
+    for (auto& package : installed_packages_) {
+      Workload::RunCmd({"pm", "uninstall", package});
+    }
+  }
+
+  bool InstallApk(const std::string& apk_path, const std::string& package_name) {
+    if (Workload::RunCmd({"pm", "install", "-t", "--abi", GetABI(), apk_path})) {
+      installed_packages_.emplace_back(package_name);
+      return true;
+    }
+    return false;
+  }
+
+  bool StartApp(const std::string& start_cmd) {
+    app_start_proc_ = Workload::CreateWorkload(android::base::Split(start_cmd, " "));
+    return app_start_proc_ && app_start_proc_->Start();
+  }
+
+ private:
+  const char* GetABI() {
+#if defined(__i386__)
+    return "x86";
+#elif defined(__x86_64__)
+    return "x86_64";
+#elif defined(__aarch64__)
+    return "arm64-v8a";
+#elif defined(__arm__)
+    return "armeabi-v7a";
+#else
+    #error "unrecognized ABI"
+#endif
+  }
+
+  std::vector<std::string> installed_packages_;
+  std::unique_ptr<Workload> app_start_proc_;
 };
