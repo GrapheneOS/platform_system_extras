@@ -11,14 +11,17 @@ Profiling an Android application involves three steps:
 
 ## Table of Contents
 
-- [Prepare an Android application](#prepare-an-android-application)
-- [Record and report profiling data](#record-and-report-profiling-data)
-- [Record and report call graph](#record-and-report-call-graph)
-- [Report in html interface](#report-in-html-interface)
-- [Show flamegraph](#show-flamegraph)
-- [Record both on CPU time and off CPU time](#record-both-on-cpu-time-and-off-cpu-time)
-- [Profile from launch](#profile-from-launch)
-- [Parse profiling data manually](#parse-profiling-data-manually)
+- [Android application profiling](#android-application-profiling)
+  - [Table of Contents](#table-of-contents)
+  - [Prepare an Android application](#prepare-an-android-application)
+  - [Record and report profiling data](#record-and-report-profiling-data)
+  - [Record and report call graph](#record-and-report-call-graph)
+  - [Report in html interface](#report-in-html-interface)
+  - [Show flamegraph](#show-flamegraph)
+  - [Record both on CPU time and off CPU time](#record-both-on-cpu-time-and-off-cpu-time)
+  - [Profile from launch](#profile-from-launch)
+  - [Control recording in application code](#control-recording-in-application-code)
+  - [Parse profiling data manually](#parse-profiling-data-manually)
 
 
 ## Prepare an Android application
@@ -37,8 +40,20 @@ change.
 For the release build type, Android studio sets android::debuggable="false" in AndroidManifest.xml,
 disables JNI checks and optimizes C/C++ code. However, security restrictions mean that only apps
 with android::debuggable set to true can be profiled. So simpleperf can only profile a release
-build under these two circumstances:
+build under these three circumstances:
 If you are on a rooted device, you can profile any app.
+
+If you are on Android >= Q, you can add profileableFromShell flag in AndroidManifest.xml, this makes
+a released app profileable by preinstalled profiling tools. In this case, simpleperf downloaded by
+adb will invoke simpleperf preinstalled in system image to profile the app.
+
+```
+<manifest ...>
+    <application ...>
+      <profileable android:shell="true" />
+    </application>
+</manifest>
+```
 
 If you are on Android >= O, we can use [wrap.sh](https://developer.android.com/ndk/guides/wrap-script.html)
 to profile a release build:
@@ -264,6 +279,24 @@ $ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -
 $ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative
 # 3. Start the app manually on the device.
 ```
+
+## Control recording in application code
+
+Simpleperf supports controlling recording from application code. Below is the workflow:
+
+1. Run `api_profiler.py prepare` to enable simpleperf recording on a device. The script needs to run
+   every time the device reboots.
+
+2. Link simpleperf app_api code in the application. The app needs to be debuggable or
+   profileableFromShell as described [here](#prepare-an-android-application). Then the app can
+   use the api to start/pause/resume/stop recording. To start recording, the app_api forks a child
+   process running simpleperf, and uses pipe files to send commands to the child process. After
+   recording, a profiling data file is generated.
+
+3. Run `api_profiler.py collect -p <package_name>` to collect profiling data files to host.
+
+Examples are CppApi and JavaApi in [demo](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo).
+
 
 ## Parse profiling data manually
 
