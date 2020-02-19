@@ -104,6 +104,7 @@ static void CheckSimpleperfArguments(const char* cmdname, char** args) {
   }
   std::set<std::string> zero_arg_options = {
       "-b", "--csv", "--exit-with-parent", "-g", "--in-app", "--interval-only-values",
+      "--log-to-android-buffer",
       "--no-callchain-joiner", "--no-dump-kernel-symbols", "--no-dump-symbols", "--no-inherit",
       "--post-unwind=no", "--post-unwind=yes", "--trace-offcpu", "--verbose",
   };

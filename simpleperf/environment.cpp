@@ -41,12 +41,15 @@
 #include <android-base/properties.h>
 #endif
 
+#include "command.h"
 #include "event_type.h"
 #include "IOEventLoop.h"
 #include "read_elf.h"
 #include "thread_tree.h"
 #include "utils.h"
 #include "workload.h"
+
+using namespace simpleperf;
 
 class LineReader {
  public:
@@ -626,6 +629,9 @@ bool InAppRunner::RunCmdInApp(const std::string& cmd, const std::vector<std::str
   // 1. Build cmd args running in app's context.
   std::vector<std::string> args = GetPrefixArgs(cmd);
   args.insert(args.end(), {"--in-app", "--log", GetLogSeverityName()});
+  if (log_to_android_buffer) {
+    args.emplace_back("--log-to-android-buffer");
+  }
   if (need_tracepoint_events) {
     // Since we can't read tracepoint events from tracefs in app's context, we need to prepare
     // them in tracepoint_file in shell's context, and pass the path of tracepoint_file to the
