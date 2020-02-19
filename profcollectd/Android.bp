@@ -1,0 +1,60 @@
+//
+// Copyright (C) 2020 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+cc_defaults {
+    name: "libprofcollectd_defaults",
+    
+    // We are only doing this for C++20. Can be removed after it becomes default.
+    cpp_std: "experimental",
+
+    tidy: true,
+    tidy_checks: [
+        "-google-runtime-int",
+        "-google-explicit-constructor",
+        "-bugprone-unhandled-self-assignment",
+        "-bugprone-macro-parentheses",
+    ],
+}
+
+cc_binary {
+    name: "profcollectctl",
+
+    defaults: ["libprofcollectd_defaults"],
+
+    srcs: ["profcollectctl.cpp"],
+
+    shared_libs: ["libprofcollectd"],
+}
+
+cc_binary {
+    name: "profcollectd",
+
+    defaults: ["libprofcollectd_defaults"],
+
+    srcs: ["profcollectd.cpp"],
+
+    shared_libs: ["libprofcollectd"],
+
+    init_rc: ["profcollectd.rc"],
+}
+
+filegroup {
+    name: "profcollectd_aidl",
+    srcs: [
+        "binder/android/os/IProfCollectd.aidl",
+    ],
+    path: "binder",
+}
