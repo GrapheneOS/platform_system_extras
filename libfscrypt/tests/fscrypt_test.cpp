@@ -26,113 +26,142 @@ using namespace android::fscrypt;
 #define FSCRYPT_MODE_AES_256_HEH 126
 #define FSCRYPT_MODE_PRIVATE 127
 
-TEST(fscrypt, ParseOptions) {
+const EncryptionOptions TestString(unsigned int first_api_level, const std::string instring,
+                                   const std::string outstring) {
     EncryptionOptions options;
     std::string options_string;
 
-    EXPECT_FALSE(ParseOptions("", &options));
-    EXPECT_FALSE(ParseOptions("blah", &options));
+    EXPECT_TRUE(ParseOptionsForApiLevel(first_api_level, instring, &options));
+    EXPECT_TRUE(OptionsToStringForApiLevel(first_api_level, options, &options_string));
+    EXPECT_EQ(outstring, options_string);
+    return options;
+}
 
-    EXPECT_TRUE(ParseOptions("software", &options));
-    EXPECT_EQ(1, options.version);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_XTS, options.contents_mode);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
-    EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_4, options.flags);
-    EXPECT_TRUE(OptionsToString(options, &options_string));
-    EXPECT_EQ("aes-256-xts:aes-256-cts:v1", options_string);
+#define TEST_STRING(first_api_level, instring, outstring) \
+    SCOPED_TRACE(instring); \
+    auto options = TestString(first_api_level, instring, outstring);
 
-    EXPECT_TRUE(ParseOptions("aes-256-xts", &options));
-    EXPECT_EQ(1, options.version);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_XTS, options.contents_mode);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
-    EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_4, options.flags);
-    EXPECT_TRUE(OptionsToString(options, &options_string));
-    EXPECT_EQ("aes-256-xts:aes-256-cts:v1", options_string);
+TEST(fscrypt, ParseOptions) {
+    EncryptionOptions dummy_options;
 
-    EXPECT_TRUE(ParseOptions("adiantum", &options));
-    EXPECT_EQ(1, options.version);
-    EXPECT_EQ(FSCRYPT_MODE_ADIANTUM, options.contents_mode);
-    EXPECT_EQ(FSCRYPT_MODE_ADIANTUM, options.filenames_mode);
-    EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16 | FSCRYPT_POLICY_FLAG_DIRECT_KEY, options.flags);
-    EXPECT_TRUE(OptionsToString(options, &options_string));
-    EXPECT_EQ("adiantum:adiantum:v1", options_string);
+    std::vector<std::string> defaults = {
+            "software",
+            "",
+            ":",
+            "::",
+            "aes-256-xts",
+            "aes-256-xts:",
+            "aes-256-xts::",
+            "aes-256-xts:aes-256-cts",
+            "aes-256-xts:aes-256-cts:",
+            ":aes-256-cts",
+            ":aes-256-cts:",
+    };
+    for (const auto& d : defaults) {
+        TEST_STRING(29, d, "aes-256-xts:aes-256-cts:v1");
+        EXPECT_EQ(1, options.version);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_XTS, options.contents_mode);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
+        EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_4, options.flags);
+    }
+    for (const auto& d : defaults) {
+        TEST_STRING(30, d, "aes-256-xts:aes-256-cts:v2");
+        EXPECT_TRUE(ParseOptionsForApiLevel(30, d, &dummy_options));
+        EXPECT_EQ(2, options.version);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_XTS, options.contents_mode);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
+        EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16, options.flags);
+    }
 
-    EXPECT_TRUE(ParseOptions("adiantum:aes-256-heh", &options));
-    EXPECT_EQ(1, options.version);
-    EXPECT_EQ(FSCRYPT_MODE_ADIANTUM, options.contents_mode);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_HEH, options.filenames_mode);
-    EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16, options.flags);
-    EXPECT_TRUE(OptionsToString(options, &options_string));
-    EXPECT_EQ("adiantum:aes-256-heh:v1", options_string);
+    EXPECT_FALSE(ParseOptionsForApiLevel(29, "blah", &dummy_options));
+    EXPECT_FALSE(ParseOptionsForApiLevel(30, "blah", &dummy_options));
 
-    EXPECT_TRUE(ParseOptions("ice", &options));
-    EXPECT_EQ(1, options.version);
-    EXPECT_EQ(FSCRYPT_MODE_PRIVATE, options.contents_mode);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
-    EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_4, options.flags);
-    EXPECT_TRUE(OptionsToString(options, &options_string));
-    EXPECT_EQ("ice:aes-256-cts:v1", options_string);
+    {
+        TEST_STRING(29, "::v1", "aes-256-xts:aes-256-cts:v1");
+        EXPECT_EQ(1, options.version);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_XTS, options.contents_mode);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
+        EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_4, options.flags);
+    }
+    {
+        TEST_STRING(30, "::v1", "aes-256-xts:aes-256-cts:v1");
+        EXPECT_EQ(1, options.version);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_XTS, options.contents_mode);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
+        EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16, options.flags);
+    }
+    {
+        TEST_STRING(29, "::v2", "aes-256-xts:aes-256-cts:v2");
+        EXPECT_EQ(2, options.version);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_XTS, options.contents_mode);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
+        EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16, options.flags);
+    }
+    {
+        TEST_STRING(29, "ice", "ice:aes-256-cts:v1");
+        EXPECT_EQ(1, options.version);
+        EXPECT_EQ(FSCRYPT_MODE_PRIVATE, options.contents_mode);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
+        EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_4, options.flags);
+    }
+    EXPECT_FALSE(ParseOptionsForApiLevel(29, "ice:blah", &dummy_options));
 
-    EXPECT_FALSE(ParseOptions("ice:blah", &options));
+    {
+        TEST_STRING(29, "ice:aes-256-cts", "ice:aes-256-cts:v1");
+        EXPECT_EQ(1, options.version);
+        EXPECT_EQ(FSCRYPT_MODE_PRIVATE, options.contents_mode);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
+        EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_4, options.flags);
+    }
 
-    EXPECT_TRUE(ParseOptions("ice:aes-256-cts", &options));
-    EXPECT_EQ(1, options.version);
-    EXPECT_EQ(FSCRYPT_MODE_PRIVATE, options.contents_mode);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
-    EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_4, options.flags);
-    EXPECT_TRUE(OptionsToString(options, &options_string));
-    EXPECT_EQ("ice:aes-256-cts:v1", options_string);
+    {
+        TEST_STRING(29, "ice:aes-256-heh", "ice:aes-256-heh:v1");
+        EXPECT_EQ(1, options.version);
+        EXPECT_EQ(FSCRYPT_MODE_PRIVATE, options.contents_mode);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_HEH, options.filenames_mode);
+        EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16, options.flags);
+    }
+    {
+        TEST_STRING(29, "adiantum", "adiantum:adiantum:v1");
+        EXPECT_EQ(1, options.version);
+        EXPECT_EQ(FSCRYPT_MODE_ADIANTUM, options.contents_mode);
+        EXPECT_EQ(FSCRYPT_MODE_ADIANTUM, options.filenames_mode);
+        EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16 | FSCRYPT_POLICY_FLAG_DIRECT_KEY, options.flags);
+    }
+    {
+        TEST_STRING(30, "adiantum", "adiantum:adiantum:v2");
+        EXPECT_EQ(2, options.version);
+        EXPECT_EQ(FSCRYPT_MODE_ADIANTUM, options.contents_mode);
+        EXPECT_EQ(FSCRYPT_MODE_ADIANTUM, options.filenames_mode);
+        EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16 | FSCRYPT_POLICY_FLAG_DIRECT_KEY, options.flags);
+    }
+    EXPECT_FALSE(ParseOptionsForApiLevel(29, "adiantum:aes-256-cts", &dummy_options));
+    EXPECT_FALSE(ParseOptionsForApiLevel(30, "adiantum:aes-256-cts", &dummy_options));
+    EXPECT_FALSE(ParseOptionsForApiLevel(29, "aes-256-xts:adiantum", &dummy_options));
+    EXPECT_FALSE(ParseOptionsForApiLevel(30, "aes-256-xts:adiantum", &dummy_options));
+    {
+        TEST_STRING(30, "::inlinecrypt_optimized",
+                    "aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized");
+        EXPECT_EQ(2, options.version);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_XTS, options.contents_mode);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
+        EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16 | FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64, options.flags);
+    }
+    {
+        TEST_STRING(30, "aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized",
+                    "aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized");
+        EXPECT_EQ(2, options.version);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_XTS, options.contents_mode);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
+        EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16 | FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64, options.flags);
+    }
 
-    EXPECT_TRUE(ParseOptions("ice:aes-256-heh", &options));
-    EXPECT_EQ(1, options.version);
-    EXPECT_EQ(FSCRYPT_MODE_PRIVATE, options.contents_mode);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_HEH, options.filenames_mode);
-    EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16, options.flags);
-    EXPECT_TRUE(OptionsToString(options, &options_string));
-    EXPECT_EQ("ice:aes-256-heh:v1", options_string);
-
-    EXPECT_TRUE(ParseOptions("ice:adiantum", &options));
-    EXPECT_EQ(1, options.version);
-    EXPECT_EQ(FSCRYPT_MODE_PRIVATE, options.contents_mode);
-    EXPECT_EQ(FSCRYPT_MODE_ADIANTUM, options.filenames_mode);
-    EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16 | FSCRYPT_POLICY_FLAG_DIRECT_KEY, options.flags);
-    EXPECT_TRUE(OptionsToString(options, &options_string));
-    EXPECT_EQ("ice:adiantum:v1", options_string);
-
-    EXPECT_TRUE(ParseOptions("aes-256-xts:aes-256-cts", &options));
-    EXPECT_EQ(1, options.version);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_XTS, options.contents_mode);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
-    EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_4, options.flags);
-    EXPECT_TRUE(OptionsToString(options, &options_string));
-    EXPECT_EQ("aes-256-xts:aes-256-cts:v1", options_string);
-
-    EXPECT_TRUE(ParseOptions("aes-256-xts:aes-256-cts:v1", &options));
-    EXPECT_EQ(1, options.version);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_XTS, options.contents_mode);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
-    EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_4, options.flags);
-    EXPECT_TRUE(OptionsToString(options, &options_string));
-    EXPECT_EQ("aes-256-xts:aes-256-cts:v1", options_string);
-
-    EXPECT_TRUE(ParseOptions("aes-256-xts:aes-256-cts:v2", &options));
-    EXPECT_EQ(2, options.version);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_XTS, options.contents_mode);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
-    EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16, options.flags);
-    EXPECT_TRUE(OptionsToString(options, &options_string));
-    EXPECT_EQ("aes-256-xts:aes-256-cts:v2", options_string);
-
-    EXPECT_TRUE(ParseOptions("aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized", &options));
-    EXPECT_EQ(2, options.version);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_XTS, options.contents_mode);
-    EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
-    EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16 | FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64, options.flags);
-    EXPECT_TRUE(OptionsToString(options, &options_string));
-    EXPECT_EQ("aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized", options_string);
-
-    EXPECT_FALSE(ParseOptions("aes-256-xts:aes-256-cts:v2:", &options));
-    EXPECT_FALSE(ParseOptions("aes-256-xts:aes-256-cts:v2:foo", &options));
-    EXPECT_FALSE(ParseOptions("aes-256-xts:aes-256-cts:blah", &options));
-    EXPECT_FALSE(ParseOptions("aes-256-xts:aes-256-cts:vblah", &options));
+    EXPECT_FALSE(ParseOptionsForApiLevel(29, "aes-256-xts:aes-256-cts:v2:", &dummy_options));
+    EXPECT_FALSE(ParseOptionsForApiLevel(29, "aes-256-xts:aes-256-cts:v2:foo", &dummy_options));
+    EXPECT_FALSE(ParseOptionsForApiLevel(29, "aes-256-xts:aes-256-cts:blah", &dummy_options));
+    EXPECT_FALSE(ParseOptionsForApiLevel(29, "aes-256-xts:aes-256-cts:vblah", &dummy_options));
+    EXPECT_FALSE(ParseOptionsForApiLevel(30, "aes-256-xts:aes-256-cts:v2:", &dummy_options));
+    EXPECT_FALSE(ParseOptionsForApiLevel(30, "aes-256-xts:aes-256-cts:v2:foo", &dummy_options));
+    EXPECT_FALSE(ParseOptionsForApiLevel(30, "aes-256-xts:aes-256-cts:blah", &dummy_options));
+    EXPECT_FALSE(ParseOptionsForApiLevel(30, "aes-256-xts:aes-256-cts:vblah", &dummy_options));
 }
