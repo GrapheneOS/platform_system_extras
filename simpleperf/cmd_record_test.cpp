@@ -820,11 +820,15 @@ static void TestRecordingApps(const std::string& app_name) {
 
 TEST(record_cmd, app_option_for_debuggable_app) {
   TEST_REQUIRE_APPS();
+  SetRunInAppToolForTesting(true, false);
+  TestRecordingApps("com.android.simpleperf.debuggable");
+  SetRunInAppToolForTesting(false, true);
   TestRecordingApps("com.android.simpleperf.debuggable");
 }
 
 TEST(record_cmd, app_option_for_profileable_app) {
   TEST_REQUIRE_APPS();
+  SetRunInAppToolForTesting(false, true);
   TestRecordingApps("com.android.simpleperf.profileable");
 }
 
@@ -845,6 +849,7 @@ TEST(record_cmd, record_java_app) {
                       "androidx.test.runner.AndroidJUnitRunner"));
 
   // 3. Record perf.data.
+  SetRunInAppToolForTesting(true, true);
   ASSERT_TRUE(helper.RecordData(
       "-e cpu-clock --app com.example.android.displayingbitmaps -g --duration 10"));
 
@@ -877,6 +882,7 @@ TEST(record_cmd, record_native_app) {
                       "android.intent.action.MAIN -c android.intent.category.LAUNCHER"));
 
   // 3. Record perf.data.
+  SetRunInAppToolForTesting(true, true);
   ASSERT_TRUE(helper.RecordData("-e cpu-clock --app com.google.sample.tunnel -g --duration 10"));
 
   // 4. Check perf.data.
