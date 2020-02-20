@@ -18,6 +18,7 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/properties.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
 #include <asm/ioctl.h>
@@ -137,7 +138,16 @@ bool operator!=(const EncryptionOptions& lhs, const EncryptionOptions& rhs) {
              (lhs.use_hw_wrapped_key == rhs.use_hw_wrapped_key));
 }
 
+unsigned int GetFirstApiLevel() {
+    return android::base::GetUintProperty<unsigned int>("ro.product.first_api_level", 0);
+}
+
 bool OptionsToString(const EncryptionOptions& options, std::string* options_string) {
+    return OptionsToStringForApiLevel(GetFirstApiLevel(), options, options_string);
+}
+
+bool OptionsToStringForApiLevel(unsigned int first_api_level, const EncryptionOptions& options,
+                                std::string* options_string) {
     std::string contents_mode, filenames_mode;
     if (!LookupModeById(contents_modes, options.contents_mode, &contents_mode)) {
         return false;
@@ -152,8 +162,9 @@ bool OptionsToString(const EncryptionOptions& options, std::string* options_stri
     if (options.use_hw_wrapped_key) {
         *options_string += "+wrappedkey_v0";
     }
+
     EncryptionOptions options_check;
-    if (!ParseOptions(*options_string, &options_check)) {
+    if (!ParseOptionsForApiLevel(first_api_level, *options_string, &options_check)) {
         LOG(ERROR) << "Internal error serializing options as string: " << *options_string;
         return false;
     }
@@ -166,28 +177,41 @@ bool OptionsToString(const EncryptionOptions& options, std::string* options_stri
 }
 
 bool ParseOptions(const std::string& options_string, EncryptionOptions* options) {
-    memset(options, '\0', sizeof(*options));
+    return ParseOptionsForApiLevel(GetFirstApiLevel(), options_string, options);
+}
+
+bool ParseOptionsForApiLevel(unsigned int first_api_level, const std::string& options_string,
+                             EncryptionOptions* options) {
     auto parts = android::base::Split(options_string, ":");
-    if (parts.size() < 1 || parts.size() > 3) {
+    if (parts.size() > 3) {
+        LOG(ERROR) << "Invalid encryption options: " << options;
         return false;
     }
-    if (!LookupModeByName(contents_modes, parts[0], &options->contents_mode)) {
-        LOG(ERROR) << "Invalid file contents encryption mode: " << parts[0];
-        return false;
-    }
-    if (parts.size() >= 2) {
-        if (!LookupModeByName(filenames_modes, parts[1], &options->filenames_mode)) {
-            LOG(ERROR) << "Invalid file names encryption mode: " << parts[1];
+    options->contents_mode = FSCRYPT_MODE_AES_256_XTS;
+    if (parts.size() > 0 && !parts[0].empty()) {
+        if (!LookupModeByName(contents_modes, parts[0], &options->contents_mode)) {
+            LOG(ERROR) << "Invalid file contents encryption mode: " << parts[0];
             return false;
         }
-    } else if (options->contents_mode == FSCRYPT_MODE_ADIANTUM) {
+    }
+    if (options->contents_mode == FSCRYPT_MODE_ADIANTUM) {
         options->filenames_mode = FSCRYPT_MODE_ADIANTUM;
     } else {
         options->filenames_mode = FSCRYPT_MODE_AES_256_CTS;
     }
-    options->version = 1;
+    if (parts.size() > 1 && !parts[1].empty()){
+        if (!LookupModeByName(filenames_modes, parts[1], &options->filenames_mode)) {
+            LOG(ERROR) << "Invalid file names encryption mode: " << parts[1];
+            return false;
+        }
+    }
+    // Default to v2 after Q
+    constexpr unsigned int pre_gki_level = 29;
+    auto is_gki = first_api_level > pre_gki_level;
+    options->version = is_gki ? 2 : 1;
     options->flags = 0;
-    if (parts.size() >= 3) {
+    options->use_hw_wrapped_key = false;
+    if (parts.size() > 2 && !parts[2].empty()) {
         auto flags = android::base::Split(parts[2], "+");
         for (const auto& flag : flags) {
             if (flag == "v1") {
@@ -206,12 +230,12 @@ bool ParseOptions(const std::string& options_string, EncryptionOptions* options)
     }
 
     // In the original setting of v1 policies and AES-256-CTS we used 4-byte
-    // padding of filenames, so we have to retain that for compatibility.
+    // padding of filenames, so retain that on old first_api_levels.
     //
     // For everything else, use 16-byte padding.  This is more secure (it helps
     // hide the length of filenames), and it makes the inputs evenly divisible
     // into cipher blocks which is more efficient for encryption and decryption.
-    if (options->version == 1 && options->filenames_mode == FSCRYPT_MODE_AES_256_CTS) {
+    if (!is_gki && options->version == 1 && options->filenames_mode == FSCRYPT_MODE_AES_256_CTS) {
         options->flags |= FSCRYPT_POLICY_FLAGS_PAD_4;
     } else {
         options->flags |= FSCRYPT_POLICY_FLAGS_PAD_16;
@@ -220,8 +244,15 @@ bool ParseOptions(const std::string& options_string, EncryptionOptions* options)
     // Use DIRECT_KEY for Adiantum, since it's much more efficient but just as
     // secure since Android doesn't reuse the same master key for multiple
     // encryption modes.
-    if (options->filenames_mode == FSCRYPT_MODE_ADIANTUM) {
+    if (options->contents_mode == FSCRYPT_MODE_ADIANTUM) {
+        if (options->filenames_mode != FSCRYPT_MODE_ADIANTUM) {
+            LOG(ERROR) << "Adiantum must be both contents and filenames mode or neither, invalid options: " << options_string;
+            return false;
+        }
         options->flags |= FSCRYPT_POLICY_FLAG_DIRECT_KEY;
+    } else if (options->filenames_mode == FSCRYPT_MODE_ADIANTUM) {
+        LOG(ERROR) << "Adiantum must be both contents and filenames mode or neither, invalid options: " << options_string;
+        return false;
     }
     return true;
 }
