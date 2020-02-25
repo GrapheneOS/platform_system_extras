@@ -172,18 +172,15 @@ def _get_binutils_path_in_ndk(toolname, arch, platform):
         arch = 'arm64'
     if arch == 'arm64':
         name = 'aarch64-linux-android-' + toolname
-        path = 'toolchains/llvm/prebuilt/%s-x86_64/bin/%s' % (platform, name)
     elif arch == 'arm':
         name = 'arm-linux-androideabi-' + toolname
-        path = 'toolchains/llvm/prebuilt/%s-x86_64/bin/%s' % (platform, name)
     elif arch == 'x86_64':
         name = 'x86_64-linux-android-' + toolname
-        path = 'toolchains/llvm/prebuilt/%s-x86_64/bin/%s' % (platform, name)
     elif arch == 'x86':
         name = 'i686-linux-android-' + toolname
-        path = 'toolchains/llvm/prebuilt/%s-x86_64/bin/%s' % (platform, name)
     else:
         log_fatal('unexpected arch %s' % arch)
+    path = 'toolchains/llvm/prebuilt/%s-x86_64/bin/%s' % (platform, name)
     return (name, path)
 
 def find_tool_path(toolname, ndk_path=None, arch=None):
