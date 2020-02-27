@@ -161,7 +161,7 @@ static uint64_t MakeEventConfig(const std::string& event_str, std::vector<EventF
   //   # cat armv8_pmuv3/events/cpu_cycles
   //   event=0x011
   for (auto& s : android::base::Split(event_str, ",")) {
-    auto pos = s.find("=");
+    auto pos = s.find('=');
     if (pos == std::string::npos)
       continue;
 
@@ -229,7 +229,7 @@ std::vector<int> EventType::GetPmuCpumask() {
   if (!IsPmuEvent())
     return empty_result;
 
-  std::string pmu = name.substr(0, name.find("/"));
+  std::string pmu = name.substr(0, name.find('/'));
   std::string cpumask_path = "/sys/bus/event_source/devices/" + pmu + "/cpumask";
   std::string cpumask_content;
   if (!android::base::ReadFileToString(cpumask_path, &cpumask_content)) {

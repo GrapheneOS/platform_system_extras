@@ -27,6 +27,8 @@
 
 #include "utils.h"
 
+using namespace simpleperf;
+
 bool Command::NextArgumentOrError(const std::vector<std::string>& args, size_t* pi) {
   if (*pi + 1 == args.size()) {
     LOG(ERROR) << "No argument following " << args[*pi] << " option. Try `simpleperf help " << name_
@@ -129,10 +131,15 @@ static void StderrLogger(android::base::LogId, android::base::LogSeverity severi
   fprintf(stderr, "simpleperf %c %s:%u] %s\n", severity_char, file, line, message);
 }
 
+namespace simpleperf {
+bool log_to_android_buffer = false;
+}
+
 bool RunSimpleperfCmd(int argc, char** argv) {
   android::base::InitLogging(argv, StderrLogger);
   std::vector<std::string> args;
   android::base::LogSeverity log_severity = android::base::INFO;
+  log_to_android_buffer = false;
 
   for (int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -151,6 +158,7 @@ bool RunSimpleperfCmd(int argc, char** argv) {
 #if defined(__ANDROID__)
     } else if (strcmp(argv[i], "--log-to-android-buffer") == 0) {
       android::base::SetLogger(android::base::LogdLogger());
+      log_to_android_buffer = true;
 #endif
     } else if (strcmp(argv[i], "--version") == 0) {
       LOG(INFO) << "Simpleperf version " << GetSimpleperfVersion();

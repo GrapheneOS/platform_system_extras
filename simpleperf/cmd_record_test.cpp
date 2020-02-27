@@ -769,16 +769,11 @@ TEST(record_cmd, cpu_percent_option) {
 class RecordingAppHelper {
  public:
   bool InstallApk(const std::string& apk_path, const std::string& package_name) {
-    if (Workload::RunCmd({"pm", "install", "-t", "--abi", GetABI(), apk_path})) {
-      installed_packages_.emplace_back(package_name);
-      return true;
-    }
-    return false;
+    return app_helper_.InstallApk(apk_path, package_name);
   }
 
   bool StartApp(const std::string& start_cmd) {
-    app_start_proc_ = Workload::CreateWorkload(android::base::Split(start_cmd, " "));
-    return app_start_proc_ && app_start_proc_->Start();
+    return app_helper_.StartApp(start_cmd);
   }
 
   bool RecordData(const std::string& record_cmd) {
@@ -800,29 +795,8 @@ class RecordingAppHelper {
     return success;
   }
 
-  ~RecordingAppHelper() {
-    for (auto& package : installed_packages_) {
-      Workload::RunCmd({"pm", "uninstall", package});
-    }
-  }
-
  private:
-  const char* GetABI() {
-#if defined(__i386__)
-    return "x86";
-#elif defined(__x86_64__)
-    return "x86_64";
-#elif defined(__aarch64__)
-    return "arm64-v8a";
-#elif defined(__arm__)
-    return "armeabi-v7a";
-#else
-    #error "unrecognized ABI"
-#endif
-  }
-
-  std::vector<std::string> installed_packages_;
-  std::unique_ptr<Workload> app_start_proc_;
+  AppHelper app_helper_;
   TemporaryFile perf_data_file_;
 };
 
@@ -846,11 +820,15 @@ static void TestRecordingApps(const std::string& app_name) {
 
 TEST(record_cmd, app_option_for_debuggable_app) {
   TEST_REQUIRE_APPS();
+  SetRunInAppToolForTesting(true, false);
+  TestRecordingApps("com.android.simpleperf.debuggable");
+  SetRunInAppToolForTesting(false, true);
   TestRecordingApps("com.android.simpleperf.debuggable");
 }
 
 TEST(record_cmd, app_option_for_profileable_app) {
   TEST_REQUIRE_APPS();
+  SetRunInAppToolForTesting(false, true);
   TestRecordingApps("com.android.simpleperf.profileable");
 }
 
@@ -871,6 +849,7 @@ TEST(record_cmd, record_java_app) {
                       "androidx.test.runner.AndroidJUnitRunner"));
 
   // 3. Record perf.data.
+  SetRunInAppToolForTesting(true, true);
   ASSERT_TRUE(helper.RecordData(
       "-e cpu-clock --app com.example.android.displayingbitmaps -g --duration 10"));
 
@@ -903,6 +882,7 @@ TEST(record_cmd, record_native_app) {
                       "android.intent.action.MAIN -c android.intent.category.LAUNCHER"));
 
   // 3. Record perf.data.
+  SetRunInAppToolForTesting(true, true);
   ASSERT_TRUE(helper.RecordData("-e cpu-clock --app com.google.sample.tunnel -g --duration 10"));
 
   // 4. Check perf.data.
@@ -1018,4 +998,24 @@ TEST(record_cmd, pmu_event_option) {
     return;
   }
   TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-e", event_string})));
+}
+
+TEST(record_cmd, exclude_perf_option) {
+  ASSERT_TRUE(RunRecordCmd({"--exclude-perf"}));
+  if (IsRoot()) {
+    TemporaryFile tmpfile;
+    ASSERT_TRUE(RecordCmd()->Run(
+        {"-a", "--exclude-perf", "--duration", "1", "-e", GetDefaultEvent(), "-o", tmpfile.path}));
+    std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+    ASSERT_TRUE(reader);
+    pid_t perf_pid = getpid();
+    ASSERT_TRUE(reader->ReadDataSection([&](std::unique_ptr<Record> r) {
+      if (r->type() == PERF_RECORD_SAMPLE) {
+        if (static_cast<SampleRecord*>(r.get())->tid_data.pid == perf_pid) {
+          return false;
+        }
+      }
+      return true;
+    }));
+  }
 }

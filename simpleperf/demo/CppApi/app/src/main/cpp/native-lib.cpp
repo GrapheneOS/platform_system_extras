@@ -32,11 +32,11 @@ static std::atomic_bool profile_thread_exited(false);
 void* ProfileThreadFunc(void*) {
   pthread_setname_np(pthread_self(), "ProfileThread");
   simpleperf::RecordOptions options;
-  options.RecordDwarfCallGraph();
+  options.RecordDwarfCallGraph().SetEvent("cpu-clock");
   simpleperf::ProfileSession session;
   log("start recording");
   session.StartRecording(options);
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 1; i++) {
     sleep(1);
     log("pause recording");
     session.PauseRecording();
@@ -72,6 +72,8 @@ void* BusyThreadFunc(void*) {
     nanosleep(&ts, nullptr);
     count++;
   }
+  // Exit after recording. So we can build test apk, and expect profiling data file after app exits.
+  exit(0);
   return nullptr;
 }
 

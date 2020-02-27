@@ -41,12 +41,15 @@
 #include <android-base/properties.h>
 #endif
 
+#include "command.h"
 #include "event_type.h"
 #include "IOEventLoop.h"
 #include "read_elf.h"
 #include "thread_tree.h"
 #include "utils.h"
 #include "workload.h"
+
+using namespace simpleperf;
 
 class LineReader {
  public:
@@ -626,6 +629,9 @@ bool InAppRunner::RunCmdInApp(const std::string& cmd, const std::vector<std::str
   // 1. Build cmd args running in app's context.
   std::vector<std::string> args = GetPrefixArgs(cmd);
   args.insert(args.end(), {"--in-app", "--log", GetLogSeverityName()});
+  if (log_to_android_buffer) {
+    args.emplace_back("--log-to-android-buffer");
+  }
   if (need_tracepoint_events) {
     // Since we can't read tracepoint events from tracefs in app's context, we need to prepare
     // them in tracepoint_file in shell's context, and pass the path of tracepoint_file to the
@@ -780,17 +786,34 @@ class SimpleperfAppRunner : public InAppRunner {
 
 }  // namespace
 
+static bool allow_run_as = true;
+static bool allow_simpleperf_app_runner = true;
+
+void SetRunInAppToolForTesting(bool run_as, bool simpleperf_app_runner) {
+  allow_run_as = run_as;
+  allow_simpleperf_app_runner = simpleperf_app_runner;
+}
+
 bool RunInAppContext(const std::string& app_package_name, const std::string& cmd,
                      const std::vector<std::string>& args, size_t workload_args_size,
                      const std::string& output_filepath, bool need_tracepoint_events) {
-  std::unique_ptr<InAppRunner> in_app_runner(new RunAs(app_package_name));
-  if (!in_app_runner->Prepare()) {
+  std::unique_ptr<InAppRunner> in_app_runner;
+  if (allow_run_as) {
+    in_app_runner.reset(new RunAs(app_package_name));
+    if (!in_app_runner->Prepare()) {
+      in_app_runner = nullptr;
+    }
+  }
+  if (!in_app_runner && allow_simpleperf_app_runner) {
     in_app_runner.reset(new SimpleperfAppRunner(app_package_name));
     if (!in_app_runner->Prepare()) {
-      LOG(ERROR) << "Package " << app_package_name
-          << " doesn't exist or isn't debuggable/profileable.";
-      return false;
+      in_app_runner = nullptr;
     }
+  }
+  if (!in_app_runner) {
+    LOG(ERROR) << "Package " << app_package_name
+               << " doesn't exist or isn't debuggable/profileable.";
+    return false;
   }
   return in_app_runner->RunCmdInApp(cmd, args, workload_args_size, output_filepath,
                                     need_tracepoint_events);

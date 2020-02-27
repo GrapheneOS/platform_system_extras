@@ -6,7 +6,8 @@
   - [Table of Contents](#table-of-contents)
   - [app_profiler.py](#appprofilerpy)
     - [Profile from launch of an application](#profile-from-launch-of-an-application)
-    - [run_simpleperf_without_usb_connection.py](#runsimpleperfwithoutusbconnectionpy)
+  - [api_profiler.py](#apiprofilerpy)
+  - [run_simpleperf_without_usb_connection.py](#runsimpleperfwithoutusbconnectionpy)
   - [binary_cache_builder.py](#binarycachebuilderpy)
   - [run_simpleperf_on_device.py](#runsimpleperfondevicepy)
   - [report.py](#reportpy)
@@ -75,10 +76,18 @@ after recording has started.
 $ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .MainActivity
 ```
 
-### run_simpleperf_without_usb_connection.py
+## api_profiler.py
+
+api_profiler.py is used to control recording in application code. It does preparation work
+before recording, and collects profiling data files after recording.
+
+[Here](./android_application_profiling.md#control-recording-in-application-code) are the details.
+
+## run_simpleperf_without_usb_connection.py
 
 run_simpleperf_without_usb_connection.py records profiling data while the USB cable isn't
-connected. Below is an example.
+connected. Maybe api_profiler.py is more suitable, which also don't need USB cable when recording.
+Below is an example.
 
 ```sh
 $ python run_simpleperf_without_usb_connection.py start \
