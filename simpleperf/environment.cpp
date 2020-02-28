@@ -296,12 +296,21 @@ static bool ReadPerfEventParanoid(int* value) {
 }
 
 bool CanRecordRawData() {
-  if (GetAndroidVersion() >= 11) {
-    // On Android R, tracepoint raw data is disabled by selinux.
-    return IsRoot();
+  if (IsRoot()) {
+    return true;
   }
   int value;
-  return ReadPerfEventParanoid(&value) && value == -1;
+  if (!ReadPerfEventParanoid(&value) || value > -1) {
+    return false;
+  }
+#if defined(__ANDROID__)
+  // If perf_event_open() is controlled by selinux, simpleperf can't record tracepoint raw data
+  // unless running as root.
+  if (android::base::GetProperty("sys.init.perf_lsm_hooks", "") == "1") {
+    return false;
+  }
+#endif
+  return true;
 }
 
 static const char* GetLimitLevelDescription(int limit_level) {
