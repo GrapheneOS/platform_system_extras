@@ -24,6 +24,7 @@ cc_test_host {
     static_libs: [
         "libfec",
         "libfec_rs",
+        "libavb",
         "libcrypto_utils",
         "libcrypto",
         "libext4_utils",
@@ -47,12 +48,14 @@ cc_test_host {
 
     gtest: true,
     required: [
+        "avbtool",
         "fec",
     ],
     static_libs: [
         "libverity_tree",
         "libfec",
         "libfec_rs",
+        "libavb",
         "libcrypto_utils",
         "libext4_utils",
         "libsquashfs_utils",
