@@ -22,6 +22,7 @@ cc_binary_host {
         "libcrypto",
         "libfec",
         "libfec_rs",
+        "libavb",
         "libext4_utils",
         "liblog",
         "libsquashfs_utils",
