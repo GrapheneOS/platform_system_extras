@@ -535,10 +535,10 @@ bool JITDebugReader::ReadNewCodeEntries(Process& process, const Descriptor& desc
   }
   if (descriptor.version == 2) {
     if (process.is_64bit) {
-      return ReadNewCodeEntriesImplV2<JITCodeEntry64V2>(
+      return ReadNewCodeEntriesImpl<JITCodeEntry64V2>(
           process, descriptor, last_action_timestamp, read_entry_limit, new_code_entries);
     }
-    return ReadNewCodeEntriesImplV2<JITCodeEntry32V2>(
+    return ReadNewCodeEntriesImpl<JITCodeEntry32V2>(
         process, descriptor, last_action_timestamp, read_entry_limit, new_code_entries);
   }
   return false;
@@ -552,7 +552,6 @@ bool JITDebugReader::ReadNewCodeEntriesImpl(Process& process, const Descriptor& 
   uint64_t current_entry_addr = descriptor.first_entry_addr;
   uint64_t prev_entry_addr = 0u;
   std::unordered_set<uint64_t> entry_addr_set;
-
   for (size_t i = 0u; i < read_entry_limit && current_entry_addr != 0u; ++i) {
     if (entry_addr_set.find(current_entry_addr) != entry_addr_set.end()) {
       // We enter a loop, which means a broken linked list.
@@ -572,46 +571,6 @@ bool JITDebugReader::ReadNewCodeEntriesImpl(Process& process, const Descriptor& 
       break;
     }
     if (entry.symfile_size > 0) {
-      CodeEntry code_entry;
-      code_entry.addr = current_entry_addr;
-      code_entry.symfile_addr = entry.symfile_addr;
-      code_entry.symfile_size = entry.symfile_size;
-      code_entry.timestamp = entry.register_timestamp;
-      new_code_entries->push_back(code_entry);
-    }
-    entry_addr_set.insert(current_entry_addr);
-    prev_entry_addr = current_entry_addr;
-    current_entry_addr = entry.next_addr;
-  }
-  return true;
-}
-
-// Temporary work around for patch "JIT mini-debug-info: Append packed entries towards end.", which
-// adds new entries at the end of the list and forces simpleperf to read the whole list.
-template <typename CodeEntryT>
-bool JITDebugReader::ReadNewCodeEntriesImplV2(Process& process, const Descriptor& descriptor,
-                                              uint64_t last_action_timestamp,
-                                              uint32_t /* read_entry_limit */,
-                                              std::vector<CodeEntry>* new_code_entries) {
-  uint64_t current_entry_addr = descriptor.first_entry_addr;
-  uint64_t prev_entry_addr = 0u;
-  std::unordered_set<uint64_t> entry_addr_set;
-  const size_t READ_ENTRY_LIMIT = 10000;  // to avoid endless loop
-
-  for (size_t i = 0u; i < READ_ENTRY_LIMIT && current_entry_addr != 0u; ++i) {
-    if (entry_addr_set.find(current_entry_addr) != entry_addr_set.end()) {
-      // We enter a loop, which means a broken linked list.
-      return false;
-    }
-    CodeEntryT entry;
-    if (!ReadRemoteMem(process, current_entry_addr, sizeof(entry), &entry)) {
-      return false;
-    }
-    if (entry.prev_addr != prev_entry_addr || !entry.Valid()) {
-      // A broken linked list
-      return false;
-    }
-    if (entry.symfile_size > 0 && entry.register_timestamp > last_action_timestamp) {
       CodeEntry code_entry;
       code_entry.addr = current_entry_addr;
       code_entry.symfile_addr = entry.symfile_addr;
