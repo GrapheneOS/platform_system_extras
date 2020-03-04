@@ -132,12 +132,6 @@ static bool fscrypt_is_encrypted(int fd) {
     return ioctl(fd, FS_IOC_GET_ENCRYPTION_POLICY, &policy) == 0 || errno == EINVAL;
 }
 
-bool operator!=(const EncryptionOptions& lhs, const EncryptionOptions& rhs) {
-    return !((lhs.version == rhs.version) && (lhs.contents_mode == rhs.contents_mode) &&
-             (lhs.filenames_mode == rhs.filenames_mode) && (lhs.flags == rhs.flags) &&
-             (lhs.use_hw_wrapped_key == rhs.use_hw_wrapped_key));
-}
-
 unsigned int GetFirstApiLevel() {
     return android::base::GetUintProperty<unsigned int>("ro.product.first_api_level", 0);
 }
