@@ -165,3 +165,27 @@ TEST(fscrypt, ParseOptions) {
     EXPECT_FALSE(ParseOptionsForApiLevel(30, "aes-256-xts:aes-256-cts:blah", &dummy_options));
     EXPECT_FALSE(ParseOptionsForApiLevel(30, "aes-256-xts:aes-256-cts:vblah", &dummy_options));
 }
+
+TEST(fscrypt, ComparePolicies) {
+#define TEST_INEQUALITY(foo, field, value) { \
+    auto bar = foo; \
+    bar.field = value; \
+    EXPECT_NE(foo, bar); \
+}
+    EncryptionPolicy foo;
+    foo.key_raw_ref = "foo";
+    EncryptionOptions foo_options;
+    foo_options.version = 1;
+    foo_options.contents_mode = 1;
+    foo_options.filenames_mode = 1;
+    foo_options.flags = 1;
+    foo_options.use_hw_wrapped_key = true;
+    foo.options = foo_options;
+    EXPECT_EQ(foo, foo);
+    TEST_INEQUALITY(foo, key_raw_ref, "bar");
+    TEST_INEQUALITY(foo, options.version, 2);
+    TEST_INEQUALITY(foo, options.contents_mode, -1);
+    TEST_INEQUALITY(foo, options.filenames_mode, 3);
+    TEST_INEQUALITY(foo, options.flags, 0);
+    TEST_INEQUALITY(foo, options.use_hw_wrapped_key, false);
+}
