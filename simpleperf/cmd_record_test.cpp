@@ -872,6 +872,11 @@ TEST(record_cmd, record_java_app) {
 
 TEST(record_cmd, record_native_app) {
 #if defined(__ANDROID__)
+  // In case of non-native ABI guest symbols are never directly executed, thus
+  // don't appear in perf.data. Instead binary translator executes code
+  // translated from guest at runtime.
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
+
   RecordingAppHelper helper;
   // 1. Install apk.
   ASSERT_TRUE(helper.InstallApk(GetTestData("EndlessTunnel.apk"), "com.google.sample.tunnel"));
