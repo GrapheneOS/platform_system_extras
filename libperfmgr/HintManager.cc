@@ -37,8 +37,12 @@ bool HintManager::ValidateHint(const std::string& hint_type) const {
         LOG(ERROR) << "NodeLooperThread not present";
         return false;
     }
+    return IsHintSupported(hint_type);
+}
+
+bool HintManager::IsHintSupported(const std::string& hint_type) const {
     if (actions_.find(hint_type) == actions_.end()) {
-        LOG(ERROR) << "PowerHint type not present in actions: " << hint_type;
+        LOG(INFO) << "Hint type not present in actions: " << hint_type;
         return false;
     }
     return true;
