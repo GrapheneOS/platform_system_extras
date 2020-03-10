@@ -221,6 +221,14 @@ TEST_F(HintManagerTest, HintInitDefaultTest) {
     _VerifyPropertyValue(prop_, "");
 }
 
+// Test IsHintSupported
+TEST_F(HintManagerTest, HintSupportedTest) {
+    HintManager hm(nm_, actions_);
+    EXPECT_TRUE(hm.IsHintSupported("INTERACTION"));
+    EXPECT_TRUE(hm.IsHintSupported("LAUNCH"));
+    EXPECT_FALSE(hm.IsHintSupported("NO_SUCH_HINT"));
+}
+
 // Test hint/cancel/expire with dummy actions
 TEST_F(HintManagerTest, HintTest) {
     HintManager hm(nm_, actions_);
