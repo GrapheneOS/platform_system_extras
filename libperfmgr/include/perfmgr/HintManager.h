@@ -60,6 +60,9 @@ class HintManager {
     // NodeLooperThread::Cancel succeeds; otherwise return false.
     bool EndHint(const std::string& hint_type);
 
+    // Query if given hint supported.
+    bool IsHintSupported(const std::string& hint_type) const;
+
     // Static method to construct HintManager from the JSON config file.
     static std::unique_ptr<HintManager> GetFromJSON(
         const std::string& config_path);
