@@ -19,6 +19,7 @@
 #include <android-base/chrono_utils.h>
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
@@ -33,7 +34,7 @@ FileNode::FileNode(std::string name, std::string node_path,
                    bool hold_fd)
     : Node(std::move(name), std::move(node_path), std::move(req_sorted),
            default_val_index, reset_on_init),
-      hold_fd_(hold_fd) {
+      hold_fd_(hold_fd), warn_timeout_(android::base::GetBoolProperty("ro.debuggable", false) ? 5ms : 50ms) {
     if (reset_on_init) {
         Update(false);
     }
@@ -79,7 +80,7 @@ std::chrono::milliseconds FileNode::Update(bool log_error) {
                 fd_.reset();
             }
             auto duration = t.duration();
-            if (duration > 50ms) {
+            if (duration > warn_timeout_) {
                 LOG(WARNING) << "Slow writing to file: '" << node_path_
                              << "' with value: '" << req_value
                              << "' took: " << duration.count() << " ms";
