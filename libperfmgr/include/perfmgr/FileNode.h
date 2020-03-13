@@ -46,6 +46,7 @@ class FileNode : public Node {
     FileNode& operator=(Node const&) = delete;
 
     const bool hold_fd_;
+    const std::chrono::milliseconds warn_timeout_;
     android::base::unique_fd fd_;
 };
 
