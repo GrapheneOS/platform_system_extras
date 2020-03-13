@@ -76,11 +76,13 @@ class NodeLooperThread : public ::android::Thread {
     // Dump all nodes to fd
     void DumpToFd(int fd);
 
+    // Return true when successfully started the looper thread
+    bool Start();
+
   private:
     NodeLooperThread(NodeLooperThread const&) = delete;
     void operator=(NodeLooperThread const&) = delete;
     bool threadLoop() override;
-    void onFirstRef() override;
 
     static constexpr auto kMaxUpdatePeriod = std::chrono::milliseconds::max();
 
