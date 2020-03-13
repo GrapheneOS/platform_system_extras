@@ -204,6 +204,7 @@ static inline void _VerifyPathValue(const std::string& path,
 // Test GetHints
 TEST_F(HintManagerTest, GetHintsTest) {
     HintManager hm(nm_, actions_);
+    EXPECT_TRUE(hm.Start());
     std::vector<std::string> hints = hm.GetHints();
     EXPECT_TRUE(hm.IsRunning());
     EXPECT_EQ(2u, hints.size());
@@ -214,6 +215,7 @@ TEST_F(HintManagerTest, GetHintsTest) {
 // Test initialization of default values
 TEST_F(HintManagerTest, HintInitDefaultTest) {
     HintManager hm(nm_, actions_);
+    EXPECT_TRUE(hm.Start());
     std::this_thread::sleep_for(kSLEEP_TOLERANCE_MS);
     EXPECT_TRUE(hm.IsRunning());
     _VerifyPathValue(files_[0]->path, "");
@@ -232,6 +234,7 @@ TEST_F(HintManagerTest, HintSupportedTest) {
 // Test hint/cancel/expire with dummy actions
 TEST_F(HintManagerTest, HintTest) {
     HintManager hm(nm_, actions_);
+    EXPECT_TRUE(hm.Start());
     EXPECT_TRUE(hm.IsRunning());
     EXPECT_TRUE(hm.DoHint("INTERACTION"));
     std::this_thread::sleep_for(kSLEEP_TOLERANCE_MS);
@@ -494,8 +497,14 @@ TEST_F(HintManagerTest, GetFromJSONTest) {
     TemporaryFile json_file;
     ASSERT_TRUE(android::base::WriteStringToFile(json_doc_, json_file.path))
         << strerror(errno);
-    std::unique_ptr<HintManager> hm = HintManager::GetFromJSON(json_file.path);
+    std::unique_ptr<HintManager> hm = HintManager::GetFromJSON(json_file.path, false);
     EXPECT_NE(nullptr, hm.get());
+    EXPECT_FALSE(hm->IsRunning());
+    EXPECT_TRUE(hm->Start());
+    EXPECT_TRUE(hm->IsRunning());
+    hm = HintManager::GetFromJSON(json_file.path);
+    EXPECT_NE(nullptr, hm.get());
+    EXPECT_TRUE(hm->IsRunning());
     std::this_thread::sleep_for(kSLEEP_TOLERANCE_MS);
     EXPECT_TRUE(hm->IsRunning());
     // Initial default value on Node0

@@ -64,6 +64,7 @@ static inline void _VerifyPathValue(const std::string& path,
 // Test default value init
 TEST_F(NodeLooperThreadTest, InitRunTest) {
     sp<NodeLooperThread> th = new NodeLooperThread(std::move(nodes_));
+    EXPECT_TRUE(th->Start());
     std::this_thread::sleep_for(kSLEEP_TOLERANCE_MS);
     EXPECT_TRUE(th->isRunning());
     _VerifyPathValue(files_[0]->path, "");
@@ -75,6 +76,7 @@ TEST_F(NodeLooperThreadTest, InitRunTest) {
 // Test add request
 TEST_F(NodeLooperThreadTest, AddRequest) {
     sp<NodeLooperThread> th = new NodeLooperThread(std::move(nodes_));
+    EXPECT_TRUE(th->Start());
     EXPECT_TRUE(th->isRunning());
     // Dummy LAUNCH boost actions:
     // Node0, value0, 200ms
@@ -97,6 +99,7 @@ TEST_F(NodeLooperThreadTest, AddRequest) {
 // Test request to override expire time
 TEST_F(NodeLooperThreadTest, AddRequestOverride) {
     sp<NodeLooperThread> th = new NodeLooperThread(std::move(nodes_));
+    EXPECT_TRUE(th->Start());
     EXPECT_TRUE(th->isRunning());
     // Dummy LAUNCH boost actions:
     // Node0, value0, 200ms
@@ -128,6 +131,7 @@ TEST_F(NodeLooperThreadTest, AddRequestOverride) {
 // Test cancel request
 TEST_F(NodeLooperThreadTest, CancelRequest) {
     sp<NodeLooperThread> th = new NodeLooperThread(std::move(nodes_));
+    EXPECT_TRUE(th->Start());
     EXPECT_TRUE(th->isRunning());
     // Dummy LAUNCH boost actions:
     // Node0, value0, forever
@@ -148,6 +152,7 @@ TEST_F(NodeLooperThreadTest, CancelRequest) {
 // Test multiple request
 TEST_F(NodeLooperThreadTest, MultipleRequest) {
     sp<NodeLooperThread> th = new NodeLooperThread(std::move(nodes_));
+    EXPECT_TRUE(th->Start());
     EXPECT_TRUE(th->isRunning());
     // Dummy LAUNCH boost actions:
     // Node0, value1, 800ms
