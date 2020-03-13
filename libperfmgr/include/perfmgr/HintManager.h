@@ -65,13 +65,16 @@ class HintManager {
 
     // Static method to construct HintManager from the JSON config file.
     static std::unique_ptr<HintManager> GetFromJSON(
-        const std::string& config_path);
+        const std::string& config_path, bool start = true);
 
     // Return available hints managed by HintManager
     std::vector<std::string> GetHints() const;
 
     // Dump internal status to fd
     void DumpToFd(int fd);
+
+    // Start thread loop
+    bool Start();
 
   protected:
     static std::vector<std::unique_ptr<Node>> ParseNodes(

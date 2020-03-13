@@ -106,8 +106,12 @@ void HintManager::DumpToFd(int fd) {
     fsync(fd);
 }
 
+bool HintManager::Start() {
+    return nm_->Start();
+}
+
 std::unique_ptr<HintManager> HintManager::GetFromJSON(
-    const std::string& config_path) {
+    const std::string& config_path, bool start) {
     std::string json_doc;
 
     if (!android::base::ReadFileToString(config_path, &json_doc)) {
@@ -133,6 +137,10 @@ std::unique_ptr<HintManager> HintManager::GetFromJSON(
         std::make_unique<HintManager>(std::move(nm), actions);
 
     LOG(INFO) << "Initialized HintManager from JSON config: " << config_path;
+
+    if (start) {
+        hm->Start();
+    }
     return hm;
 }
 
