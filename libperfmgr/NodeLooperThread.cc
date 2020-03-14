@@ -120,13 +120,14 @@ bool NodeLooperThread::threadLoop() {
     return true;
 }
 
-void NodeLooperThread::onFirstRef() {
+bool NodeLooperThread::Start() {
     auto ret = this->run("NodeLooperThread", PRIORITY_HIGHEST);
     if (ret != NO_ERROR) {
-        LOG(ERROR) << "NodeLooperThread start fail";
+        LOG(ERROR) << "NodeLooperThread start failed: " << ret;
     } else {
         LOG(INFO) << "NodeLooperThread started";
     }
+    return ret == NO_ERROR;
 }
 
 void NodeLooperThread::Stop() {
