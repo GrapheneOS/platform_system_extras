@@ -892,12 +892,10 @@ TEST(record_cmd, record_native_app) {
 
   // 4. Check perf.data.
   auto process_symbol = [&](const char* name) {
-#if !defined(IN_CTS_TEST)
     const char* expected_name_with_keyguard = "NativeActivity";  // when screen is locked
     if (strstr(name, expected_name_with_keyguard) != nullptr) {
       return true;
     }
-#endif
     const char* expected_name = "PlayScene::DoFrame";  // when screen is awake
     return strstr(name, expected_name) != nullptr;
   };
