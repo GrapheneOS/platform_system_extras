@@ -210,19 +210,19 @@ class MemAccess : public ITargetMemAccess {
   }
 
   llvm::MemoryBuffer* GetMemoryBuffer(Dso* dso) {
-    if (auto it = memory_buffers_.find(dso); it != memory_buffers_.end()) {
-      return it->second.get();
+    auto it = elf_map_.find(dso);
+    if (it == elf_map_.end()) {
+      ElfStatus status;
+      auto res = elf_map_.emplace(dso, ElfFile::Open(dso->GetDebugFilePath(), &status));
+      it = res.first;
     }
-    auto buffer_or_err = llvm::MemoryBuffer::getFile(dso->GetDebugFilePath());
-    llvm::MemoryBuffer* buffer = buffer_or_err ? buffer_or_err.get().release() : nullptr;
-    memory_buffers_.emplace(dso, buffer);
-    return buffer;
+    return it->second ? it->second->GetMemoryBuffer() : nullptr;
   }
 
   // map from trace id to thread id
   std::unordered_map<uint8_t, pid_t> tid_map_;
   ThreadTree& thread_tree_;
-  std::unordered_map<Dso*, std::unique_ptr<llvm::MemoryBuffer>> memory_buffers_;
+  std::unordered_map<Dso*, std::unique_ptr<ElfFile>> elf_map_;
   // cache of the last buffer
   uint8_t trace_id_ = 0;
   const char* buffer_ = nullptr;
