@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
+#include <android-base/file.h>
+#include <gtest/gtest.h>
+
 #include <algorithm>
 #include <thread>
-
-#include <android-base/file.h>
-
-#include <gtest/gtest.h>
 
 #include "perfmgr/FileNode.h"
 #include "perfmgr/NodeLooperThread.h"

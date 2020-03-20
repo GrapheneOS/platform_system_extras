@@ -14,14 +14,13 @@
  * limitations under the License.
  */
 
-#include <algorithm>
-#include <thread>
-
 #include <android-base/file.h>
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
-
 #include <gtest/gtest.h>
+
+#include <algorithm>
+#include <thread>
 
 #include "perfmgr/PropertyNode.h"
 
@@ -49,6 +48,7 @@ static inline const std::string _InitProperty(const std::string& path) {
 TEST(PropertyNodeTest, NoInitDefaultTest) {
     std::string key = _InitProperty("test.libperfmgr.key");
     PropertyNode t("t", key, {{"value0"}, {"value1"}, {"value2"}}, 1, false);
+    t.Update(false);
     _VerifyPropertyValue(key, "");
 }
 
@@ -56,9 +56,11 @@ TEST(PropertyNodeTest, NoInitDefaultTest) {
 TEST(PropertyNodeTest, InitDefaultTest) {
     std::string key = _InitProperty("test.libperfmgr.key");
     PropertyNode t("t", key, {{"value0"}, {"value1"}, {"value2"}}, 1, true);
+    t.Update(false);
     _VerifyPropertyValue(key, "value1");
     std::string key2 = _InitProperty("test.libperfmgr.key2");
     PropertyNode t2("t2", key2, {{"value0"}, {"value1"}, {"value2"}}, 0, true);
+    t2.Update(false);
     _VerifyPropertyValue(key2, "value0");
 }
 
@@ -67,6 +69,7 @@ TEST(PropertyNodeTest, DumpToFdTest) {
     std::string key = _InitProperty("test.libperfmgr.key");
     PropertyNode t("test_dump", key, {{"value0"}, {"value1"}, {"value2"}}, 1,
                    true);
+    t.Update(false);
     TemporaryFile dumptf;
     t.DumpToFd(dumptf.fd);
     fsync(dumptf.fd);
