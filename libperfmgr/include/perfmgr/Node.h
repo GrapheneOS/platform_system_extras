@@ -17,11 +17,11 @@
 #ifndef ANDROID_LIBPERFMGR_NODE_H_
 #define ANDROID_LIBPERFMGR_NODE_H_
 
+#include <android-base/unique_fd.h>
+
 #include <cstddef>
 #include <string>
 #include <vector>
-
-#include <android-base/unique_fd.h>
 
 #include "perfmgr/RequestGroup.h"
 
@@ -78,10 +78,11 @@ class Node {
 
     const std::string name_;
     const std::string node_path_;
-    // request vector, one entry per possible value, sorted by priority
+    // request vector, one entry per possible value, sorted by priority.
     std::vector<RequestGroup> req_sorted_;
     const std::size_t default_val_index_;
-    const bool reset_on_init_;
+    // node will be explicitly initialized when first time called Update().
+    bool reset_on_init_;
     std::size_t current_val_index_;
 };
 

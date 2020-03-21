@@ -17,11 +17,11 @@
 #ifndef ANDROID_LIBPERFMGR_FILENODE_H_
 #define ANDROID_LIBPERFMGR_FILENODE_H_
 
+#include <android-base/unique_fd.h>
+
 #include <cstddef>
 #include <string>
 #include <vector>
-
-#include <android-base/unique_fd.h>
 
 #include "perfmgr/Node.h"
 

@@ -14,13 +14,12 @@
  * limitations under the License.
  */
 
-#include <algorithm>
-#include <thread>
-
 #include <android-base/file.h>
 #include <android-base/stringprintf.h>
-
 #include <gtest/gtest.h>
+
+#include <algorithm>
+#include <thread>
 
 #include "perfmgr/FileNode.h"
 
@@ -43,6 +42,7 @@ static inline void _VerifyPathValue(const std::string& path,
 TEST(FileNodeTest, NoInitDefaultTest) {
     TemporaryFile tf;
     FileNode t("t", tf.path, {{"value0"}, {"value1"}, {"value2"}}, 1, false);
+    t.Update(false);
     _VerifyPathValue(tf.path, "");
 }
 
@@ -50,9 +50,11 @@ TEST(FileNodeTest, NoInitDefaultTest) {
 TEST(FileNodeTest, InitDefaultTest) {
     TemporaryFile tf;
     FileNode t("t", tf.path, {{"value0"}, {"value1"}, {"value2"}}, 1, true);
+    t.Update(false);
     _VerifyPathValue(tf.path, "value1");
     TemporaryFile tf2;
     FileNode t2("t2", tf2.path, {{"value0"}, {"value1"}, {"value2"}}, 0, true);
+    t2.Update(false);
     _VerifyPathValue(tf2.path, "value0");
 }
 
@@ -61,6 +63,7 @@ TEST(FileNodeTest, DumpToFdTest) {
     TemporaryFile tf;
     FileNode t("test_dump", tf.path, {{"value0"}, {"value1"}, {"value2"}}, 1,
                true);
+    t.Update(false);
     TemporaryFile dumptf;
     t.DumpToFd(dumptf.fd);
     fsync(dumptf.fd);
