@@ -53,6 +53,8 @@ class RequestGroup {
     // hint_type. If request exits and the new end_time is less than the active
     // time, expire time will not be updated; also returns false.
     bool RemoveRequest(const std::string& hint_type);
+    // Dump internal status to fd
+    void DumpToFd(int fd, const std::string& prefix) const;
 
   private:
     const std::string request_value_;
