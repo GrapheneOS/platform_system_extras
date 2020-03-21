@@ -14,14 +14,13 @@
  * limitations under the License.
  */
 
-#include <thread>
-
-#include <getopt.h>
-#include <unistd.h>
-
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <getopt.h>
 #include <sys/types.h>
+#include <unistd.h>
+
+#include <thread>
 
 #include "perfmgr/HintManager.h"
 
@@ -83,7 +82,8 @@ static void printUsage(const char* exec_name) {
     LOG(INFO) << usage;
 }
 
-static void execConfig(const std::string& json_file, const std::string& hint_name, unsigned long hint_duration) {
+static void execConfig(const std::string& json_file,
+                       const std::string& hint_name, uint64_t hint_duration) {
     std::unique_ptr<android::perfmgr::HintManager> hm =
         android::perfmgr::HintManager::GetFromJSON(json_file);
     if (!hm.get() || !hm->IsRunning()) {
@@ -91,8 +91,7 @@ static void execConfig(const std::string& json_file, const std::string& hint_nam
     }
     std::vector<std::string> hints = hm->GetHints();
     for (const auto& hint : hints) {
-        if (!hint_name.empty() && hint_name != hint)
-            continue;
+        if (!hint_name.empty() && hint_name != hint) continue;
         LOG(INFO) << "Do hint: " << hint;
         hm->DoHint(hint, std::chrono::milliseconds(hint_duration));
         std::this_thread::yield();
@@ -113,7 +112,7 @@ int main(int argc, char* argv[]) {
     std::string config_path;
     std::string hint_name;
     bool exec_hint = false;
-    unsigned long hint_duration = 100;
+    uint64_t hint_duration = 100;
 
     while (true) {
         static struct option opts[] = {

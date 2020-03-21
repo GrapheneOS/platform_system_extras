@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-#include <algorithm>
-#include <thread>
-
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/properties.h>
-
+#include <android-base/stringprintf.h>
 #include <gtest/gtest.h>
+
+#include <algorithm>
+#include <thread>
 
 #include "perfmgr/FileNode.h"
 #include "perfmgr/HintManager.h"
@@ -220,7 +220,7 @@ TEST_F(HintManagerTest, HintInitDefaultTest) {
     EXPECT_TRUE(hm.IsRunning());
     _VerifyPathValue(files_[0]->path, "");
     _VerifyPathValue(files_[1]->path, "n1_value2");
-    _VerifyPropertyValue(prop_, "");
+    _VerifyPropertyValue(prop_, "n2_value2");
 }
 
 // Test IsHintSupported
@@ -229,6 +229,35 @@ TEST_F(HintManagerTest, HintSupportedTest) {
     EXPECT_TRUE(hm.IsHintSupported("INTERACTION"));
     EXPECT_TRUE(hm.IsHintSupported("LAUNCH"));
     EXPECT_FALSE(hm.IsHintSupported("NO_SUCH_HINT"));
+}
+
+// Test DumpToFd
+TEST_F(HintManagerTest, DumpToFdTest) {
+    HintManager hm(nm_, actions_);
+    TemporaryFile dumptf;
+    hm.DumpToFd(dumptf.fd);
+    fsync(dumptf.fd);
+    std::ostringstream dump_buf;
+    dump_buf << "========== Begin perfmgr nodes ==========\nNode Name\tNode "
+                "Path\tCurrent Index\tCurrent Value\nn0\t"
+             << files_[0]->path << "\t2\t\nn1\t" << files_[1]->path
+             << "\t2\t\nn2\tvendor.pwhal.mode\t2\t\n==========  End perfmgr "
+                "nodes  ==========\n";
+    _VerifyPathValue(dumptf.path, dump_buf.str());
+    TemporaryFile dumptf_started;
+    EXPECT_TRUE(hm.Start());
+    std::this_thread::sleep_for(kSLEEP_TOLERANCE_MS);
+    EXPECT_TRUE(hm.IsRunning());
+    hm.DumpToFd(dumptf_started.fd);
+    fsync(dumptf_started.fd);
+    dump_buf.str("");
+    dump_buf.clear();
+    dump_buf << "========== Begin perfmgr nodes ==========\nNode Name\tNode "
+                "Path\tCurrent Index\tCurrent Value\nn0\t"
+             << files_[0]->path << "\t2\t\nn1\t" << files_[1]->path
+             << "\t2\tn1_value2\nn2\tvendor.pwhal.mode\t2\tn2_value2\n========="
+                "=  End perfmgr nodes  ==========\n";
+    _VerifyPathValue(dumptf_started.path, dump_buf.str());
 }
 
 // Test hint/cancel/expire with dummy actions
@@ -345,7 +374,7 @@ TEST_F(HintManagerTest, ParseFileNodesDuplicateValueTest) {
     size_t start_pos = json_doc_.find(from);
     json_doc_.replace(start_pos, from.length(), "1134000");
     std::vector<std::unique_ptr<Node>> nodes =
-            HintManager::ParseNodes(json_doc_);
+        HintManager::ParseNodes(json_doc_);
     EXPECT_EQ(0u, nodes.size());
 }
 
@@ -355,7 +384,7 @@ TEST_F(HintManagerTest, ParsePropertyNodesDuplicateValueTest) {
     size_t start_pos = json_doc_.find(from);
     json_doc_.replace(start_pos, from.length(), "LOW");
     std::vector<std::unique_ptr<Node>> nodes =
-            HintManager::ParseNodes(json_doc_);
+        HintManager::ParseNodes(json_doc_);
     EXPECT_EQ(0u, nodes.size());
 }
 
@@ -365,7 +394,7 @@ TEST_F(HintManagerTest, ParseFileNodesEmptyValueTest) {
     size_t start_pos = json_doc_.find(from);
     json_doc_.replace(start_pos, from.length(), "");
     std::vector<std::unique_ptr<Node>> nodes =
-            HintManager::ParseNodes(json_doc_);
+        HintManager::ParseNodes(json_doc_);
     EXPECT_EQ(0u, nodes.size());
 }
 
@@ -375,7 +404,7 @@ TEST_F(HintManagerTest, ParsePropertyNodesEmptyValueTest) {
     size_t start_pos = json_doc_.find(from);
     json_doc_.replace(start_pos, from.length(), "");
     std::vector<std::unique_ptr<Node>> nodes =
-            HintManager::ParseNodes(json_doc_);
+        HintManager::ParseNodes(json_doc_);
     EXPECT_EQ(3u, nodes.size());
     EXPECT_EQ("CPUCluster0MinFreq", nodes[0]->GetName());
     EXPECT_EQ("CPUCluster1MinFreq", nodes[1]->GetName());
@@ -497,7 +526,8 @@ TEST_F(HintManagerTest, GetFromJSONTest) {
     TemporaryFile json_file;
     ASSERT_TRUE(android::base::WriteStringToFile(json_doc_, json_file.path))
         << strerror(errno);
-    std::unique_ptr<HintManager> hm = HintManager::GetFromJSON(json_file.path, false);
+    std::unique_ptr<HintManager> hm =
+        HintManager::GetFromJSON(json_file.path, false);
     EXPECT_NE(nullptr, hm.get());
     EXPECT_FALSE(hm->IsRunning());
     EXPECT_TRUE(hm->Start());
