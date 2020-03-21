@@ -16,17 +16,17 @@
 
 #define LOG_TAG "libperfmgr"
 
-#include <algorithm>
-#include <set>
+#include "perfmgr/HintManager.h"
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
-
 #include <json/reader.h>
 #include <json/value.h>
 
+#include <algorithm>
+#include <set>
+
 #include "perfmgr/FileNode.h"
-#include "perfmgr/HintManager.h"
 #include "perfmgr/PropertyNode.h"
 
 namespace android {
@@ -217,13 +217,14 @@ std::vector<std::unique_ptr<Node>> HintManager::ParseNodes(
             LOG(VERBOSE) << "Node[" << i << "]'s Value[" << j << "]: " << value;
             auto result = values_set_parsed.insert(value);
             if (!result.second) {
-                LOG(ERROR) << "Duplicate value parsed in Node[" << i << "]'s Value[" << j
-                           << "]";
+                LOG(ERROR) << "Duplicate value parsed in Node[" << i
+                           << "]'s Value[" << j << "]";
                 nodes_parsed.clear();
                 return nodes_parsed;
             }
             if (is_file && value.empty()) {
-                LOG(ERROR) << "Failed to read Node[" << i << "]'s Value[" << j << "]";
+                LOG(ERROR) << "Failed to read Node[" << i << "]'s Value[" << j
+                           << "]";
                 nodes_parsed.clear();
                 return nodes_parsed;
             }
@@ -326,8 +327,8 @@ std::map<std::string, std::vector<NodeAction>> HintManager::ParseActions(
 
         if (nodes_index.find(node_name) == nodes_index.end()) {
             LOG(ERROR) << "Failed to find "
-                       << "Action[" << i
-                       << "]'s Node from Nodes section: [" << node_name << "]";
+                       << "Action[" << i << "]'s Node from Nodes section: ["
+                       << node_name << "]";
             actions_parsed.clear();
             return actions_parsed;
         }
