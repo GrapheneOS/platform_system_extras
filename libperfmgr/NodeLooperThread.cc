@@ -16,10 +16,10 @@
 
 #define LOG_TAG "libperfmgr"
 
+#include "perfmgr/NodeLooperThread.h"
+
 #include <android-base/file.h>
 #include <android-base/logging.h>
-
-#include "perfmgr/NodeLooperThread.h"
 
 namespace android {
 namespace perfmgr {
@@ -31,7 +31,7 @@ bool NodeLooperThread::Request(const std::vector<NodeAction>& actions,
         return false;
     }
     if (!::android::Thread::isRunning()) {
-        LOG(FATAL) << "NodeLooperThread stopped, abort...";
+        LOG(WARNING) << "NodeLooperThread is not running, request " << hint_type;
     }
 
     bool ret = true;
@@ -70,7 +70,7 @@ bool NodeLooperThread::Cancel(const std::vector<NodeAction>& actions,
         return false;
     }
     if (!::android::Thread::isRunning()) {
-        LOG(FATAL) << "NodeLooperThread stopped, abort...";
+        LOG(WARNING) << "NodeLooperThread is not running, cancel " << hint_type;
     }
 
     bool ret = true;
