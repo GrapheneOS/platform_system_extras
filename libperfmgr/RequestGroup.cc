@@ -18,6 +18,11 @@
 
 #include "perfmgr/RequestGroup.h"
 
+#include <android-base/file.h>
+#include <android-base/logging.h>
+
+#include <sstream>
+
 namespace android {
 namespace perfmgr {
 
@@ -58,6 +63,21 @@ bool RequestGroup::GetExpireTime(std::chrono::milliseconds* expire_time) {
         }
     }
     return active;
+}
+
+void RequestGroup::DumpToFd(int fd, const std::string& prefix) const {
+    std::ostringstream dump_buf;
+    ReqTime now = std::chrono::steady_clock::now();
+    for (auto it = request_map_.begin(); it != request_map_.end(); it++) {
+        auto remaining_duration =
+            std::chrono::duration_cast<std::chrono::milliseconds>(it->second -
+                                                                  now);
+        dump_buf << prefix << it->first << "\t" << remaining_duration.count()
+                 << "\t" << request_value_ << "\n";
+    }
+    if (!android::base::WriteStringToFd(dump_buf.str(), fd)) {
+        LOG(ERROR) << "Failed to dump fd: " << fd;
+    }
 }
 
 }  // namespace perfmgr
