@@ -16,14 +16,14 @@
 
 #define LOG_TAG "libperfmgr"
 
+#include "perfmgr/FileNode.h"
+
 #include <android-base/chrono_utils.h>
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
-
-#include "perfmgr/FileNode.h"
 
 namespace android {
 namespace perfmgr {
@@ -34,10 +34,9 @@ FileNode::FileNode(std::string name, std::string node_path,
                    bool hold_fd)
     : Node(std::move(name), std::move(node_path), std::move(req_sorted),
            default_val_index, reset_on_init),
-      hold_fd_(hold_fd), warn_timeout_(android::base::GetBoolProperty("ro.debuggable", false) ? 5ms : 50ms) {
-    if (reset_on_init) {
-        Update(false);
-    }
+      hold_fd_(hold_fd),
+      warn_timeout_(
+          android::base::GetBoolProperty("ro.debuggable", false) ? 5ms : 50ms) {
 }
 
 std::chrono::milliseconds FileNode::Update(bool log_error) {
@@ -53,7 +52,7 @@ std::chrono::milliseconds FileNode::Update(bool log_error) {
     }
 
     // Update node only if request index changes
-    if (value_index != current_val_index_) {
+    if (value_index != current_val_index_ || reset_on_init_) {
         const std::string& req_value =
             req_sorted_[value_index].GetRequestValue();
 
@@ -87,6 +86,7 @@ std::chrono::milliseconds FileNode::Update(bool log_error) {
             }
             // Update current index only when succeed
             current_val_index_ = value_index;
+            reset_on_init_ = false;
         }
     }
     return expire_time;
@@ -107,6 +107,10 @@ void FileNode::DumpToFd(int fd) const {
         current_val_index_, node_value.c_str()));
     if (!android::base::WriteStringToFd(buf, fd)) {
         LOG(ERROR) << "Failed to dump fd: " << fd;
+    }
+    for (std::size_t i = 0; i < req_sorted_.size(); i++) {
+        req_sorted_[i].DumpToFd(
+            fd, android::base::StringPrintf("\t\tReq%zu:\t", i));
     }
 }
 

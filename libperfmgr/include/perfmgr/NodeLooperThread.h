@@ -17,13 +17,13 @@
 #ifndef ANDROID_LIBPERFMGR_NODELOOPERTHREAD_H_
 #define ANDROID_LIBPERFMGR_NODELOOPERTHREAD_H_
 
+#include <utils/Thread.h>
+
 #include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include <utils/Thread.h>
 
 #include "perfmgr/Node.h"
 

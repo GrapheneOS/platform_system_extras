@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
+#include <gtest/gtest.h>
+
 #include <algorithm>
 #include <thread>
-
-#include <gtest/gtest.h>
 
 #include "perfmgr/RequestGroup.h"
 
