@@ -166,7 +166,6 @@ cc_defaults {
         linux: {
             static_libs: [
                 "libunwindstack",
-                "libdexfile_support_static",
                 "libcutils",
                 "libprocinfo",
                 "libevent",
@@ -327,6 +326,13 @@ cc_library_static {
         "libbuildversion",
     ],
     use_version_lib: false,
+
+    target: {
+        linux: {
+            // See note for libdexfile_support_static in simpleperf_ndk.
+            static_libs: ["libdexfile_support"],
+        },
+    },
 }
 
 // simpleperf shipped in system image
@@ -406,6 +412,14 @@ cc_binary {
                 dir: "simpleperf/darwin/x86_64",
             },
         },
+        linux: {
+            // In the NDK we need libdexfile_support_static which links
+            // libdexfile_external and its ART dependencies statically. However
+            // in other libraries we must use libdexfile_support, which dlopen's
+            // libdexfile_external.so from the ART APEX, to avoid getting ART
+            // internals in the system image.
+            static_libs: ["libdexfile_support_static"],
+        },
         linux_glibc_x86: {
             dist: {
                 dir: "simpleperf/linux/x86",
@@ -450,6 +464,10 @@ cc_library {
         windows: {
             enabled: false,
         },
+        linux: {
+            // See note for libdexfile_support_static in simpleperf_ndk.
+            static_libs: ["libdexfile_support"],
+        },
     },
 }
 
@@ -473,6 +491,9 @@ cc_library_shared {
         },
         linux: {
             ldflags: ["-Wl,--exclude-libs,ALL"],
+            // See note for libdexfile_support_static in simpleperf_ndk. This is
+            // part of the NDK, so use libdexfile_support_static.
+            static_libs: ["libdexfile_support_static"],
         },
         darwin: {
             dist: {
