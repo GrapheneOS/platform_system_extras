@@ -257,7 +257,8 @@ class CounterSummaries {
       w = std::max(w, size);
     };
 
-    for (size_t i = 0; i < titles.size(); i++) {
+    // The last title is too long. Don't include it for width adjustment.
+    for (size_t i = 0; i + 1 < titles.size(); i++) {
       adjust_width(width[i], titles[i].size());
     }
 
@@ -956,8 +957,8 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters,
     if (sum.time_running < sum.time_enabled && sum.time_running != 0) {
       scale = static_cast<double>(sum.time_enabled) / sum.time_running;
     }
-    if (system_wide_collection_ && report_per_thread_ && sum.time_running == 0) {
-      // No need to report threads not running in system wide per thread report.
+    if ((report_per_thread_ || report_per_core_) && sum.time_running == 0) {
+      // No need to report threads or cpus not running.
       return;
     }
     ThreadInfo* thread = nullptr;
@@ -1032,26 +1033,28 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters,
   else
     fprintf(fp, "\nTotal test time: %lf seconds.\n", duration_in_sec);
 
+  const char* COUNTER_MULTIPLEX_INFO =
+      "probably caused by hardware counter multiplexing (less counters than events).\n"
+      "Try --use-devfreq-counters if on a rooted device.";
+
   if (cpus_ == std::vector<int>(1, -1) ||
       event_selection_set_.GetMonitoredThreads() == std::set<pid_t>({-1})) {
     // We either monitor a thread on all cpus, or monitor all threads on a cpu. In both cases,
     // if percentages < 100%, probably it is caused by hardware counter multiplexing.
     if (!counters_always_available) {
-      LOG(WARNING) << "Percentages < 100% means some events only run a subset of enabled time.\n"
-                   << "Probably because there are less hardware counters available than events.\n"
-                   << "Try --use-devfreq-counters if on a rooted device.";
+      LOG(WARNING) << "Percentages < 100% means some events only run a subset of enabled time,\n"
+                   << COUNTER_MULTIPLEX_INFO;
     }
+  } else if (report_per_thread_) {
+    // We monitor each thread on each cpu.
+    LOG(INFO) << "A percentage represents runtime_on_a_cpu / runtime_on_all_cpus for each thread.\n"
+              << "If percentage sum of a thread < 99%, or report for a running thread is missing,\n"
+              << COUNTER_MULTIPLEX_INFO;
   } else {
-    // We monitor a thread on a cpu. A percentage represents
-    // runtime_of_a_thread_on_a_cpu / runtime_of_a_thread_on_all_cpus. If percentage sum of a
-    // thread < 100%, or total event count for a running thread is 0, probably it is caused by
-    // hardware counter multiplexing. It is hard to detect the second case, so always print below
-    // info.
-    LOG(INFO) << "A percentage represents runtime_of_a_thread_on_a_cpu / "
-                 "runtime_of_a_thread_on_all_cpus.\n"
-              << "If percentage sum of a thread < 100%, or total event count for a running\n"
-              << "thread is 0, probably because there are less hardware counters available than\n"
-              << "events. Try --use-devfreq-counters if on a rooted device.";
+    // We monitor some threads on each cpu.
+    LOG(INFO) << "A percentage represents runtime_on_a_cpu / runtime_on_all_cpus for monitored\n"
+              << "threads. If percentage sum < 99%, or report for an event is missing,\n"
+              << COUNTER_MULTIPLEX_INFO;
   }
   return true;
 }
