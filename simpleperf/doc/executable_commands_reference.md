@@ -294,10 +294,26 @@ $ su 0 simpleperf stat --per-thread -a --interval 1000 --interval-only-values --
 By default, stat cmd outputs an event count sum for all monitored cpu cores. But when `--per-core`
 option is used, stat cmd outputs an event count for each core. It can be used to see how events
 are distributed on different cores.
+When stating non-system wide with `--per-core` option, simpleperf creates a perf event for each
+monitored thread on each core. When a thread is in running state, perf events on all cores are
+enabled, but only the perf event on the core running the thread is in running state. So the
+percentage comment shows runtime_on_a_core / runtime_on_all_cores. Note that, percentage is still
+affected by hardware counter multiplexing. Check simpleperf log output for ways to distinguish it.
 
 ```sh
 # Print event counts for each cpu running threads in process 11904.
+# A percentage shows runtime_on_a_cpu / runtime_on_all_cpus.
 $ simpleperf stat --per-core -p 11904 --duration 1
+Performance counter statistics:
+
+# cpu       count  event_name   # percentage = event_run_time / enabled_time
+  7    56,552,838  cpu-cycles   #   (60%)
+  3    25,958,605  cpu-cycles   #   (20%)
+  0    22,822,698  cpu-cycles   #   (15%)
+  1     6,661,495  cpu-cycles   #   (5%)
+  4     1,519,093  cpu-cycles   #   (0%)
+
+Total test time: 1.001082 seconds.
 
 # Print event counts for each cpu system wide.
 $ su 0 simpleperf stat --per-core -a --duration 1
