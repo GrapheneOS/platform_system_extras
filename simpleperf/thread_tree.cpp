@@ -195,9 +195,9 @@ void ThreadTree::InsertMap(MapSet& maps, const MapEntry& entry) {
   maps.version++;
 }
 
-static const MapEntry* FindMapByAddr(const MapSet& maps, uint64_t addr) {
-  auto it = maps.maps.upper_bound(addr);
-  if (it != maps.maps.begin()) {
+const MapEntry* MapSet::FindMapByAddr(uint64_t addr) const {
+  auto it = maps.upper_bound(addr);
+  if (it != maps.begin()) {
     --it;
     if (it->second->get_end_addr() > addr) {
       return it->second;
@@ -209,19 +209,19 @@ static const MapEntry* FindMapByAddr(const MapSet& maps, uint64_t addr) {
 const MapEntry* ThreadTree::FindMap(const ThreadEntry* thread, uint64_t ip, bool in_kernel) {
   const MapEntry* result = nullptr;
   if (!in_kernel) {
-    result = FindMapByAddr(*thread->maps, ip);
+    result = thread->maps->FindMapByAddr(ip);
   } else {
-    result = FindMapByAddr(kernel_maps_, ip);
+    result = kernel_maps_.FindMapByAddr(ip);
   }
   return result != nullptr ? result : &unknown_map_;
 }
 
 const MapEntry* ThreadTree::FindMap(const ThreadEntry* thread, uint64_t ip) {
-  const MapEntry* result = FindMapByAddr(*thread->maps, ip);
+  const MapEntry* result = thread->maps->FindMapByAddr(ip);
   if (result != nullptr) {
     return result;
   }
-  result = FindMapByAddr(kernel_maps_, ip);
+  result = kernel_maps_.FindMapByAddr(ip);
   return result != nullptr ? result : &unknown_map_;
 }
 
