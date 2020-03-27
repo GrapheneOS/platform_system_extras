@@ -58,11 +58,24 @@ struct MapEntry {
   MapEntry() {}
 
   uint64_t get_end_addr() const { return start_addr + len; }
+
+  uint64_t Contains(uint64_t addr) const {
+    return addr >= start_addr && addr < get_end_addr();
+  }
+
+  uint64_t GetVaddrInFile(uint64_t addr) const {
+    if (Contains(addr)) {
+      return dso->IpToVaddrInFile(addr, start_addr, pgoff);
+    }
+    return 0;
+  }
 };
 
 struct MapSet {
   std::map<uint64_t, const MapEntry*> maps;  // Map from start_addr to a MapEntry.
   uint64_t version = 0u;  // incremented each time changing maps
+
+  const MapEntry* FindMapByAddr(uint64_t addr) const;
 };
 
 struct ThreadEntry {
@@ -97,6 +110,7 @@ class ThreadTree {
   void ExitThread(int pid, int tid);
   void AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
                     const std::string& filename);
+  const MapSet& GetKernelMaps() { return kernel_maps_; }
   void AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t len,
                     uint64_t pgoff, const std::string& filename, uint32_t flags = 0);
   const MapEntry* FindMap(const ThreadEntry* thread, uint64_t ip,
