@@ -29,6 +29,7 @@
     #define fdatasync(fd) fcntl((fd), F_FULLFSYNC)
 #endif
 
+#include "avb_utils.h"
 #include "fec_private.h"
 
 /* used by `find_offset'; returns metadata size for a file size `size' and
@@ -545,6 +546,23 @@ int fec_open(struct fec_handle **handle, const char *path, int mode, int flags,
     }
 
     f->data_size = f->size; /* until ecc and/or verity are loaded */
+
+    // Don't parse the avb image if FEC_NO_AVB is set. It's used when libavb is
+    // not supported on mac.
+    std::vector<uint8_t> vbmeta;
+    if (parse_vbmeta_from_footer(f.get(), &vbmeta) == 0) {
+        if (parse_avb_image(f.get(), vbmeta) != 0) {
+            error("failed to parse avb image.");
+            return -1;
+        }
+
+        *handle = f.release();
+        return 0;
+    }
+    // TODO(xunchang) For android, handle the case when vbmeta is in a separate
+    // image. We could use avb_slot_verify() && AvbOps from libavb_user.
+
+    // Fall back to use verity format.
 
     if (load_ecc(f.get()) == -1) {
         debug("error-correcting codes not found from '%s'", path);
