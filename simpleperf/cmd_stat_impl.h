@@ -243,4 +243,34 @@ class CounterSummaryBuilder {
   std::vector<CounterSummary> summaries_;
 };
 
+class CounterSummaries {
+ public:
+  explicit CounterSummaries(std::vector<CounterSummary>&& summaries, bool csv)
+      : summaries_(std::move(summaries)), csv_(csv) {}
+  const std::vector<CounterSummary>& Summaries() { return summaries_; }
+
+  const CounterSummary* FindSummary(const std::string& type_name, const std::string& modifier,
+                                    const ThreadInfo* thread, int cpu);
+
+  // If we have two summaries monitoring the same event type at the same time,
+  // that one is for user space only, and the other is for kernel space only;
+  // then we can automatically generate a summary combining the two results.
+  // For example, a summary of branch-misses:u and a summary for branch-misses:k
+  // can generate a summary of branch-misses.
+  void AutoGenerateSummaries();
+  void GenerateComments(double duration_in_sec);
+  void Show(FILE* fp);
+  void ShowCSV(FILE* fp);
+  void ShowText(FILE* fp);
+
+ private:
+  std::string GetCommentForSummary(const CounterSummary& s, double duration_in_sec);
+  std::string GetRateComment(const CounterSummary& s, char sep);
+  bool FindRunningTimeForSummary(const CounterSummary& summary, double* running_time_in_sec);
+
+ private:
+  std::vector<CounterSummary> summaries_;
+  bool csv_;
+};
+
 }  // namespace simpleperf
