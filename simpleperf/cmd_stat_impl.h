@@ -77,20 +77,22 @@ struct CounterSummary {
   const ThreadInfo* thread;
   int cpu;  // -1 represents all cpus
   uint64_t count;
+  uint64_t runtime_in_ns;
   double scale;
   std::string readable_count;
   std::string comment;
   bool auto_generated;
 
   CounterSummary(const std::string& type_name, const std::string& modifier, uint32_t group_id,
-                 const ThreadInfo* thread, int cpu, uint64_t count, double scale,
-                 bool auto_generated, bool csv)
+                 const ThreadInfo* thread, int cpu, uint64_t count, uint64_t runtime_in_ns,
+                 double scale, bool auto_generated, bool csv)
       : type_name(type_name),
         modifier(modifier),
         group_id(group_id),
         thread(thread),
         cpu(cpu),
         count(count),
+        runtime_in_ns(runtime_in_ns),
         scale(scale),
         auto_generated(auto_generated) {
     readable_count = ReadableCountValue(csv);
@@ -207,7 +209,7 @@ class CounterSummaryBuilder {
       thread = &it->second;
     }
     summaries_.emplace_back(info.event_name, info.event_modifier, info.group_id, thread, cpu,
-                            sum.value, scale, false, csv_);
+                            sum.value, sum.time_running, scale, false, csv_);
   }
 
   void SortSummaries(std::vector<CounterSummary>::iterator begin,
