@@ -61,6 +61,7 @@ class ETMDecoder {
   virtual void RegisterCallback(const CallbackFn& callback) = 0;
 
   virtual bool ProcessData(const uint8_t* data, size_t size) = 0;
+  virtual bool FinishData() = 0;
 };
 
 }  // namespace simpleperf
