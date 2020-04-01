@@ -20,6 +20,7 @@
 #include "command.h"
 #include "get_test_data.h"
 #include "test_util.h"
+#include "utils.h"
 
 static std::unique_ptr<Command> InjectCmd() { return CreateCommandInstance("inject"); }
 
@@ -31,6 +32,10 @@ TEST(cmd_inject, smoke) {
   ASSERT_TRUE(android::base::ReadFileToString(tmpfile.path, &data));
   // Test that we can find instr range in etm_test_loop binary.
   ASSERT_NE(data.find("etm_test_loop"), std::string::npos);
+  std::string expected_data;
+  ASSERT_TRUE(android::base::ReadFileToString(
+      GetTestData(std::string("etm") + OS_PATH_SEPARATOR + "perf_inject.data"), &expected_data));
+  ASSERT_EQ(data, expected_data);
 }
 
 TEST(cmd_inject, binary_option) {
