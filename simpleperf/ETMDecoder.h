@@ -76,4 +76,11 @@ class ETMDecoder {
   virtual bool FinishData() = 0;
 };
 
+// branch_map: map from addrs to a map of (branch_list, count).
+// Use maps instead of unordered_maps. Because it helps locality by decoding instructions for sorted
+// addresses.
+bool ConvertBranchMapToInstrRanges(
+    Dso* dso, const std::map<uint64_t, std::map<std::vector<bool>, uint64_t>>& branch_map,
+    const ETMDecoder::InstrRangeCallbackFn& callback);
+
 }  // namespace simpleperf

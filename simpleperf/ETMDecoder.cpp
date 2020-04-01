@@ -775,4 +775,119 @@ std::unique_ptr<ETMDecoder> ETMDecoder::Create(const AuxTraceInfoRecord& auxtrac
   return std::unique_ptr<ETMDecoder>(decoder.release());
 }
 
+// Use OpenCSD instruction decoder to convert branches to instruction addresses.
+class BranchDecoder {
+ public:
+  bool Init(Dso* dso) {
+    ElfStatus status;
+    elf_ = ElfFile::Open(dso->GetDebugFilePath(), &status);
+    if (!elf_) {
+      return false;
+    }
+    segments_ = elf_->GetProgramHeader();
+    auto it = std::remove_if(segments_.begin(), segments_.end(),
+                             [](const ElfSegment& s) { return !s.is_executable; });
+    segments_.resize(it - segments_.begin());
+    if (segments_.empty()) {
+      return false;
+    }
+    buffer_ = elf_->GetMemoryBuffer();
+    return true;
+  }
+
+  void SetAddr(uint64_t addr, bool is_thumb) {
+    memset(&instr_info_, 0, sizeof(instr_info_));
+    instr_info_.pe_type.arch = ARCH_V8;
+    instr_info_.pe_type.profile = profile_CortexA;
+    instr_info_.isa =
+        elf_->Is64Bit() ? ocsd_isa_aarch64 : (is_thumb ? ocsd_isa_thumb2 : ocsd_isa_arm);
+    instr_info_.instr_addr = addr;
+  }
+
+  bool FindNextBranch() {
+    // Loop until we find a branch instruction.
+    while (ReadMem(instr_info_.instr_addr, 4, &instr_info_.opcode)) {
+      ocsd_err_t err = instruction_decoder_.DecodeInstruction(&instr_info_);
+      if (err != OCSD_OK) {
+        break;
+      }
+      if (instr_info_.type != OCSD_INSTR_OTHER) {
+        return true;
+      }
+      instr_info_.instr_addr += instr_info_.instr_size;
+    }
+    return false;
+  };
+
+  ocsd_instr_info& InstrInfo() { return instr_info_; }
+
+ private:
+  bool ReadMem(uint64_t vaddr, size_t size, void* data) {
+    for (auto& segment : segments_) {
+      if (vaddr >= segment.vaddr && vaddr + size <= segment.vaddr + segment.file_size) {
+        uint64_t offset = vaddr - segment.vaddr + segment.file_offset;
+        memcpy(data, buffer_->getBufferStart() + offset, size);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  std::unique_ptr<ElfFile> elf_;
+  std::vector<ElfSegment> segments_;
+  llvm::MemoryBuffer* buffer_ = nullptr;
+  ocsd_instr_info instr_info_;
+  InstructionDecoder instruction_decoder_;
+};
+
+bool ConvertBranchMapToInstrRanges(
+    Dso* dso, const std::map<uint64_t, std::map<std::vector<bool>, uint64_t>>& branch_map,
+    const ETMDecoder::InstrRangeCallbackFn& callback) {
+  ETMInstrRange instr_range;
+  instr_range.dso = dso;
+
+  BranchDecoder decoder;
+  if (!decoder.Init(dso)) {
+    return false;
+  }
+
+  for (const auto& addr_p : branch_map) {
+    uint64_t start_addr = addr_p.first & ~1ULL;
+    bool is_thumb = addr_p.first & 1;
+    for (const auto& branch_p : addr_p.second) {
+      const std::vector<bool>& branch = branch_p.first;
+      uint64_t count = branch_p.second;
+      decoder.SetAddr(start_addr, is_thumb);
+
+      for (bool b : branch) {
+        ocsd_instr_info& instr = decoder.InstrInfo();
+        uint64_t from_addr = instr.instr_addr;
+        if (!decoder.FindNextBranch()) {
+          break;
+        }
+        bool end_with_branch = instr.type == OCSD_INSTR_BR || instr.type == OCSD_INSTR_BR_INDIRECT;
+        bool branch_taken = end_with_branch && b;
+        instr_range.start_addr = from_addr;
+        instr_range.end_addr = instr.instr_addr;
+        if (instr.type == OCSD_INSTR_BR) {
+          instr_range.branch_to_addr = instr.branch_addr;
+        } else {
+          instr_range.branch_to_addr = 0;
+        }
+        instr_range.branch_taken_count = branch_taken ? count : 0;
+        instr_range.branch_not_taken_count = branch_taken ? 0 : count;
+
+        callback(instr_range);
+
+        if (b) {
+          instr.instr_addr = instr.branch_addr;
+        } else {
+          instr.instr_addr += instr.instr_size;
+        }
+      }
+    }
+  }
+  return true;
+}
+
 }  // namespace simpleperf

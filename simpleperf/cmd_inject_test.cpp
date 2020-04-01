@@ -79,6 +79,12 @@ TEST(cmd_inject, output_option) {
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunInjectCmd({"--output", "autofdo", "-o", tmpfile.path}));
   ASSERT_TRUE(RunInjectCmd({"--output", "branch-list", "-o", tmpfile.path}));
+  std::string autofdo_data;
+  ASSERT_TRUE(RunInjectCmd({"-i", tmpfile.path, "--output", "autofdo"}, &autofdo_data));
+  std::string expected_data;
+  ASSERT_TRUE(android::base::ReadFileToString(
+      GetTestData(std::string("etm") + OS_PATH_SEPARATOR + "perf_inject.data"), &expected_data));
+  ASSERT_EQ(autofdo_data, expected_data);
 }
 
 TEST(cmd_inject, branch_to_proto_string) {

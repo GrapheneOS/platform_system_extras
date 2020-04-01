@@ -278,8 +278,67 @@ class InjectCommand : public Command {
       LOG(ERROR) << "Only support autofdo output when given a branch list file.";
       return false;
     }
-    LOG(ERROR) << "To be implemented";
-    return false;
+    // 1. Load EtmBranchList msg from proto file.
+    auto fd = FileHelper::OpenReadOnly(input_filename_);
+    if (!fd.ok()) {
+      PLOG(ERROR) << "failed to open " << input_filename_;
+      return false;
+    }
+    proto::ETMBranchList branch_list_proto;
+    if (!branch_list_proto.ParseFromFileDescriptor(fd)) {
+      PLOG(ERROR) << "failed to read msg from " << input_filename_;
+      return false;
+    }
+    if (branch_list_proto.magic() != ETM_BRANCH_LIST_PROTO_MAGIC) {
+      PLOG(ERROR) << "file not in format etm_branch_list.proto: " << input_filename_;
+      return false;
+    }
+
+    // 2. Build branch map for each binary, convert them to instr ranges.
+    auto callback = [this](const ETMInstrRange& range) {
+      ProcessInstrRange(range);
+    };
+    auto check_build_id = [](Dso* dso, const BuildId& expected_build_id) {
+      if (expected_build_id.IsEmpty()) {
+        return true;
+      }
+      BuildId build_id;
+      return GetBuildIdFromDsoPath(dso->GetDebugFilePath(), &build_id) &&
+             build_id == expected_build_id;
+    };
+
+    for (size_t i = 0; i < branch_list_proto.binaries_size(); i++) {
+      const auto& binary_proto = branch_list_proto.binaries(i);
+      BuildId build_id(binary_proto.build_id());
+      std::unique_ptr<Dso> dso = Dso::CreateElfDsoWithBuildId(binary_proto.path(), build_id);
+      if (!dso || !FilterDso(dso.get()) || !check_build_id(dso.get(), build_id)) {
+        continue;
+      }
+      // Dso is used in ETMInstrRange in post process, so need to extend its lifetime.
+      Dso* dso_p = dso.get();
+      branch_list_dso_v_.emplace_back(dso.release());
+      auto branch_map = BuildBranchMap(binary_proto);
+      if (!ConvertBranchMapToInstrRanges(dso_p, branch_map, callback)) {
+        LOG(WARNING) << "failed to build instr ranges for binary " << dso_p->Path();
+      }
+    }
+    return true;
+  }
+
+  std::map<uint64_t, std::map<std::vector<bool>, uint64_t>> BuildBranchMap(
+      const proto::ETMBranchList_Binary& binary_proto) {
+    std::map<uint64_t, std::map<std::vector<bool>, uint64_t>> branch_map;
+    for (size_t i = 0; i < binary_proto.addrs_size(); i++) {
+      const auto& addr_proto = binary_proto.addrs(i);
+      auto& b_map = branch_map[addr_proto.addr()];
+      for (size_t j = 0; j < addr_proto.branches_size(); j++) {
+        const auto& branch_proto = addr_proto.branches(j);
+        std::vector<bool> branch =
+            ProtoStringToBranch(branch_proto.branch(), branch_proto.branch_size());
+        b_map[branch] = branch_proto.count();
+      }
+    }
+    return branch_map;
   }
 
   bool PostProcess() {
@@ -387,6 +446,7 @@ class InjectCommand : public Command {
   std::unordered_map<Dso*, AutoFDOBinaryInfo> autofdo_binary_map_;
   // Store results for BranchList.
   std::unordered_map<Dso*, BranchListBinaryInfo> branch_list_binary_map_;
+  std::vector<std::unique_ptr<Dso>> branch_list_dso_v_;
 };
 
 }  // namespace
