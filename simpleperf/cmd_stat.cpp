@@ -109,7 +109,7 @@ void CounterSummaries::AutoGenerateSummaries() {
       if (other != nullptr && other->IsMonitoredAtTheSameTime(s)) {
         if (FindSummary(s.type_name, "", s.thread, s.cpu) == nullptr) {
           summaries_.emplace_back(s.type_name, "", s.group_id, s.thread, s.cpu,
-                                  s.count + other->count, s.scale, true, csv_);
+                                  s.count + other->count, s.runtime_in_ns, s.scale, true, csv_);
         }
       }
     }
@@ -135,7 +135,7 @@ void CounterSummaries::ShowCSV(FILE* fp) {
     if (s.thread != nullptr) {
       fprintf(fp, "%s,%d,%d,", s.thread->name.c_str(), s.thread->pid, s.thread->tid);
     }
-    fprintf(fp, "%s,%s,%s,(%.0lf%%)%s\n", s.readable_count.c_str(), s.Name().c_str(),
+    fprintf(fp, "%s,%s,%s,(%.0f%%)%s\n", s.readable_count.c_str(), s.Name().c_str(),
             s.comment.c_str(), 1.0 / s.scale * 100, (s.auto_generated ? " (generated)," : ","));
   }
 }
@@ -153,7 +153,7 @@ void CounterSummaries::ShowText(FILE* fp) {
   }
   titles.emplace_back("count");
   titles.emplace_back("event_name");
-  titles.emplace_back(" # percentage = event_run_time / enabled_time");
+  titles.emplace_back(" # count / runtime,  runtime / enabled_time");
 
   std::vector<size_t> width(titles.size(), 0);
 
@@ -202,7 +202,7 @@ void CounterSummaries::ShowText(FILE* fp) {
     if (show_cpu) {
       fprintf(fp, "  %-*d", static_cast<int>(width[i++]), s.cpu);
     }
-    fprintf(fp, "  %*s  %-*s   # %-*s  (%.0lf%%)%s\n", static_cast<int>(width[i]),
+    fprintf(fp, "  %*s  %-*s   # %-*s  (%.0f%%)%s\n", static_cast<int>(width[i]),
             s.readable_count.c_str(), static_cast<int>(width[i + 1]), s.Name().c_str(),
             static_cast<int>(width[i + 2]), s.comment.c_str(), 1.0 / s.scale * 100,
             (s.auto_generated ? " (generated)" : ""));
@@ -219,46 +219,45 @@ std::string CounterSummaries::GetCommentForSummary(const CounterSummary& s,
   }
   if (s.type_name == "task-clock") {
     double run_sec = s.count / 1e9;
-    double used_cpus = run_sec / (duration_in_sec / s.scale);
-    return android::base::StringPrintf("%lf%ccpus used", used_cpus, sap_mid);
+    double used_cpus = run_sec / duration_in_sec;
+    return android::base::StringPrintf("%f%ccpus used", used_cpus, sap_mid);
   }
   if (s.type_name == "cpu-clock") {
     return "";
   }
   if (s.type_name == "cpu-cycles") {
-    double running_time_in_sec;
-    if (!FindRunningTimeForSummary(s, &running_time_in_sec)) {
+    if (s.runtime_in_ns == 0) {
       return "";
     }
-    double hz = s.count / (running_time_in_sec / s.scale);
-    return android::base::StringPrintf("%lf%cGHz", hz / 1e9, sap_mid);
+    double ghz = static_cast<double>(s.count) / s.runtime_in_ns;
+    return android::base::StringPrintf("%f%cGHz", ghz, sap_mid);
   }
   if (s.type_name == "instructions" && s.count != 0) {
     const CounterSummary* other = FindSummary("cpu-cycles", s.modifier, s.thread, s.cpu);
     if (other != nullptr && other->IsMonitoredAtTheSameTime(s)) {
       double cpi = static_cast<double>(other->count) / s.count;
-      return android::base::StringPrintf("%lf%ccycles per instruction", cpi, sap_mid);
+      return android::base::StringPrintf("%f%ccycles per instruction", cpi, sap_mid);
     }
   }
   std::string rate_comment = GetRateComment(s, sap_mid);
   if (!rate_comment.empty()) {
     return rate_comment;
   }
-  double running_time_in_sec;
-  if (!FindRunningTimeForSummary(s, &running_time_in_sec)) {
+  if (s.runtime_in_ns == 0) {
     return "";
   }
-  double rate = s.count / (running_time_in_sec / s.scale);
-  if (rate > 1e9) {
-    return android::base::StringPrintf("%.3lf%cG/sec", rate / 1e9, sap_mid);
+  double runtime_in_sec = static_cast<double>(s.runtime_in_ns) / 1e9;
+  double rate = s.count / runtime_in_sec;
+  if (rate >= 1e9 - 1e5) {
+    return android::base::StringPrintf("%.3f%cG/sec", rate / 1e9, sap_mid);
   }
-  if (rate > 1e6) {
-    return android::base::StringPrintf("%.3lf%cM/sec", rate / 1e6, sap_mid);
+  if (rate >= 1e6 - 1e2) {
+    return android::base::StringPrintf("%.3f%cM/sec", rate / 1e6, sap_mid);
   }
-  if (rate > 1e3) {
-    return android::base::StringPrintf("%.3lf%cK/sec", rate / 1e3, sap_mid);
+  if (rate >= 1e3) {
+    return android::base::StringPrintf("%.3f%cK/sec", rate / 1e3, sap_mid);
   }
-  return android::base::StringPrintf("%.3lf%c/sec", rate, sap_mid);
+  return android::base::StringPrintf("%.3f%c/sec", rate, sap_mid);
 }
 
 std::string CounterSummaries::GetRateComment(const CounterSummary& s, char sep) {
@@ -287,18 +286,6 @@ std::string CounterSummaries::GetRateComment(const CounterSummary& s, char sep) 
     }
   }
   return "";
-}
-
-bool CounterSummaries::FindRunningTimeForSummary(const CounterSummary& summary,
-                                                 double* running_time_in_sec) {
-  for (auto& s : summaries_) {
-    if ((s.type_name == "task-clock" || s.type_name == "cpu-clock") &&
-        s.IsMonitoredAtTheSameTime(summary) && s.count != 0u) {
-      *running_time_in_sec = s.count / 1e9;
-      return true;
-    }
-  }
-  return false;
 }
 
 }  // namespace simpleperf
