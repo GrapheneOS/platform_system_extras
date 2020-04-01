@@ -487,3 +487,64 @@ TEST_F(StatCmdSummaryBuilderTest, per_thread_core_aggregate) {
   ASSERT_EQ(summaries[3].count, 1);
   ASSERT_NEAR(summaries[3].scale, 1.0, 1e-5);
 }
+
+class StatCmdSummariesTest : public ::testing::Test {
+ protected:
+  void AddSummary(const std::string event_name, pid_t tid, int cpu, uint64_t count,
+                  uint64_t runtime_in_ns) {
+    ThreadInfo* thread = nullptr;
+    if (tid != -1) {
+      thread = &thread_map_[tid];
+    }
+    summary_v_.emplace_back(event_name, "", 0, thread, cpu, count, runtime_in_ns, 1.0, false,
+                            false);
+  }
+
+  const std::string* GetComment(size_t index) {
+    if (!summaries_) {
+      summaries_.reset(new CounterSummaries(std::move(summary_v_), false));
+      summaries_->GenerateComments(1.0);
+    }
+    if (index < summaries_->Summaries().size()) {
+      return &(summaries_->Summaries()[index].comment);
+    }
+    return nullptr;
+  }
+
+  std::unordered_map<pid_t, ThreadInfo> thread_map_;
+  std::vector<CounterSummary> summary_v_;
+  std::unique_ptr<CounterSummaries> summaries_;
+};
+
+TEST_F(StatCmdSummariesTest, task_clock_comment) {
+  AddSummary("task-clock", -1, -1, 1e9, 0);
+  AddSummary("task-clock", 0, -1, 2e9, 0);
+  AddSummary("task-clock", -1, 0, 0.5e9, 0);
+  AddSummary("task-clock", 1, 1, 3e9, 0);
+  ASSERT_EQ(*GetComment(0), "1.000000 cpus used");
+  ASSERT_EQ(*GetComment(1), "2.000000 cpus used");
+  ASSERT_EQ(*GetComment(2), "0.500000 cpus used");
+  ASSERT_EQ(*GetComment(3), "3.000000 cpus used");
+}
+
+TEST_F(StatCmdSummariesTest, cpu_cycles_comment) {
+  AddSummary("cpu-cycles", -1, -1, 100, 100);
+  AddSummary("cpu-cycles", 0, -1, 200, 100);
+  AddSummary("cpu-cycles", -1, 0, 50, 100);
+  AddSummary("cpu-cycles", 1, 1, 300, 100);
+  ASSERT_EQ(*GetComment(0), "1.000000 GHz");
+  ASSERT_EQ(*GetComment(1), "2.000000 GHz");
+  ASSERT_EQ(*GetComment(2), "0.500000 GHz");
+  ASSERT_EQ(*GetComment(3), "3.000000 GHz");
+}
+
+TEST_F(StatCmdSummariesTest, rate_comment) {
+  AddSummary("branch-misses", -1, -1, 1e9, 1e9);
+  AddSummary("branch-misses", 0, -1, 1e6, 1e9);
+  AddSummary("branch-misses", -1, 0, 1e3, 1e9);
+  AddSummary("branch-misses", 1, 1, 1, 1e9);
+  ASSERT_EQ(*GetComment(0), "1.000 G/sec");
+  ASSERT_EQ(*GetComment(1), "1.000 M/sec");
+  ASSERT_EQ(*GetComment(2), "1.000 K/sec");
+  ASSERT_EQ(*GetComment(3), "1.000 /sec");
+}
