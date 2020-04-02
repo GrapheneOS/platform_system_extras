@@ -45,7 +45,7 @@
 
 using namespace simpleperf;
 
-namespace {
+namespace simpleperf {
 
 static std::vector<std::string> default_measured_event_types{
     "cpu-cycles",   "stalled-cycles-frontend", "stalled-cycles-backend",
@@ -90,236 +90,207 @@ static const std::unordered_map<std::string_view, std::pair<std::string_view, st
         {"raw-l2d-tlb-refill-rd", {"raw-l2d-tlb-rd", "level 2 data TLB refill rate, read"}},
 };
 
-class CounterSummaries {
- public:
-  explicit CounterSummaries(std::vector<CounterSummary>&& summaries, bool csv)
-      : summaries_(std::move(summaries)), csv_(csv) {}
-  const std::vector<CounterSummary>& Summaries() { return summaries_; }
-
-  const CounterSummary* FindSummary(const std::string& type_name, const std::string& modifier,
-                                    const ThreadInfo* thread, int cpu) {
-    for (const auto& s : summaries_) {
-      if (s.type_name == type_name && s.modifier == modifier && s.thread == thread &&
-          s.cpu == cpu) {
-        return &s;
-      }
+const CounterSummary* CounterSummaries::FindSummary(const std::string& type_name,
+                                                    const std::string& modifier,
+                                                    const ThreadInfo* thread, int cpu) {
+  for (const auto& s : summaries_) {
+    if (s.type_name == type_name && s.modifier == modifier && s.thread == thread && s.cpu == cpu) {
+      return &s;
     }
-    return nullptr;
   }
+  return nullptr;
+}
 
-  // If we have two summaries monitoring the same event type at the same time,
-  // that one is for user space only, and the other is for kernel space only;
-  // then we can automatically generate a summary combining the two results.
-  // For example, a summary of branch-misses:u and a summary for branch-misses:k
-  // can generate a summary of branch-misses.
-  void AutoGenerateSummaries() {
-    for (size_t i = 0; i < summaries_.size(); ++i) {
-      const CounterSummary& s = summaries_[i];
-      if (s.modifier == "u") {
-        const CounterSummary* other = FindSummary(s.type_name, "k", s.thread, s.cpu);
-        if (other != nullptr && other->IsMonitoredAtTheSameTime(s)) {
-          if (FindSummary(s.type_name, "", s.thread, s.cpu) == nullptr) {
-            summaries_.emplace_back(s.type_name, "", s.group_id, s.thread, s.cpu,
-                                    s.count + other->count, s.scale, true, csv_);
-          }
+void CounterSummaries::AutoGenerateSummaries() {
+  for (size_t i = 0; i < summaries_.size(); ++i) {
+    const CounterSummary& s = summaries_[i];
+    if (s.modifier == "u") {
+      const CounterSummary* other = FindSummary(s.type_name, "k", s.thread, s.cpu);
+      if (other != nullptr && other->IsMonitoredAtTheSameTime(s)) {
+        if (FindSummary(s.type_name, "", s.thread, s.cpu) == nullptr) {
+          summaries_.emplace_back(s.type_name, "", s.group_id, s.thread, s.cpu,
+                                  s.count + other->count, s.runtime_in_ns, s.scale, true, csv_);
         }
       }
     }
   }
+}
 
-  void GenerateComments(double duration_in_sec) {
-    for (auto& s : summaries_) {
-      s.comment = GetCommentForSummary(s, duration_in_sec);
+void CounterSummaries::GenerateComments(double duration_in_sec) {
+  for (auto& s : summaries_) {
+    s.comment = GetCommentForSummary(s, duration_in_sec);
+  }
+}
+
+void CounterSummaries::Show(FILE* fp) {
+  if (csv_) {
+    ShowCSV(fp);
+  } else {
+    ShowText(fp);
+  }
+}
+
+void CounterSummaries::ShowCSV(FILE* fp) {
+  for (auto& s : summaries_) {
+    if (s.thread != nullptr) {
+      fprintf(fp, "%s,%d,%d,", s.thread->name.c_str(), s.thread->pid, s.thread->tid);
     }
+    fprintf(fp, "%s,%s,%s,(%.0f%%)%s\n", s.readable_count.c_str(), s.Name().c_str(),
+            s.comment.c_str(), 1.0 / s.scale * 100, (s.auto_generated ? " (generated)," : ","));
+  }
+}
+
+void CounterSummaries::ShowText(FILE* fp) {
+  bool show_thread = !summaries_.empty() && summaries_[0].thread != nullptr;
+  bool show_cpu = !summaries_.empty() && summaries_[0].cpu != -1;
+  std::vector<std::string> titles;
+
+  if (show_thread) {
+    titles = {"thread_name", "pid", "tid"};
+  }
+  if (show_cpu) {
+    titles.emplace_back("cpu");
+  }
+  titles.emplace_back("count");
+  titles.emplace_back("event_name");
+  titles.emplace_back(" # count / runtime,  runtime / enabled_time");
+
+  std::vector<size_t> width(titles.size(), 0);
+
+  auto adjust_width = [](size_t& w, size_t size) { w = std::max(w, size); };
+
+  // The last title is too long. Don't include it for width adjustment.
+  for (size_t i = 0; i + 1 < titles.size(); i++) {
+    adjust_width(width[i], titles[i].size());
   }
 
-  void Show(FILE* fp) {
-    if (csv_) {
-      ShowCSV(fp);
-    } else {
-      ShowText(fp);
-    }
-  }
-
-  void ShowCSV(FILE* fp) {
-    for (auto& s : summaries_) {
-      if (s.thread != nullptr) {
-        fprintf(fp, "%s,%d,%d,", s.thread->name.c_str(), s.thread->pid, s.thread->tid);
-      }
-      fprintf(fp, "%s,%s,%s,(%.0lf%%)%s\n", s.readable_count.c_str(), s.Name().c_str(),
-              s.comment.c_str(), 1.0 / s.scale * 100, (s.auto_generated ? " (generated)," : ","));
-    }
-  }
-
-  void ShowText(FILE* fp) {
-    bool show_thread = !summaries_.empty() && summaries_[0].thread != nullptr;
-    bool show_cpu = !summaries_.empty() && summaries_[0].cpu != -1;
-    std::vector<std::string> titles;
-
+  for (auto& s : summaries_) {
+    size_t i = 0;
     if (show_thread) {
-      titles = {"thread_name", "pid", "tid"};
+      adjust_width(width[i++], s.thread->name.size());
+      adjust_width(width[i++], std::to_string(s.thread->pid).size());
+      adjust_width(width[i++], std::to_string(s.thread->tid).size());
     }
     if (show_cpu) {
-      titles.emplace_back("cpu");
+      adjust_width(width[i++], std::to_string(s.cpu).size());
     }
-    titles.emplace_back("count");
-    titles.emplace_back("event_name");
-    titles.emplace_back(" # percentage = event_run_time / enabled_time");
-
-    std::vector<size_t> width(titles.size(), 0);
-
-    auto adjust_width = [](size_t& w, size_t size) {
-      w = std::max(w, size);
-    };
-
-    // The last title is too long. Don't include it for width adjustment.
-    for (size_t i = 0; i + 1 < titles.size(); i++) {
-      adjust_width(width[i], titles[i].size());
-    }
-
-    for (auto& s : summaries_) {
-      size_t i = 0;
-      if (show_thread) {
-        adjust_width(width[i++], s.thread->name.size());
-        adjust_width(width[i++], std::to_string(s.thread->pid).size());
-        adjust_width(width[i++], std::to_string(s.thread->tid).size());
-      }
-      if (show_cpu) {
-        adjust_width(width[i++], std::to_string(s.cpu).size());
-      }
-      adjust_width(width[i++], s.readable_count.size());
-      adjust_width(width[i++], s.Name().size());
-      adjust_width(width[i++], s.comment.size());
-    }
-
-    fprintf(fp, "# ");
-    for (size_t i = 0; i < titles.size(); i++) {
-      if (titles[i] == "count") {
-        fprintf(fp, "%*s", static_cast<int>(width[i]), titles[i].c_str());
-      } else {
-        fprintf(fp, "%-*s", static_cast<int>(width[i]), titles[i].c_str());
-      }
-      if (i + 1 < titles.size()) {
-        fprintf(fp, "  ");
-      }
-    }
-    fprintf(fp, "\n");
-
-    for (auto& s : summaries_) {
-      size_t i = 0;
-      if (show_thread) {
-        fprintf(fp, "  %-*s", static_cast<int>(width[i++]), s.thread->name.c_str());
-        fprintf(fp, "  %-*d", static_cast<int>(width[i++]), s.thread->pid);
-        fprintf(fp, "  %-*d", static_cast<int>(width[i++]), s.thread->tid);
-      }
-      if (show_cpu) {
-        fprintf(fp, "  %-*d", static_cast<int>(width[i++]), s.cpu);
-      }
-      fprintf(fp, "  %*s  %-*s   # %-*s  (%.0lf%%)%s\n",
-              static_cast<int>(width[i]), s.readable_count.c_str(),
-              static_cast<int>(width[i+1]), s.Name().c_str(),
-              static_cast<int>(width[i+2]), s.comment.c_str(),
-              1.0 / s.scale * 100, (s.auto_generated ? " (generated)" : ""));
-    }
+    adjust_width(width[i++], s.readable_count.size());
+    adjust_width(width[i++], s.Name().size());
+    adjust_width(width[i++], s.comment.size());
   }
 
- private:
-  std::string GetCommentForSummary(const CounterSummary& s,
-                                   double duration_in_sec) {
-    char sap_mid;
-    if (csv_) {
-      sap_mid = ',';
+  fprintf(fp, "# ");
+  for (size_t i = 0; i < titles.size(); i++) {
+    if (titles[i] == "count") {
+      fprintf(fp, "%*s", static_cast<int>(width[i]), titles[i].c_str());
     } else {
-      sap_mid = ' ';
+      fprintf(fp, "%-*s", static_cast<int>(width[i]), titles[i].c_str());
     }
-    if (s.type_name == "task-clock") {
-      double run_sec = s.count / 1e9;
-      double used_cpus = run_sec / (duration_in_sec / s.scale);
-      return android::base::StringPrintf("%lf%ccpus used", used_cpus, sap_mid);
+    if (i + 1 < titles.size()) {
+      fprintf(fp, "  ");
     }
-    if (s.type_name == "cpu-clock") {
-      return "";
-    }
-    if (s.type_name == "cpu-cycles") {
-      double running_time_in_sec;
-      if (!FindRunningTimeForSummary(s, &running_time_in_sec)) {
-        return "";
-      }
-      double hz = s.count / (running_time_in_sec / s.scale);
-      return android::base::StringPrintf("%lf%cGHz", hz / 1e9, sap_mid);
-    }
-    if (s.type_name == "instructions" && s.count != 0) {
-      const CounterSummary* other = FindSummary("cpu-cycles", s.modifier, s.thread, s.cpu);
-      if (other != nullptr && other->IsMonitoredAtTheSameTime(s)) {
-        double cpi = static_cast<double>(other->count) / s.count;
-        return android::base::StringPrintf("%lf%ccycles per instruction", cpi,
-                                           sap_mid);
-      }
-    }
-    std::string rate_comment = GetRateComment(s, sap_mid);
-    if (!rate_comment.empty()) {
-      return rate_comment;
-    }
-    double running_time_in_sec;
-    if (!FindRunningTimeForSummary(s, &running_time_in_sec)) {
-      return "";
-    }
-    double rate = s.count / (running_time_in_sec / s.scale);
-    if (rate > 1e9) {
-      return android::base::StringPrintf("%.3lf%cG/sec", rate / 1e9, sap_mid);
-    }
-    if (rate > 1e6) {
-      return android::base::StringPrintf("%.3lf%cM/sec", rate / 1e6, sap_mid);
-    }
-    if (rate > 1e3) {
-      return android::base::StringPrintf("%.3lf%cK/sec", rate / 1e3, sap_mid);
-    }
-    return android::base::StringPrintf("%.3lf%c/sec", rate, sap_mid);
   }
+  fprintf(fp, "\n");
 
-  std::string GetRateComment(const CounterSummary& s, char sep) {
-    std::string_view miss_event_name = s.type_name;
-    std::string event_name;
-    std::string rate_desc;
-    if (auto it = COMMON_EVENT_RATE_MAP.find(miss_event_name); it != COMMON_EVENT_RATE_MAP.end()) {
+  for (auto& s : summaries_) {
+    size_t i = 0;
+    if (show_thread) {
+      fprintf(fp, "  %-*s", static_cast<int>(width[i++]), s.thread->name.c_str());
+      fprintf(fp, "  %-*d", static_cast<int>(width[i++]), s.thread->pid);
+      fprintf(fp, "  %-*d", static_cast<int>(width[i++]), s.thread->tid);
+    }
+    if (show_cpu) {
+      fprintf(fp, "  %-*d", static_cast<int>(width[i++]), s.cpu);
+    }
+    fprintf(fp, "  %*s  %-*s   # %-*s  (%.0f%%)%s\n", static_cast<int>(width[i]),
+            s.readable_count.c_str(), static_cast<int>(width[i + 1]), s.Name().c_str(),
+            static_cast<int>(width[i + 2]), s.comment.c_str(), 1.0 / s.scale * 100,
+            (s.auto_generated ? " (generated)" : ""));
+  }
+}
+
+std::string CounterSummaries::GetCommentForSummary(const CounterSummary& s,
+                                                   double duration_in_sec) {
+  char sap_mid;
+  if (csv_) {
+    sap_mid = ',';
+  } else {
+    sap_mid = ' ';
+  }
+  if (s.type_name == "task-clock") {
+    double run_sec = s.count / 1e9;
+    double used_cpus = run_sec / duration_in_sec;
+    return android::base::StringPrintf("%f%ccpus used", used_cpus, sap_mid);
+  }
+  if (s.type_name == "cpu-clock") {
+    return "";
+  }
+  if (s.type_name == "cpu-cycles") {
+    if (s.runtime_in_ns == 0) {
+      return "";
+    }
+    double ghz = static_cast<double>(s.count) / s.runtime_in_ns;
+    return android::base::StringPrintf("%f%cGHz", ghz, sap_mid);
+  }
+  if (s.type_name == "instructions" && s.count != 0) {
+    const CounterSummary* other = FindSummary("cpu-cycles", s.modifier, s.thread, s.cpu);
+    if (other != nullptr && other->IsMonitoredAtTheSameTime(s)) {
+      double cpi = static_cast<double>(other->count) / s.count;
+      return android::base::StringPrintf("%f%ccycles per instruction", cpi, sap_mid);
+    }
+  }
+  std::string rate_comment = GetRateComment(s, sap_mid);
+  if (!rate_comment.empty()) {
+    return rate_comment;
+  }
+  if (s.runtime_in_ns == 0) {
+    return "";
+  }
+  double runtime_in_sec = static_cast<double>(s.runtime_in_ns) / 1e9;
+  double rate = s.count / runtime_in_sec;
+  if (rate >= 1e9 - 1e5) {
+    return android::base::StringPrintf("%.3f%cG/sec", rate / 1e9, sap_mid);
+  }
+  if (rate >= 1e6 - 1e2) {
+    return android::base::StringPrintf("%.3f%cM/sec", rate / 1e6, sap_mid);
+  }
+  if (rate >= 1e3) {
+    return android::base::StringPrintf("%.3f%cK/sec", rate / 1e3, sap_mid);
+  }
+  return android::base::StringPrintf("%.3f%c/sec", rate, sap_mid);
+}
+
+std::string CounterSummaries::GetRateComment(const CounterSummary& s, char sep) {
+  std::string_view miss_event_name = s.type_name;
+  std::string event_name;
+  std::string rate_desc;
+  if (auto it = COMMON_EVENT_RATE_MAP.find(miss_event_name); it != COMMON_EVENT_RATE_MAP.end()) {
+    event_name = it->second.first;
+    rate_desc = it->second.second;
+  }
+  if (event_name.empty() && (GetBuildArch() == ARCH_ARM || GetBuildArch() == ARCH_ARM64)) {
+    if (auto it = ARM_EVENT_RATE_MAP.find(miss_event_name); it != ARM_EVENT_RATE_MAP.end()) {
       event_name = it->second.first;
       rate_desc = it->second.second;
     }
-    if (event_name.empty() && (GetBuildArch() == ARCH_ARM || GetBuildArch() == ARCH_ARM64)) {
-      if (auto it = ARM_EVENT_RATE_MAP.find(miss_event_name); it != ARM_EVENT_RATE_MAP.end()) {
-        event_name = it->second.first;
-        rate_desc = it->second.second;
-      }
-    }
-    if (event_name.empty() && android::base::ConsumeSuffix(&miss_event_name, "-misses")) {
-      event_name = std::string(miss_event_name) + "s";
-      rate_desc = "miss rate";
-    }
-    if (!event_name.empty()) {
-      const CounterSummary* other = FindSummary(event_name, s.modifier, s.thread, s.cpu);
-      if (other != nullptr && other->IsMonitoredAtTheSameTime(s) && other->count != 0) {
-        double miss_rate = static_cast<double>(s.count) / other->count;
-        return android::base::StringPrintf("%f%%%c%s", miss_rate * 100, sep, rate_desc.c_str());
-      }
-    }
-    return "";
   }
-
-  bool FindRunningTimeForSummary(const CounterSummary& summary, double* running_time_in_sec) {
-    for (auto& s : summaries_) {
-      if ((s.type_name == "task-clock" || s.type_name == "cpu-clock") &&
-          s.IsMonitoredAtTheSameTime(summary) && s.count != 0u) {
-        *running_time_in_sec = s.count / 1e9;
-        return true;
-      }
-    }
-    return false;
+  if (event_name.empty() && android::base::ConsumeSuffix(&miss_event_name, "-misses")) {
+    event_name = std::string(miss_event_name) + "s";
+    rate_desc = "miss rate";
   }
+  if (!event_name.empty()) {
+    const CounterSummary* other = FindSummary(event_name, s.modifier, s.thread, s.cpu);
+    if (other != nullptr && other->IsMonitoredAtTheSameTime(s) && other->count != 0) {
+      double miss_rate = static_cast<double>(s.count) / other->count;
+      return android::base::StringPrintf("%f%%%c%s", miss_rate * 100, sep, rate_desc.c_str());
+    }
+  }
+  return "";
+}
 
- private:
-  std::vector<CounterSummary> summaries_;
-  bool csv_;
-};
+}  // namespace simpleperf
+
+namespace {
 
 // devfreq may use performance counters to calculate memory latency (as in
 // drivers/devfreq/arm-memlat-mon.c). Hopefully we can get more available counters by asking devfreq
