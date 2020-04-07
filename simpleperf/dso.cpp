@@ -711,6 +711,11 @@ std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_pat
   return nullptr;
 }
 
+std::unique_ptr<Dso> Dso::CreateElfDsoWithBuildId(const std::string& dso_path, BuildId& build_id) {
+  return std::unique_ptr<Dso>(
+      new ElfDso(dso_path, debug_elf_file_finder_.FindDebugFile(dso_path, false, build_id)));
+}
+
 const char* DsoTypeToString(DsoType dso_type) {
   switch (dso_type) {
     case DSO_KERNEL:

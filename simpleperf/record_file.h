@@ -214,4 +214,8 @@ class RecordFileReader {
   DISALLOW_COPY_AND_ASSIGN(RecordFileReader);
 };
 
+namespace simpleperf {
+  bool IsPerfDataFile(const std::string& filename);
+}
+
 #endif  // SIMPLE_PERF_RECORD_FILE_H_
