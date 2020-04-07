@@ -138,7 +138,8 @@ class Dso {
 
   static std::unique_ptr<Dso> CreateDso(DsoType dso_type, const std::string& dso_path,
                                         bool force_64bit = false);
-
+  static std::unique_ptr<Dso> CreateElfDsoWithBuildId(const std::string& dso_path,
+                                                      BuildId& build_id);
   virtual ~Dso();
 
   DsoType type() const { return type_; }
