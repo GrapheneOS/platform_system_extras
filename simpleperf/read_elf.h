@@ -90,12 +90,21 @@ class MemoryBuffer;
 
 namespace simpleperf {
 
+struct ElfSegment {
+  uint64_t vaddr = 0;
+  uint64_t file_offset = 0;
+  uint64_t file_size = 0;
+  bool is_executable = false;
+};
+
 class ElfFile {
  public:
   static std::unique_ptr<ElfFile> Open(const std::string& filename, ElfStatus* status);
   virtual ~ElfFile() {}
 
+  virtual bool Is64Bit() = 0;
   virtual llvm::MemoryBuffer* GetMemoryBuffer() = 0;
+  virtual std::vector<ElfSegment> GetProgramHeader() = 0;
 
  protected:
   ElfFile() {}
