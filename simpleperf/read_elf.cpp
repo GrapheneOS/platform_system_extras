@@ -576,8 +576,26 @@ class ElfFileImpl<llvm::object::ELFFile<ELFT>> : public ElfFile {
   ElfFileImpl(BinaryWrapper&& wrapper, const llvm::object::ELFFile<ELFT>* elf)
       : wrapper_(std::move(wrapper)), elf_(elf) {}
 
+  bool Is64Bit() override {
+    return elf_->getHeader()->getFileClass() == llvm::ELF::ELFCLASS64;
+  }
+
   llvm::MemoryBuffer* GetMemoryBuffer() override {
     return wrapper_.buffer.get();
+  }
+
+  std::vector<ElfSegment> GetProgramHeader() override {
+    auto program_headers = elf_->program_headers();
+    std::vector<ElfSegment> segments(program_headers.size());
+    for (size_t i = 0; i < program_headers.size(); i++) {
+      auto& phdr = program_headers[i];
+      segments[i].vaddr = phdr.p_vaddr;
+      segments[i].file_offset = phdr.p_offset;
+      segments[i].file_size = phdr.p_filesz;
+      segments[i].is_executable =
+          (phdr.p_type == llvm::ELF::PT_LOAD) && (phdr.p_flags & llvm::ELF::PF_X);
+    }
+    return segments;
   }
 
  private:
