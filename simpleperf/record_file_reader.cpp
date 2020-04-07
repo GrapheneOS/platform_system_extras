@@ -624,3 +624,17 @@ std::vector<std::unique_ptr<Record>> RecordFileReader::DataSection() {
   });
   return records;
 }
+
+namespace simpleperf {
+
+bool IsPerfDataFile(const std::string& filename) {
+  auto fd = FileHelper::OpenReadOnly(filename);
+  if (fd.ok()) {
+    PerfFileFormat::FileHeader header;
+    return android::base::ReadFully(fd, &header, sizeof(header)) &&
+      memcmp(header.magic, PERF_MAGIC, sizeof(header.magic)) == 0;
+  }
+  return false;
+}
+
+}  // namespace simpleperf
