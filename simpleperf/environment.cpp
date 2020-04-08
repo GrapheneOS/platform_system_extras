@@ -299,18 +299,15 @@ bool CanRecordRawData() {
   if (IsRoot()) {
     return true;
   }
-  int value;
-  if (!ReadPerfEventParanoid(&value) || value > -1) {
-    return false;
-  }
 #if defined(__ANDROID__)
-  // If perf_event_open() is controlled by selinux, simpleperf can't record tracepoint raw data
-  // unless running as root.
-  if (android::base::GetProperty("sys.init.perf_lsm_hooks", "") == "1") {
-    return false;
-  }
+  // Android R uses selinux to control perf_event_open. Whether raw data can be recorded is hard
+  // to check unless we really try it. And probably there is no need to record raw data in non-root
+  // users.
+  return false;
+#else
+  int value;
+  return ReadPerfEventParanoid(&value) && value == -1;
 #endif
-  return true;
 }
 
 static const char* GetLimitLevelDescription(int limit_level) {
