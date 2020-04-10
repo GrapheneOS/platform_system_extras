@@ -635,6 +635,16 @@ TEST(record_cmd, trace_offcpu_option) {
   auto info_map = reader->GetMetaInfoFeature();
   ASSERT_EQ(info_map["trace_offcpu"], "true");
   CheckEventType(tmpfile.path, "sched:sched_switch", 1u, 0u);
+  // Release recording environment in perf.data, to avoid affecting tests below.
+  reader.reset();
+
+  // --trace-offcpu only works with cpu-clock, task-clock and cpu-cycles. cpu-cycles has been
+  // tested above.
+  ASSERT_TRUE(RunRecordCmd({"--trace-offcpu", "-e", "cpu-clock"}));
+  ASSERT_TRUE(RunRecordCmd({"--trace-offcpu", "-e", "task-clock"}));
+  ASSERT_FALSE(RunRecordCmd({"--trace-offcpu", "-e", "page-faults"}));
+  // --trace-offcpu doesn't work with more than one event.
+  ASSERT_FALSE(RunRecordCmd({"--trace-offcpu", "-e", "cpu-clock,task-clock"}));
 }
 
 TEST(record_cmd, exit_with_parent_option) {
