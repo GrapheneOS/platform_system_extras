@@ -252,7 +252,7 @@ public class ProfileSession {
         // For android R, app context isn't allowed to use perf_event_open.
         // So test executing downloaded simpleperf.
         try {
-            Process process = new ProcessBuilder().command(toPath + "list sw").start();
+            Process process = new ProcessBuilder().command(toPath, "list", "sw").start();
             process.waitFor();
             String data = readInputStream(process.getInputStream());
             if (data.indexOf("cpu-clock") == -1) {
