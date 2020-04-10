@@ -645,7 +645,7 @@ class TestExampleWithNative(TestExampleBase):
             "native-lib.cpp",
             "BusyLoopThread",
             # Check if dso name in perf.data is replaced by binary path in binary_cache.
-            'filename: binary_cache/data/app/com.example.simpleperf.simpleperfexamplewithnative-']
+            'filename: binary_cache']
         self.common_test_pprof_proto_generator(
             check_strings_with_lines,
             check_strings_without_lines=["BusyLoopThread"])
