@@ -244,20 +244,11 @@ class PprofProfileGenerator(object):
 
     def __init__(self, config):
         self.config = config
-        self.lib = ReportLib()
+        self.lib = None
 
         config['binary_cache_dir'] = 'binary_cache'
         if not os.path.isdir(config['binary_cache_dir']):
             config['binary_cache_dir'] = None
-        else:
-            self.lib.SetSymfs(config['binary_cache_dir'])
-        if config.get('perf_data_path'):
-            self.lib.SetRecordFile(config['perf_data_path'])
-        kallsyms = 'binary_cache/kallsyms'
-        if os.path.isfile(kallsyms):
-            self.lib.SetKallsymsFile(kallsyms)
-        if config.get('show_art_frames'):
-            self.lib.ShowArtFrames()
         self.comm_filter = set(config['comm_filters']) if config.get('comm_filters') else None
         if config.get('pid_filters'):
             self.pid_filter = {int(x) for x in config['pid_filters']}
@@ -286,12 +277,25 @@ class PprofProfileGenerator(object):
         self.binary_map = {}
         self.read_elf = ReadElf(self.config['ndk_path'])
 
-    def gen(self):
-        # 1. Process all samples in perf.data, aggregate samples.
+    def load_record_file(self, record_file):
+        self.lib = ReportLib()
+        self.lib.SetRecordFile(record_file)
+
+        if self.config['binary_cache_dir']:
+            self.lib.SetSymfs(self.config['binary_cache_dir'])
+            kallsyms = os.path.join(self.config['binary_cache_dir'], 'kallsyms')
+            if os.path.isfile(kallsyms):
+                self.lib.SetKallsymsFile(kallsyms)
+
+        if self.config.get('show_art_frames'):
+            self.lib.ShowArtFrames()
+
+        # Process all samples in perf.data, aggregate samples.
         while True:
             report_sample = self.lib.GetNextSample()
             if report_sample is None:
                 self.lib.Close()
+                self.lib = None
                 break
             event = self.lib.GetEventOfCurrentSample()
             symbol = self.lib.GetSymbolOfCurrentSample()
@@ -315,10 +319,11 @@ class PprofProfileGenerator(object):
             if sample.location_ids:
                 self.add_sample(sample)
 
-        # 2. Generate line info for locations and functions.
+    def gen(self):
+        # 1. Generate line info for locations and functions.
         self.gen_source_lines()
 
-        # 3. Produce samples/locations/functions in profile
+        # 2. Produce samples/locations/functions in profile.
         for sample in self.sample_list:
             self.gen_profile_sample(sample)
         for mapping in self.mapping_list:
@@ -591,8 +596,8 @@ class PprofProfileGenerator(object):
 def main():
     parser = argparse.ArgumentParser(description='Generate pprof profile data in pprof.profile.')
     parser.add_argument('--show', nargs='?', action='append', help='print existing pprof.profile.')
-    parser.add_argument('-i', '--perf_data_path', default='perf.data', help="""
-        The path of profiling data.""")
+    parser.add_argument('-i', '--record_file', nargs='+', default=['perf.data'], help="""
+        Set profiling data file to report. Default is perf.data""")
     parser.add_argument('-o', '--output_file', default='pprof.profile', help="""
         The path of generated pprof profile data.""")
     parser.add_argument('--comm', nargs='+', action='append', help="""
@@ -618,7 +623,6 @@ def main():
         return
 
     config = {}
-    config['perf_data_path'] = args.perf_data_path
     config['output_file'] = args.output_file
     config['comm_filters'] = flatten_arg_list(args.comm)
     config['pid_filters'] = flatten_arg_list(args.pid)
@@ -628,6 +632,8 @@ def main():
     config['show_art_frames'] = args.show_art_frames
     config['max_chain_length'] = args.max_chain_length
     generator = PprofProfileGenerator(config)
+    for record_file in args.record_file:
+        generator.load_record_file(record_file)
     profile = generator.gen()
     store_pprof_profile(config['output_file'], profile)
 
