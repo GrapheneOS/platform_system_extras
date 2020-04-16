@@ -1582,6 +1582,12 @@ class TestPprofProtoGenerator(TestBase):
         self.run_cmd(['pprof_proto_generator.py', '-i', testdata_path] + options)
         return self.run_cmd(['pprof_proto_generator.py', '--show'], return_output=True)
 
+    def generate_profile(self, options, testdata_files):
+        testdata_paths = [TEST_HELPER.testdata_path(f) for f in testdata_files]
+        options = options or []
+        self.run_cmd(['pprof_proto_generator.py', '-i'] + testdata_paths + options)
+        return load_pprof_profile('pprof.profile')
+
     def test_show_art_frames(self):
         art_frame_str = 'art::interpreter::DoCall'
         # By default, don't show art frames.
@@ -1632,15 +1638,22 @@ class TestPprofProtoGenerator(TestBase):
         """ Test if the address of a location is within the memory range of the corresponding
             mapping.
         """
-        self.run_cmd(['pprof_proto_generator.py', '-i',
-                      TEST_HELPER.testdata_path('perf_with_interpreter_frames.data')])
-
-        profile = load_pprof_profile('pprof.profile')
+        profile = self.generate_profile(None, ['perf_with_interpreter_frames.data'])
         # pylint: disable=no-member
         for location in profile.location:
             mapping = profile.mapping[location.mapping_id - 1]
             self.assertLessEqual(mapping.memory_start, location.address)
             self.assertGreaterEqual(mapping.memory_limit, location.address)
+
+    def test_multiple_perf_data(self):
+        """ Test reporting multiple recording file. """
+        profile1 = self.generate_profile(None, ['aggregatable_perf1.data'])
+        profile2 = self.generate_profile(None, ['aggregatable_perf2.data'])
+        profile_both = self.generate_profile(
+            None, ['aggregatable_perf1.data', 'aggregatable_perf2.data'])
+        # pylint: disable=no-member
+        self.assertGreater(len(profile_both.sample), len(profile1.sample))
+        self.assertGreater(len(profile_both.sample), len(profile2.sample))
 
 
 class TestRecordingRealApps(TestBase):
