@@ -29,6 +29,8 @@
 #define ELF_NOTE_GNU "GNU"
 #define NT_GNU_BUILD_ID 3
 
+using namespace simpleperf;
+
 TEST(read_elf, GetBuildIdFromNoteSection) {
   BuildId build_id;
   std::vector<char> data;
@@ -137,7 +139,12 @@ TEST(read_elf, arm_mapping_symbol) {
   ASSERT_FALSE(IsArmMappingSymbol("$a_no_dot"));
 }
 
-TEST(read_elf, IsValidElfPath) {
+TEST(read_elf, ElfFile_Open) {
+  auto IsValidElfPath = [](const std::string& path) {
+    ElfStatus status;
+    ElfFile::Open(path, &status);
+    return status;
+  };
   ASSERT_NE(ElfStatus::NO_ERROR, IsValidElfPath("/dev/zero"));
   TemporaryFile tmp_file;
   ASSERT_EQ(ElfStatus::READ_FAILED, IsValidElfPath(tmp_file.path));
