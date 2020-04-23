@@ -396,6 +396,12 @@ class DataDumper : public ElementCallback {
 // It decodes each ETMV4IPacket into TraceElements, and generates ETMInstrRanges from TraceElements.
 // Decoding each packet is slow, but ensures correctness.
 class InstrRangeParser : public ElementCallback {
+ private:
+  struct TraceData {
+    ETMInstrRange instr_range;
+    bool wait_for_branch_to_addr_fix = false;
+  };
+
  public:
   InstrRangeParser(MapLocator& map_locator, const ETMDecoder::CallbackFn& callback)
       : map_locator_(map_locator), callback_(callback) {}
@@ -404,33 +410,64 @@ class InstrRangeParser : public ElementCallback {
                                       const OcsdTraceElement& elem,
                                       const ocsd_instr_info* next_instr) override {
     if (elem.getType() == OCSD_GEN_TRC_ELEM_INSTR_RANGE) {
+      TraceData& data = trace_data_[trace_id];
       const MapEntry* map = map_locator_.FindMap(trace_id, elem.st_addr);
       if (map == nullptr) {
+        FlushData(data);
         return OCSD_RESP_CONT;
       }
-      instr_range_.dso = map->dso;
-      instr_range_.start_addr = map->GetVaddrInFile(elem.st_addr);
-      instr_range_.end_addr = map->GetVaddrInFile(elem.en_addr - elem.last_instr_sz);
+      uint64_t start_addr = map->GetVaddrInFile(elem.st_addr);
+      auto& instr_range = data.instr_range;
+
+      if (data.wait_for_branch_to_addr_fix) {
+        // OpenCSD may cache a list of InstrRange elements, making it inaccurate to get branch to
+        // address from next_instr->branch_addr. So fix it by using the start address of the next
+        // InstrRange element.
+        instr_range.branch_to_addr = start_addr;
+      }
+      FlushData(data);
+      instr_range.dso = map->dso;
+      instr_range.start_addr = start_addr;
+      instr_range.end_addr = map->GetVaddrInFile(elem.en_addr - elem.last_instr_sz);
       bool end_with_branch =
           elem.last_i_type == OCSD_INSTR_BR || elem.last_i_type == OCSD_INSTR_BR_INDIRECT;
       bool branch_taken = end_with_branch && elem.last_instr_exec;
       if (elem.last_i_type == OCSD_INSTR_BR && branch_taken) {
         // It is based on the assumption that we only do immediate branch inside a binary,
         // which may not be true for all cases. TODO: http://b/151665001.
-        instr_range_.branch_to_addr = map->GetVaddrInFile(next_instr->branch_addr);
+        instr_range.branch_to_addr = map->GetVaddrInFile(next_instr->branch_addr);
+        data.wait_for_branch_to_addr_fix = true;
       } else {
-        instr_range_.branch_to_addr = 0;
+        instr_range.branch_to_addr = 0;
       }
-      instr_range_.branch_taken_count = branch_taken ? 1 : 0;
-      instr_range_.branch_not_taken_count = branch_taken ? 0 : 1;
-      callback_(instr_range_);
+      instr_range.branch_taken_count = branch_taken ? 1 : 0;
+      instr_range.branch_not_taken_count = branch_taken ? 0 : 1;
+
+    } else if (elem.getType() == OCSD_GEN_TRC_ELEM_TRACE_ON) {
+      // According to the ETM Specification, the Trace On element indicates a discontinuity in the
+      // instruction trace stream. So it cuts the connection between instr ranges.
+      FlushData(trace_data_[trace_id]);
     }
     return OCSD_RESP_CONT;
   }
 
+  void FinishData() {
+    for (auto& pair : trace_data_) {
+      FlushData(pair.second);
+    }
+  }
+
  private:
+  void FlushData(TraceData& data) {
+    if (data.instr_range.dso != nullptr) {
+      callback_(data.instr_range);
+      data.instr_range.dso = nullptr;
+    }
+    data.wait_for_branch_to_addr_fix = false;
+  }
+
   MapLocator& map_locator_;
-  ETMInstrRange instr_range_;
+  std::unordered_map<uint8_t, TraceData> trace_data_;
   ETMDecoder::CallbackFn callback_;
 };
 
@@ -518,6 +555,13 @@ class ETMDecoderImpl : public ETMDecoder {
       data += processed;
       left_size -= processed;
       data_index_ += processed;
+    }
+    return true;
+  }
+
+  bool FinishData() override {
+    if (instr_range_parser_) {
+      instr_range_parser_->FinishData();
     }
     return true;
   }

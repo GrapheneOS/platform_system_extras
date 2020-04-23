@@ -80,6 +80,9 @@ class InjectCommand : public Command {
     if (!record_file_reader_->ReadDataSection([this](auto r) { return ProcessRecord(r.get()); })) {
       return false;
     }
+    if (etm_decoder_ && !etm_decoder_->FinishData()) {
+      return false;
+    }
     PostProcess();
     output_fp_.reset(nullptr);
     return true;
@@ -164,7 +167,7 @@ class InjectCommand : public Command {
       return;
     }
 
-    auto& binary = binary_map_[instr_range.dso->GetDebugFilePath()];
+    auto& binary = binary_map_[instr_range.dso];
     binary.range_count_map[AddrPair(instr_range.start_addr, instr_range.end_addr)] +=
         instr_range.branch_taken_count + instr_range.branch_not_taken_count;
     if (instr_range.branch_taken_count > 0) {
@@ -174,13 +177,23 @@ class InjectCommand : public Command {
   }
 
   void PostProcess() {
-    for (const auto& pair : binary_map_) {
-      const std::string& binary_path = pair.first;
-      const BinaryInfo& binary = pair.second;
+    // binary_map is used to store instruction ranges, which can have a large amount. And it has
+    // a larger access time (instruction ranges * executed time). So it's better to use
+    // unorder_maps to speed up access time. But we also want a stable output here, to compare
+    // output changes result from code changes. So generate a sorted output here.
+    std::vector<Dso*> dso_v;
+    for (auto& p : binary_map_) {
+      dso_v.emplace_back(p.first);
+    }
+    std::sort(dso_v.begin(), dso_v.end(), [](Dso* d1, Dso* d2) { return d1->Path() < d2->Path(); });
+    for (auto dso : dso_v) {
+      const BinaryInfo& binary = binary_map_[dso];
 
       // Write range_count_map.
-      fprintf(output_fp_.get(), "%zu\n", binary.range_count_map.size());
-      for (const auto& pair2 : binary.range_count_map) {
+      std::map<AddrPair, uint64_t> range_count_map(binary.range_count_map.begin(),
+                                                   binary.range_count_map.end());
+      fprintf(output_fp_.get(), "%zu\n", range_count_map.size());
+      for (const auto& pair2 : range_count_map) {
         const AddrPair& addr_range = pair2.first;
         uint64_t count = pair2.second;
 
@@ -192,8 +205,10 @@ class InjectCommand : public Command {
       fprintf(output_fp_.get(), "0\n");
 
       // Write branch_count_map.
-      fprintf(output_fp_.get(), "%zu\n", binary.branch_count_map.size());
-      for (const auto& pair2 : binary.branch_count_map) {
+      std::map<AddrPair, uint64_t> branch_count_map(binary.branch_count_map.begin(),
+                                                    binary.branch_count_map.end());
+      fprintf(output_fp_.get(), "%zu\n", branch_count_map.size());
+      for (const auto& pair2 : branch_count_map) {
         const AddrPair& branch = pair2.first;
         uint64_t count = pair2.second;
 
@@ -202,7 +217,7 @@ class InjectCommand : public Command {
       }
 
       // Write the binary path in comment.
-      fprintf(output_fp_.get(), "// %s\n\n", binary_path.c_str());
+      fprintf(output_fp_.get(), "// %s\n\n", dso->Path().c_str());
     }
   }
 
@@ -217,7 +232,7 @@ class InjectCommand : public Command {
   std::unique_ptr<FILE, decltype(&fclose)> output_fp_;
 
   // Store results for AutoFDO.
-  std::unordered_map<std::string, BinaryInfo> binary_map_;
+  std::unordered_map<Dso*, BinaryInfo> binary_map_;
 };
 
 }  // namespace
