@@ -45,15 +45,20 @@ static bool RunInjectCmd(std::vector<std::string>&& args, std::string* output) {
   return android::base::ReadFileToString(tmpfile.path, output);
 }
 
+static void CheckMatchingExpectedData(std::string& data) {
+  std::string expected_data;
+  ASSERT_TRUE(android::base::ReadFileToString(
+      GetTestData(std::string("etm") + OS_PATH_SEPARATOR + "perf_inject.data"), &expected_data));
+  data.erase(std::remove(data.begin(), data.end(), '\r'), data.end());
+  ASSERT_EQ(data, expected_data);
+}
+
 TEST(cmd_inject, smoke) {
   std::string data;
   ASSERT_TRUE(RunInjectCmd({}, &data));
   // Test that we can find instr range in etm_test_loop binary.
   ASSERT_NE(data.find("etm_test_loop"), std::string::npos);
-  std::string expected_data;
-  ASSERT_TRUE(android::base::ReadFileToString(
-      GetTestData(std::string("etm") + OS_PATH_SEPARATOR + "perf_inject.data"), &expected_data));
-  ASSERT_EQ(data, expected_data);
+  CheckMatchingExpectedData(data);
 }
 
 TEST(cmd_inject, binary_option) {
@@ -81,10 +86,7 @@ TEST(cmd_inject, output_option) {
   ASSERT_TRUE(RunInjectCmd({"--output", "branch-list", "-o", tmpfile.path}));
   std::string autofdo_data;
   ASSERT_TRUE(RunInjectCmd({"-i", tmpfile.path, "--output", "autofdo"}, &autofdo_data));
-  std::string expected_data;
-  ASSERT_TRUE(android::base::ReadFileToString(
-      GetTestData(std::string("etm") + OS_PATH_SEPARATOR + "perf_inject.data"), &expected_data));
-  ASSERT_EQ(autofdo_data, expected_data);
+  CheckMatchingExpectedData(autofdo_data);
 }
 
 TEST(cmd_inject, branch_to_proto_string) {
