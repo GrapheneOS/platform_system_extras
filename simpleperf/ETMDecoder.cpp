@@ -119,10 +119,18 @@ class ETMV4IDecodeTree {
 
 // Similar to IPktDataIn<EtmV4ITrcPacket>, but add trace id.
 struct PacketCallback {
+  // packet callbacks are called in priority order.
+  enum Priority {
+    MAP_LOCATOR,
+    PACKET_TO_ELEMENT,
+  };
+
+  PacketCallback(Priority prio) : priority(prio) {}
   virtual ~PacketCallback() {}
   virtual ocsd_datapath_resp_t ProcessPacket(uint8_t trace_id, ocsd_datapath_op_t op,
                                              ocsd_trc_index_t index_sop,
                                              const EtmV4ITrcPacket* pkt) = 0;
+  const Priority priority;
 };
 
 // Receives packets from a packet decoder in OpenCSD library.
@@ -130,7 +138,13 @@ class PacketSink : public IPktDataIn<EtmV4ITrcPacket> {
  public:
   PacketSink(uint8_t trace_id) : trace_id_(trace_id) {}
 
-  void AddCallback(PacketCallback* callback) { callbacks_.push_back(callback); }
+  void AddCallback(PacketCallback* callback) {
+    auto it = std::lower_bound(callbacks_.begin(), callbacks_.end(), callback,
+                               [](const PacketCallback* c1, const PacketCallback* c2) {
+                                 return c1->priority < c2->priority;
+                               });
+    callbacks_.insert(it, callback);
+  }
 
   ocsd_datapath_resp_t PacketDataIn(ocsd_datapath_op_t op, ocsd_trc_index_t index_sop,
                                     const EtmV4ITrcPacket* pkt) override {
@@ -148,35 +162,92 @@ class PacketSink : public IPktDataIn<EtmV4ITrcPacket> {
   std::vector<PacketCallback*> callbacks_;
 };
 
+// For each trace_id, when given an addr, find the thread and map it belongs to.
+class MapLocator : public PacketCallback {
+ public:
+  MapLocator(ThreadTree& thread_tree)
+      : PacketCallback(PacketCallback::MAP_LOCATOR), thread_tree_(thread_tree) {}
+
+  ThreadTree& GetThreadTree() { return thread_tree_; }
+
+  ocsd_datapath_resp_t ProcessPacket(uint8_t trace_id, ocsd_datapath_op_t op,
+                                     ocsd_trc_index_t index_sop,
+                                     const EtmV4ITrcPacket* pkt) override {
+    TraceData& data = trace_data_[trace_id];
+    if (op == OCSD_OP_DATA) {
+      if (pkt != nullptr && pkt->getContext().updated_c) {
+        int32_t new_tid = static_cast<int32_t>(pkt->getContext().ctxtID);
+        if (data.tid != new_tid) {
+          data.tid = new_tid;
+          data.thread = nullptr;
+          data.userspace_map = nullptr;
+        }
+      }
+    } else if (op == OCSD_OP_RESET) {
+      data.tid = -1;
+      data.thread = nullptr;
+      data.userspace_map = nullptr;
+    }
+    return OCSD_RESP_CONT;
+  }
+
+  const MapEntry* FindMap(uint8_t trace_id, uint64_t addr) {
+    TraceData& data = trace_data_[trace_id];
+    if (data.userspace_map != nullptr && data.userspace_map->Contains(addr)) {
+      return data.userspace_map;
+    }
+    if (data.tid == -1) {
+      return nullptr;
+    }
+    if (data.thread == nullptr) {
+      data.thread = thread_tree_.FindThread(data.tid);
+      if (data.thread == nullptr) {
+        return nullptr;
+      }
+    }
+    data.userspace_map = data.thread->maps->FindMapByAddr(addr);
+    if (data.userspace_map != nullptr) {
+      return data.userspace_map;
+    }
+    // We don't cache kernel map. Because kernel map can start from 0 and overlap all userspace
+    // maps.
+    return thread_tree_.GetKernelMaps().FindMapByAddr(addr);
+  }
+
+ private:
+  struct TraceData {
+    int32_t tid = -1;  // thread id, -1 if invalid
+    const ThreadEntry* thread = nullptr;
+    const MapEntry* userspace_map = nullptr;
+  };
+
+  ThreadTree& thread_tree_;
+  TraceData trace_data_[256];
+};
+
 // Map (trace_id, ip address) to (binary_path, binary_offset), and read binary files.
 class MemAccess : public ITargetMemAccess {
  public:
-  MemAccess(ThreadTree& thread_tree) : thread_tree_(thread_tree) {}
+  MemAccess(MapLocator& map_locator) : map_locator_(map_locator) {}
 
-  void ProcessPacket(uint8_t trace_id, const EtmV4ITrcPacket* packet) {
-    if (packet->getContext().updated_c) {
-      tid_map_[trace_id] = packet->getContext().ctxtID;
-      if (trace_id == trace_id_) {
-        // Invalidate the cached buffer when the last trace stream changes thread.
-        buffer_end_ = 0;
-      }
-    }
-  }
-
-  ocsd_err_t ReadTargetMemory(const ocsd_vaddr_t address, uint8_t cs_trace_id, ocsd_mem_space_acc_t,
+  ocsd_err_t ReadTargetMemory(const ocsd_vaddr_t address, uint8_t trace_id, ocsd_mem_space_acc_t,
                               uint32_t* num_bytes, uint8_t* p_buffer) override {
-    if (cs_trace_id == trace_id_ && address >= buffer_start_ &&
-        address + *num_bytes <= buffer_end_) {
-      if (buffer_ == nullptr) {
+    TraceData& data = trace_data_[trace_id];
+    const MapEntry* map = map_locator_.FindMap(trace_id, address);
+    // fast path
+    if (map != nullptr && map == data.buffer_map && address >= data.buffer_start &&
+        address + *num_bytes <= data.buffer_end) {
+      if (data.buffer == nullptr) {
         *num_bytes = 0;
       } else {
-        memcpy(p_buffer, buffer_ + (address - buffer_start_), *num_bytes);
+        memcpy(p_buffer, data.buffer + (address - data.buffer_start), *num_bytes);
       }
       return OCSD_OK;
     }
 
+    // slow path
     size_t copy_size = 0;
-    if (const MapEntry* map = FindMap(cs_trace_id, address); map != nullptr) {
+    if (map != nullptr) {
       llvm::MemoryBuffer* memory = GetMemoryBuffer(map->dso);
       if (memory != nullptr) {
         uint64_t offset = address - map->start_addr + map->pgoff;
@@ -187,47 +258,36 @@ class MemAccess : public ITargetMemAccess {
         }
       }
       // Update the last buffer cache.
-      trace_id_ = cs_trace_id;
-      buffer_ = memory == nullptr ? nullptr : (memory->getBufferStart() + map->pgoff);
-      buffer_start_ = map->start_addr;
-      buffer_end_ = map->get_end_addr();
+      data.buffer_map = map;
+      data.buffer = memory == nullptr ? nullptr : (memory->getBufferStart() + map->pgoff);
+      data.buffer_start = map->start_addr;
+      data.buffer_end = map->get_end_addr();
     }
     *num_bytes = copy_size;
     return OCSD_OK;
   }
 
  private:
-  const MapEntry* FindMap(uint8_t trace_id, uint64_t address) {
-    if (auto it = tid_map_.find(trace_id); it != tid_map_.end()) {
-      if (ThreadEntry* thread = thread_tree_.FindThread(it->second); thread != nullptr) {
-        if (const MapEntry* map = thread_tree_.FindMap(thread, address);
-            !thread_tree_.IsUnknownDso(map->dso)) {
-          return map;
-        }
-      }
-    }
-    return nullptr;
-  }
-
   llvm::MemoryBuffer* GetMemoryBuffer(Dso* dso) {
-    if (auto it = memory_buffers_.find(dso); it != memory_buffers_.end()) {
-      return it->second.get();
+    auto it = elf_map_.find(dso);
+    if (it == elf_map_.end()) {
+      ElfStatus status;
+      auto res = elf_map_.emplace(dso, ElfFile::Open(dso->GetDebugFilePath(), &status));
+      it = res.first;
     }
-    auto buffer_or_err = llvm::MemoryBuffer::getFile(dso->GetDebugFilePath());
-    llvm::MemoryBuffer* buffer = buffer_or_err ? buffer_or_err.get().release() : nullptr;
-    memory_buffers_.emplace(dso, buffer);
-    return buffer;
+    return it->second ? it->second->GetMemoryBuffer() : nullptr;
   }
 
-  // map from trace id to thread id
-  std::unordered_map<uint8_t, pid_t> tid_map_;
-  ThreadTree& thread_tree_;
-  std::unordered_map<Dso*, std::unique_ptr<llvm::MemoryBuffer>> memory_buffers_;
-  // cache of the last buffer
-  uint8_t trace_id_ = 0;
-  const char* buffer_ = nullptr;
-  uint64_t buffer_start_ = 0;
-  uint64_t buffer_end_ = 0;
+  struct TraceData {
+    const MapEntry* buffer_map = nullptr;
+    const char* buffer = nullptr;
+    uint64_t buffer_start = 0;
+    uint64_t buffer_end = 0;
+  };
+
+  MapLocator& map_locator_;
+  std::unordered_map<Dso*, std::unique_ptr<ElfFile>> elf_map_;
+  TraceData trace_data_[256];
 };
 
 class InstructionDecoder : public TrcIDecode {
@@ -253,9 +313,9 @@ struct ElementCallback {
 // Decode packets into elements.
 class PacketToElement : public PacketCallback, public ITrcGenElemIn {
  public:
-  PacketToElement(ThreadTree& thread_tree, const std::unordered_map<uint8_t, EtmV4Config>& configs,
+  PacketToElement(MapLocator& map_locator, const std::unordered_map<uint8_t, EtmV4Config>& configs,
                   DecodeErrorLogger& error_logger)
-      : mem_access_(thread_tree) {
+      : PacketCallback(PacketCallback::PACKET_TO_ELEMENT), mem_access_(map_locator) {
     for (auto& p : configs) {
       uint8_t trace_id = p.first;
       const EtmV4Config& config = p.second;
@@ -274,9 +334,6 @@ class PacketToElement : public PacketCallback, public ITrcGenElemIn {
   ocsd_datapath_resp_t ProcessPacket(uint8_t trace_id, ocsd_datapath_op_t op,
                                      ocsd_trc_index_t index_sop,
                                      const EtmV4ITrcPacket* pkt) override {
-    if (pkt != nullptr) {
-      mem_access_.ProcessPacket(trace_id, pkt);
-    }
     return element_decoders_[trace_id].PacketDataIn(op, index_sop, pkt);
   }
 
@@ -336,105 +393,82 @@ class DataDumper : public ElementCallback {
   ocsdMsgLogger stdout_logger_;
 };
 
-// Base class for parsing executed instruction ranges from etm data.
-class InstrRangeParser {
- public:
-  InstrRangeParser(ThreadTree& thread_tree, const ETMDecoder::CallbackFn& callback)
-      : thread_tree_(thread_tree), callback_(callback) {}
-
-  virtual ~InstrRangeParser() {}
-
- protected:
-  ThreadTree& thread_tree_;
-  ETMDecoder::CallbackFn callback_;
-};
-
 // It decodes each ETMV4IPacket into TraceElements, and generates ETMInstrRanges from TraceElements.
 // Decoding each packet is slow, but ensures correctness.
-class BasicInstrRangeParser : public InstrRangeParser, public ElementCallback {
+class InstrRangeParser : public ElementCallback {
+ private:
+  struct TraceData {
+    ETMInstrRange instr_range;
+    bool wait_for_branch_to_addr_fix = false;
+  };
+
  public:
-  BasicInstrRangeParser(ThreadTree& thread_tree, const ETMDecoder::CallbackFn& callback)
-      : InstrRangeParser(thread_tree, callback) {}
+  InstrRangeParser(MapLocator& map_locator, const ETMDecoder::CallbackFn& callback)
+      : map_locator_(map_locator), callback_(callback) {}
 
   ocsd_datapath_resp_t ProcessElement(const ocsd_trc_index_t, uint8_t trace_id,
                                       const OcsdTraceElement& elem,
                                       const ocsd_instr_info* next_instr) override {
-    if (elem.getType() == OCSD_GEN_TRC_ELEM_PE_CONTEXT) {
-      if (elem.getContext().ctxt_id_valid) {
-        // trace_id is associated with a new thread.
-        pid_t new_tid = elem.getContext().context_id;
-        auto& tid = tid_map_[trace_id];
-        if (tid != new_tid) {
-          tid = new_tid;
-          if (trace_id == current_map_.trace_id) {
-            current_map_.Invalidate();
-          }
-        }
-      }
-    } else if (elem.getType() == OCSD_GEN_TRC_ELEM_INSTR_RANGE) {
-      if (!FindMap(trace_id, elem.st_addr)) {
+    if (elem.getType() == OCSD_GEN_TRC_ELEM_INSTR_RANGE) {
+      TraceData& data = trace_data_[trace_id];
+      const MapEntry* map = map_locator_.FindMap(trace_id, elem.st_addr);
+      if (map == nullptr) {
+        FlushData(data);
         return OCSD_RESP_CONT;
       }
-      instr_range_.dso = current_map_.map->dso;
-      instr_range_.start_addr = current_map_.ToVaddrInFile(elem.st_addr);
-      instr_range_.end_addr = current_map_.ToVaddrInFile(elem.en_addr - elem.last_instr_sz);
+      uint64_t start_addr = map->GetVaddrInFile(elem.st_addr);
+      auto& instr_range = data.instr_range;
+
+      if (data.wait_for_branch_to_addr_fix) {
+        // OpenCSD may cache a list of InstrRange elements, making it inaccurate to get branch to
+        // address from next_instr->branch_addr. So fix it by using the start address of the next
+        // InstrRange element.
+        instr_range.branch_to_addr = start_addr;
+      }
+      FlushData(data);
+      instr_range.dso = map->dso;
+      instr_range.start_addr = start_addr;
+      instr_range.end_addr = map->GetVaddrInFile(elem.en_addr - elem.last_instr_sz);
       bool end_with_branch =
           elem.last_i_type == OCSD_INSTR_BR || elem.last_i_type == OCSD_INSTR_BR_INDIRECT;
       bool branch_taken = end_with_branch && elem.last_instr_exec;
       if (elem.last_i_type == OCSD_INSTR_BR && branch_taken) {
-        instr_range_.branch_to_addr = current_map_.ToVaddrInFile(next_instr->branch_addr);
+        // It is based on the assumption that we only do immediate branch inside a binary,
+        // which may not be true for all cases. TODO: http://b/151665001.
+        instr_range.branch_to_addr = map->GetVaddrInFile(next_instr->branch_addr);
+        data.wait_for_branch_to_addr_fix = true;
       } else {
-        instr_range_.branch_to_addr = 0;
+        instr_range.branch_to_addr = 0;
       }
-      instr_range_.branch_taken_count = branch_taken ? 1 : 0;
-      instr_range_.branch_not_taken_count = branch_taken ? 0 : 1;
-      callback_(instr_range_);
+      instr_range.branch_taken_count = branch_taken ? 1 : 0;
+      instr_range.branch_not_taken_count = branch_taken ? 0 : 1;
+
+    } else if (elem.getType() == OCSD_GEN_TRC_ELEM_TRACE_ON) {
+      // According to the ETM Specification, the Trace On element indicates a discontinuity in the
+      // instruction trace stream. So it cuts the connection between instr ranges.
+      FlushData(trace_data_[trace_id]);
     }
     return OCSD_RESP_CONT;
   }
 
- private:
-  struct CurrentMap {
-    int trace_id = -1;
-    const MapEntry* map = nullptr;
-    uint64_t addr_in_file = 0;
-
-    void Invalidate() { trace_id = -1; }
-
-    bool IsAddrInMap(uint8_t trace_id, uint64_t addr) {
-      return trace_id == this->trace_id && map != nullptr && addr >= map->start_addr &&
-             addr < map->get_end_addr();
+  void FinishData() {
+    for (auto& pair : trace_data_) {
+      FlushData(pair.second);
     }
-
-    uint64_t ToVaddrInFile(uint64_t addr) {
-      if (addr >= map->start_addr && addr < map->get_end_addr()) {
-        return addr - map->start_addr + addr_in_file;
-      }
-      return 0;
-    }
-  };
-
-  bool FindMap(uint8_t trace_id, uint64_t addr) {
-    if (current_map_.IsAddrInMap(trace_id, addr)) {
-      return true;
-    }
-    ThreadEntry* thread = thread_tree_.FindThread(tid_map_[trace_id]);
-    if (thread != nullptr) {
-      const MapEntry* map = thread_tree_.FindMap(thread, addr, false);
-      if (map != nullptr && !thread_tree_.IsUnknownDso(map->dso)) {
-        current_map_.trace_id = trace_id;
-        current_map_.map = map;
-        current_map_.addr_in_file =
-            map->dso->IpToVaddrInFile(map->start_addr, map->start_addr, map->pgoff);
-        return true;
-      }
-    }
-    return false;
   }
 
-  std::unordered_map<uint8_t, pid_t> tid_map_;
-  CurrentMap current_map_;
-  ETMInstrRange instr_range_;
+ private:
+  void FlushData(TraceData& data) {
+    if (data.instr_range.dso != nullptr) {
+      callback_(data.instr_range);
+      data.instr_range.dso = nullptr;
+    }
+    data.wait_for_branch_to_addr_fix = false;
+  }
+
+  MapLocator& map_locator_;
+  std::unordered_map<uint8_t, TraceData> trace_data_;
+  ETMDecoder::CallbackFn callback_;
 };
 
 // Etm data decoding in OpenCSD library has two steps:
@@ -490,9 +524,9 @@ class ETMDecoderImpl : public ETMDecoder {
   }
 
   void RegisterCallback(const CallbackFn& callback) {
-    auto parser = std::make_unique<BasicInstrRangeParser>(thread_tree_, callback);
-    InstallElementCallback(parser.get());
-    instr_range_parser_.reset(parser.release());
+    InstallMapLocator();
+    instr_range_parser_.reset(new InstrRangeParser(*map_locator_, callback));
+    InstallElementCallback(instr_range_parser_.get());
   }
 
   bool ProcessData(const uint8_t* data, size_t size) override {
@@ -525,14 +559,33 @@ class ETMDecoderImpl : public ETMDecoder {
     return true;
   }
 
+  bool FinishData() override {
+    if (instr_range_parser_) {
+      instr_range_parser_->FinishData();
+    }
+    return true;
+  }
+
  private:
+  void InstallMapLocator() {
+    if (!map_locator_) {
+      map_locator_.reset(new MapLocator(thread_tree_));
+      InstallPacketCallback(map_locator_.get());
+    }
+  }
+
+  void InstallPacketCallback(PacketCallback* callback) {
+    for (auto& p : packet_sinks_) {
+      p.second.AddCallback(callback);
+    }
+  }
+
   void InstallElementCallback(ElementCallback* callback) {
     if (!packet_to_element_) {
+      InstallMapLocator();
       packet_to_element_.reset(
-          new PacketToElement(thread_tree_, configs_, decode_tree_.ErrorLogger()));
-      for (auto& p : packet_sinks_) {
-        p.second.AddCallback(packet_to_element_.get());
-      }
+          new PacketToElement(*map_locator_, configs_, decode_tree_.ErrorLogger()));
+      InstallPacketCallback(packet_to_element_.get());
     }
     packet_to_element_->AddCallback(callback);
   }
@@ -550,6 +603,7 @@ class ETMDecoderImpl : public ETMDecoder {
   // an index keeping processed etm data size
   size_t data_index_ = 0;
   std::unique_ptr<InstrRangeParser> instr_range_parser_;
+  std::unique_ptr<MapLocator> map_locator_;
 };
 
 }  // namespace
