@@ -156,6 +156,18 @@ TEST(fscrypt, ParseOptions) {
         EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16 | FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64, options.flags);
     }
 
+    {
+        TEST_STRING(30, "::emmc_optimized", "aes-256-xts:aes-256-cts:v2+emmc_optimized");
+        EXPECT_EQ(2, options.version);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_XTS, options.contents_mode);
+        EXPECT_EQ(FSCRYPT_MODE_AES_256_CTS, options.filenames_mode);
+        EXPECT_EQ(FSCRYPT_POLICY_FLAGS_PAD_16 | FSCRYPT_POLICY_FLAG_IV_INO_LBLK_32, options.flags);
+    }
+    EXPECT_FALSE(
+            ParseOptionsForApiLevel(30, "::inlinecrypt_optimized+emmc_optimized", &dummy_options));
+    EXPECT_FALSE(ParseOptionsForApiLevel(30, "adiantum::inlinecrypt_optimized", &dummy_options));
+    EXPECT_FALSE(ParseOptionsForApiLevel(30, "adiantum::emmc_optimized", &dummy_options));
+
     EXPECT_FALSE(ParseOptionsForApiLevel(29, "aes-256-xts:aes-256-cts:v2:", &dummy_options));
     EXPECT_FALSE(ParseOptionsForApiLevel(29, "aes-256-xts:aes-256-cts:v2:foo", &dummy_options));
     EXPECT_FALSE(ParseOptionsForApiLevel(29, "aes-256-xts:aes-256-cts:blah", &dummy_options));
