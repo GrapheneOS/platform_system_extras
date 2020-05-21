@@ -153,6 +153,9 @@ bool OptionsToStringForApiLevel(unsigned int first_api_level, const EncryptionOp
     if ((options.flags & FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64)) {
         *options_string += "+inlinecrypt_optimized";
     }
+    if ((options.flags & FSCRYPT_POLICY_FLAG_IV_INO_LBLK_32)) {
+        *options_string += "+emmc_optimized";
+    }
     if (options.use_hw_wrapped_key) {
         *options_string += "+wrappedkey_v0";
     }
@@ -214,6 +217,8 @@ bool ParseOptionsForApiLevel(unsigned int first_api_level, const std::string& op
                 options->version = 2;
             } else if (flag == "inlinecrypt_optimized") {
                 options->flags |= FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64;
+            } else if (flag == "emmc_optimized") {
+                options->flags |= FSCRYPT_POLICY_FLAG_IV_INO_LBLK_32;
             } else if (flag == "wrappedkey_v0") {
                 options->use_hw_wrapped_key = true;
             } else {
@@ -248,6 +253,18 @@ bool ParseOptionsForApiLevel(unsigned int first_api_level, const std::string& op
         LOG(ERROR) << "Adiantum must be both contents and filenames mode or neither, invalid options: " << options_string;
         return false;
     }
+
+    // IV generation methods are mutually exclusive
+    int iv_methods = 0;
+    iv_methods += !!(options->flags & FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64);
+    iv_methods += !!(options->flags & FSCRYPT_POLICY_FLAG_IV_INO_LBLK_32);
+    iv_methods += !!(options->flags & FSCRYPT_POLICY_FLAG_DIRECT_KEY);
+    if (iv_methods > 1) {
+        LOG(ERROR) << "At most one IV generation method can be set, invalid options: "
+                   << options_string;
+        return false;
+    }
+
     return true;
 }
 
