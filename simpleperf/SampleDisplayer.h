@@ -202,6 +202,7 @@ class SampleDisplayer {
 
  public:
   void SetInfo(const InfoT* info) { info_ = info; }
+  void SetReportFormat(bool report_csv) { report_csv_ = report_csv; }
 
   void AddDisplayFunction(const std::string& name, display_sample_func_t func) {
     Item item;
@@ -227,6 +228,9 @@ class SampleDisplayer {
   }
 
   void AdjustWidth(const EntryT* sample) {
+    if (report_csv_) {
+      return;
+    }
     for (auto& item : display_v_) {
       std::string data = (item.func != nullptr)
                              ? item.func(sample)
@@ -238,10 +242,14 @@ class SampleDisplayer {
   void PrintNames(FILE* fp) {
     for (size_t i = 0; i < display_v_.size(); ++i) {
       auto& item = display_v_[i];
-      if (i != display_v_.size() - 1) {
-        fprintf(fp, "%-*s  ", static_cast<int>(item.width), item.name.c_str());
+      if (report_csv_) {
+        fprintf(fp, "%s%c", item.name.c_str(), (i + 1 == display_v_.size()) ? '\n' : ',');
       } else {
-        fprintf(fp, "%s\n", item.name.c_str());
+        if (i != display_v_.size() - 1) {
+          fprintf(fp, "%-*s  ", static_cast<int>(item.width), item.name.c_str());
+        } else {
+          fprintf(fp, "%s\n", item.name.c_str());
+        }
       }
     }
   }
@@ -252,10 +260,19 @@ class SampleDisplayer {
       std::string data = (item.func != nullptr)
                              ? item.func(sample)
                              : item.func_with_info(sample, info_);
-      if (i != display_v_.size() - 1) {
-        fprintf(fp, "%-*s  ", static_cast<int>(item.width), data.c_str());
+      if (report_csv_) {
+        if (data.find(',') == std::string::npos) {
+          fprintf(fp, "%s", data.c_str());
+        } else {
+          fprintf(fp, "\"%s\"", data.c_str());
+        }
+        fputc((i + 1 == display_v_.size()) ? '\n' : ',', fp);
       } else {
-        fprintf(fp, "%s\n", data.c_str());
+        if (i != display_v_.size() - 1) {
+          fprintf(fp, "%-*s  ", static_cast<int>(item.width), data.c_str());
+        } else {
+          fprintf(fp, "%s\n", data.c_str());
+        }
       }
     }
     for (auto& func : exclusive_display_v_) {
@@ -267,6 +284,7 @@ class SampleDisplayer {
   const InfoT* info_;
   std::vector<Item> display_v_;
   std::vector<exclusive_display_sample_func_t> exclusive_display_v_;
+  bool report_csv_ = false;
 };
 
 #endif  // SIMPLE_PERF_SAMPLE_DISPLAYER_H_
