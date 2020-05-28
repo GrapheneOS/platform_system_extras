@@ -54,19 +54,6 @@ cc_defaults {
         "libz",
         "libziparchive",
     ],
-    target: {
-        // Required for LLVM.
-        darwin: {
-            host_ldlibs: [
-                "-lncurses",
-            ],
-        },
-        linux_glibc: {
-            host_ldlibs: [
-                "-lncurses",
-            ],
-        },
-    },
 }
 
 cc_library_static {
@@ -210,16 +197,6 @@ cc_defaults {
                 "libevent",
                 "libprocinfo",
                 "libunwindstack",
-            ],
-        },
-        darwin: {
-            host_ldlibs: [
-                "-lncurses",
-            ],
-        },
-        linux_glibc: {
-            host_ldlibs: [
-                "-lncurses",
             ],
         },
         host: {
