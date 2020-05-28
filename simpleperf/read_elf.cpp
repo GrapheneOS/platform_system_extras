@@ -637,3 +637,22 @@ std::unique_ptr<ElfFile> ElfFile::Open(const std::string& filename, ElfStatus* s
 }
 
 }  // namespace simpleperf
+
+
+// LLVM libraries uses ncurses library, but that isn't needed by simpleperf.
+// So support a naive implementation to avoid depending on ncurses.
+__attribute__((weak)) extern "C" int setupterm(char *, int, int *) {
+  return -1;
+}
+
+__attribute__((weak)) extern "C" struct term *set_curterm(struct term *) {
+  return nullptr;
+}
+
+__attribute__((weak)) extern "C" int del_curterm(struct term *) {
+  return -1;
+}
+
+__attribute__((weak)) extern "C" int tigetnum(char *) {
+  return -1;
+}
