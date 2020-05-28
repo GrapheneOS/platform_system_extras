@@ -100,10 +100,15 @@ struct SampleTree {
   uint64_t total_samples;
   uint64_t total_period;
   uint64_t total_error_callchains;
+  std::string event_name;
 };
 
 BUILD_COMPARE_VALUE_FUNCTION(CompareVaddrInFile, vaddr_in_file);
 BUILD_DISPLAY_HEX64_FUNCTION(DisplayVaddrInFile, vaddr_in_file);
+
+static std::string DisplayEventName(const SampleEntry*, const SampleTree* info) {
+  return info->event_name;
+}
 
 class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_t> {
  public:
@@ -127,6 +132,10 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
     symbol_filter_ = symbol_filter;
   }
 
+  void SetEventName(const std::string& event_name) {
+    event_name_ = event_name;
+  }
+
   SampleTree GetSampleTree() {
     AddCallChainDuplicateInfo();
     SampleTree sample_tree;
@@ -134,6 +143,7 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
     sample_tree.total_samples = total_samples_;
     sample_tree.total_period = total_period_;
     sample_tree.total_error_callchains = total_error_callchains_;
+    sample_tree.event_name = event_name_;
     return sample_tree;
   }
 
@@ -259,6 +269,8 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
   uint64_t total_samples_;
   uint64_t total_period_;
   uint64_t total_error_callchains_;
+
+  std::string event_name_;
 };
 
 // Build sample tree based on event count in each sample.
@@ -372,6 +384,7 @@ class ReportCommand : public Command {
 "      option.\n"
 "--children    Print the overhead accumulated by appearing in the callchain.\n"
 "--comms comm1,comm2,...   Report only for selected comms.\n"
+"--csv                     Report in csv format.\n"
 "--dsos dso1,dso2,...      Report only for selected dsos.\n"
 "--full-callgraph  Print full call graph. Used with -g option. By default,\n"
 "                  brief call graph is printed.\n"
@@ -466,6 +479,7 @@ class ReportCommand : public Command {
   bool brief_callgraph_;
   bool trace_offcpu_;
   size_t sched_switch_attr_id_;
+  bool report_csv_ = false;
 
   std::string report_filename_;
 };
@@ -523,6 +537,8 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       }
       std::vector<std::string> strs = android::base::Split(args[i], ",");
       filter.insert(strs.begin(), strs.end());
+    } else if (args[i] == "--csv") {
+      report_csv_ = true;
     } else if (args[i] == "--full-callgraph") {
       brief_callgraph_ = false;
     } else if (args[i] == "-g") {
@@ -633,6 +649,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   }
 
   SampleDisplayer<SampleEntry, SampleTree> displayer;
+  displayer.SetReportFormat(report_csv_);
   SampleComparator<SampleEntry> comparator;
 
   if (accumulate_callchain_) {
@@ -695,6 +712,17 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       return false;
     }
   }
+
+  if (report_csv_) {
+    if (accumulate_callchain_) {
+      displayer.AddDisplayFunction("AccEventCount", DisplayAccumulatedPeriod);
+      displayer.AddDisplayFunction("SelfEventCount", DisplaySelfPeriod);
+    } else {
+      displayer.AddDisplayFunction("EventCount", DisplaySelfPeriod);
+    }
+    displayer.AddDisplayFunction("EventName", DisplayEventName);
+  }
+
   if (print_callgraph_) {
     bool has_symbol_key = false;
     bool has_vaddr_in_file_key = false;
@@ -831,6 +859,7 @@ bool ReportCommand::ReadSampleTreeFromRecordFile() {
 
   for (size_t i = 0; i < event_attrs_.size(); ++i) {
     sample_tree_builder_.push_back(sample_tree_builder_options_.CreateSampleTreeBuilder());
+    sample_tree_builder_.back()->SetEventName(event_attrs_[i].name);
   }
 
   if (!record_file_reader_->ReadDataSection(
