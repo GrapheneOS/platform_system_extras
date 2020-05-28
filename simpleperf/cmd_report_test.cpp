@@ -495,6 +495,16 @@ TEST_F(ReportCommandTest, report_big_trace_data) {
   ASSERT_TRUE(success);
 }
 
+TEST_F(ReportCommandTest, csv_option) {
+  Report(PERF_DATA, {"--csv"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("EventCount,EventName"), std::string::npos);
+
+  Report(CALLGRAPH_FP_PERF_DATA, {"--children", "--csv"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("AccEventCount,SelfEventCount,EventName"), std::string::npos);
+}
+
 #if defined(__linux__)
 #include "event_selection_set.h"
 
