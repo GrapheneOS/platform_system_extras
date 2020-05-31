@@ -82,6 +82,10 @@ int parse_avb_image(fec_handle *f, const std::vector<uint8_t> &vbmeta) {
     const AvbHashtreeDescriptor *hashtree_descriptor_ptr = nullptr;
     avb_descriptor_foreach(vbmeta.data(), vbmeta.size(), parse_descriptor,
                            &hashtree_descriptor_ptr);
+    if (!hashtree_descriptor_ptr) {
+        error("failed to find avb hashtree descriptor");
+        return -1;
+    }
 
     AvbHashtreeDescriptor hashtree_descriptor;
     if (!avb_hashtree_descriptor_validate_and_byteswap(hashtree_descriptor_ptr,
