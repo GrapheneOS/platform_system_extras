@@ -333,6 +333,19 @@ cc_binary {
     },
 }
 
+cc_library {
+    name: "libsimpleperf_profcollect",
+    defaults: [
+        "simpleperf_shared_libs",
+    ],
+    host_supported: false,
+    srcs: ["profcollect.cpp"],
+    export_include_dirs: ["include"],
+    static_libs: ["libsimpleperf",],
+    shared_libs: ["libLLVM_android",],
+    visibility: ["//system/extras/profcollectd:__subpackages__"],
+}
+
 // simpleperf released in ndk
 cc_binary {
     name: "simpleperf_ndk",
