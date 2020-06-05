@@ -302,7 +302,8 @@ bool HasHardwareCounter() {
       std::string hardware = GetHardwareFromCpuInfo(cpu_info);
       if (std::regex_search(hardware, std::regex(R"(i\.MX6.*Quad)")) ||
           std::regex_search(hardware, std::regex(R"(SC7731e)")) ||
-          std::regex_search(hardware, std::regex(R"(Qualcomm Technologies, Inc MSM8909)"))) {
+          std::regex_search(hardware, std::regex(R"(Qualcomm Technologies, Inc MSM8909)")) ||
+          std::regex_search(hardware, std::regex(R"(Broadcom STB \(Flattened Device Tree\))"))) {
         has_hw_counter = 0;
       }
     }
