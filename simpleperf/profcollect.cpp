@@ -30,7 +30,7 @@ bool HasSupport() {
 }
 
 bool Record(const std::filesystem::path& output,
-            const std::chrono::seconds& duration) {
+            const std::chrono::duration<float>& duration) {
   auto recordCmd = CreateCommandInstance("record");
   std::vector<std::string> args;
   args.push_back("-a");
