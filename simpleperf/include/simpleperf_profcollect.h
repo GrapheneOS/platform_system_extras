@@ -24,7 +24,7 @@ namespace etm {
 
 bool HasSupport();
 bool Record(const std::filesystem::path& output,
-            const std::chrono::seconds& duration);
+            const std::chrono::duration<float>& duration);
 bool Inject(const std::filesystem::path& traceInput,
             const std::filesystem::path& output,
             const std::string& binaryFilter);
