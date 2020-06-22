@@ -101,6 +101,16 @@ class SampleComparator {
     return false;
   }
 
+  bool operator()(const EntryT& sample1, const EntryT& sample2) const {
+    for (const auto& func : compare_v_) {
+      int ret = func(&sample1, &sample2);
+      if (ret != 0) {
+        return ret < 0;
+      }
+    }
+    return false;
+  }
+
   bool IsSameSample(const EntryT* sample1, const EntryT* sample2) const {
     for (const auto& func : compare_v_) {
       if (func(sample1, sample2) != 0) {
