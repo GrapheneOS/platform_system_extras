@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -123,26 +124,29 @@ void CounterSummaries::GenerateComments(double duration_in_sec) {
 }
 
 void CounterSummaries::Show(FILE* fp) {
+  bool show_thread = !summaries_.empty() && summaries_[0].thread != nullptr;
+  bool show_cpu = !summaries_.empty() && summaries_[0].cpu != -1;
   if (csv_) {
-    ShowCSV(fp);
+    ShowCSV(fp, show_thread, show_cpu);
   } else {
-    ShowText(fp);
+    ShowText(fp, show_thread, show_cpu);
   }
 }
 
-void CounterSummaries::ShowCSV(FILE* fp) {
+void CounterSummaries::ShowCSV(FILE* fp, bool show_thread, bool show_cpu) {
   for (auto& s : summaries_) {
-    if (s.thread != nullptr) {
+    if (show_thread) {
       fprintf(fp, "%s,%d,%d,", s.thread->name.c_str(), s.thread->pid, s.thread->tid);
+    }
+    if (show_cpu) {
+      fprintf(fp, "%d,", s.cpu);
     }
     fprintf(fp, "%s,%s,%s,(%.0f%%)%s\n", s.readable_count.c_str(), s.Name().c_str(),
             s.comment.c_str(), 1.0 / s.scale * 100, (s.auto_generated ? " (generated)," : ","));
   }
 }
 
-void CounterSummaries::ShowText(FILE* fp) {
-  bool show_thread = !summaries_.empty() && summaries_[0].thread != nullptr;
-  bool show_cpu = !summaries_.empty() && summaries_[0].cpu != -1;
+void CounterSummaries::ShowText(FILE* fp, bool show_thread, bool show_cpu) {
   std::vector<std::string> titles;
 
   if (show_thread) {
@@ -380,6 +384,18 @@ class StatCommand : public Command {
 "--per-thread     Print counters for each thread.\n"
 "-p pid1,pid2,... Stat events on existing processes. Mutually exclusive with -a.\n"
 "-t tid1,tid2,... Stat events on existing threads. Mutually exclusive with -a.\n"
+"--sort key1,key2,...  Select keys used to sort the report, used when --per-thread\n"
+"                      or --per-core appears. The appearance order of keys decides\n"
+"                      the order of keys used to sort the report.\n"
+"                      Possible keys include:\n"
+"                        count             -- event count for each entry\n"
+"                        count_per_thread  -- event count for a thread on all cpus\n"
+"                        cpu               -- cpu id\n"
+"                        pid               -- process id\n"
+"                        tid               -- thread id\n"
+"                        comm              -- thread name\n"
+"                      The default sort keys are:\n"
+"                        count_per_thread,tid,cpu,count\n"
 #if defined(__ANDROID__)
 "--use-devfreq-counters    On devices with Qualcomm SOCs, some hardware counters may be used\n"
 "                          to monitor memory latency (in drivers/devfreq/arm-memlat-mon.c),\n"
@@ -409,6 +425,8 @@ class StatCommand : public Command {
         in_app_context_(false) {
     // Die if parent exits.
     prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
+    // Set default sort keys. Full key list is in BuildSummaryComparator().
+    sort_keys_ = {"count_per_thread", "tid", "cpu", "count"};
   }
 
   bool Run(const std::vector<std::string>& args);
@@ -444,6 +462,9 @@ class StatCommand : public Command {
   bool report_per_thread_ = false;
   // used to report event count for each thread
   std::unordered_map<pid_t, ThreadInfo> thread_info_;
+  // used to sort report
+  std::vector<std::string> sort_keys_;
+  std::optional<SummaryComparator> summary_comparator_;
 };
 
 bool StatCommand::Run(const std::vector<std::string>& args) {
@@ -678,6 +699,12 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       event_selection_set_.AddMonitoredProcesses(pids);
+    } else if (args[i] == "--sort") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      sort_keys_ = android::base::Split(args[i], ",");
+
     } else if (args[i] == "--stop-signal-fd") {
       int fd;
       if (!GetUintOption(args, &i, &fd)) {
@@ -720,6 +747,13 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
   if (system_wide_collection_ && !IsRoot()) {
     LOG(ERROR) << "System wide profiling needs root privilege.";
     return false;
+  }
+
+  if (report_per_core_ || report_per_thread_) {
+    summary_comparator_ = BuildSummaryComparator(sort_keys_, report_per_thread_, report_per_core_);
+    if (!summary_comparator_) {
+      return false;
+    }
   }
 
   non_option_args->clear();
@@ -830,7 +864,8 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters,
     }
   }
 
-  CounterSummaryBuilder builder(report_per_thread_, report_per_core_, csv_, thread_info_);
+  CounterSummaryBuilder builder(report_per_thread_, report_per_core_, csv_, thread_info_,
+                                summary_comparator_);
   for (const auto& info : counters) {
     builder.AddCountersForOneEventType(info);
   }
