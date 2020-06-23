@@ -1,0 +1,11 @@
+service profcollectd /system/bin/profcollectd boot
+    class late_start
+    user root
+    group root wakelock
+    writepid /dev/cpuset/system-background/tasks
+
+on post-fs-data
+    # Create directory for profcollectd.
+    mkdir /data/misc/profcollectd 0770 root root
+    mkdir /data/misc/profcollectd/trace 0770 root root
+    mkdir /data/misc/profcollectd/output 0770 root root
