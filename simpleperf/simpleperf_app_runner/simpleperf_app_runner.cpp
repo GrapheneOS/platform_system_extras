@@ -208,8 +208,8 @@ int main(int argc, char* argv[]) {
   if (info->uid < AID_APP_START || info->uid > AID_APP_END) {
     error(1, 0, "package isn't an application: %s", pkgname);
   }
-  if (!info->profileable_from_shell) {
-    error(1, 0, "package isn't profileable from shell: %s", pkgname);
+  if (!(info->debuggable || info->profileable_from_shell)) {
+    error(1, 0, "package is neither debuggable nor profileable from shell: %s", pkgname);
   }
 
   // Switch to the app's user id and group id.
