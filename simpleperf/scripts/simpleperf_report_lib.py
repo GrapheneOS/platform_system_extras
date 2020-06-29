@@ -102,8 +102,9 @@ class TracingFieldFormatStruct(ct.Structure):
             an array of int values, etc. If the type can't be parsed, return a byte array or an
             array of byte arrays.
         """
-        if self.elem_count > 1 and self.elem_size == 1 and self.is_signed == 0:
-            # The field is a string.
+        if self.elem_count > 1 and self.elem_size == 1:
+            # Probably the field is a string.
+            # Don't use self.is_signed, which has different values on x86 and arm.
             length = 0
             while length < self.elem_count and bytes_to_str(data[self.offset + length]) != '\x00':
                 length += 1
