@@ -34,6 +34,8 @@
 #include "read_elf.h"
 #include "utils.h"
 
+using namespace simpleperf;
+
 namespace simpleperf_dso_impl {
 
 std::string RemovePathSeparatorSuffix(const std::string& path) {
@@ -87,7 +89,9 @@ void DebugElfFileFinder::CollectBuildIdInDir(const std::string& dir) {
       CollectBuildIdInDir(path);
     } else {
       BuildId build_id;
-      if (GetBuildIdFromElfFile(path, &build_id) == ElfStatus::NO_ERROR) {
+      ElfStatus status;
+      auto elf = ElfFile::Open(path, &status);
+      if (status == ElfStatus::NO_ERROR && elf->GetBuildId(&build_id) == ElfStatus::NO_ERROR) {
         build_id_to_file_map_[build_id.ToString()] = path;
       }
     }
@@ -732,18 +736,10 @@ const char* DsoTypeToString(DsoType dso_type) {
 }
 
 bool GetBuildIdFromDsoPath(const std::string& dso_path, BuildId* build_id) {
-  auto tuple = SplitUrlInApk(dso_path);
-  ElfStatus result;
-  if (std::get<0>(tuple)) {
-    EmbeddedElf* elf = ApkInspector::FindElfInApkByName(std::get<1>(tuple), std::get<2>(tuple));
-    if (elf == nullptr) {
-      result = ElfStatus::FILE_NOT_FOUND;
-    } else {
-      result = GetBuildIdFromEmbeddedElfFile(elf->filepath(), elf->entry_offset(),
-                                             elf->entry_size(), build_id);
-    }
-  } else {
-    result = GetBuildIdFromElfFile(dso_path, build_id);
+  ElfStatus status;
+  auto elf = ElfFile::Open(dso_path, &status);
+  if (status == ElfStatus::NO_ERROR && elf->GetBuildId(build_id) == ElfStatus::NO_ERROR) {
+    return true;
   }
-  return result == ElfStatus::NO_ERROR;
+  return false;
 }
