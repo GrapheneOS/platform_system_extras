@@ -57,7 +57,7 @@ from binary_cache_builder import BinaryCacheBuilder
 from simpleperf_report_lib import ReportLib
 from utils import log_exit, log_info, log_fatal
 from utils import AdbHelper, Addr2Nearestline, bytes_to_str, find_tool_path, get_script_dir
-from utils import is_elf_file, is_python3, is_windows, Objdump, ReadElf, remove, SourceFileSearcher
+from utils import is_elf_file, is_windows, Objdump, ReadElf, remove, SourceFileSearcher
 from utils import str_to_bytes
 
 try:
@@ -72,19 +72,14 @@ except ImportError:
 INFERNO_SCRIPT = os.path.join(get_script_dir(), "inferno.bat" if is_windows() else "./inferno.sh")
 
 
-class TestLogger(object):
+class TestLogger:
     """ Write test progress in sys.stderr and keep verbose log in log file. """
     def __init__(self):
-        self.log_file = self.get_log_file(3 if is_python3() else 2)
-        if os.path.isfile(self.log_file):
-            remove(self.log_file)
+        self.log_file = 'test.log'
+        remove(self.log_file)
         # Logs can come from multiple processes. So use append mode to avoid overwrite.
         self.log_fh = open(self.log_file, 'a')
         logging.basicConfig(filename=self.log_file)
-
-    @staticmethod
-    def get_log_file(python_version):
-        return 'test_python_%d.log' % python_version
 
     def writeln(self, s):
         return self.write(s + '\n')
@@ -102,24 +97,19 @@ class TestLogger(object):
 TEST_LOGGER = TestLogger()
 
 
-class TestHelper(object):
+class TestHelper:
     """ Keep global test info. """
 
     def __init__(self):
-        self.python_version = 3 if is_python3() else 2
-        self.repeat_count = 0
         self.script_dir = os.path.abspath(get_script_dir())
         self.cur_dir = os.getcwd()
         self.testdata_dir = os.path.join(self.cur_dir, 'testdata')
-        self.test_base_dir = self.get_test_base_dir(self.python_version)
+        self.test_base_dir = os.path.join(self.cur_dir, 'test_results')
         self.adb = AdbHelper(enable_switch_to_root=True)
         self.android_version = self.adb.get_android_version()
         self.device_features = None
         self.browser_option = []
-
-    def get_test_base_dir(self, python_version):
-        """ Return the dir of generated data for a python version. """
-        return os.path.join(self.cur_dir, 'test_python_%d' % python_version)
+        self.progress_fh = None
 
     def testdata_path(self, testdata_name):
         """ Return the path of a test data. """
@@ -127,8 +117,7 @@ class TestHelper(object):
 
     def test_dir(self, test_name):
         """ Return the dir to run a test. """
-        return os.path.join(
-            self.test_base_dir, 'repeat_%d' % TEST_HELPER.repeat_count, test_name)
+        return os.path.join(self.test_base_dir, test_name)
 
     def script_path(self, script_name):
         """ Return the dir of python scripts. """
@@ -176,6 +165,11 @@ class TestHelper(object):
     def get_32bit_abi(self):
         return self.adb.get_property('ro.product.cpu.abilist32').strip().split(',')[0]
 
+    def write_progress(self, progress):
+        if self.progress_fh:
+            self.progress_fh.write(progress + '\n')
+            self.progress_fh.flush()
+
 
 TEST_HELPER = TestHelper()
 
@@ -187,6 +181,22 @@ class TestBase(unittest.TestCase):
             self.__class__.__name__, self._testMethodName))
         os.makedirs(self.test_dir)
         os.chdir(self.test_dir)
+
+    def run(self, result=None):
+        ret = super(TestBase, self).run(result)
+        if result.errors and result.errors[-1][0] == self:
+            status = 'FAILED'
+        elif result.failures and result.failures[-1][0] == self:
+            status = 'FAILED'
+        else:
+            status = 'OK'
+
+        # Remove test data for passed tests to save space.
+        if status == 'OK':
+            shutil.rmtree(self.test_dir)
+        TEST_HELPER.write_progress(
+            '%s.%s  %s' % (self.__class__.__name__, self._testMethodName, status))
+        return ret
 
     def run_cmd(self, args, return_output=False):
         if args[0] == 'report_html.py' or args[0] == INFERNO_SCRIPT:
@@ -1668,6 +1678,7 @@ class TestRecordingRealApps(TestBase):
         super(TestRecordingRealApps, self).tearDown()
 
     def install_apk(self, apk_path, package_name):
+        self.adb.run(['uninstall', package_name])
         self.adb.run(['install', '-t', apk_path])
         self.installed_packages.append(package_name)
 
@@ -1715,31 +1726,22 @@ def get_all_tests():
     return sorted(tests)
 
 
-def run_tests(tests, repeats):
+def run_tests(tests):
     TEST_HELPER.build_testdata()
     argv = [sys.argv[0]] + tests
     test_runner = unittest.TextTestRunner(stream=TEST_LOGGER, verbosity=2)
-    success = True
-    for repeat in range(1, repeats + 1):
-        print('Run tests with python %d for %dth time\n%s' % (
-            TEST_HELPER.python_version, repeat, '\n'.join(tests)), file=TEST_LOGGER)
-        TEST_HELPER.repeat_count = repeat
-        test_program = unittest.main(argv=argv, testRunner=test_runner, exit=False)
-        if not test_program.result.wasSuccessful():
-            success = False
-    return success
+    test_program = unittest.main(argv=argv, testRunner=test_runner, exit=False)
+    result = test_program.result.wasSuccessful()
+    remove(TEST_HELPER.testdata_dir)
+    return result
 
 
 def main():
     parser = argparse.ArgumentParser(description='Test simpleperf scripts')
     parser.add_argument('--list-tests', action='store_true', help='List all tests.')
     parser.add_argument('--test-from', nargs=1, help='Run left tests from the selected test.')
-    parser.add_argument('--python-version', choices=['2', '3', 'both'], default='both', help="""
-                        Run tests on which python versions.""")
-    parser.add_argument('--repeat', type=int, nargs=1, default=[1], help='run test multiple times')
-    parser.add_argument('--no-test-result', dest='report_test_result',
-                        action='store_false', help="Don't report test result.")
     parser.add_argument('--browser', action='store_true', help='pop report html file in browser.')
+    parser.add_argument('--progress-file', help='write test progress file')
     parser.add_argument('pattern', nargs='*', help='Run tests matching the selected pattern.')
     args = parser.parse_args()
     tests = get_all_tests()
@@ -1763,37 +1765,19 @@ def main():
         print("Skip tests on Android version < N.", file=TEST_LOGGER)
         return False
 
-    if args.python_version == 'both':
-        python_versions = [2, 3]
-    else:
-        python_versions = [int(args.python_version)]
-
-    for python_version in python_versions:
-        remove(TEST_HELPER.get_test_base_dir(python_version))
+    remove(TEST_HELPER.test_base_dir)
 
     if not args.browser:
         TEST_HELPER.browser_option = ['--no_browser']
 
-    test_results = []
-    for version in python_versions:
-        os.chdir(TEST_HELPER.cur_dir)
-        if version == TEST_HELPER.python_version:
-            test_result = run_tests(tests, args.repeat[0])
-        else:
-            argv = ['python3' if version == 3 else 'python']
-            argv.append(TEST_HELPER.script_path('test.py'))
-            argv += sys.argv[1:]
-            argv += ['--python-version', str(version), '--no-test-result']
-            test_result = subprocess.call(argv) == 0
-        test_results.append(test_result)
+    if args.progress_file:
+        TEST_HELPER.progress_fh = open(args.progress_file, 'w')
 
-    if args.report_test_result:
-        for version, test_result in zip(python_versions, test_results):
-            if not test_result:
-                print('Tests with python %d failed, see %s for details.' %
-                      (version, TEST_LOGGER.get_log_file(version)), file=TEST_LOGGER)
-
-    return test_results.count(False) == 0
+    result = run_tests(tests)
+    if not result:
+        print('Tests failed, see %s for details.' % TEST_LOGGER.log_file, file=TEST_LOGGER)
+    TEST_HELPER.write_progress('Test end')
+    return result
 
 
 if __name__ == '__main__':
