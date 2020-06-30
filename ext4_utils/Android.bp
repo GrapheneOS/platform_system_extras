@@ -75,6 +75,17 @@ prebuilt_etc {
     src: "mke2fs.conf",
 }
 
+// TODO(b/157625953): Can't embedded into the other package because of missing variant
+filegroup {
+    name: "mke2fs_conf",
+    srcs: [
+        "mke2fs.conf",
+    ],
+    visibility: [
+        "//system/apex/apexer",
+    ],
+}
+
 cc_binary_host {
     name: "blk_alloc_to_base_fs",
     srcs: ["blk_alloc_to_base_fs.cpp"],
