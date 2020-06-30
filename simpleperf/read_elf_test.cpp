@@ -23,6 +23,7 @@
 #include <android-base/file.h>
 
 #include "get_test_data.h"
+#include "read_apk.h"
 #include "test_util.h"
 #include "utils.h"
 
@@ -63,14 +64,20 @@ TEST(read_elf, GetBuildIdFromNoteSection) {
 
 TEST(read_elf, GetBuildIdFromElfFile) {
   BuildId build_id;
-  ASSERT_EQ(ElfStatus::NO_ERROR, GetBuildIdFromElfFile(GetTestData(ELF_FILE), &build_id));
+  ElfStatus status;
+  auto elf = ElfFile::Open(GetTestData(ELF_FILE), &status);
+  ASSERT_EQ(status, ElfStatus::NO_ERROR);
+  ASSERT_EQ(ElfStatus::NO_ERROR, elf->GetBuildId(&build_id));
   ASSERT_EQ(build_id, BuildId(elf_file_build_id));
 }
 
 TEST(read_elf, GetBuildIdFromEmbeddedElfFile) {
   BuildId build_id;
-  ASSERT_EQ(ElfStatus::NO_ERROR, GetBuildIdFromEmbeddedElfFile(GetTestData(APK_FILE), NATIVELIB_OFFSET_IN_APK,
-                                            NATIVELIB_SIZE_IN_APK, &build_id));
+  ElfStatus status;
+  std::string path = GetUrlInApk(APK_FILE, NATIVELIB_IN_APK);
+  auto elf = ElfFile::Open(GetTestData(path), &status);
+  ASSERT_EQ(status, ElfStatus::NO_ERROR);
+  ASSERT_EQ(ElfStatus::NO_ERROR, elf->GetBuildId(&build_id));
   ASSERT_EQ(build_id, native_lib_build_id);
 }
 
@@ -167,7 +174,10 @@ TEST(read_elf, read_elf_with_broken_section_table) {
             ParseSymbolsFromElfFile(elf_path, BuildId(),
                                     std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   BuildId build_id;
-  ASSERT_EQ(ElfStatus::NO_BUILD_ID, GetBuildIdFromElfFile(elf_path, &build_id));
+  ElfStatus status;
+  auto elf = ElfFile::Open(elf_path, &status);
+  ASSERT_EQ(status, ElfStatus::NO_ERROR);
+  ASSERT_EQ(ElfStatus::NO_BUILD_ID, elf->GetBuildId(&build_id));
   uint64_t min_vaddr;
   uint64_t file_offset_of_min_vaddr;
   ASSERT_EQ(ElfStatus::NO_ERROR, ReadMinExecutableVirtualAddressFromElfFile(
