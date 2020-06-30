@@ -217,20 +217,6 @@ static ElfStatus OpenObjectFileInMemory(const char* data, size_t size, BinaryWra
   return ElfStatus::NO_ERROR;
 }
 
-ElfStatus GetBuildIdFromElfFile(const std::string& filename, BuildId* build_id) {
-  return GetBuildIdFromEmbeddedElfFile(filename, 0, 0, build_id);
-}
-
-ElfStatus GetBuildIdFromEmbeddedElfFile(const std::string& filename, uint64_t file_offset,
-                                        uint32_t file_size, BuildId* build_id) {
-  BinaryWrapper wrapper;
-  ElfStatus result = OpenObjectFile(filename, file_offset, file_size, &wrapper);
-  if (result != ElfStatus::NO_ERROR) {
-    return result;
-  }
-  return GetBuildIdFromObjectFile(wrapper.obj, build_id);
-}
-
 template <class ELFT>
 ElfStatus ReadSectionFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf, const std::string& section_name,
                                  std::string* content) {
@@ -571,10 +557,10 @@ template <typename T>
 class ElfFileImpl {};
 
 template <typename ELFT>
-class ElfFileImpl<llvm::object::ELFFile<ELFT>> : public ElfFile {
+class ElfFileImpl<llvm::object::ELFObjectFile<ELFT>> : public ElfFile {
  public:
-  ElfFileImpl(BinaryWrapper&& wrapper, const llvm::object::ELFFile<ELFT>* elf)
-      : wrapper_(std::move(wrapper)), elf_(elf) {}
+  ElfFileImpl(BinaryWrapper&& wrapper, const llvm::object::ELFObjectFile<ELFT>* elf_obj)
+      : wrapper_(std::move(wrapper)), elf_obj_(elf_obj), elf_(elf_obj->getELFFile()) {}
 
   bool Is64Bit() override {
     return elf_->getHeader()->getFileClass() == llvm::ELF::ELFCLASS64;
@@ -598,8 +584,30 @@ class ElfFileImpl<llvm::object::ELFFile<ELFT>> : public ElfFile {
     return segments;
   }
 
+  ElfStatus GetBuildId(BuildId* build_id) override {
+    llvm::StringRef data = elf_obj_->getData();
+    const char* binary_start = data.data();
+    const char* binary_end = data.data() + data.size();
+    for (auto it = elf_obj_->section_begin(); it != elf_obj_->section_end(); ++it) {
+      const llvm::object::ELFSectionRef& section_ref = *it;
+      if (section_ref.getType() == llvm::ELF::SHT_NOTE) {
+        if (it->getContents(data)) {
+          return ElfStatus::READ_FAILED;
+        }
+        if (data.data() < binary_start || data.data() + data.size() > binary_end) {
+          return ElfStatus::NO_BUILD_ID;
+        }
+        if (GetBuildIdFromNoteSection(data.data(), data.size(), build_id)) {
+          return ElfStatus::NO_ERROR;
+        }
+      }
+    }
+    return ElfStatus::NO_BUILD_ID;
+  }
+
  private:
   BinaryWrapper wrapper_;
+  const llvm::object::ELFObjectFile<ELFT>* elf_obj_;
   const llvm::object::ELFFile<ELFT>* elf_;
 };
 
@@ -622,14 +630,12 @@ std::unique_ptr<ElfFile> ElfFile::Open(const std::string& filename, ElfStatus* s
   }
   if (*status == ElfStatus::NO_ERROR) {
     if (auto obj = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(wrapper.obj)) {
-      using elf_t = std::decay_t<decltype(*obj->getELFFile())>;
       return std::unique_ptr<ElfFile>(
-          new ElfFileImpl<elf_t>(std::move(wrapper), obj->getELFFile()));
+          new ElfFileImpl<llvm::object::ELF32LEObjectFile>(std::move(wrapper), obj));
     }
     if (auto obj = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(wrapper.obj)) {
-      using elf_t = std::decay_t<decltype(*obj->getELFFile())>;
       return std::unique_ptr<ElfFile>(
-          new ElfFileImpl<elf_t>(std::move(wrapper), obj->getELFFile()));
+          new ElfFileImpl<llvm::object::ELF64LEObjectFile>(std::move(wrapper), obj));
     }
     *status = ElfStatus::FILE_MALFORMED;
   }
