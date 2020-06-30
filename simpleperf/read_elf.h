@@ -40,9 +40,6 @@ enum ElfStatus {
 std::ostream& operator<<(std::ostream& os, const ElfStatus& status);
 
 ElfStatus GetBuildIdFromNoteFile(const std::string& filename, BuildId* build_id);
-ElfStatus GetBuildIdFromElfFile(const std::string& filename, BuildId* build_id);
-ElfStatus GetBuildIdFromEmbeddedElfFile(const std::string& filename, uint64_t file_offset,
-                                        uint32_t file_size, BuildId* build_id);
 
 // The symbol prefix used to indicate that the symbol belongs to android linker.
 static const std::string linker_prefix = "__dl_";
@@ -105,6 +102,7 @@ class ElfFile {
   virtual bool Is64Bit() = 0;
   virtual llvm::MemoryBuffer* GetMemoryBuffer() = 0;
   virtual std::vector<ElfSegment> GetProgramHeader() = 0;
+  virtual ElfStatus GetBuildId(BuildId* build_id) = 0;
 
  protected:
   ElfFile() {}
