@@ -109,6 +109,7 @@ class EventSelectionSet {
   void SetIncludeFilters(std::vector<std::string>&& filters) {
     include_filters_ = std::move(filters);
   }
+  bool SetTracepointFilter(const std::string& filter);
 
   template <typename Collection = std::vector<pid_t>>
   void AddMonitoredProcesses(const Collection& processes) {
@@ -166,6 +167,7 @@ class EventSelectionSet {
     // counters for event files closed for cpu hotplug events
     std::vector<CounterInfo> hotplugged_counters;
     std::vector<int> allowed_cpus;
+    std::string tracepoint_filter;
   };
   typedef std::vector<EventSelection> EventSelectionGroup;
 
@@ -175,6 +177,8 @@ class EventSelectionSet {
   bool OpenEventFilesOnGroup(EventSelectionGroup& group, pid_t tid, int cpu,
                              std::string* failed_event_type);
   bool ApplyFilters();
+  bool ApplyAddrFilters();
+  bool ApplyTracepointFilters();
   bool ReadMmapEventData(bool with_time_limit);
 
   bool CheckMonitoredTargets();
