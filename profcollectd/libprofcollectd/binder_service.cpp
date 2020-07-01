@@ -59,8 +59,8 @@ Status ProfcollectdBinder::TerminateCollection() {
   return HandleIfError([=]() { return Scheduler->TerminateCollection(); });
 }
 
-Status ProfcollectdBinder::TraceOnce() {
-  return HandleIfError([=]() { return Scheduler->TraceOnce(); });
+Status ProfcollectdBinder::TraceOnce(const std::string& tag) {
+  return HandleIfError([=]() { return Scheduler->TraceOnce(tag); });
 }
 
 Status ProfcollectdBinder::ProcessProfile() {
