@@ -33,7 +33,7 @@ class HwtraceProvider {
    * @param period Length of time to trace in seconds.
    * @return True if successful.
    */
-  virtual bool Trace(const std::filesystem::path& outputPath,
+  virtual bool Trace(const std::filesystem::path& outputPath, const std::string& tag,
                      std::chrono::duration<float> samplingPeriod) = 0;
 
   /**
