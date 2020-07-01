@@ -56,17 +56,6 @@ struct ElfFileSymbol {
   }
 };
 
-ElfStatus ParseSymbolsFromElfFile(const std::string& filename,
-                                  const BuildId& expected_build_id,
-                                  const std::function<void(const ElfFileSymbol&)>& callback);
-ElfStatus ParseSymbolsFromEmbeddedElfFile(const std::string& filename, uint64_t file_offset,
-                                          uint32_t file_size, const BuildId& expected_build_id,
-                                          const std::function<void(const ElfFileSymbol&)>& callback);
-ElfStatus ParseSymbolsFromElfFileInMemory(const char* data, size_t size,
-                                          const std::function<void(const ElfFileSymbol&)>& callback);
-ElfStatus ParseDynamicSymbolsFromElfFile(const std::string& filename,
-                                         const std::function<void(const ElfFileSymbol&)>& callback);
-
 ElfStatus ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
                                                      const BuildId& expected_build_id,
                                                      uint64_t* min_addr,
@@ -77,9 +66,6 @@ ElfStatus ReadMinExecutableVirtualAddressFromEmbeddedElfFile(const std::string& 
                                                              const BuildId& expected_build_id,
                                                              uint64_t* min_vaddr,
                                                              uint64_t* file_offset_of_min_vaddr);
-
-ElfStatus ReadSectionFromElfFile(const std::string& filename, const std::string& section_name,
-                                 std::string* content);
 
 namespace llvm {
 class MemoryBuffer;
@@ -96,13 +82,25 @@ struct ElfSegment {
 
 class ElfFile {
  public:
-  static std::unique_ptr<ElfFile> Open(const std::string& filename, ElfStatus* status);
+  static std::unique_ptr<ElfFile> Open(const std::string& filename, ElfStatus* status) {
+    return Open(filename, nullptr, status);
+  }
+
+  static std::unique_ptr<ElfFile> Open(const std::string& filename,
+                                       const BuildId* expected_build_id, ElfStatus* status);
+  static std::unique_ptr<ElfFile> Open(const char* data, size_t size, ElfStatus* status);
   virtual ~ElfFile() {}
 
   virtual bool Is64Bit() = 0;
   virtual llvm::MemoryBuffer* GetMemoryBuffer() = 0;
   virtual std::vector<ElfSegment> GetProgramHeader() = 0;
   virtual ElfStatus GetBuildId(BuildId* build_id) = 0;
+
+  using ParseSymbolCallback = std::function<void(const ElfFileSymbol&)>;
+  virtual ElfStatus ParseSymbols(const ParseSymbolCallback& callback) = 0;
+  virtual void ParseDynamicSymbols(const ParseSymbolCallback& callback) = 0;
+
+  virtual ElfStatus ReadSection(const std::string& section_name, std::string* content) = 0;
 
  protected:
   ElfFile() {}

@@ -448,9 +448,11 @@ const JITDebugReader::DescriptorsLocation* JITDebugReader::GetDescriptorsLocatio
       dex_addr = symbol.vaddr - aligned_segment_vaddr;
     }
   };
-  if (ParseDynamicSymbolsFromElfFile(art_lib_path, callback) != ElfStatus::NO_ERROR) {
+  auto elf = ElfFile::Open(art_lib_path, &status);
+  if (status != ElfStatus::NO_ERROR) {
     return nullptr;
   }
+  elf->ParseDynamicSymbols(callback);
   if (jit_addr == 0u || dex_addr == 0u) {
     return nullptr;
   }
@@ -619,7 +621,11 @@ void JITDebugReader::ReadJITCodeDebugInfo(Process& process,
       debug_info->emplace_back(process.pid, jit_entry.timestamp, symbol.vaddr, symbol.len,
                                tmp_file->path);
     };
-    ParseSymbolsFromElfFileInMemory(data.data(), jit_entry.symfile_size, callback);
+    ElfStatus status;
+    auto elf = ElfFile::Open(data.data(), jit_entry.symfile_size, &status);
+    if (elf) {
+      elf->ParseSymbols(callback);
+    }
   }
 }
 
