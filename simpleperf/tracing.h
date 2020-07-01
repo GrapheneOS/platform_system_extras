@@ -17,6 +17,8 @@
 #ifndef SIMPLE_PERF_TRACING_H_
 #define SIMPLE_PERF_TRACING_H_
 
+#include <optional>
+#include <set>
 #include <vector>
 
 #include <android-base/logging.h>
@@ -103,5 +105,9 @@ class Tracing {
 
 bool GetTracingData(const std::vector<const EventType*>& event_types,
                     std::vector<char>* data);
+
+using FieldNameSet = std::set<std::string>;
+bool CheckTracepointFilterFormat(const std::string& filter, FieldNameSet* used_fields);
+std::optional<FieldNameSet> GetFieldNamesForTracepointEvent(const EventType& event);
 
 #endif  // SIMPLE_PERF_TRACING_H_
