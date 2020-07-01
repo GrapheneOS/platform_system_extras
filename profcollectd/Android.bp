@@ -54,7 +54,7 @@ cc_binary {
 filegroup {
     name: "profcollectd_aidl",
     srcs: [
-        "binder/android/os/IProfCollectd.aidl",
+        "binder/com/android/server/profcollect/IProfCollectd.aidl",
     ],
     path: "binder",
 }
