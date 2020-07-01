@@ -21,6 +21,7 @@
 #include <thread>
 
 #include <android-base/logging.h>
+#include <android-base/strings.h>
 
 #include "environment.h"
 #include "ETMRecorder.h"
@@ -28,6 +29,7 @@
 #include "event_type.h"
 #include "IOEventLoop.h"
 #include "perf_regs.h"
+#include "tracing.h"
 #include "utils.h"
 #include "RecordReadThread.h"
 
@@ -463,6 +465,47 @@ bool EventSelectionSet::RecordNotExecutableMaps() const {
   return groups_[0][0].event_attr.mmap_data == 1;
 }
 
+bool EventSelectionSet::SetTracepointFilter(const std::string& filter) {
+  // 1. Find the tracepoint event to set filter.
+  EventSelection* selection = nullptr;
+  if (!groups_.empty()) {
+    auto& group = groups_.back();
+    if (group.size() == 1) {
+      if (group[0].event_attr.type == PERF_TYPE_TRACEPOINT) {
+        selection = &group[0];
+      }
+    }
+  }
+  if (selection == nullptr) {
+    LOG(ERROR) << "No tracepoint event before filter: " << filter;
+    return false;
+  }
+
+  // 2. Check the format of the filter.
+  FieldNameSet used_fields;
+  if (!CheckTracepointFilterFormat(filter, &used_fields)) {
+    return false;
+  }
+
+  // 3. Check if used fields are available in the tracepoint event.
+  auto& event_type = selection->event_type_modifier.event_type;
+  if (auto opt_fields = GetFieldNamesForTracepointEvent(event_type); opt_fields) {
+    FieldNameSet& fields = opt_fields.value();
+    for (const auto& field : used_fields) {
+      if (fields.find(field) == fields.end()) {
+        LOG(ERROR) << "field name " << field << " used in \"" << filter << "\" doesn't exist in "
+                   << event_type.name << ". Available fields are "
+                   << android::base::Join(fields, ",");
+        return false;
+      }
+    }
+  }
+
+  // 4. Connect the filter to the event.
+  selection->tracepoint_filter = filter;
+  return true;
+}
+
 static bool CheckIfCpusOnline(const std::vector<int>& cpus) {
   std::vector<int> online_cpus = GetOnlineCpus();
   for (const auto& cpu : cpus) {
@@ -557,6 +600,10 @@ bool EventSelectionSet::OpenEventFiles(const std::vector<int>& cpus) {
 }
 
 bool EventSelectionSet::ApplyFilters() {
+  return ApplyAddrFilters() && ApplyTracepointFilters();
+}
+
+bool EventSelectionSet::ApplyAddrFilters() {
   if (include_filters_.empty()) {
     return true;
   }
@@ -588,6 +635,21 @@ bool EventSelectionSet::ApplyFilters() {
       if (IsEtmEventType(selection.event_type_modifier.event_type.type)) {
         for (auto& event_fd : selection.event_fds) {
           if (!event_fd->SetFilter(filter_str)) {
+            return false;
+          }
+        }
+      }
+    }
+  }
+  return true;
+}
+
+bool EventSelectionSet::ApplyTracepointFilters() {
+  for (auto& group : groups_) {
+    for (auto& selection : group) {
+      if (!selection.tracepoint_filter.empty()) {
+        for (auto& event_fd : selection.event_fds) {
+          if (!event_fd->SetFilter(selection.tracepoint_filter)) {
             return false;
           }
         }
