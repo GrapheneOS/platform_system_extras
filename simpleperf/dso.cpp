@@ -484,29 +484,14 @@ class ElfDso : public Dso {
     if (min_vaddr_ == uninitialized_value) {
       min_vaddr_ = 0;
       BuildId build_id = GetExpectedBuildId();
-      uint64_t addr;
-      uint64_t offset;
-      ElfStatus result;
-      auto tuple = SplitUrlInApk(debug_file_path_);
-      if (std::get<0>(tuple)) {
-        EmbeddedElf* elf = ApkInspector::FindElfInApkByName(std::get<1>(tuple),
-                                                            std::get<2>(tuple));
-        if (elf == nullptr) {
-          result = ElfStatus::FILE_NOT_FOUND;
-        } else {
-          result = ReadMinExecutableVirtualAddressFromEmbeddedElfFile(
-              elf->filepath(), elf->entry_offset(), elf->entry_size(), build_id, &addr, &offset);
-        }
+
+      ElfStatus status;
+      auto elf = ElfFile::Open(debug_file_path_, &build_id, &status);
+      if (elf) {
+        min_vaddr_ = elf->ReadMinExecutableVaddr(&file_offset_of_min_vaddr_);
       } else {
-        result = ReadMinExecutableVirtualAddressFromElfFile(debug_file_path_, build_id, &addr,
-                                                            &offset);
-      }
-      if (result != ElfStatus::NO_ERROR) {
-        LOG(WARNING) << "failed to read min virtual address of "
-                     << GetDebugFilePath() << ": " << result;
-      } else {
-        min_vaddr_ = addr;
-        file_offset_of_min_vaddr_ = offset;
+        LOG(WARNING) << "failed to read min virtual address of " << debug_file_path_ << ": "
+                     << status;
       }
     }
     *min_vaddr = min_vaddr_;

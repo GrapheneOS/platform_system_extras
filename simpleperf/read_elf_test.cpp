@@ -205,19 +205,18 @@ TEST(read_elf, read_elf_with_broken_section_table) {
   BuildId build_id;
   ASSERT_EQ(ElfStatus::NO_BUILD_ID, elf->GetBuildId(&build_id));
 
-  uint64_t min_vaddr;
   uint64_t file_offset_of_min_vaddr;
-  ASSERT_EQ(ElfStatus::NO_ERROR, ReadMinExecutableVirtualAddressFromElfFile(
-      elf_path, BuildId(), &min_vaddr, &file_offset_of_min_vaddr));
+  uint64_t min_vaddr = elf->ReadMinExecutableVaddr(&file_offset_of_min_vaddr);
   ASSERT_EQ(min_vaddr, 0u);
   ASSERT_EQ(file_offset_of_min_vaddr, 0u);
 }
 
-TEST(read_elf, ReadMinExecutableVirtualAddressFromElfFile) {
-  uint64_t min_vaddr;
+TEST(read_elf, ReadMinExecutableVaddr) {
+  ElfStatus status;
+  auto elf = ElfFile::Open(GetTestData("libc.so"), &status);
+  ASSERT_EQ(status, ElfStatus::NO_ERROR);
   uint64_t file_offset_of_min_vaddr;
-  ASSERT_EQ(ElfStatus::NO_ERROR, ReadMinExecutableVirtualAddressFromElfFile(
-      GetTestData("libc.so"), BuildId(), &min_vaddr, &file_offset_of_min_vaddr));
+  uint64_t min_vaddr = elf->ReadMinExecutableVaddr(&file_offset_of_min_vaddr);
   ASSERT_EQ(min_vaddr, 0x29000u);
   ASSERT_EQ(file_offset_of_min_vaddr, 0x29000u);
 }
