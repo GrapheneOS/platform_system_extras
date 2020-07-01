@@ -291,24 +291,40 @@ bool HasTracepointEvents() {
   return has_tracepoint_events == 1;
 }
 
+#if defined(__arm__)
+// Check if we can get a non-zero instruction event count by monitoring current thread.
+static bool HasNonZeroInstructionEventCount() {
+  const EventType* type = FindEventTypeByName("instructions", false);
+  if (type == nullptr) {
+    return false;
+  }
+  perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
+  std::unique_ptr<EventFd> event_fd =
+      EventFd::OpenEventFile(attr, gettid(), -1, nullptr, type->name, false);
+  if (!event_fd) {
+    return false;
+  }
+  // do some cpu work.
+  for (volatile int i = 0; i < 100000; ++i) {
+  }
+  PerfCounter counter;
+  if (event_fd->ReadCounter(&counter)) {
+    return counter.value != 0;
+  }
+  return false;
+}
+#endif  // defined(__arm__)
+
 bool HasHardwareCounter() {
   static int has_hw_counter = -1;
   if (has_hw_counter == -1) {
     // Cloud Android doesn't have hardware counters.
     has_hw_counter = InCloudAndroid() ? 0 : 1;
 #if defined(__arm__)
-    std::string cpu_info;
-    if (android::base::ReadFileToString("/proc/cpuinfo", &cpu_info)) {
-      std::string hardware = GetHardwareFromCpuInfo(cpu_info);
-      if (std::regex_search(hardware, std::regex(R"(i\.MX6.*Quad)")) ||
-          std::regex_search(hardware, std::regex(R"(SC7731e)")) ||
-          std::regex_search(hardware, std::regex(R"(Qualcomm Technologies, Inc MSM8909)")) ||
-          std::regex_search(hardware, std::regex(R"(Qualcomm Technologies, Inc MSM8909W)")) ||
-          std::regex_search(hardware, std::regex(R"(Qualcomm Technologies, Inc APQ8009W)")) ||
-          std::regex_search(hardware, std::regex(R"(Broadcom STB \(Flattened Device Tree\))"))) {
-        has_hw_counter = 0;
-      }
-    }
+    // For arm32 devices, external non-invasive debug signal controls PMU counters. Once it is
+    // disabled for security reason, we always get zero values for PMU counters. And we want to
+    // skip hardware counter tests once we detect it.
+    has_hw_counter &= HasNonZeroInstructionEventCount() ? 1 : 0;
 #endif
   }
   return has_hw_counter == 1;
