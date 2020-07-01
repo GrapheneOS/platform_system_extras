@@ -198,6 +198,9 @@ class RecordCommand : public Command {
 "--include-filter binary1,binary2,...\n"
 "                Trace only selected binaries in cs-etm instruction tracing.\n"
 "                Each entry is a binary path.\n"
+"--tp-filter filter_string    Set filter_string for the previous tracepoint event.\n"
+"                             Format is in Documentation/trace/events.rst in the kernel.\n"
+"                             An example: 'prev_comm != \"simpleperf\" && (prev_pid > 1)'.\n"
 "\n"
 "Dwarf unwinding options:\n"
 "--post-unwind=(yes|no) If `--call-graph dwarf` option is used, then the user's\n"
@@ -955,6 +958,14 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       event_selection_set_.AddMonitoredThreads(tids);
+    } else if (args[i] == "--tp-filter") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (!event_selection_set_.SetTracepointFilter(args[i])) {
+        return false;
+      }
+
     } else if (args[i] == "--trace-offcpu") {
       trace_offcpu_ = true;
     } else if (args[i] == "--tracepoint-events") {
