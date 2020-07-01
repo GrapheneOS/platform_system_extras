@@ -19,13 +19,14 @@
 #include <binder/BinderService.h>
 #include <binder/Status.h>
 
-#include "android/os/BnProfCollectd.h"
+#include "com/android/server/profcollect/BnProfCollectd.h"
 #include "scheduler.h"
 
 namespace android {
 namespace profcollectd {
 
-class ProfcollectdBinder : public BinderService<ProfcollectdBinder>, public os::BnProfCollectd {
+class ProfcollectdBinder : public BinderService<ProfcollectdBinder>,
+                           public ::com::android::server::profcollect::BnProfCollectd {
  public:
   explicit ProfcollectdBinder();
 
