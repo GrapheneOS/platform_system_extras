@@ -559,17 +559,9 @@ class ElfDso : public Dso {
       }
     };
     ElfStatus status;
-    std::tuple<bool, std::string, std::string> tuple = SplitUrlInApk(debug_file_path_);
-    if (std::get<0>(tuple)) {
-      EmbeddedElf* elf = ApkInspector::FindElfInApkByName(std::get<1>(tuple), std::get<2>(tuple));
-      if (elf == nullptr) {
-        status = ElfStatus::FILE_NOT_FOUND;
-      } else {
-        status = ParseSymbolsFromEmbeddedElfFile(elf->filepath(), elf->entry_offset(),
-                                                 elf->entry_size(), build_id, symbol_callback);
-      }
-    } else {
-      status = ParseSymbolsFromElfFile(debug_file_path_, build_id, symbol_callback);
+    auto elf = ElfFile::Open(debug_file_path_, &build_id, &status);
+    if (elf) {
+      status = elf->ParseSymbols(symbol_callback);
     }
     ReportReadElfSymbolResult(status, path_, debug_file_path_,
                               symbols_.empty() ? android::base::WARNING : android::base::DEBUG);
@@ -604,7 +596,11 @@ class KernelDso : public Dso {
           symbols.emplace_back(symbol.name, symbol.vaddr, symbol.len);
         }
       };
-      ElfStatus status = ParseSymbolsFromElfFile(vmlinux_, build_id, symbol_callback);
+      ElfStatus status;
+      auto elf = ElfFile::Open(vmlinux_, &build_id, &status);
+      if (elf) {
+        status = elf->ParseSymbols(symbol_callback);
+      }
       ReportReadElfSymbolResult(status, path_, vmlinux_);
     } else if (!kallsyms_.empty()) {
       symbols = ReadSymbolsFromKallsyms(kallsyms_);
@@ -671,7 +667,11 @@ class KernelModuleDso : public Dso {
         symbols.emplace_back(symbol.name, symbol.vaddr, symbol.len);
       }
     };
-    ElfStatus status = ParseSymbolsFromElfFile(debug_file_path_, build_id, symbol_callback);
+    ElfStatus status;
+    auto elf = ElfFile::Open(debug_file_path_, &build_id, &status);
+    if (elf) {
+      status = elf->ParseSymbols(symbol_callback);
+    }
     ReportReadElfSymbolResult(status, path_, debug_file_path_,
                               symbols_.empty() ? android::base::WARNING : android::base::DEBUG);
     SortAndFixSymbols(symbols);
