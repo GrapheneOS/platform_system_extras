@@ -35,7 +35,7 @@ class ProfcollectdBinder : public BinderService<ProfcollectdBinder>,
   binder::Status ReadConfig() override;
   binder::Status ScheduleCollection() override;
   binder::Status TerminateCollection() override;
-  binder::Status TraceOnce() override;
+  binder::Status TraceOnce(const std::string& tag) override;
   binder::Status ProcessProfile() override;
 
  protected:
