@@ -21,6 +21,6 @@ interface IProfCollectd {
     void ReadConfig();
     void ScheduleCollection();
     void TerminateCollection();
-    void TraceOnce();
+    void TraceOnce(@utf8InCpp String tag);
     void ProcessProfile();
 }
