@@ -105,37 +105,60 @@ void CheckElfFileSymbols(const std::map<std::string, ElfFileSymbol>& symbols) {
 
 TEST(read_elf, parse_symbols_from_elf_file_with_correct_build_id) {
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_EQ(ElfStatus::NO_ERROR, ParseSymbolsFromElfFile(GetTestData(ELF_FILE), elf_file_build_id,
-                                      std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
+  ElfStatus status;
+  auto elf = ElfFile::Open(GetTestData(ELF_FILE), &elf_file_build_id, &status);
+  ASSERT_EQ(ElfStatus::NO_ERROR, status);
+  ASSERT_EQ(ElfStatus::NO_ERROR,
+            elf->ParseSymbols(std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   CheckElfFileSymbols(symbols);
 }
 
 TEST(read_elf, parse_symbols_from_elf_file_without_build_id) {
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_EQ(ElfStatus::NO_ERROR, ParseSymbolsFromElfFile(GetTestData(ELF_FILE), BuildId(),
-                                      std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
+  ElfStatus status;
+  // Test no build_id.
+  auto elf = ElfFile::Open(GetTestData(ELF_FILE), &status);
+  ASSERT_EQ(ElfStatus::NO_ERROR, status);
+  ASSERT_EQ(ElfStatus::NO_ERROR,
+            elf->ParseSymbols(std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
+  CheckElfFileSymbols(symbols);
+
+  // Test empty build id.
+  symbols.clear();
+  BuildId build_id;
+  elf = ElfFile::Open(GetTestData(ELF_FILE), &build_id, &status);
+  ASSERT_EQ(ElfStatus::NO_ERROR, status);
+  ASSERT_EQ(ElfStatus::NO_ERROR,
+            elf->ParseSymbols(std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   CheckElfFileSymbols(symbols);
 }
 
 TEST(read_elf, parse_symbols_from_elf_file_with_wrong_build_id) {
   BuildId build_id("01010101010101010101");
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_EQ(ElfStatus::BUILD_ID_MISMATCH, ParseSymbolsFromElfFile(GetTestData(ELF_FILE), build_id,
-                                       std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
+  ElfStatus status;
+  auto elf = ElfFile::Open(GetTestData(ELF_FILE), &build_id, &status);
+  ASSERT_EQ(ElfStatus::BUILD_ID_MISMATCH, status);
 }
 
 TEST(read_elf, ParseSymbolsFromEmbeddedElfFile) {
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_EQ(ElfStatus::NO_SYMBOL_TABLE, ParseSymbolsFromEmbeddedElfFile(GetTestData(APK_FILE), NATIVELIB_OFFSET_IN_APK,
-                                              NATIVELIB_SIZE_IN_APK, native_lib_build_id,
-                                              std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
+  ElfStatus status;
+  std::string path = GetUrlInApk(APK_FILE, NATIVELIB_IN_APK);
+  auto elf = ElfFile::Open(GetTestData(path), &native_lib_build_id, &status);
+  ASSERT_EQ(status, ElfStatus::NO_ERROR);
+  ASSERT_EQ(ElfStatus::NO_SYMBOL_TABLE,
+            elf->ParseSymbols(std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   CheckElfFileSymbols(symbols);
 }
 
 TEST(read_elf, ParseSymbolFromMiniDebugInfoElfFile) {
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_EQ(ElfStatus::NO_ERROR, ParseSymbolsFromElfFile(GetTestData(ELF_FILE_WITH_MINI_DEBUG_INFO), BuildId(),
-                                      std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
+  ElfStatus status;
+  auto elf = ElfFile::Open(GetTestData(ELF_FILE_WITH_MINI_DEBUG_INFO), &status);
+  ASSERT_EQ(ElfStatus::NO_ERROR, status);
+  ASSERT_EQ(ElfStatus::NO_ERROR,
+            elf->ParseSymbols(std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   CheckFunctionSymbols(symbols);
 }
 
@@ -162,22 +185,26 @@ TEST(read_elf, ElfFile_Open) {
 
 TEST(read_elf, check_symbol_for_plt_section) {
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_EQ(ElfStatus::NO_ERROR, ParseSymbolsFromElfFile(GetTestData(ELF_FILE), BuildId(),
-                                      std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
+  ElfStatus status;
+  auto elf = ElfFile::Open(GetTestData(ELF_FILE), &status);
+  ASSERT_EQ(ElfStatus::NO_ERROR, status);
+  ASSERT_EQ(ElfStatus::NO_ERROR,
+            elf->ParseSymbols(std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   ASSERT_NE(symbols.find("@plt"), symbols.end());
 }
 
 TEST(read_elf, read_elf_with_broken_section_table) {
   std::string elf_path = GetTestData("libsgmainso-6.4.36.so");
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_EQ(ElfStatus::NO_SYMBOL_TABLE,
-            ParseSymbolsFromElfFile(elf_path, BuildId(),
-                                    std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
-  BuildId build_id;
   ElfStatus status;
   auto elf = ElfFile::Open(elf_path, &status);
-  ASSERT_EQ(status, ElfStatus::NO_ERROR);
+  ASSERT_EQ(ElfStatus::NO_ERROR, status);
+  ASSERT_EQ(ElfStatus::NO_SYMBOL_TABLE,
+            elf->ParseSymbols(std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
+
+  BuildId build_id;
   ASSERT_EQ(ElfStatus::NO_BUILD_ID, elf->GetBuildId(&build_id));
+
   uint64_t min_vaddr;
   uint64_t file_offset_of_min_vaddr;
   ASSERT_EQ(ElfStatus::NO_ERROR, ReadMinExecutableVirtualAddressFromElfFile(
@@ -204,7 +231,9 @@ TEST(read_elf, NoUndefinedSymbol) {
     }
   };
 
-  ASSERT_EQ(ElfStatus::NO_ERROR,
-            ParseSymbolsFromElfFile(GetTestData("libc.so"), BuildId(), parse_symbol));
+  ElfStatus status;
+  auto elf = ElfFile::Open(GetTestData("libc.so"), &status);
+  ASSERT_EQ(status, ElfStatus::NO_ERROR);
+  ASSERT_EQ(ElfStatus::NO_ERROR, elf->ParseSymbols(parse_symbol));
   ASSERT_FALSE(has_dlerror);
 }
