@@ -854,7 +854,7 @@ ScopedTempFiles::~ScopedTempFiles() {
 std::unique_ptr<TemporaryFile> ScopedTempFiles::CreateTempFile(bool delete_in_destructor) {
   CHECK(!tmp_dir_.empty());
   std::unique_ptr<TemporaryFile> tmp_file(new TemporaryFile(tmp_dir_));
-  CHECK_NE(tmp_file->fd, -1);
+  CHECK_NE(tmp_file->fd, -1) << "failed to create tmpfile under " << tmp_dir_;
   if (delete_in_destructor) {
     tmp_file->DoNotRemove();
     files_to_delete_.push_back(tmp_file->path);
