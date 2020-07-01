@@ -27,7 +27,7 @@
 namespace android {
 namespace profcollectd {
 
-using ::android::os::IProfCollectd;
+using ::com::android::server::profcollect::IProfCollectd;
 
 namespace {
 
