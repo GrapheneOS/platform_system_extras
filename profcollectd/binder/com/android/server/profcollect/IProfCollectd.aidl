@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-package android.os;
+package com.android.server.profcollect;
 
 /** {@hide} */
 interface IProfCollectd {
     void ReadConfig();
     void ScheduleCollection();
     void TerminateCollection();
-    void TraceOnce();
+    void TraceOnce(@utf8InCpp String tag);
     void ProcessProfile();
 }

@@ -19,13 +19,14 @@
 #include <binder/BinderService.h>
 #include <binder/Status.h>
 
-#include "android/os/BnProfCollectd.h"
+#include "com/android/server/profcollect/BnProfCollectd.h"
 #include "scheduler.h"
 
 namespace android {
 namespace profcollectd {
 
-class ProfcollectdBinder : public BinderService<ProfcollectdBinder>, public os::BnProfCollectd {
+class ProfcollectdBinder : public BinderService<ProfcollectdBinder>,
+                           public ::com::android::server::profcollect::BnProfCollectd {
  public:
   explicit ProfcollectdBinder();
 
@@ -34,7 +35,7 @@ class ProfcollectdBinder : public BinderService<ProfcollectdBinder>, public os::
   binder::Status ReadConfig() override;
   binder::Status ScheduleCollection() override;
   binder::Status TerminateCollection() override;
-  binder::Status TraceOnce() override;
+  binder::Status TraceOnce(const std::string& tag) override;
   binder::Status ProcessProfile() override;
 
  protected:

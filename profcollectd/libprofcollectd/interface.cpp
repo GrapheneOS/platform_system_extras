@@ -27,7 +27,7 @@
 namespace android {
 namespace profcollectd {
 
-using ::android::os::IProfCollectd;
+using ::com::android::server::profcollect::IProfCollectd;
 
 namespace {
 
@@ -71,7 +71,7 @@ void TerminateCollection() {
 }
 
 void TraceOnce() {
-  GetIProfcollectdService()->TraceOnce();
+  GetIProfcollectdService()->TraceOnce("manual");
 }
 
 void Process() {
