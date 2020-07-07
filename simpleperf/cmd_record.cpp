@@ -1839,7 +1839,11 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
   }
 }
 
+namespace simpleperf {
+
 void RegisterRecordCommand() {
   RegisterCommand("record",
                   [] { return std::unique_ptr<Command>(new RecordCommand()); });
 }
+
+}  // namespace simpleperf

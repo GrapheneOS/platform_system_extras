@@ -914,7 +914,11 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters,
 
 }  // namespace
 
+namespace simpleperf {
+
 void RegisterStatCommand() {
   RegisterCommand("stat",
                   [] { return std::unique_ptr<Command>(new StatCommand); });
 }
+
+}  // namespace simpleperf

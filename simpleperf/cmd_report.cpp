@@ -974,7 +974,11 @@ void ReportCommand::PrintReportContext(FILE* report_fp) {
 
 }  // namespace
 
+namespace simpleperf {
+
 void RegisterReportCommand() {
   RegisterCommand("report",
                   [] { return std::unique_ptr<Command>(new ReportCommand()); });
 }
+
+}  // namespace simpleperf

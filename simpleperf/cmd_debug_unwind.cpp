@@ -405,7 +405,11 @@ void DebugUnwindCommand::PrintStat() {
   printf("Please use debug_unwind_reporter.py to get a report in details.\n");
 }
 
+namespace simpleperf {
+
 void RegisterDebugUnwindCommand() {
   RegisterCommand("debug-unwind",
                   []{ return std::unique_ptr<Command>(new DebugUnwindCommand()); });
 }
+
+}  // namespace simpleperf
