@@ -424,15 +424,14 @@ const JITDebugReader::DescriptorsLocation* JITDebugReader::GetDescriptorsLocatio
   DescriptorsLocation& location = descriptors_location_cache_[art_lib_path];
 
   // Read libart.so to find the addresses of __jit_debug_descriptor and __dex_debug_descriptor.
-  uint64_t min_vaddr_in_file;
-  uint64_t file_offset;
-  ElfStatus status = ReadMinExecutableVirtualAddressFromElfFile(art_lib_path, BuildId(),
-                                                                &min_vaddr_in_file,
-                                                                &file_offset);
-  if (status != ElfStatus::NO_ERROR) {
-    LOG(ERROR) << "ReadMinExecutableVirtualAddress failed, status = " << status;
+  ElfStatus status;
+  auto elf = ElfFile::Open(art_lib_path, &status);
+  if (!elf) {
+    LOG(ERROR) << "failed to read min_exec_vaddr from " << art_lib_path << ": " << status;
     return nullptr;
   }
+  uint64_t file_offset;
+  uint64_t min_vaddr_in_file = elf->ReadMinExecutableVaddr(&file_offset);
   // min_vaddr_in_file is the min vaddr of executable segments. It may not be page aligned.
   // And dynamic linker will create map mapping to (segment.p_vaddr & PAGE_MASK).
   uint64_t aligned_segment_vaddr = min_vaddr_in_file & PAGE_MASK;
@@ -448,17 +447,14 @@ const JITDebugReader::DescriptorsLocation* JITDebugReader::GetDescriptorsLocatio
       dex_addr = symbol.vaddr - aligned_segment_vaddr;
     }
   };
-  auto elf = ElfFile::Open(art_lib_path, &status);
-  if (status != ElfStatus::NO_ERROR) {
-    return nullptr;
-  }
   elf->ParseDynamicSymbols(callback);
   if (jit_addr == 0u || dex_addr == 0u) {
     return nullptr;
   }
   location.relative_addr = std::min(jit_addr, dex_addr);
   location.size = std::max(jit_addr, dex_addr) +
-      (is_64bit ? sizeof(JITDescriptor64) : sizeof(JITDescriptor32)) - location.relative_addr;
+                  (is_64bit ? sizeof(JITDescriptor64) : sizeof(JITDescriptor32)) -
+                  location.relative_addr;
   if (location.size >= 4096u) {
     PLOG(WARNING) << "The descriptors_size is unexpected large: " << location.size;
   }
