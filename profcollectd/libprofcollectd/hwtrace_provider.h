@@ -28,6 +28,11 @@ class HwtraceProvider {
   virtual ~HwtraceProvider() = default;
 
   /**
+   * Get the name of the trace provider.
+   */
+  virtual std::string GetName() = 0;
+
+  /**
    * Trace for the given length of time.
    *
    * @param period Length of time to trace in seconds.
