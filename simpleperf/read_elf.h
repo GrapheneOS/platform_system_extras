@@ -56,17 +56,6 @@ struct ElfFileSymbol {
   }
 };
 
-ElfStatus ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
-                                                     const BuildId& expected_build_id,
-                                                     uint64_t* min_addr,
-                                                     uint64_t* file_offset_of_min_vaddr);
-ElfStatus ReadMinExecutableVirtualAddressFromEmbeddedElfFile(const std::string& filename,
-                                                             uint64_t file_offset,
-                                                             uint32_t file_size,
-                                                             const BuildId& expected_build_id,
-                                                             uint64_t* min_vaddr,
-                                                             uint64_t* file_offset_of_min_vaddr);
-
 namespace llvm {
 class MemoryBuffer;
 }
@@ -101,6 +90,7 @@ class ElfFile {
   virtual void ParseDynamicSymbols(const ParseSymbolCallback& callback) = 0;
 
   virtual ElfStatus ReadSection(const std::string& section_name, std::string* content) = 0;
+  virtual uint64_t ReadMinExecutableVaddr(uint64_t* file_offset_of_min_vaddr) = 0;
 
  protected:
   ElfFile() {}
