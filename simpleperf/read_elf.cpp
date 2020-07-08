@@ -129,37 +129,6 @@ ElfStatus GetBuildIdFromNoteFile(const std::string& filename, BuildId* build_id)
   return ElfStatus::NO_ERROR;
 }
 
-template <class ELFT>
-ElfStatus GetBuildIdFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf, BuildId* build_id) {
-  llvm::StringRef data = elf->getData();
-  const char* binary_start = data.data();
-  const char* binary_end = data.data() + data.size();
-  for (auto it = elf->section_begin(); it != elf->section_end(); ++it) {
-    const llvm::object::ELFSectionRef& section_ref = *it;
-    if (section_ref.getType() == llvm::ELF::SHT_NOTE) {
-      if (it->getContents(data)) {
-        return ElfStatus::READ_FAILED;
-      }
-      if (data.data() < binary_start || data.data() + data.size() > binary_end) {
-        return ElfStatus::NO_BUILD_ID;
-      }
-      if (GetBuildIdFromNoteSection(data.data(), data.size(), build_id)) {
-        return ElfStatus::NO_ERROR;
-      }
-    }
-  }
-  return ElfStatus::NO_BUILD_ID;
-}
-
-static ElfStatus GetBuildIdFromObjectFile(llvm::object::ObjectFile* obj, BuildId* build_id) {
-  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(obj)) {
-    return GetBuildIdFromELFFile(elf, build_id);
-  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(obj)) {
-    return GetBuildIdFromELFFile(elf, build_id);
-  }
-  return ElfStatus::FILE_MALFORMED;
-}
-
 struct BinaryWrapper {
   std::unique_ptr<llvm::MemoryBuffer> buffer;
   std::unique_ptr<llvm::object::Binary> binary;
@@ -337,76 +306,6 @@ void CheckSymbolSections(const llvm::object::ELFObjectFile<ELFT>* elf,
   }
 }
 
-ElfStatus MatchBuildId(llvm::object::ObjectFile* obj, const BuildId& expected_build_id) {
-  if (expected_build_id.IsEmpty()) {
-    return ElfStatus::NO_ERROR;
-  }
-  BuildId real_build_id;
-  ElfStatus result = GetBuildIdFromObjectFile(obj, &real_build_id);
-  if (result != ElfStatus::NO_ERROR) {
-    return result;
-  }
-  if (expected_build_id != real_build_id) {
-    return ElfStatus::BUILD_ID_MISMATCH;
-  }
-  return ElfStatus::NO_ERROR;
-}
-
-template <class ELFT>
-ElfStatus ReadMinExecutableVirtualAddress(const llvm::object::ELFFile<ELFT>* elf,
-                                          uint64_t* p_vaddr,
-                                          uint64_t* file_offset) {
-  bool has_vaddr = false;
-  uint64_t min_addr = std::numeric_limits<uint64_t>::max();
-  for (auto it = elf->program_header_begin(); it != elf->program_header_end(); ++it) {
-    if ((it->p_type == llvm::ELF::PT_LOAD) && (it->p_flags & llvm::ELF::PF_X)) {
-      if (it->p_vaddr < min_addr) {
-        min_addr = it->p_vaddr;
-        *file_offset = it->p_offset;
-        has_vaddr = true;
-      }
-    }
-  }
-  if (!has_vaddr) {
-    // JIT symfiles don't have program headers.
-    min_addr = 0;
-    *file_offset = 0;
-  }
-  *p_vaddr = min_addr;
-  return ElfStatus::NO_ERROR;
-}
-
-ElfStatus ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
-                                                     const BuildId& expected_build_id,
-                                                     uint64_t* min_vaddr,
-                                                     uint64_t* file_offset_of_min_vaddr) {
-  return ReadMinExecutableVirtualAddressFromEmbeddedElfFile(filename, 0, 0, expected_build_id,
-                                                            min_vaddr, file_offset_of_min_vaddr);
-}
-
-ElfStatus ReadMinExecutableVirtualAddressFromEmbeddedElfFile(const std::string& filename,
-                                                             uint64_t file_offset,
-                                                             uint32_t file_size,
-                                                             const BuildId& expected_build_id,
-                                                             uint64_t* min_vaddr,
-                                                             uint64_t* file_offset_of_min_vaddr) {
-  BinaryWrapper wrapper;
-  ElfStatus result = OpenObjectFile(filename, file_offset, file_size, &wrapper);
-  if (result != ElfStatus::NO_ERROR) {
-    return result;
-  }
-  result = MatchBuildId(wrapper.obj, expected_build_id);
-  if (result != ElfStatus::NO_ERROR) {
-    return result;
-  }
-  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(wrapper.obj)) {
-    return ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr, file_offset_of_min_vaddr);
-  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(wrapper.obj)) {
-    return ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr, file_offset_of_min_vaddr);
-  }
-  return ElfStatus::FILE_MALFORMED;
-}
-
 namespace {
 
 template <typename T>
@@ -519,6 +418,26 @@ class ElfFileImpl<llvm::object::ELFObjectFile<ELFT>> : public ElfFile {
       return ElfStatus::NO_ERROR;
     }
     return ElfStatus::SECTION_NOT_FOUND;
+  }
+
+  uint64_t ReadMinExecutableVaddr(uint64_t* file_offset) {
+    bool has_vaddr = false;
+    uint64_t min_addr = std::numeric_limits<uint64_t>::max();
+    for (auto it = elf_->program_header_begin(); it != elf_->program_header_end(); ++it) {
+      if ((it->p_type == llvm::ELF::PT_LOAD) && (it->p_flags & llvm::ELF::PF_X)) {
+        if (it->p_vaddr < min_addr) {
+          min_addr = it->p_vaddr;
+          *file_offset = it->p_offset;
+          has_vaddr = true;
+        }
+      }
+    }
+    if (!has_vaddr) {
+      // JIT symfiles don't have program headers.
+      min_addr = 0;
+      *file_offset = 0;
+    }
+    return min_addr;
   }
 
  private:
