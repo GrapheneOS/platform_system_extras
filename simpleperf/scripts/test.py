@@ -57,7 +57,7 @@ from binary_cache_builder import BinaryCacheBuilder
 from simpleperf_report_lib import ReportLib
 from utils import log_exit, log_info, log_fatal
 from utils import AdbHelper, Addr2Nearestline, bytes_to_str, find_tool_path, get_script_dir
-from utils import is_elf_file, is_windows, Objdump, ReadElf, remove, SourceFileSearcher
+from utils import is_elf_file, is_python3, is_windows, Objdump, ReadElf, remove, SourceFileSearcher
 from utils import str_to_bytes
 
 try:
@@ -180,39 +180,65 @@ class TestBase(unittest.TestCase):
         self.test_dir = TEST_HELPER.test_dir('%s.%s' % (
             self.__class__.__name__, self._testMethodName))
         os.makedirs(self.test_dir)
+        self.saved_cwd = os.getcwd()
         os.chdir(self.test_dir)
+        TEST_LOGGER.writeln('begin test %s.%s' % (self.__class__.__name__, self._testMethodName))
+        self.start_time = time.time()
+
 
     def run(self, result=None):
         ret = super(TestBase, self).run(result)
         if result.errors and result.errors[-1][0] == self:
             status = 'FAILED'
+            err_info = result.errors[-1][1]
         elif result.failures and result.failures[-1][0] == self:
             status = 'FAILED'
+            err_info = result.failures[-1][1]
         else:
             status = 'OK'
 
+        time_taken = time.time() - self.start_time
+        TEST_LOGGER.writeln(
+            'end test %s.%s %s (%.3fs)' %
+            (self.__class__.__name__, self._testMethodName, status, time_taken))
+        if status != 'OK':
+            TEST_LOGGER.writeln(err_info)
+
         # Remove test data for passed tests to save space.
+        os.chdir(self.saved_cwd)
         if status == 'OK':
             shutil.rmtree(self.test_dir)
         TEST_HELPER.write_progress(
             '%s.%s  %s' % (self.__class__.__name__, self._testMethodName, status))
         return ret
 
-    def run_cmd(self, args, return_output=False):
+    def run_cmd(self, args, return_output=False, drop_output=True):
         if args[0] == 'report_html.py' or args[0] == INFERNO_SCRIPT:
             args += TEST_HELPER.browser_option
         if args[0].endswith('.py'):
             args = [sys.executable, TEST_HELPER.script_path(args[0])] + args[1:]
         use_shell = args[0].endswith('.bat')
         try:
-            if not return_output:
-                returncode = subprocess.call(args, shell=use_shell, stderr=TEST_LOGGER.log_fh)
+            if return_output:
+                stdout_fd = subprocess.PIPE
+                drop_output = False
+            elif drop_output:
+                if is_python3():
+                    stdout_fd = subprocess.DEVNULL
+                else:
+                    stdout_fd = open(os.devnull, 'w')
             else:
-                subproc = subprocess.Popen(args, stdout=subprocess.PIPE,
-                                           stderr=TEST_LOGGER.log_fh, shell=use_shell)
-                (output_data, _) = subproc.communicate()
-                output_data = bytes_to_str(output_data)
-                returncode = subproc.returncode
+                stdout_fd = None
+
+            subproc = subprocess.Popen(args, stdout=stdout_fd,
+                                       stderr=TEST_LOGGER.log_fh, shell=use_shell)
+            stdout_data, _ = subproc.communicate()
+            output_data = bytes_to_str(stdout_data)
+            returncode = subproc.returncode
+
+            if drop_output and not is_python3():
+                stdout_fd.close()
+
         except OSError:
             returncode = None
         self.assertEqual(returncode, 0, msg="failed to run cmd: %s" % args)
@@ -232,8 +258,17 @@ class TestBase(unittest.TestCase):
             self.assertTrue(os.path.isdir(dirname), dirname)
 
     def check_strings_in_content(self, content, strings):
-        for s in strings:
-            self.assertNotEqual(content.find(s), -1, "s: %s, content: %s" % (s, content))
+        fulfilled = [content.find(s) != -1 for s in strings]
+        self.check_fulfilled_entries(fulfilled, strings)
+
+    def check_fulfilled_entries(self, fulfilled, entries):
+        failed_entries = []
+        for ok, entry in zip(fulfilled, entries):
+            if not ok:
+                failed_entries.append(entry)
+
+        if failed_entries:
+            self.fail('failed in below entries: %s' % (failed_entries,))
 
 
 class TestExampleBase(TestBase):
@@ -279,9 +314,14 @@ class TestExampleBase(TestBase):
             os.makedirs(self.testcase_dir)
             os.chdir(self.testcase_dir)
             self.run_app_profiler(compile_java_code=self.use_compiled_java_code)
-        remove(self.test_dir)
-        shutil.copytree(self.testcase_dir, self.test_dir)
-        os.chdir(self.test_dir)
+            os.chdir(self.test_dir)
+
+        for name in os.listdir(self.testcase_dir):
+            path = os.path.join(self.testcase_dir, name)
+            if os.path.isfile(path):
+                shutil.copy(path, self.test_dir)
+            elif os.path.isdir(path):
+                shutil.copytree(path, os.path.join(self.test_dir, name))
 
     def run(self, result=None):
         self.__class__.test_result = result
@@ -331,7 +371,8 @@ class TestExampleBase(TestBase):
                         period = float(m.group(2))
                         if acc_period >= need_acc_period and period >= need_period:
                             fulfilled[i] = True
-        self.assertEqual(len(fulfilled), sum([int(x) for x in fulfilled]), fulfilled)
+
+        self.check_fulfilled_entries(fulfilled, check_entries)
 
     def check_inferno_report_html(self, check_entries, filename="report.html"):
         self.check_exist(filename=filename)
@@ -347,7 +388,7 @@ class TestExampleBase(TestBase):
                 if m and float(m.group(1)) >= entry[1]:
                     fulfilled[i] = True
                     break
-        self.assertEqual(fulfilled, [True for _ in check_entries])
+        self.check_fulfilled_entries(fulfilled, check_entries)
 
     def common_test_app_profiler(self):
         self.run_cmd(["app_profiler.py", "-h"])
@@ -562,6 +603,10 @@ class TestExamplePureJava(TestExampleBase):
                       self.package_name, '--size_limit', '1M'])
         self.adb.check_run(['kill-server'])
         time.sleep(3)
+        # Start adb process outside self.test_dir. Because it will be removed after testing.
+        os.chdir(self.saved_cwd)
+        self.adb.check_run(['devices'])
+        os.chdir(self.test_dir)
         self.run_cmd(['run_simpleperf_without_usb_connection.py', 'stop'])
         self.check_exist(filename="perf.data")
         self.run_cmd(["report.py", "-g", "-o", "report.txt"])
@@ -1158,7 +1203,7 @@ class TestTools(TestBase):
         addr2line.convert_addrs_to_lines()
         for dso_path in test_map:
             dso = addr2line.get_dso(dso_path)
-            self.assertTrue(dso is not None)
+            self.assertIsNotNone(dso, dso_path)
             test_addrs = test_map[dso_path]
             for test_addr in test_addrs:
                 expected_files = []
@@ -1172,15 +1217,23 @@ class TestTools(TestBase):
                     expected_functions.append(line.strip())
                 self.assertEqual(len(expected_files), len(expected_functions))
 
+                if with_function_name:
+                    expected_source = list(zip(expected_files, expected_lines, expected_functions))
+                else:
+                    expected_source = list(zip(expected_files, expected_lines))
+
                 actual_source = addr2line.get_addr_source(dso, test_addr['addr'])
-                self.assertTrue(actual_source is not None)
-                self.assertEqual(len(actual_source), len(expected_files))
-                for i, source in enumerate(actual_source):
-                    self.assertEqual(len(source), 3 if with_function_name else 2)
-                    self.assertEqual(source[0], expected_files[i])
-                    self.assertEqual(source[1], expected_lines[i])
-                    if with_function_name:
-                        self.assertEqual(source[2], expected_functions[i])
+                if is_windows():
+                    self.assertIsNotNone(actual_source, 'for %s:0x%x' %
+                                         (dso_path, test_addr['addr']))
+                    for i, source in enumerate(actual_source):
+                        new_source = list(source)
+                        new_source[0] = new_source[0].replace('\\', '/')
+                        actual_source[i] = tuple(new_source)
+
+                self.assertEqual(actual_source, expected_source,
+                                 'for %s:0x%x, expected source %s, actual source %s' %
+                                 (dso_path, test_addr['addr'], expected_source, actual_source))
 
     def test_objdump(self):
         binary_cache_path = TEST_HELPER.testdata_dir
@@ -1226,11 +1279,13 @@ class TestTools(TestBase):
         for dso_path in test_map:
             dso = test_map[dso_path]
             dso_info = objdump.get_dso_info(dso_path)
-            self.assertIsNotNone(dso_info)
+            self.assertIsNotNone(dso_info, dso_path)
             disassemble_code = objdump.disassemble_code(dso_info, dso['start_addr'], dso['len'])
-            self.assertTrue(disassemble_code)
+            self.assertTrue(disassemble_code, dso_path)
             for item in dso['expected_items']:
-                self.assertTrue(item in disassemble_code)
+                self.assertIn(
+                    item, disassemble_code, 'for %s: %s not found %s' %
+                    (dso_path, item, disassemble_code))
 
     def test_readelf(self):
         test_map = {
@@ -1263,9 +1318,9 @@ class TestTools(TestBase):
             path = os.path.join(TEST_HELPER.testdata_dir, dso_path)
             self.assertEqual(dso_info['arch'], readelf.get_arch(path))
             if 'build_id' in dso_info:
-                self.assertEqual(dso_info['build_id'], readelf.get_build_id(path))
+                self.assertEqual(dso_info['build_id'], readelf.get_build_id(path), dso_path)
             if 'sections' in dso_info:
-                self.assertEqual(dso_info['sections'], readelf.get_sections(path))
+                self.assertEqual(dso_info['sections'], readelf.get_sections(path), dso_path)
         self.assertEqual(readelf.get_arch('not_exist_file'), 'unknown')
         self.assertEqual(readelf.get_build_id('not_exist_file'), '')
         self.assertEqual(readelf.get_sections('not_exist_file'), [])
@@ -1729,8 +1784,8 @@ def get_all_tests():
 def run_tests(tests):
     TEST_HELPER.build_testdata()
     argv = [sys.argv[0]] + tests
-    test_runner = unittest.TextTestRunner(stream=TEST_LOGGER, verbosity=2)
-    test_program = unittest.main(argv=argv, testRunner=test_runner, exit=False)
+    test_runner = unittest.TextTestRunner(stream=TEST_LOGGER, verbosity=0)
+    test_program = unittest.main(argv=argv, testRunner=test_runner, exit=False, verbosity=0)
     result = test_program.result.wasSuccessful()
     remove(TEST_HELPER.testdata_dir)
     return result
