@@ -27,6 +27,8 @@
 #include <linux/fs.h>
 #include <sys/ioctl.h>
 
+#include "helpers.h"
+
 #ifndef BLKDISCARD
 #define BLKDISCARD _IO(0x12,119)
 #endif
