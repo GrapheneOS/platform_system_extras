@@ -36,6 +36,8 @@
 #include <sys/disk.h>
 #endif
 
+#include "helpers.h"
+
 int force = 0;
 struct fs_info info;
 struct fs_aux_info aux_info;
