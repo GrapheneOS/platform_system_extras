@@ -710,7 +710,11 @@ void KmemCommand::PrintSlabReportContext(FILE* fp) {
 
 }  // namespace
 
+namespace simpleperf {
+
 void RegisterKmemCommand() {
   RegisterCommand("kmem",
                   [] { return std::unique_ptr<Command>(new KmemCommand()); });
 }
+
+}  // namespace simpleperf

@@ -29,6 +29,8 @@
 #include "record_file.h"
 #include "test_util.h"
 
+using namespace simpleperf;
+
 static std::unique_ptr<Command> DebugUnwindCmd() {
   return CreateCommandInstance("debug-unwind");
 }

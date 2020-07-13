@@ -706,52 +706,249 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
 
 bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
                                  std::vector<std::string>* non_option_args) {
-  std::vector<size_t> wait_setting_speed_event_groups_;
-  size_t i;
-  for (i = 0; i < args.size() && !args[i].empty() && args[i][0] == '-'; ++i) {
-    if (args[i] == "-a") {
-      system_wide_collection_ = true;
-    } else if (args[i] == "--app") {
-      if (!NextArgumentOrError(args, &i)) {
+  static const std::unordered_map<OptionName, OptionFormat> option_formats = {
+      {"-a", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--app", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"--aux-buffer-size", {OptionValueType::UINT, OptionType::SINGLE}},
+      {"-b", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"-c", {OptionValueType::UINT, OptionType::ORDERED}},
+      {"--call-graph", {OptionValueType::STRING, OptionType::ORDERED}},
+      {"--callchain-joiner-min-matching-nodes", {OptionValueType::UINT, OptionType::SINGLE}},
+      {"--clockid", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"--cpu", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"--cpu-percent", {OptionValueType::UINT, OptionType::SINGLE}},
+      {"--duration", {OptionValueType::DOUBLE, OptionType::SINGLE}},
+      {"-e", {OptionValueType::STRING, OptionType::ORDERED}},
+      {"--exclude-perf", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--exit-with-parent", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"-f", {OptionValueType::UINT, OptionType::ORDERED}},
+      {"-g", {OptionValueType::NONE, OptionType::ORDERED}},
+      {"--group", {OptionValueType::STRING, OptionType::ORDERED}},
+      {"--in-app", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--include-filter", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"-j", {OptionValueType::STRING, OptionType::MULTIPLE}},
+      {"-m", {OptionValueType::UINT, OptionType::SINGLE}},
+      {"--no-callchain-joiner", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--no-cut-samples", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--no-dump-kernel-symbols", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--no-dump-symbols", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--no-inherit", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--no-unwind", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"-o", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"--out-fd", {OptionValueType::UINT, OptionType::SINGLE}},
+      {"-p", {OptionValueType::STRING, OptionType::MULTIPLE}},
+      {"--post-unwind", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--post-unwind=no", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--post-unwind=yes", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--size-limit", {OptionValueType::UINT, OptionType::SINGLE}},
+      {"--start_profiling_fd", {OptionValueType::UINT, OptionType::SINGLE}},
+      {"--stdio-controls-profiling", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--stop-signal-fd", {OptionValueType::UINT, OptionType::SINGLE}},
+      {"--symfs", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"-t", {OptionValueType::STRING, OptionType::MULTIPLE}},
+      {"--tp-filter", {OptionValueType::STRING, OptionType::ORDERED}},
+      {"--trace-offcpu", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--tracepoint-events", {OptionValueType::STRING, OptionType::SINGLE}},
+  };
+
+  OptionValueMap options;
+  std::vector<std::pair<OptionName, OptionValue>> ordered_options;
+
+  if (!PreprocessOptions(args, option_formats, &options, &ordered_options, non_option_args)) {
+    return false;
+  }
+
+  // Process options.
+  system_wide_collection_ = options.PullBoolValue("-a");
+
+  if (auto value = options.PullValue("--app"); value) {
+    app_package_name_ = *value->str_value;
+  }
+
+  if (auto value = options.PullValue("--aux-buffer-size"); value) {
+    uint64_t v = value->uint_value;
+    if (v > std::numeric_limits<size_t>::max() || !IsPowerOfTwo(v) || v % sysconf(_SC_PAGE_SIZE)) {
+      LOG(ERROR) << "invalid aux buffer size: " << v;
+      return false;
+    }
+    aux_buffer_size_ = static_cast<size_t>(v);
+  }
+
+  if (options.PullValue("-b")) {
+    branch_sampling_ = branch_sampling_type_map["any"];
+  }
+
+  if (!options.PullUintValue("--callchain-joiner-min-matching-nodes",
+                             &callchain_joiner_min_matching_nodes_, 1)) {
+    return false;
+  }
+
+  if (auto value = options.PullValue("--clockid"); value) {
+    clockid_ = *value->str_value;
+    if (clockid_ != "perf") {
+      if (!IsSettingClockIdSupported()) {
+        LOG(ERROR) << "Setting clockid is not supported by the kernel.";
         return false;
       }
-      app_package_name_ = args[i];
-    } else if (args[i] == "--aux-buffer-size") {
-      if (!GetUintOption(args, &i, &aux_buffer_size_, 0, std::numeric_limits<size_t>::max(),
-                         true)) {
+      if (clockid_map.find(clockid_) == clockid_map.end()) {
+        LOG(ERROR) << "Invalid clockid: " << clockid_;
         return false;
       }
-      if (!IsPowerOfTwo(aux_buffer_size_) || aux_buffer_size_ % sysconf(_SC_PAGE_SIZE)) {
-        LOG(ERROR) << "invalid aux buffer size: " << args[i];
-        return false;
-      }
-    } else if (args[i] == "-b") {
-      branch_sampling_ = branch_sampling_type_map["any"];
-    } else if (args[i] == "-c" || args[i] == "-f") {
-      uint64_t value;
-      if (!GetUintOption(args, &i, &value, 1)) {
-        return false;
-      }
-      if (args[i-1] == "-c") {
-        sample_speed_.reset(new SampleSpeed(0, value));
-      } else {
-        if (value >= INT_MAX) {
-          LOG(ERROR) << "sample freq can't be bigger than INT_MAX.";
+    }
+  }
+
+  if (auto value = options.PullValue("--cpu"); value) {
+    cpus_ = GetCpusFromString(*value->str_value);
+  }
+
+  if (!options.PullUintValue("--cpu-percent", &cpu_time_max_percent_, 1, 100)) {
+    return false;
+  }
+
+  if (!options.PullDoubleValue("--duration", &duration_in_sec_, 1e-9)) {
+    return false;
+  }
+
+  exclude_perf_ = options.PullBoolValue("--exclude-perf");
+
+  if (options.PullValue("--exit-with-parent")) {
+    prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
+  }
+
+  in_app_context_ = options.PullBoolValue("--in-app");
+
+  if (auto value = options.PullValue("--include-filter"); value) {
+    event_selection_set_.SetIncludeFilters(android::base::Split(*value->str_value, ","));
+  }
+
+  if (auto values = options.PullValues("-j"); values) {
+    for (const auto& value : values.value()) {
+      std::vector<std::string> branch_sampling_types = android::base::Split(*value.str_value, ",");
+      for (auto& type : branch_sampling_types) {
+        auto it = branch_sampling_type_map.find(type);
+        if (it == branch_sampling_type_map.end()) {
+          LOG(ERROR) << "unrecognized branch sampling filter: " << type;
           return false;
         }
-        sample_speed_.reset(new SampleSpeed(value, 0));
-        max_sample_freq_ = std::max(max_sample_freq_, value);
+        branch_sampling_ |= it->second;
       }
-      for (auto group_id : wait_setting_speed_event_groups_) {
-        event_selection_set_.SetSampleSpeed(group_id, *sample_speed_);
-      }
-      wait_setting_speed_event_groups_.clear();
+    }
+  }
 
-    } else if (args[i] == "--call-graph") {
-      if (!NextArgumentOrError(args, &i)) {
+  if (auto value = options.PullValue("-m"); value) {
+    if (!IsPowerOfTwo(value->uint_value) ||
+        value->uint_value > std::numeric_limits<size_t>::max()) {
+      LOG(ERROR) << "Invalid mmap_pages: '" << value->uint_value << "'";
+      return false;
+    }
+    mmap_page_range_.first = mmap_page_range_.second = value->uint_value;
+  }
+
+  allow_callchain_joiner_ = !options.PullBoolValue("--no-callchain-joiner");
+  allow_cutting_samples_ = !options.PullBoolValue("--no-cut-samples");
+  can_dump_kernel_symbols_ = !options.PullBoolValue("--no-dump-kernel-symbols");
+  dump_symbols_ = !options.PullBoolValue("--no-dump-symbols");
+  child_inherit_ = !options.PullBoolValue("--no-inherit");
+  unwind_dwarf_callchain_ = !options.PullBoolValue("--no-unwind");
+
+  if (auto value = options.PullValue("-o"); value) {
+    record_filename_ = *value->str_value;
+  }
+
+  if (auto value = options.PullValue("--out-fd"); value) {
+    out_fd_.reset(static_cast<int>(value->uint_value));
+  }
+
+  if (auto values = options.PullValues("-p"); values) {
+    for (const auto& value : values.value()) {
+      std::set<pid_t> pids;
+      if (!GetValidThreadsFromThreadString(*value.str_value, &pids)) {
         return false;
       }
-      std::vector<std::string> strs = android::base::Split(args[i], ",");
+      event_selection_set_.AddMonitoredProcesses(pids);
+    }
+  }
+
+  // Use explicit if statements instead of logical operators to avoid short-circuit.
+  if (options.PullValue("--post-unwind")) {
+    post_unwind_ = true;
+  }
+  if (options.PullValue("--post-unwind=yes")) {
+    post_unwind_ = true;
+  }
+  if (options.PullValue("--post-unwind=no")) {
+    post_unwind_ = false;
+  }
+
+  if (!options.PullUintValue("--size-limit", &size_limit_in_bytes_, 1)) {
+    return false;
+  }
+
+  if (auto value = options.PullValue("--start_profiling_fd"); value) {
+    start_profiling_fd_.reset(static_cast<int>(value->uint_value));
+  }
+
+  stdio_controls_profiling_ = options.PullBoolValue("--stdio-controls-profiling");
+
+  if (auto value = options.PullValue("--stop-signal-fd"); value) {
+    stop_signal_fd_.reset(static_cast<int>(value->uint_value));
+  }
+
+  if (auto value = options.PullValue("--symfs"); value) {
+    if (!Dso::SetSymFsDir(*value->str_value)) {
+      return false;
+    }
+  }
+
+  if (auto values = options.PullValues("-t"); values) {
+    for (const auto& value : values.value()) {
+      std::set<pid_t> tids;
+      if (!GetValidThreadsFromThreadString(*value.str_value, &tids)) {
+        return false;
+      }
+      event_selection_set_.AddMonitoredThreads(tids);
+    }
+  }
+
+  trace_offcpu_ = options.PullBoolValue("--trace-offcpu");
+
+  if (auto value = options.PullValue("--tracepoint-events"); value) {
+    if (!SetTracepointEventsFilePath(*value->str_value)) {
+      return false;
+    }
+  }
+
+  CHECK(options.values.empty());
+
+  // Process ordered options.
+  std::vector<size_t> wait_setting_speed_event_groups;
+
+  for (const auto& pair : ordered_options) {
+    const OptionName& name = pair.first;
+    const OptionValue& value = pair.second;
+
+    if (name == "-c" || name == "-f") {
+      if (value.uint_value < 1) {
+        LOG(ERROR) << "invalid " << name << ": " << value.uint_value;
+        return false;
+      }
+      if (name == "-c") {
+        sample_speed_.reset(new SampleSpeed(0, value.uint_value));
+      } else {
+        if (value.uint_value >= INT_MAX) {
+          LOG(ERROR) << "sample freq can't be bigger than INT_MAX: " << value.uint_value;
+          return false;
+        }
+        sample_speed_.reset(new SampleSpeed(value.uint_value, 0));
+      }
+
+      for (auto groud_id : wait_setting_speed_event_groups) {
+        event_selection_set_.SetSampleSpeed(groud_id, *sample_speed_);
+      }
+      wait_setting_speed_event_groups.clear();
+
+    } else if (name == "--call-graph") {
+      std::vector<std::string> strs = android::base::Split(*value.str_value, ",");
       if (strs[0] == "fp") {
         fp_callchain_sampling_ = true;
         dwarf_callchain_sampling_ = false;
@@ -765,56 +962,20 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
             return false;
           }
           if ((size & 7) != 0) {
-            LOG(ERROR) << "dump stack size " << size
-                       << " is not 8-byte aligned.";
+            LOG(ERROR) << "dump stack size " << size << " is not 8-byte aligned.";
             return false;
           }
           if (size >= MAX_DUMP_STACK_SIZE) {
-            LOG(ERROR) << "dump stack size " << size
-                       << " is bigger than max allowed size "
+            LOG(ERROR) << "dump stack size " << size << " is bigger than max allowed size "
                        << MAX_DUMP_STACK_SIZE << ".";
             return false;
           }
           dump_stack_size_in_dwarf_sampling_ = static_cast<uint32_t>(size);
         }
-      } else {
-        LOG(ERROR) << "unexpected argument for --call-graph option: "
-                   << args[i];
-        return false;
       }
-    } else if (args[i] == "--clockid") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      if (args[i] != "perf") {
-        if (!IsSettingClockIdSupported()) {
-          LOG(ERROR) << "Setting clockid is not supported by the kernel.";
-          return false;
-        }
-        if (clockid_map.find(args[i]) == clockid_map.end()) {
-          LOG(ERROR) << "Invalid clockid: " << args[i];
-          return false;
-        }
-      }
-      clockid_ = args[i];
-    } else if (args[i] == "--cpu") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      cpus_ = GetCpusFromString(args[i]);
-    } else if (args[i] == "--cpu-percent") {
-      if (!GetUintOption(args, &i, &cpu_time_max_percent_, 1, 100)) {
-        return false;
-      }
-    } else if (args[i] == "--duration") {
-      if (!GetDoubleOption(args, &i, &duration_in_sec_, 1e-9)) {
-        return false;
-      }
-    } else if (args[i] == "-e") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      std::vector<std::string> event_types = android::base::Split(args[i], ",");
+
+    } else if (name == "-e") {
+      std::vector<std::string> event_types = android::base::Split(*value.str_value, ",");
       for (auto& event_type : event_types) {
         size_t group_id;
         if (!event_selection_set_.AddEventType(event_type, &group_id)) {
@@ -823,21 +984,15 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         if (sample_speed_) {
           event_selection_set_.SetSampleSpeed(group_id, *sample_speed_);
         } else {
-          wait_setting_speed_event_groups_.push_back(group_id);
+          wait_setting_speed_event_groups.push_back(group_id);
         }
       }
-    } else if (args[i] == "--exclude-perf") {
-      exclude_perf_ = true;
-    } else if (args[i] == "--exit-with-parent") {
-      prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
-    } else if (args[i] == "-g") {
+
+    } else if (name == "-g") {
       fp_callchain_sampling_ = false;
       dwarf_callchain_sampling_ = true;
-    } else if (args[i] == "--group") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      std::vector<std::string> event_types = android::base::Split(args[i], ",");
+    } else if (name == "--group") {
+      std::vector<std::string> event_types = android::base::Split(*value.str_value, ",");
       size_t group_id;
       if (!event_selection_set_.AddEventGroup(event_types, &group_id)) {
         return false;
@@ -845,149 +1000,21 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       if (sample_speed_) {
         event_selection_set_.SetSampleSpeed(group_id, *sample_speed_);
       } else {
-        wait_setting_speed_event_groups_.push_back(group_id);
-      }
-    } else if (args[i] == "--in-app") {
-      in_app_context_ = true;
-    } else if (args[i] == "--include-filter") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      event_selection_set_.SetIncludeFilters(android::base::Split(args[i], ","));
-    } else if (args[i] == "-j") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      std::vector<std::string> branch_sampling_types =
-          android::base::Split(args[i], ",");
-      for (auto& type : branch_sampling_types) {
-        auto it = branch_sampling_type_map.find(type);
-        if (it == branch_sampling_type_map.end()) {
-          LOG(ERROR) << "unrecognized branch sampling filter: " << type;
-          return false;
-        }
-        branch_sampling_ |= it->second;
-      }
-    } else if (args[i] == "-m") {
-      uint64_t pages;
-      if (!GetUintOption(args, &i, &pages)) {
-        return false;
-      }
-      if (!IsPowerOfTwo(pages)) {
-        LOG(ERROR) << "Invalid mmap_pages: '" << args[i] << "'";
-        return false;
-      }
-      mmap_page_range_.first = mmap_page_range_.second = pages;
-    } else if (args[i] == "--no-dump-kernel-symbols") {
-      can_dump_kernel_symbols_ = false;
-    } else if (args[i] == "--no-dump-symbols") {
-      dump_symbols_ = false;
-    } else if (args[i] == "--no-inherit") {
-      child_inherit_ = false;
-    } else if (args[i] == "--no-unwind") {
-      unwind_dwarf_callchain_ = false;
-    } else if (args[i] == "--no-callchain-joiner") {
-      allow_callchain_joiner_ = false;
-    } else if (args[i] == "--callchain-joiner-min-matching-nodes") {
-      if (!GetUintOption(args, &i, &callchain_joiner_min_matching_nodes_, 1)) {
-        return false;
-      }
-    } else if (args[i] == "--no-cut-samples") {
-      allow_cutting_samples_ = false;
-    } else if (args[i] == "-o") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      record_filename_ = args[i];
-    } else if (args[i] == "--out-fd") {
-      int fd;
-      if (!GetUintOption(args, &i, &fd)) {
-        return false;
-      }
-      out_fd_.reset(fd);
-    } else if (args[i] == "-p") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      std::set<pid_t> pids;
-      if (!GetValidThreadsFromThreadString(args[i], &pids)) {
-        return false;
-      }
-      event_selection_set_.AddMonitoredProcesses(pids);
-    } else if (android::base::StartsWith(args[i], "--post-unwind")) {
-      if (args[i] == "--post-unwind" || args[i] == "--post-unwind=yes") {
-        post_unwind_ = true;
-      } else if (args[i] == "--post-unwind=no") {
-        post_unwind_ = false;
-      } else {
-        LOG(ERROR) << "unexpected option " << args[i];
-        return false;
-      }
-    } else if (args[i] == "--size-limit") {
-      if (!GetUintOption(args, &i, &size_limit_in_bytes_, 1, std::numeric_limits<uint64_t>::max(),
-                         true)) {
-        return false;
-      }
-    } else if (args[i] == "--start_profiling_fd") {
-      int fd;
-      if (!GetUintOption(args, &i, &fd)) {
-        return false;
-      }
-      start_profiling_fd_.reset(fd);
-    } else if (args[i] == "--stdio-controls-profiling") {
-      stdio_controls_profiling_ = true;
-    } else if (args[i] == "--stop-signal-fd") {
-      int fd;
-      if (!GetUintOption(args, &i, &fd)) {
-        return false;
-      }
-      stop_signal_fd_.reset(fd);
-    } else if (args[i] == "--symfs") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      if (!Dso::SetSymFsDir(args[i])) {
-        return false;
-      }
-    } else if (args[i] == "-t") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      std::set<pid_t> tids;
-      if (!GetValidThreadsFromThreadString(args[i], &tids)) {
-        return false;
-      }
-      event_selection_set_.AddMonitoredThreads(tids);
-    } else if (args[i] == "--tp-filter") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      if (!event_selection_set_.SetTracepointFilter(args[i])) {
-        return false;
+        wait_setting_speed_event_groups.push_back(group_id);
       }
 
-    } else if (args[i] == "--trace-offcpu") {
-      trace_offcpu_ = true;
-    } else if (args[i] == "--tracepoint-events") {
-      if (!NextArgumentOrError(args, &i)) {
+    } else if (name == "--tp-filter") {
+      if (!event_selection_set_.SetTracepointFilter(*value.str_value)) {
         return false;
       }
-      if (!SetTracepointEventsFilePath(args[i])) {
-        return false;
-      }
-    } else if (args[i] == "--") {
-      i++;
-      break;
     } else {
-      ReportUnknownOption(args, i);
-      return false;
+      CHECK(false) << "unprocessed option: " << name;
     }
   }
 
   if (!dwarf_callchain_sampling_) {
     if (!unwind_dwarf_callchain_) {
-      LOG(ERROR)
-          << "--no-unwind is only used with `--call-graph dwarf` option.";
+      LOG(ERROR) << "--no-unwind is only used with `--call-graph dwarf` option.";
       return false;
     }
     unwind_dwarf_callchain_ = false;
@@ -1024,10 +1051,6 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     clockid_ = IsSettingClockIdSupported() ? "monotonic" : "perf";
   }
 
-  non_option_args->clear();
-  for (; i < args.size(); ++i) {
-    non_option_args->push_back(args[i]);
-  }
   return true;
 }
 
@@ -1839,7 +1862,11 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
   }
 }
 
+namespace simpleperf {
+
 void RegisterRecordCommand() {
   RegisterCommand("record",
                   [] { return std::unique_ptr<Command>(new RecordCommand()); });
 }
+
+}  // namespace simpleperf
