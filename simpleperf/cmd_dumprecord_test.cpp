@@ -20,6 +20,8 @@
 #include "get_test_data.h"
 #include "test_util.h"
 
+using namespace simpleperf;
+
 static std::unique_ptr<Command> DumpCmd() {
   return CreateCommandInstance("dump");
 }

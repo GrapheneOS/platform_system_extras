@@ -33,6 +33,7 @@
 #include "thread_tree.h"
 #include "utils.h"
 
+using namespace simpleperf;
 namespace proto = simpleperf_report_proto;
 
 namespace {
@@ -690,8 +691,12 @@ void ReportSampleCommand::PrintLostSituation() {
 
 }  // namespace
 
+namespace simpleperf {
+
 void RegisterReportSampleCommand() {
   RegisterCommand("report-sample", [] {
     return std::unique_ptr<Command>(new ReportSampleCommand());
   });
 }
+
+}  // namespace simpleperf
