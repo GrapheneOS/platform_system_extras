@@ -451,6 +451,10 @@ class InjectCommand : public Command {
 
 }  // namespace
 
+namespace simpleperf {
+
 void RegisterInjectCommand() {
   return RegisterCommand("inject", [] { return std::unique_ptr<Command>(new InjectCommand); });
 }
+
+}  // namespace simpleperf

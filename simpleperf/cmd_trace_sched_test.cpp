@@ -36,6 +36,7 @@
 #include "test_util.h"
 #include "thread_tree.h"
 
+using namespace simpleperf;
 using namespace PerfFileFormat;
 
 static std::unique_ptr<Command> TraceSchedCmd() {

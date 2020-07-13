@@ -34,6 +34,8 @@
 #include "utils.h"
 #include "workload.h"
 
+using namespace simpleperf;
+
 namespace {
 const std::string SIMPLEPERF_DATA_DIR = "simpleperf_data";
 
@@ -215,9 +217,13 @@ bool CollectCommand::RemoveRecordingData() {
 }
 }  // namespace
 
+namespace simpleperf {
+
 void RegisterAPICommands() {
   RegisterCommand("api-prepare",
                   []{ return std::unique_ptr<Command>(new PrepareCommand()); });
   RegisterCommand("api-collect",
                   []{ return std::unique_ptr<Command>(new CollectCommand()); });
 }
+
+}  // namespace simpleperf

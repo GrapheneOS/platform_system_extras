@@ -28,6 +28,8 @@
 #include "read_apk.h"
 #include "test_util.h"
 
+using namespace simpleperf;
+
 static std::unique_ptr<Command> ReportCmd() {
   return CreateCommandInstance("report");
 }
