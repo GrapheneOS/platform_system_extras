@@ -36,6 +36,8 @@
 #include "utils.h"
 #include "workload.h"
 
+using namespace simpleperf;
+
 static std::string testdata_dir;
 
 #if defined(__ANDROID__)

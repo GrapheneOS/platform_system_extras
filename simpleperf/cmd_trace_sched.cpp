@@ -33,6 +33,7 @@
 #include "utils.h"
 
 using android::base::StringPrintf;
+using namespace simpleperf;
 
 namespace {
 
@@ -413,6 +414,10 @@ void TraceSchedCommand::ReportProcessInfo(const std::vector<ProcessInfo>& proces
 
 }  // namespace
 
+namespace simpleperf {
+
 void RegisterTraceSchedCommand() {
   RegisterCommand("trace-sched", [] { return std::unique_ptr<Command>(new TraceSchedCommand()); });
 }
+
+}  // namespace simpleperf

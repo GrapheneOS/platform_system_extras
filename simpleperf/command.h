@@ -18,14 +18,102 @@
 #define SIMPLE_PERF_COMMAND_H_
 
 #include <functional>
-#include <memory>
 #include <limits>
+#include <map>
+#include <memory>
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <android-base/logging.h>
 #include <android-base/macros.h>
 #include <android-base/parseint.h>
+
+namespace simpleperf {
+
+using OptionName = std::string;
+
+enum class OptionType {
+  SINGLE,  // this option has a single value (use the last one in the arg list)
+  MULTIPLE,  // this option can have multiple values (keep all values appeared in the arg list)
+  ORDERED,  // keep the order of this option in the arg list
+};
+
+enum class OptionValueType {
+  NONE,  // No value is needed
+  STRING,
+  OPT_STRING,  // optional string
+  UINT,
+  DOUBLE,
+};
+
+struct OptionFormat {
+  OptionValueType value_type;
+  OptionType type;
+};
+
+union OptionValue {
+  const std::string* str_value;
+  uint64_t uint_value;
+  double double_value;
+};
+
+struct OptionValueMap {
+  std::multimap<OptionName, OptionValue> values;
+
+  bool PullBoolValue(const OptionName& name) {
+    return PullValue(name).has_value();
+  }
+
+  template <typename T>
+  bool PullUintValue(const OptionName& name, T* value, uint64_t min = 0,
+                     uint64_t max = std::numeric_limits<T>::max()) {
+    if (auto option_value = PullValue(name); option_value) {
+      if (option_value->uint_value < min || option_value->uint_value > max) {
+        LOG(ERROR) << "invalid " << name << ": " << option_value->uint_value;
+        return false;
+      }
+      *value = option_value->uint_value;
+    }
+    return true;
+  }
+
+  bool PullDoubleValue(const OptionName& name, double* value,
+                       double min = std::numeric_limits<double>::lowest(),
+                       double max = std::numeric_limits<double>::max()) {
+    if (auto option_value = PullValue(name); option_value) {
+      if (option_value->double_value < min || option_value->double_value > max) {
+        LOG(ERROR) << "invalid " << name << ": " << option_value->double_value;
+        return false;
+      }
+      *value = option_value->double_value;
+    }
+    return true;
+  }
+
+  std::optional<OptionValue> PullValue(const OptionName& name) {
+    std::optional<OptionValue> res;
+    if (auto it = values.find(name); it != values.end()) {
+      res.emplace(it->second);
+      values.erase(it);
+    }
+    return res;
+  }
+
+  std::optional<std::vector<OptionValue>> PullValues(const OptionName& name) {
+    auto pair = values.equal_range(name);
+    if (pair.first != pair.second) {
+      std::vector<OptionValue> res;
+      for (auto it = pair.first; it != pair.second; ++it) {
+        res.emplace_back(it->second);
+      }
+      values.erase(name);
+      return res;
+    }
+    return {};
+  }
+};
 
 class Command {
  public:
@@ -50,6 +138,12 @@ class Command {
   }
 
   virtual bool Run(const std::vector<std::string>& args) = 0;
+
+  bool PreprocessOptions(const std::vector<std::string>& args,
+                         const std::unordered_map<OptionName, OptionFormat>& option_formats,
+                         OptionValueMap* options,
+                         std::vector<std::pair<OptionName, OptionValue>>* ordered_options,
+                         std::vector<std::string>* non_option_args = nullptr);
 
   template <typename T>
   bool GetUintOption(const std::vector<std::string>& args, size_t* pi, T* value, uint64_t min = 0,
@@ -88,8 +182,8 @@ std::unique_ptr<Command> CreateCommandInstance(const std::string& cmd_name);
 const std::vector<std::string> GetAllCommandNames();
 bool RunSimpleperfCmd(int argc, char** argv);
 
-namespace simpleperf {
 extern bool log_to_android_buffer;
-}
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_COMMAND_H_

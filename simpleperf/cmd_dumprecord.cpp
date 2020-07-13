@@ -466,6 +466,10 @@ bool DumpRecordCommand::DumpFeatureSection() {
 
 }  // namespace
 
+namespace simpleperf {
+
 void RegisterDumpRecordCommand() {
   RegisterCommand("dump", [] { return std::unique_ptr<Command>(new DumpRecordCommand); });
 }
+
+}  // namespace simpleperf
