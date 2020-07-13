@@ -21,6 +21,8 @@
 #include "command.h"
 #include "get_test_data.h"
 
+using namespace simpleperf;
+
 static std::unique_ptr<Command> ReportSampleCmd() {
   return CreateCommandInstance("report-sample");
 }

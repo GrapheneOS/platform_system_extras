@@ -223,6 +223,10 @@ void ListCommand::ShowFeatures() {
 
 }  // namespace
 
+namespace simpleperf {
+
 void RegisterListCommand() {
   RegisterCommand("list", [] { return std::unique_ptr<Command>(new ListCommand); });
 }
+
+}  // namespace simpleperf
