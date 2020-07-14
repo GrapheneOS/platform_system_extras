@@ -433,11 +433,10 @@ bool GetTracingData(const std::vector<const EventType*>& event_types,
   return true;
 }
 
-
 namespace {
 
 // Briefly check if the filter format is acceptable by the kernel, which is described in
-// Documentation/trace/events.rst in the kernel.
+// Documentation/trace/events.rst in the kernel. Also adjust quotes in string operands.
 //
 // filter := predicate_expr [logical_operator predicate_expr]*
 // predicate_expr := predicate | '!' predicate_expr | '(' filter ')'
@@ -448,13 +447,15 @@ namespace {
 // numeric_operator := '==' | '!=' | '<' | '<=' | '>' | '>=' | '&'
 // string_operator := '==' | '!=' | '~'
 // value := int or string
-struct FilterFormatChecker {
+struct FilterFormatAdjuster {
+  FilterFormatAdjuster(bool use_quote) : use_quote(use_quote) {}
+
   bool MatchFilter(const char*& p) {
     bool ok = MatchPredicateExpr(p);
     while (ok && *p != '\0') {
       RemoveSpace(p);
       if (strncmp(p, "||", 2) == 0 || strncmp(p, "&&", 2) == 0) {
-        p += 2;
+        CopyBytes(p, 2);
         ok = MatchPredicateExpr(p);
       } else {
         break;
@@ -465,19 +466,23 @@ struct FilterFormatChecker {
   }
 
   void RemoveSpace(const char*& p) {
-    while (isspace(*p)) {
-      p++;
+    size_t i = 0;
+    while (isspace(p[i])) {
+      i++;
+    }
+    if (i > 0) {
+      CopyBytes(p, i);
     }
   }
 
   bool MatchPredicateExpr(const char*& p) {
     RemoveSpace(p);
     if (*p == '!') {
-      p++;
+      CopyBytes(p, 1);
       return MatchPredicateExpr(p);
     }
     if (*p == '(') {
-      p++;
+      CopyBytes(p, 1);
       bool ok = MatchFilter(p);
       if (!ok) {
         return false;
@@ -486,7 +491,7 @@ struct FilterFormatChecker {
       if (*p != ')') {
         return false;
       }
-      p++;
+      CopyBytes(p, 1);
       return true;
     }
     return MatchPredicate(p);
@@ -499,9 +504,10 @@ struct FilterFormatChecker {
   bool MatchFieldName(const char*& p) {
     RemoveSpace(p);
     std::string name;
-    while (isalnum(*p) || *p == '_') {
-      name.push_back(*p++);
+    for (size_t i = 0; isalnum(p[i]) || p[i] == '_'; i++) {
+      name.push_back(p[i]);
     }
+    CopyBytes(p, name.size());
     if (name.empty()) {
       return false;
     }
@@ -514,12 +520,12 @@ struct FilterFormatChecker {
     // "==", "!=", "<", "<=", ">", ">=", "&", "~"
     if (*p == '=' || *p == '!' || *p == '<' || *p == '>') {
       if (p[1] == '=') {
-        p += 2;
+        CopyBytes(p, 2);
         return true;
       }
     }
     if (*p == '<' || *p == '>' || *p == '&' || *p == '~') {
-      p++;
+      CopyBytes(p, 1);
       return true;
     }
     return false;
@@ -527,17 +533,25 @@ struct FilterFormatChecker {
 
   bool MatchValue(const char*& p) {
     RemoveSpace(p);
-    // Match a string.
+    // Match a string with quotes.
     if (*p == '\'' || *p == '"') {
-      char quote = *p++;
-      while (*p != quote && *p != '\0') {
+      char quote = *p;
+      size_t len = 1;
+      while (p[len] != quote && p[len] != '\0') {
+        len++;
+      }
+      if (p[len] != quote) {
+        return false;
+      }
+      len++;
+      if (use_quote) {
+        CopyBytes(p, len);
+      } else {
+        p++;
+        CopyBytes(p, len - 2);
         p++;
       }
-      if (*p == quote) {
-        p++;
-        return true;
-      }
-      return false;
+      return true;
     }
     // Match an int value.
     char* end;
@@ -547,28 +561,50 @@ struct FilterFormatChecker {
     } else {
       strtoull(p, &end, 0);
     }
-    if (errno != 0 || end == p) {
+    if (errno == 0 && end != p) {
+      CopyBytes(p, end - p);
+      return true;
+    }
+    // Match a string without quotes, stopping at ), &&, || or space.
+    size_t len = 0;
+    while (p[len] != '\0' && strchr(")&| \t", p[len]) == nullptr) {
+      len++;
+    }
+    if (len == 0) {
       return false;
     }
-    p = end;
+    if (use_quote) {
+      adjusted_filter += '"';
+    }
+    CopyBytes(p, len);
+    if (use_quote) {
+      adjusted_filter += '"';
+    }
     return true;
   }
 
+  void CopyBytes(const char*& p, size_t len) {
+    adjusted_filter.append(p, len);
+    p += len;
+  }
+
+  const bool use_quote;
+  std::string adjusted_filter;
   FieldNameSet used_fields;
 };
 
 }  // namespace
 
-bool CheckTracepointFilterFormat(const std::string& filter, FieldNameSet* used_fields) {
-  FilterFormatChecker checker;
+std::optional<std::string> AdjustTracepointFilter(const std::string& filter, bool use_quote,
+                                                  FieldNameSet* used_fields) {
+  FilterFormatAdjuster adjuster(use_quote);
   const char* p = filter.c_str();
-  if (!checker.MatchFilter(p) || *p != '\0') {
+  if (!adjuster.MatchFilter(p) || *p != '\0') {
     LOG(ERROR) << "format error in filter \"" << filter << "\" starting from \"" << p << "\"";
-    return false;
+    return std::nullopt;
   }
-
-  *used_fields = std::move(checker.used_fields);
-  return true;
+  *used_fields = std::move(adjuster.used_fields);
+  return std::move(adjuster.adjusted_filter);
 }
 
 std::optional<FieldNameSet> GetFieldNamesForTracepointEvent(const EventType& event) {
