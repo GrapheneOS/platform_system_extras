@@ -20,28 +20,38 @@
 
 #include <android-base/strings.h>
 
-TEST(tracing, check_tp_filter_format) {
+static void CheckAdjustFilter(const std::string& filter, bool use_quote,
+                              const std::string& adjusted_filter,
+                              const std::string used_field_str) {
   FieldNameSet used_fields;
-  ASSERT_TRUE(CheckTracepointFilterFormat("((sig >= 1 && sig < 20) || sig == 32) && comm != \"bash\"",
-                                          &used_fields));
-  ASSERT_EQ(android::base::Join(used_fields, ";"), "comm;sig");
-  ASSERT_TRUE(CheckTracepointFilterFormat("pid != 3 && !(comm ~ \"*bash\")", &used_fields));
-  ASSERT_EQ(android::base::Join(used_fields, ";"), "comm;pid");
-  ASSERT_TRUE(CheckTracepointFilterFormat("mask & 3", &used_fields));
-  ASSERT_EQ(android::base::Join(used_fields, ";"), "mask");
-  ASSERT_TRUE(CheckTracepointFilterFormat("addr > 0 && addr != 0xFFFFFFFFFFFFFFFF || value > -5",
-                                          &used_fields));
-  ASSERT_EQ(android::base::Join(used_fields, ";"), "addr;value");
+  auto value = AdjustTracepointFilter(filter, use_quote, &used_fields);
+  ASSERT_TRUE(value.has_value());
+  ASSERT_EQ(value.value(), adjusted_filter);
+  ASSERT_EQ(android::base::Join(used_fields, ","), used_field_str);
+}
+
+TEST(tracing, adjust_tracepoint_filter) {
+  std::string filter = "((sig >= 1 && sig < 20) || sig == 32) && comm != \"bash\"";
+  CheckAdjustFilter(filter, true, filter, "comm,sig");
+  CheckAdjustFilter(filter, false, "((sig >= 1 && sig < 20) || sig == 32) && comm != bash",
+                    "comm,sig");
+
+  filter = "pid != 3 && !(comm ~ *bash)";
+  CheckAdjustFilter(filter, true, "pid != 3 && !(comm ~ \"*bash\")", "comm,pid");
+  CheckAdjustFilter(filter, false, filter, "comm,pid");
+
+  filter = "mask & 3";
+  CheckAdjustFilter(filter, true, filter, "mask");
+  CheckAdjustFilter(filter, false, filter, "mask");
+
+  filter = "addr > 0 && addr != 0xFFFFFFFFFFFFFFFF || value > -5";
+  CheckAdjustFilter(filter, true, filter, "addr,value");
+  CheckAdjustFilter(filter, false, filter, "addr,value");
 
   // unmatched paren
-  ASSERT_FALSE(CheckTracepointFilterFormat("(pid > 3", &used_fields));
-  ASSERT_FALSE(CheckTracepointFilterFormat("pid > 3)", &used_fields));
+  FieldNameSet used_fields;
+  ASSERT_FALSE(AdjustTracepointFilter("(pid > 3", true, &used_fields).has_value());
+  ASSERT_FALSE(AdjustTracepointFilter("pid > 3)", true, &used_fields).has_value());
   // unknown operator
-  ASSERT_FALSE(CheckTracepointFilterFormat("pid ^ 3", &used_fields));
-  // field name not on the left
-  ASSERT_FALSE(CheckTracepointFilterFormat("3 < pid", &used_fields));
-  // no string quote
-  ASSERT_FALSE(CheckTracepointFilterFormat("comm == sleep", &used_fields));
-  // wrong int value
-  ASSERT_FALSE(CheckTracepointFilterFormat("value > --5", &used_fields));
+  ASSERT_FALSE(AdjustTracepointFilter("pid ^ 3", true, &used_fields).has_value());
 }

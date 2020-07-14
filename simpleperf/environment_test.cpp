@@ -90,3 +90,9 @@ TEST(environment, SetPerfEventLimits) {
   GTEST_LOG_(INFO) << "This test tests setting properties on Android.";
 #endif
 }
+
+TEST(environment, GetKernelVersion) {
+  int major;
+  int minor;
+  ASSERT_TRUE(GetKernelVersion(&major, &minor));
+}

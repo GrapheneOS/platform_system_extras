@@ -482,8 +482,20 @@ bool EventSelectionSet::SetTracepointFilter(const std::string& filter) {
   }
 
   // 2. Check the format of the filter.
+  int kernel_major;
+  int kernel_minor;
+  bool use_quote = false;
+  // Quotes are needed for string operands in kernel >= 4.19, probably after patch "tracing: Rewrite
+  // filter logic to be simpler and faster".
+  if (GetKernelVersion(&kernel_major, &kernel_minor)) {
+    if (kernel_major >= 5 || (kernel_major == 4 && kernel_minor >= 19)) {
+      use_quote = true;
+    }
+  }
+
   FieldNameSet used_fields;
-  if (!CheckTracepointFilterFormat(filter, &used_fields)) {
+  auto adjusted_filter = AdjustTracepointFilter(filter, use_quote, &used_fields);
+  if (!adjusted_filter) {
     return false;
   }
 
@@ -502,7 +514,7 @@ bool EventSelectionSet::SetTracepointFilter(const std::string& filter) {
   }
 
   // 4. Connect the filter to the event.
-  selection->tracepoint_filter = filter;
+  selection->tracepoint_filter = adjusted_filter.value();
   return true;
 }
 
