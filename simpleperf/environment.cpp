@@ -952,3 +952,11 @@ const char* GetTraceFsDir() {
   }
   return nullptr;
 }
+
+bool GetKernelVersion(int* major, int* minor) {
+  utsname uname_buf;
+  if (TEMP_FAILURE_RETRY(uname(&uname_buf)) != 0) {
+    return false;
+  }
+  return sscanf(uname_buf.release, "%d.%d", major, minor) == 2;
+}
