@@ -25,7 +25,10 @@ namespace simpleperf {
 namespace etm {
 
 bool HasSupport() {
-  const EventType* type = FindEventTypeByName("cs-etm");
+  const EventType* type = FindEventTypeByName("cs-etm", false);
+  if (type == nullptr) {
+    return false;
+  }
   return IsEventAttrSupported(CreateDefaultPerfEventAttr(*type), type->name);
 }
 
