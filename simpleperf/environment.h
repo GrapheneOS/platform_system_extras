@@ -127,6 +127,7 @@ class ScopedTempFiles {
 bool SignalIsIgnored(int signo);
 // Return 0 if no android version.
 int GetAndroidVersion();
+bool GetKernelVersion(int* major, int* minor);
 
 constexpr int kAndroidVersionP = 9;
 
