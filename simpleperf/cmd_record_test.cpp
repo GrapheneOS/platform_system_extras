@@ -1054,15 +1054,19 @@ TEST(record_cmd, exclude_perf_option) {
 
 TEST(record_cmd, tp_filter_option) {
   TEST_REQUIRE_TRACEPOINT_EVENTS();
-  TemporaryFile tmpfile;
-  ASSERT_TRUE(RunRecordCmd({"-e", "sched:sched_switch", "--tp-filter", "prev_comm != 'sleep'"},
-                           tmpfile.path));
-  CaptureStdout capture;
-  ASSERT_TRUE(capture.Start());
-  ASSERT_TRUE(CreateCommandInstance("dump")->Run({tmpfile.path}));
-  std::string data = capture.Finish();
-  // Check that samples with prev_comm == sleep are filtered out. Although we do the check all the
-  // time, it only makes sense when running as root. Tracepoint event fields are not allowed
-  // to record unless running as root.
-  ASSERT_EQ(data.find("prev_comm: sleep"), std::string::npos);
+  // Test string operands both with quotes and without quotes.
+  for (const auto& filter :
+       std::vector<std::string>({"prev_comm != 'sleep'", "prev_comm != sleep"})) {
+    TemporaryFile tmpfile;
+    ASSERT_TRUE(RunRecordCmd({"-e", "sched:sched_switch", "--tp-filter", filter}, tmpfile.path))
+        << filter;
+    CaptureStdout capture;
+    ASSERT_TRUE(capture.Start());
+    ASSERT_TRUE(CreateCommandInstance("dump")->Run({tmpfile.path}));
+    std::string data = capture.Finish();
+    // Check that samples with prev_comm == sleep are filtered out. Although we do the check all the
+    // time, it only makes sense when running as root. Tracepoint event fields are not allowed
+    // to record unless running as root.
+    ASSERT_EQ(data.find("prev_comm: sleep"), std::string::npos) << filter;
+  }
 }
