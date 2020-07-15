@@ -38,6 +38,7 @@ struct ETMPerCpu {
   int GetMajorVersion() const;
   bool IsContextIDSupported() const;
   bool IsTimestampSupported() const;
+  bool IsEnabled() const;
 };
 
 // Help recording Coresight ETM data on ARM devices.
