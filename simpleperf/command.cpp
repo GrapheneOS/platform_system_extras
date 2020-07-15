@@ -16,6 +16,8 @@
 
 #include "command.h"
 
+#include <string.h>
+
 #include <algorithm>
 #include <map>
 #include <string>
@@ -27,7 +29,7 @@
 
 #include "utils.h"
 
-using namespace simpleperf;
+namespace simpleperf {
 
 bool Command::NextArgumentOrError(const std::vector<std::string>& args, size_t* pi) {
   if (*pi + 1 == args.size()) {
@@ -36,6 +38,90 @@ bool Command::NextArgumentOrError(const std::vector<std::string>& args, size_t* 
     return false;
   }
   ++*pi;
+  return true;
+}
+
+bool Command::PreprocessOptions(const std::vector<std::string>& args,
+                                const std::unordered_map<OptionName, OptionFormat>& option_formats,
+                                OptionValueMap* options,
+                                std::vector<std::pair<OptionName, OptionValue>>* ordered_options,
+                                std::vector<std::string>* non_option_args) {
+  options->values.clear();
+  ordered_options->clear();
+  size_t i;
+  for (i = 0; i < args.size() && !args[i].empty() && args[i][0] == '-'; i++) {
+    auto it = option_formats.find(args[i]);
+    if (it == option_formats.end()) {
+      if (args[i] == "--") {
+        i++;
+        break;
+      }
+      ReportUnknownOption(args, i);
+      return false;
+    }
+    const OptionName& name = it->first;
+    const OptionFormat& format = it->second;
+    OptionValue value;
+    memset(&value, 0, sizeof(value));
+
+    if (i + 1 == args.size()) {
+      if (format.value_type != OptionValueType::NONE &&
+          format.value_type != OptionValueType::OPT_STRING) {
+        LOG(ERROR) << "No argument following " << name << " option. Try `simpleperf help " << name_
+                   << "`";
+        return false;
+      }
+    } else {
+      switch (format.value_type) {
+        case OptionValueType::NONE:
+          break;
+        case OptionValueType::STRING:
+          value.str_value = &args[++i];
+          break;
+        case OptionValueType::OPT_STRING:
+          if (!args[i + 1].empty() && args[i + 1][0] != '-') {
+            value.str_value = &args[++i];
+          }
+          break;
+        case OptionValueType::UINT:
+          if (!android::base::ParseUint(args[++i], &value.uint_value,
+                                        std::numeric_limits<uint64_t>::max(), true)) {
+            LOG(ERROR) << "Invalid argument for option " << name << ": " << args[i];
+            return false;
+          }
+          break;
+        case OptionValueType::DOUBLE:
+          if (!android::base::ParseDouble(args[++i], &value.double_value)) {
+            LOG(ERROR) << "Invalid argument for option " << name << ": " << args[i];
+            return false;
+          }
+          break;
+      }
+    }
+
+    switch (format.type) {
+      case OptionType::SINGLE:
+        if (auto it = options->values.find(name); it != options->values.end()) {
+          it->second = value;
+        } else {
+          options->values.emplace(name, value);
+        }
+        break;
+      case OptionType::MULTIPLE:
+        options->values.emplace(name, value);
+        break;
+      case OptionType::ORDERED:
+        ordered_options->emplace_back(name, value);
+        break;
+    }
+  }
+  if (i < args.size()) {
+    if (non_option_args == nullptr) {
+      LOG(ERROR) << "Invalid option " << args[i] << ". Try `simpleperf help " << name_ << "`";
+      return false;
+    }
+    non_option_args->assign(args.begin() + i, args.end());
+  }
   return true;
 }
 
@@ -131,9 +217,7 @@ static void StderrLogger(android::base::LogId, android::base::LogSeverity severi
   fprintf(stderr, "simpleperf %c %s:%u] %s\n", severity_char, file, line, message);
 }
 
-namespace simpleperf {
 bool log_to_android_buffer = false;
-}
 
 bool RunSimpleperfCmd(int argc, char** argv) {
   android::base::InitLogging(argv, StderrLogger);
@@ -190,3 +274,5 @@ bool RunSimpleperfCmd(int argc, char** argv) {
   _Exit(result ? 0 : 1);
   return result;
 }
+
+}  // namespace simpleperf

@@ -21,6 +21,8 @@
 #include "command.h"
 #include "environment.h"
 
+using namespace simpleperf;
+
 #if defined(__ANDROID__)
 
 bool AndroidSecurityCheck() {
