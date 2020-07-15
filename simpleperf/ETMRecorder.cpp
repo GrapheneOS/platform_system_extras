@@ -80,6 +80,10 @@ bool ETMPerCpu::IsTimestampSupported() const {
   return GetBits(trcidr0, 24, 28) > 0;
 }
 
+bool ETMPerCpu::IsEnabled() const {
+  return GetBits(trcauthstatus, 0, 3) == 0xc;
+}
+
 ETMRecorder& ETMRecorder::GetInstance() {
   static ETMRecorder etm;
   return etm;
@@ -119,6 +123,10 @@ bool ETMRecorder::CheckEtmSupport() {
     }
     if (!p.second.IsContextIDSupported()) {
       LOG(ERROR) << "etm device doesn't support contextID";
+      return false;
+    }
+    if (!p.second.IsEnabled()) {
+      LOG(ERROR) << "etm device isn't enabled by the bootloader";
       return false;
     }
   }
