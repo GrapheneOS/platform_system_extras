@@ -104,6 +104,7 @@ void PrepareVdsoFile();
 
 std::set<pid_t> WaitForAppProcesses(const std::string& package_name);
 bool IsAppDebuggable(const std::string& package_name);
+void SetRunInAppToolForTesting(bool run_as, bool simpleperf_app_runner);  // for testing only
 bool RunInAppContext(const std::string& app_package_name, const std::string& cmd,
                      const std::vector<std::string>& args, size_t workload_args_size,
                      const std::string& output_filepath, bool need_tracepoint_events);

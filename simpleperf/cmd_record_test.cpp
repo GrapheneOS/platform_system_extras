@@ -792,13 +792,15 @@ static void TestRecordingApps(const std::string& app_name) {
 }
 
 TEST(record_cmd, app_option_for_debuggable_app) {
-  TEST_REQUIRE_HW_COUNTER();
   TEST_REQUIRE_APPS();
+  SetRunInAppToolForTesting(true, false);
+  TestRecordingApps("com.android.simpleperf.debuggable");
+  SetRunInAppToolForTesting(false, true);
   TestRecordingApps("com.android.simpleperf.debuggable");
 }
 
 TEST(record_cmd, app_option_for_profileable_app) {
-  TEST_REQUIRE_HW_COUNTER();
   TEST_REQUIRE_APPS();
+  SetRunInAppToolForTesting(false, true);
   TestRecordingApps("com.android.simpleperf.profileable");
 }
