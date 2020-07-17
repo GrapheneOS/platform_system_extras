@@ -860,6 +860,10 @@ bool ReportCommand::ReadSampleTreeFromRecordFile() {
   for (size_t i = 0; i < event_attrs_.size(); ++i) {
     sample_tree_builder_.push_back(sample_tree_builder_options_.CreateSampleTreeBuilder());
     sample_tree_builder_.back()->SetEventName(event_attrs_[i].name);
+    OfflineUnwinder* unwinder = sample_tree_builder_.back()->GetUnwinder();
+    if (unwinder != nullptr) {
+      unwinder->LoadMetaInfo(record_file_reader_->GetMetaInfoFeature());
+    }
   }
 
   if (!record_file_reader_->ReadDataSection(
