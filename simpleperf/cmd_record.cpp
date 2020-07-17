@@ -1802,6 +1802,9 @@ bool RecordCommand::DumpMetaInfoFeature(bool kernel_symbols_available) {
   info_map["clockid"] = clockid_;
   info_map["timestamp"] = std::to_string(time(nullptr));
   info_map["kernel_symbols_available"] = kernel_symbols_available ? "true" : "false";
+  if (dwarf_callchain_sampling_ && !unwind_dwarf_callchain_) {
+    OfflineUnwinder::CollectMetaInfo(&info_map);
+  }
   return record_file_writer_->WriteMetaInfoFeature(info_map);
 }
 
