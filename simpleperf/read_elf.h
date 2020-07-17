@@ -71,6 +71,8 @@ struct ElfSegment {
 
 class ElfFile {
  public:
+  // Report error instead of returning status.
+  static std::unique_ptr<ElfFile> Open(const std::string& filename);
   static std::unique_ptr<ElfFile> Open(const std::string& filename, ElfStatus* status) {
     return Open(filename, nullptr, status);
   }
@@ -91,6 +93,7 @@ class ElfFile {
 
   virtual ElfStatus ReadSection(const std::string& section_name, std::string* content) = 0;
   virtual uint64_t ReadMinExecutableVaddr(uint64_t* file_offset_of_min_vaddr) = 0;
+  virtual bool VaddrToOff(uint64_t vaddr, uint64_t* file_offset) = 0;
 
  protected:
   ElfFile() {}
