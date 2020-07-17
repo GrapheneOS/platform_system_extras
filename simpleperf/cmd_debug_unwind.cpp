@@ -195,6 +195,7 @@ bool DebugUnwindCommand::UnwindRecordFile() {
     return false;
   }
   ScopedCurrentArch scoped_arch(GetArchType(reader_->ReadFeatureString(PerfFileFormat::FEAT_ARCH)));
+  offline_unwinder_->LoadMetaInfo(reader_->GetMetaInfoFeature());
 
   // 2. Copy attr section.
   writer_ = RecordFileWriter::CreateInstance(output_filename_);
