@@ -125,6 +125,7 @@ static void CheckSimpleperfArguments(const char* cmdname, char** args) {
       "--verbose",
   };
   std::set<std::string> one_arg_options = {
+      "--addr-filter",
       "--aux-buffer-size",
       "-c",
       "--call-graph",
@@ -136,7 +137,6 @@ static void CheckSimpleperfArguments(const char* cmdname, char** args) {
       "-e",
       "-f",
       "--group",
-      "--include-filter",
       "--interval",
       "-j",
       "--log",
