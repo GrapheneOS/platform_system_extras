@@ -98,10 +98,8 @@ ProfcollectdScheduler::ProfcollectdScheduler() {
   // Load a registered hardware trace provider.
   if ((hwtracer = REGISTER_SIMPLEPERF_ETM_PROVIDER())) {
     LOG(INFO) << "ETM provider registered.";
-    return;
   } else {
     LOG(ERROR) << "No hardware trace provider found for this architecture.";
-    exit(EXIT_FAILURE);
   }
 }
 
@@ -156,6 +154,10 @@ OptError ProfcollectdScheduler::TerminateCollection() {
 }
 
 OptError ProfcollectdScheduler::TraceOnce(const std::string& tag) {
+  if(!hwtracer) {
+    return "No trace provider registered.";
+  }
+
   const std::lock_guard<std::mutex> lock(mu);
   bool success = hwtracer->Trace(config.traceOutputDir, tag, config.samplingPeriod);
   if (!success) {
@@ -166,6 +168,10 @@ OptError ProfcollectdScheduler::TraceOnce(const std::string& tag) {
 }
 
 OptError ProfcollectdScheduler::ProcessProfile() {
+  if(!hwtracer) {
+    return "No trace provider registered.";
+  }
+
   const std::lock_guard<std::mutex> lock(mu);
   hwtracer->Process(config.traceOutputDir, config.profileOutputDir, config.binaryFilter);
   std::vector<fs::path> profiles;
