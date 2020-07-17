@@ -22,6 +22,7 @@
 
 #include <android-base/logging.h>
 #include <android-base/strings.h>
+#include <android-base/stringprintf.h>
 
 #include "environment.h"
 #include "ETMRecorder.h"
@@ -33,6 +34,7 @@
 #include "utils.h"
 #include "RecordReadThread.h"
 
+using android::base::StringPrintf;
 using namespace simpleperf;
 
 bool IsBranchSamplingSupported() {
@@ -131,6 +133,23 @@ bool IsMmap2Supported() {
   perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
   attr.mmap2 = 1;
   return IsEventAttrSupported(attr, type->name);
+}
+
+std::string AddrFilter::ToString() const {
+  switch (type) {
+    case FILE_RANGE:
+      return StringPrintf("filter 0x%" PRIx64 "/0x%" PRIx64 "@%s", addr, size, file_path.c_str());
+    case AddrFilter::FILE_START:
+      return StringPrintf("start 0x%" PRIx64 "@%s", addr, file_path.c_str());
+    case AddrFilter::FILE_STOP:
+      return StringPrintf("stop 0x%" PRIx64 "@%s", addr, file_path.c_str());
+    case AddrFilter::KERNEL_RANGE:
+      return StringPrintf("filter 0x%" PRIx64 "/0x%" PRIx64, addr, size);
+    case AddrFilter::KERNEL_START:
+      return StringPrintf("start 0x%" PRIx64, addr);
+    case AddrFilter::KERNEL_STOP:
+      return StringPrintf("stop 0x%" PRIx64, addr);
+  }
 }
 
 EventSelectionSet::EventSelectionSet(bool for_stat_cmd)
@@ -616,32 +635,36 @@ bool EventSelectionSet::ApplyFilters() {
 }
 
 bool EventSelectionSet::ApplyAddrFilters() {
-  if (include_filters_.empty()) {
+  if (addr_filters_.empty()) {
     return true;
   }
   if (!has_aux_trace_) {
-    LOG(ERROR) << "include filters only take effect in cs-etm instruction tracing";
+    LOG(ERROR) << "addr filters only take effect in cs-etm instruction tracing";
     return false;
   }
-  size_t supported_pairs = ETMRecorder::GetInstance().GetAddrFilterPairs();
-  if (supported_pairs < include_filters_.size()) {
-    LOG(ERROR) << "filter binary count is " << include_filters_.size()
-               << ", bigger than maximum supported filters on device, which is " << supported_pairs;
+
+  // Check filter count limit.
+  size_t required_etm_filter_count = 0;
+  for (auto& filter : addr_filters_) {
+    // A range filter needs two etm filters.
+    required_etm_filter_count +=
+        (filter.type == AddrFilter::FILE_RANGE || filter.type == AddrFilter::KERNEL_RANGE) ? 2 : 1;
+  }
+  size_t etm_filter_count = ETMRecorder::GetInstance().GetAddrFilterPairs() * 2;
+  if (etm_filter_count < required_etm_filter_count) {
+    LOG(ERROR) << "needed " << required_etm_filter_count << " etm filters, but only "
+               << etm_filter_count << " filters are available.";
     return false;
   }
+
   std::string filter_str;
-  for (auto& binary : include_filters_) {
-    std::string path;
-    if (!android::base::Realpath(binary, &path)) {
-      PLOG(ERROR) << "failed to find include filter binary: " << binary;
-      return false;
-    }
-    uint64_t file_size = GetFileSize(path);
+  for (auto& filter : addr_filters_) {
     if (!filter_str.empty()) {
       filter_str += ',';
     }
-    android::base::StringAppendF(&filter_str, "filter 0/%" PRIu64 "@%s", file_size, path.c_str());
+    filter_str += filter.ToString();
   }
+
   for (auto& group : groups_) {
     for (auto& selection : group) {
       if (IsEtmEventType(selection.event_type_modifier.event_type.type)) {

@@ -38,6 +38,7 @@
 #endif
 
 #include "CallChainJoiner.h"
+#include "cmd_record_impl.h"
 #include "command.h"
 #include "environment.h"
 #include "ETMRecorder.h"
@@ -55,6 +56,8 @@
 #include "utils.h"
 #include "workload.h"
 
+using android::base::ParseUint;
+using android::base::Realpath;
 using namespace simpleperf;
 
 static std::string default_measured_event_type = "cpu-cycles";
@@ -195,9 +198,23 @@ class RecordCommand : public Command {
 "--no-inherit  Don't record created child threads/processes.\n"
 "--cpu-percent <percent>  Set the max percent of cpu time used for recording.\n"
 "                         percent is in range [1-100], default is 25.\n"
-"--include-filter binary1,binary2,...\n"
-"                Trace only selected binaries in cs-etm instruction tracing.\n"
-"                Each entry is a binary path.\n"
+"--addr-filter filter_str1,filter_str2,...\n"
+"                Provide address filters for cs-etm instruction tracing.\n"
+"                filter_str accepts below formats:\n"
+"                  'filter  <addr-range>'  -- trace instructions in a range\n"
+"                  'start <addr>'          -- start tracing when ip is <addr>\n"
+"                  'stop <addr>'           -- stop tracing when ip is <addr>\n"
+"                <addr-range> accepts below formats:\n"
+"                  <file_path>                            -- code sections in a binary file\n"
+"                  <vaddr_start>-<vaddr_end>@<file_path>  -- part of a binary file\n"
+"                  <kernel_addr_start>-<kernel_addr_end>  -- part of kernel space\n"
+"                <addr> accepts below formats:\n"
+"                  <vaddr>@<file_path>      -- virtual addr in a binary file\n"
+"                  <kernel_addr>            -- a kernel address\n"
+"                Examples:\n"
+"                  'filter 0x456-0x480@/system/lib/libc.so'\n"
+"                  'start 0x456@/system/lib/libc.so,stop 0x480@/system/lib/libc.so'\n"
+"\n"
 "--tp-filter filter_string    Set filter_string for the previous tracepoint event.\n"
 "                             Format is in Documentation/trace/events.rst in the kernel.\n"
 "                             An example: 'prev_comm != \"simpleperf\" && (prev_pid > 1)'.\n"
@@ -708,6 +725,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
                                  std::vector<std::string>* non_option_args) {
   static const std::unordered_map<OptionName, OptionFormat> option_formats = {
       {"-a", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--addr-filter", {OptionValueType::STRING, OptionType::SINGLE}},
       {"--app", {OptionValueType::STRING, OptionType::SINGLE}},
       {"--aux-buffer-size", {OptionValueType::UINT, OptionType::SINGLE}},
       {"-b", {OptionValueType::NONE, OptionType::SINGLE}},
@@ -725,7 +743,6 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       {"-g", {OptionValueType::NONE, OptionType::ORDERED}},
       {"--group", {OptionValueType::STRING, OptionType::ORDERED}},
       {"--in-app", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"--include-filter", {OptionValueType::STRING, OptionType::SINGLE}},
       {"-j", {OptionValueType::STRING, OptionType::MULTIPLE}},
       {"-m", {OptionValueType::UINT, OptionType::SINGLE}},
       {"--no-callchain-joiner", {OptionValueType::NONE, OptionType::SINGLE}},
@@ -760,6 +777,14 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
 
   // Process options.
   system_wide_collection_ = options.PullBoolValue("-a");
+
+  if (auto value = options.PullValue("--addr-filter"); value) {
+    auto filters = ParseAddrFilterOption(*value->str_value);
+    if (filters.empty()) {
+      return false;
+    }
+    event_selection_set_.SetAddrFilters(std::move(filters));
+  }
 
   if (auto value = options.PullValue("--app"); value) {
     app_package_name_ = *value->str_value;
@@ -816,10 +841,6 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   }
 
   in_app_context_ = options.PullBoolValue("--in-app");
-
-  if (auto value = options.PullValue("--include-filter"); value) {
-    event_selection_set_.SetIncludeFilters(android::base::Split(*value->str_value, ","));
-  }
 
   if (auto values = options.PullValues("-j"); values) {
     for (const auto& value : values.value()) {
@@ -957,7 +978,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         dwarf_callchain_sampling_ = true;
         if (strs.size() > 1) {
           uint64_t size;
-          if (!android::base::ParseUint(strs[1], &size)) {
+          if (!ParseUint(strs[1], &size)) {
             LOG(ERROR) << "invalid dump stack size in --call-graph option: " << strs[1];
             return false;
           }
@@ -1866,6 +1887,73 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
 }
 
 namespace simpleperf {
+
+// To reduce function length, not all format errors are checked.
+static bool ParseOneAddrFilter(const std::string& s, std::vector<AddrFilter>* filters) {
+  std::vector<std::string> args = android::base::Split(s, " -@");
+  std::unique_ptr<ElfFile> elf;
+  uint64_t addr1;
+  uint64_t addr2;
+  uint64_t off1;
+  uint64_t off2;
+  std::string path;
+
+  if (args[0] == "start" || args[0] == "stop") {
+    if (args.size() >= 2 && ParseUint(args[1], &addr1)) {
+      if (args.size() == 2) {
+        // start <kernel_addr>  || stop <kernel_addr>
+        filters->emplace_back(
+            args[0] == "start" ? AddrFilter::KERNEL_START : AddrFilter::KERNEL_STOP, addr1, 0, "");
+        return true;
+      }
+      if (auto elf = ElfFile::Open(args[2]);
+          elf && elf->VaddrToOff(addr1, &off1) && Realpath(args[2], &path)) {
+        // start <vaddr>@<file_path> || stop <vaddr>@<file_path>
+        filters->emplace_back(args[0] == "start" ? AddrFilter::FILE_START : AddrFilter::FILE_STOP,
+                              off1, 0, path);
+        return true;
+      }
+    }
+  } else if (args[0] == "filter") {
+    if (args.size() == 2) {
+      // filter <file_path>
+      if (auto elf = ElfFile::Open(args[1]); elf) {
+        for (const ElfSegment& seg : elf->GetProgramHeader()) {
+          if (seg.is_executable) {
+            filters->emplace_back(AddrFilter::FILE_RANGE, seg.file_offset, seg.file_size, args[1]);
+          }
+        }
+        return true;
+      }
+    } else if (args.size() >= 3 && ParseUint(args[1], &addr1) && ParseUint(args[2], &addr2) &&
+               addr1 < addr2) {
+      if (args.size() == 3) {
+        // filter <kernel_addr_start>-<kernel_addr_end>
+        filters->emplace_back(AddrFilter::KERNEL_RANGE, addr1, addr2 - addr1, "");
+        return true;
+      }
+      if (auto elf = ElfFile::Open(args[3]); elf && elf->VaddrToOff(addr1, &off1) &&
+                                             elf->VaddrToOff(addr2, &off2) &&
+                                             Realpath(args[3], &path)) {
+        // filter <vaddr_start>-<vaddr_end>@<file_path>
+        filters->emplace_back(AddrFilter::FILE_RANGE, off1, off2 - off1, path);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+std::vector<AddrFilter> ParseAddrFilterOption(const std::string& s) {
+  std::vector<AddrFilter> filters;
+  for (const auto& str : android::base::Split(s, ",")) {
+    if (!ParseOneAddrFilter(str, &filters)) {
+      LOG(ERROR) << "failed to parse addr filter: " << str;
+      return {};
+    }
+  }
+  return filters;
+}
 
 void RegisterRecordCommand() {
   RegisterCommand("record",
