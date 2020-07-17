@@ -236,3 +236,13 @@ TEST(read_elf, NoUndefinedSymbol) {
   ASSERT_EQ(ElfStatus::NO_ERROR, elf->ParseSymbols(parse_symbol));
   ASSERT_FALSE(has_dlerror);
 }
+
+TEST(read_elf, VaddrToOff) {
+  auto elf = ElfFile::Open(GetTestData(ELF_FILE));
+  ASSERT_TRUE(elf != nullptr);
+  uint64_t off;
+  ASSERT_TRUE(elf->VaddrToOff(0x400200, &off));
+  ASSERT_EQ(off, 0x200);
+  ASSERT_FALSE(elf->VaddrToOff(0x300200, &off));
+  ASSERT_FALSE(elf->VaddrToOff(0x420000, &off));
+}

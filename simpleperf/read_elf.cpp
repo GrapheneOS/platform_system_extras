@@ -440,6 +440,17 @@ class ElfFileImpl<llvm::object::ELFObjectFile<ELFT>> : public ElfFile {
     return min_addr;
   }
 
+  bool VaddrToOff(uint64_t vaddr, uint64_t* file_offset) override {
+    for (auto ph = elf_->program_header_begin(); ph != elf_->program_header_end(); ++ph) {
+      if (ph->p_type == llvm::ELF::PT_LOAD && vaddr >= ph->p_vaddr &&
+          vaddr < ph->p_vaddr + ph->p_filesz) {
+        *file_offset = vaddr - ph->p_vaddr + ph->p_offset;
+        return true;
+      }
+    }
+    return false;
+  }
+
  private:
   BinaryWrapper wrapper_;
   const llvm::object::ELFObjectFile<ELFT>* elf_obj_;
@@ -462,6 +473,15 @@ std::unique_ptr<ElfFile> CreateElfFileImpl(BinaryWrapper&& wrapper, ElfStatus* s
 }  // namespace
 
 namespace simpleperf {
+
+std::unique_ptr<ElfFile> ElfFile::Open(const std::string& filename) {
+  ElfStatus status;
+  auto elf = Open(filename, &status);
+  if (!elf) {
+    LOG(ERROR) << "failed to open " << filename << ": " << status;
+  }
+  return elf;
+}
 
 std::unique_ptr<ElfFile> ElfFile::Open(const std::string& filename,
                                        const BuildId* expected_build_id, ElfStatus* status) {
