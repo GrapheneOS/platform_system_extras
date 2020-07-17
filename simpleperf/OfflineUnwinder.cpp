@@ -16,17 +16,18 @@
 
 #include "OfflineUnwinder.h"
 
+#include <inttypes.h>
 #include <sys/mman.h>
 
 #include <unordered_map>
 
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
 #include <unwindstack/MachineArm.h>
 #include <unwindstack/MachineArm64.h>
 #include <unwindstack/MachineX86.h>
 #include <unwindstack/MachineX86_64.h>
 #include <unwindstack/Maps.h>
-#include <unwindstack/Regs.h>
 #include <unwindstack/RegsArm.h>
 #include <unwindstack/RegsArm64.h>
 #include <unwindstack/RegsX86.h>
@@ -51,7 +52,7 @@ namespace simpleperf {
 // Max frames seen so far is 463, in http://b/110923759.
 static constexpr size_t MAX_UNWINDING_FRAMES = 512;
 
-static unwindstack::Regs* GetBacktraceRegs(const RegSet& regs) {
+unwindstack::Regs* OfflineUnwinderImpl::GetBacktraceRegs(const RegSet& regs) {
   switch (regs.arch) {
     case ARCH_ARM: {
       unwindstack::arm_user_regs arm_user_regs;
@@ -76,7 +77,10 @@ static unwindstack::Regs* GetBacktraceRegs(const RegSet& regs) {
              sizeof(uint64_t) * (PERF_REG_ARM64_LR - PERF_REG_ARM64_X0 + 1));
       arm64_user_regs.sp = regs.data[PERF_REG_ARM64_SP];
       arm64_user_regs.pc = regs.data[PERF_REG_ARM64_PC];
-      return unwindstack::RegsArm64::Read(&arm64_user_regs);
+      auto regs =
+          static_cast<unwindstack::RegsArm64*>(unwindstack::RegsArm64::Read(&arm64_user_regs));
+      regs->SetPACMask(arm64_pac_mask_);
+      return regs;
     }
     case ARCH_X86_32: {
       unwindstack::x86_user_regs x86_user_regs;
@@ -182,20 +186,31 @@ void UnwindMaps::UpdateMaps(const MapSet& map_set) {
   Sort();
 }
 
-class OfflineUnwinderImpl : public OfflineUnwinder {
- public:
-  OfflineUnwinderImpl(bool collect_stat) : collect_stat_(collect_stat) {
-    unwindstack::Elf::SetCachingEnabled(true);
+void OfflineUnwinder::CollectMetaInfo(std::unordered_map<std::string, std::string>* info_map
+                                      __attribute__((unused))) {
+#if defined(__aarch64__)
+  // Find pac_mask for ARMv8.3-A Pointer Authentication by below steps:
+  // 1. Create a 64 bit value with every bit set, but clear bit 55. Because linux user space uses
+  //    TTBR0.
+  // 2. Use XPACLRI to clear auth code bits.
+  // 3. Flip every bit to get pac_mask, excluding bit 55.
+  // We can also use ptrace(PTRACE_GETREGSET, pid, NT_ARM_PAC_MASK). But it needs a tracee.
+  register uint64_t x30 __asm("x30") = ~(1ULL << 55);
+  // This is XPACLRI on ARMv8.3-A, and nop on prev ARMv8.3-A.
+  asm("hint 0x7" : "+r"(x30));
+  uint64_t pac_mask = ~x30 & ~(1ULL << 55);
+  if (pac_mask != 0) {
+    (*info_map)[META_KEY_ARM64_PAC_MASK] = android::base::StringPrintf("0x%" PRIx64, pac_mask);
   }
+#endif
+}
 
-  bool UnwindCallChain(const ThreadEntry& thread, const RegSet& regs, const char* stack,
-                       size_t stack_size, std::vector<uint64_t>* ips,
-                       std::vector<uint64_t>* sps) override;
-
- private:
-  bool collect_stat_;
-  std::unordered_map<pid_t, UnwindMaps> cached_maps_;
-};
+void OfflineUnwinderImpl::LoadMetaInfo(
+    const std::unordered_map<std::string, std::string>& info_map) {
+  if (auto it = info_map.find(META_KEY_ARM64_PAC_MASK); it != info_map.end()) {
+    CHECK(android::base::ParseUint(it->second, &arm64_pac_mask_));
+  }
+}
 
 bool OfflineUnwinderImpl::UnwindCallChain(const ThreadEntry& thread, const RegSet& regs,
                                           const char* stack, size_t stack_size,
