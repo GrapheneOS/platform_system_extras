@@ -20,6 +20,7 @@
 
 #include <android-base/file.h>
 #include <android-base/stringprintf.h>
+#include <android-base/test_utils.h>
 
 #include "get_test_data.h"
 #include "read_apk.h"
@@ -133,6 +134,19 @@ TEST(DebugElfFileFinder, find_basename_in_symfs_dir) {
             symfs_dir + OS_PATH_SEPARATOR + "elf");
 }
 
+TEST(DebugElfFileFinder, build_id_mismatch) {
+  DebugElfFileFinder finder;
+  finder.SetSymFsDir(GetTestDataDir());
+  CapturedStderr capture;
+  capture.Start();
+  BuildId mismatch_build_id("0c12a384a9f4a3f3659b7171ca615dbec3a81f71");
+  std::string debug_file = finder.FindDebugFile(ELF_FILE, false, mismatch_build_id);
+  capture.Stop();
+  std::string stderr_output = capture.str();
+  ASSERT_EQ(debug_file, ELF_FILE);
+  ASSERT_NE(stderr_output.find("build id mismatch"), std::string::npos);
+}
+
 TEST(dso, dex_file_dso) {
 #if defined(__linux__)
   for (DsoType dso_type : {DSO_DEX_FILE, DSO_ELF_FILE}) {
@@ -194,4 +208,14 @@ TEST(dso, IpToVaddrInFile) {
   std::unique_ptr<Dso> dso = Dso::CreateDso(DSO_ELF_FILE, GetTestData("libc.so"));
   ASSERT_TRUE(dso);
   ASSERT_EQ(0xa5140, dso->IpToVaddrInFile(0xe9201140, 0xe9201000, 0xa5000));
+}
+
+TEST(dso, kernel_module) {
+  // Test finding debug files for kernel modules.
+  Dso::SetSymFsDir(GetTestDataDir());
+  std::vector<std::pair<std::string, BuildId>> build_ids;
+  build_ids.emplace_back(ELF_FILE, BuildId(ELF_FILE_BUILD_ID));
+  Dso::SetBuildIds(build_ids);
+  std::unique_ptr<Dso> dso = Dso::CreateDso(DSO_KERNEL_MODULE, ELF_FILE, false);
+  ASSERT_EQ(dso->GetDebugFilePath(), GetTestData(ELF_FILE));
 }
