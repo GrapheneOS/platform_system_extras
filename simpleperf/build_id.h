@@ -89,4 +89,9 @@ class BuildId {
   unsigned char data_[BUILD_ID_SIZE];
 };
 
+inline std::ostream& operator<<(std::ostream& os, const BuildId& build_id) {
+  os << build_id.ToString();
+  return os;
+}
+
 #endif  // SIMPLE_PERF_BUILD_ID_H_
