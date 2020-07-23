@@ -52,6 +52,7 @@ class ProfcollectdScheduler {
   OptError TerminateCollection();
   OptError TraceOnce(const std::string& tag);
   OptError ProcessProfile();
+  OptError GetSupportedProvider(std::string& provider);
 
  private:
   Config config;
