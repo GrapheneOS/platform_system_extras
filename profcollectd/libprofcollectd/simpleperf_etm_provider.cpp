@@ -49,6 +49,7 @@ namespace fs = std::filesystem;
 class SimpleperfETMProvider : public HwtraceProvider {
  public:
   static bool IsSupported();
+  std::string GetName();
   bool Trace(const fs::path& outputPath, const std::string& tag,
              std::chrono::duration<float> samplingPeriod) override;
   bool Process(const fs::path& inputPath, const fs::path& outputPath,
@@ -57,6 +58,11 @@ class SimpleperfETMProvider : public HwtraceProvider {
 
 bool SimpleperfETMProvider::IsSupported() {
   return simpleperf::etm::HasSupport();
+}
+
+std::string SimpleperfETMProvider::GetName() {
+  static constexpr const char* name = "simpleperf_etm";
+  return name;
 }
 
 bool SimpleperfETMProvider::Trace(const fs::path& outputPath, const std::string& tag,
