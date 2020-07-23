@@ -251,9 +251,10 @@ bool GetKernelBuildId(BuildId* build_id) {
   return result == ElfStatus::NO_ERROR;
 }
 
-bool GetModuleBuildId(const std::string& module_name, BuildId* build_id) {
-  std::string notefile = "/sys/module/" + module_name + "/notes/.note.gnu.build-id";
-  return GetBuildIdFromNoteFile(notefile, build_id);
+bool GetModuleBuildId(const std::string& module_name, BuildId* build_id,
+                      const std::string& sysfs_dir) {
+  std::string notefile = sysfs_dir + "/module/" + module_name + "/notes/.note.gnu.build-id";
+  return GetBuildIdFromNoteFile(notefile, build_id) == ElfStatus::NO_ERROR;
 }
 
 bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>* tid_set) {

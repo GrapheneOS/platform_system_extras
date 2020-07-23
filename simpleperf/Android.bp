@@ -156,6 +156,7 @@ cc_defaults {
                 "libcutils",
                 "libprocinfo",
                 "libevent",
+                "libc++fs",
             ],
         },
         android: {
@@ -197,6 +198,9 @@ cc_defaults {
                 "libevent",
                 "libprocinfo",
                 "libunwindstack",
+            ],
+            static_libs: [
+                "libc++fs",
             ],
         },
         host: {
