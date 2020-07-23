@@ -16,10 +16,15 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
+
 #include <android-base/file.h>
 
 #include "dso.h"
 #include "environment.h"
+#include "get_test_data.h"
+
+namespace fs = std::filesystem;
 
 TEST(environment, PrepareVdsoFile) {
   std::string content;
@@ -95,4 +100,13 @@ TEST(environment, GetKernelVersion) {
   int major;
   int minor;
   ASSERT_TRUE(GetKernelVersion(&major, &minor));
+}
+
+TEST(environment, GetModuleBuildId) {
+  BuildId build_id;
+  fs::path dir(GetTestData("sysfs/module/fake_kernel_module/notes"));
+  ASSERT_TRUE(fs::copy_file(dir / "note.gnu.build-id", dir / ".note.gnu.build-id",
+                            fs::copy_options::overwrite_existing));
+  ASSERT_TRUE(GetModuleBuildId("fake_kernel_module", &build_id, GetTestData("sysfs")));
+  ASSERT_EQ(build_id, BuildId("3e0ba155286f3454"));
 }
