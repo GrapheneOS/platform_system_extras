@@ -26,7 +26,7 @@
 // decide whether to report error or not. So read ELF functions don't report
 // error when something wrong happens, instead they return ElfStatus, which
 // identifies different errors met while reading elf file.
-enum ElfStatus {
+enum class ElfStatus {
   NO_ERROR,
   FILE_NOT_FOUND,
   READ_FAILED,
