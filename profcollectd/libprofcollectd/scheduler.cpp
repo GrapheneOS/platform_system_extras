@@ -185,6 +185,11 @@ OptError ProfcollectdScheduler::ProcessProfile() {
   return std::nullopt;
 }
 
+OptError ProfcollectdScheduler::GetSupportedProvider(std::string& provider) {
+  provider = hwtracer ? hwtracer->GetName() : "";
+  return std::nullopt;
+}
+
 std::ostream& operator<<(std::ostream& os, const ProfcollectdScheduler::Config& config) {
   Json::Value root;
   const auto writer = std::make_unique<Json::StyledStreamWriter>();
