@@ -28,6 +28,7 @@
 #include <android-base/unique_fd.h>
 #include <ziparchive/zip_writer.h>
 
+#include "cmd_api_impl.h"
 #include "command.h"
 #include "event_type.h"
 #include "environment.h"
@@ -106,36 +107,37 @@ bool CollectCommand::Run(const std::vector<std::string>& args) {
 }
 
 bool CollectCommand::ParseOptions(const std::vector<std::string>& args) {
-  for (size_t i = 0; i < args.size(); ++i) {
-    if (args[i] == "--app") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      app_name_ = args[i];
-    } else if (args[i] == "--in-app") {
-      in_app_context_ = true;
-    } else if (args[i] == "-o") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      output_filepath_ = args[i];
-    } else if (args[i] == "--out-fd") {
-      int fd;
-      if (!GetUintOption(args, &i, &fd)) {
-        return false;
-      }
-      out_fd_.reset(fd);
-    } else if (args[i] == "--stop-signal-fd") {
-      int fd;
-      if (!GetUintOption(args, &i, &fd)) {
-        return false;
-      }
-      stop_signal_fd_.reset(fd);
-    } else {
-      ReportUnknownOption(args, i);
-      return false;
-    }
+  OptionValueMap options;
+  std::vector<std::pair<OptionName, OptionValue>> ordered_options;
+  std::vector<std::string> non_option_args;
+
+  if (!PreprocessOptions(args, GetApiCollectCmdOptionFormats(), &options, &ordered_options,
+                         &non_option_args)) {
+    return false;
   }
+
+  if (auto value = options.PullValue("--app"); value) {
+    app_name_ = *value->str_value;
+  }
+  in_app_context_ = options.PullBoolValue("--in-app");
+
+  if (auto value = options.PullValue("-o"); value) {
+    output_filepath_ = *value->str_value;
+  }
+  if (auto value = options.PullValue("--out-fd"); value) {
+    out_fd_.reset(static_cast<int>(value->uint_value));
+  }
+  if (auto value = options.PullValue("--stop-signal-fd"); value) {
+    stop_signal_fd_.reset(static_cast<int>(value->uint_value));
+  }
+
+  CHECK(options.values.empty());
+  CHECK(ordered_options.empty());
+  if (!non_option_args.empty()) {
+    LOG(ERROR) << "unexpected non_option_args: " << non_option_args[0];
+    return false;
+  }
+
   if (!in_app_context_) {
     if (app_name_.empty()) {
       LOG(ERROR) << "--app is missing";

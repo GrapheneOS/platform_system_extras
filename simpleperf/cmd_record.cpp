@@ -723,55 +723,11 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
 
 bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
                                  std::vector<std::string>* non_option_args) {
-  static const std::unordered_map<OptionName, OptionFormat> option_formats = {
-      {"-a", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"--addr-filter", {OptionValueType::STRING, OptionType::SINGLE}},
-      {"--app", {OptionValueType::STRING, OptionType::SINGLE}},
-      {"--aux-buffer-size", {OptionValueType::UINT, OptionType::SINGLE}},
-      {"-b", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"-c", {OptionValueType::UINT, OptionType::ORDERED}},
-      {"--call-graph", {OptionValueType::STRING, OptionType::ORDERED}},
-      {"--callchain-joiner-min-matching-nodes", {OptionValueType::UINT, OptionType::SINGLE}},
-      {"--clockid", {OptionValueType::STRING, OptionType::SINGLE}},
-      {"--cpu", {OptionValueType::STRING, OptionType::SINGLE}},
-      {"--cpu-percent", {OptionValueType::UINT, OptionType::SINGLE}},
-      {"--duration", {OptionValueType::DOUBLE, OptionType::SINGLE}},
-      {"-e", {OptionValueType::STRING, OptionType::ORDERED}},
-      {"--exclude-perf", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"--exit-with-parent", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"-f", {OptionValueType::UINT, OptionType::ORDERED}},
-      {"-g", {OptionValueType::NONE, OptionType::ORDERED}},
-      {"--group", {OptionValueType::STRING, OptionType::ORDERED}},
-      {"--in-app", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"-j", {OptionValueType::STRING, OptionType::MULTIPLE}},
-      {"-m", {OptionValueType::UINT, OptionType::SINGLE}},
-      {"--no-callchain-joiner", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"--no-cut-samples", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"--no-dump-kernel-symbols", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"--no-dump-symbols", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"--no-inherit", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"--no-unwind", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"-o", {OptionValueType::STRING, OptionType::SINGLE}},
-      {"--out-fd", {OptionValueType::UINT, OptionType::SINGLE}},
-      {"-p", {OptionValueType::STRING, OptionType::MULTIPLE}},
-      {"--post-unwind", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"--post-unwind=no", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"--post-unwind=yes", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"--size-limit", {OptionValueType::UINT, OptionType::SINGLE}},
-      {"--start_profiling_fd", {OptionValueType::UINT, OptionType::SINGLE}},
-      {"--stdio-controls-profiling", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"--stop-signal-fd", {OptionValueType::UINT, OptionType::SINGLE}},
-      {"--symfs", {OptionValueType::STRING, OptionType::SINGLE}},
-      {"-t", {OptionValueType::STRING, OptionType::MULTIPLE}},
-      {"--tp-filter", {OptionValueType::STRING, OptionType::ORDERED}},
-      {"--trace-offcpu", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"--tracepoint-events", {OptionValueType::STRING, OptionType::SINGLE}},
-  };
-
   OptionValueMap options;
   std::vector<std::pair<OptionName, OptionValue>> ordered_options;
 
-  if (!PreprocessOptions(args, option_formats, &options, &ordered_options, non_option_args)) {
+  if (!PreprocessOptions(args, GetRecordCmdOptionFormats(), &options, &ordered_options,
+                         non_option_args)) {
     return false;
   }
 
