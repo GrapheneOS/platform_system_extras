@@ -48,10 +48,21 @@ enum class OptionValueType {
   DOUBLE,
 };
 
+// Whether an option is allowed to pass through simpleperf_app_runner.
+enum class AppRunnerType {
+  NOT_ALLOWED,
+  ALLOWED,
+  CHECK_FD,
+  CHECK_PATH,
+};
+
 struct OptionFormat {
   OptionValueType value_type;
   OptionType type;
+  AppRunnerType app_runner_type;
 };
+
+using OptionFormatMap = std::unordered_map<OptionName, OptionFormat>;
 
 union OptionValue {
   const std::string* str_value;
@@ -115,6 +126,18 @@ struct OptionValueMap {
   }
 };
 
+inline const OptionFormatMap& GetCommonOptionFormatMap() {
+  static const OptionFormatMap option_formats = {
+      {"-h", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--help", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--log", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--log-to-android-buffer",
+       {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--version", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+  };
+  return option_formats;
+}
+
 class Command {
  public:
   Command(const std::string& name, const std::string& short_help_string,
@@ -140,8 +163,7 @@ class Command {
   virtual bool Run(const std::vector<std::string>& args) = 0;
 
   bool PreprocessOptions(const std::vector<std::string>& args,
-                         const std::unordered_map<OptionName, OptionFormat>& option_formats,
-                         OptionValueMap* options,
+                         const OptionFormatMap& option_formats, OptionValueMap* options,
                          std::vector<std::pair<OptionName, OptionValue>>* ordered_options,
                          std::vector<std::string>* non_option_args = nullptr);
 

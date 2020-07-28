@@ -42,8 +42,7 @@ bool Command::NextArgumentOrError(const std::vector<std::string>& args, size_t* 
 }
 
 bool Command::PreprocessOptions(const std::vector<std::string>& args,
-                                const std::unordered_map<OptionName, OptionFormat>& option_formats,
-                                OptionValueMap* options,
+                                const OptionFormatMap& option_formats, OptionValueMap* options,
                                 std::vector<std::pair<OptionName, OptionValue>>* ordered_options,
                                 std::vector<std::string>* non_option_args) {
   options->values.clear();
@@ -224,33 +223,43 @@ bool RunSimpleperfCmd(int argc, char** argv) {
   std::vector<std::string> args;
   android::base::LogSeverity log_severity = android::base::INFO;
   log_to_android_buffer = false;
+  const OptionFormatMap& common_option_formats = GetCommonOptionFormatMap();
 
-  for (int i = 1; i < argc; ++i) {
-    if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+  int i;
+  for (i = 1; i < argc && strcmp(argv[i], "--") != 0; ++i) {
+    std::string option_name = argv[i];
+    auto it = common_option_formats.find(option_name);
+    if (it == common_option_formats.end()) {
+      args.emplace_back(std::move(option_name));
+      continue;
+    }
+    if (it->second.value_type != OptionValueType::NONE && i + 1 == argc) {
+      LOG(ERROR) << "Missing argument for " << option_name;
+      return false;
+    }
+    if (option_name == "-h" || option_name == "--help") {
       args.insert(args.begin(), "help");
-    } else if (strcmp(argv[i], "--log") == 0) {
-      if (i + 1 < argc) {
-        ++i;
-        if (!GetLogSeverity(argv[i], &log_severity)) {
-          LOG(ERROR) << "Unknown log severity: " << argv[i];
-          return false;
-        }
-      } else {
-        LOG(ERROR) << "Missing argument for --log option.\n";
-        return false;
+    } else if (option_name == "--log") {
+      if (!GetLogSeverity(argv[i+1], &log_severity)) {
+        LOG(ERROR) << "Unknown log severity: " << argv[i+1];
       }
+      ++i;
 #if defined(__ANDROID__)
-    } else if (strcmp(argv[i], "--log-to-android-buffer") == 0) {
+    } else if (option_name == "--log-to-android-buffer") {
       android::base::SetLogger(android::base::LogdLogger());
       log_to_android_buffer = true;
 #endif
-    } else if (strcmp(argv[i], "--version") == 0) {
+    } else if (option_name == "--version") {
       LOG(INFO) << "Simpleperf version " << GetSimpleperfVersion();
       return true;
     } else {
-      args.push_back(argv[i]);
+      CHECK(false) << "Unreachable code";
     }
   }
+  while (i < argc) {
+    args.emplace_back(argv[i++]);
+  }
+
   android::base::ScopedLogSeverity severity(log_severity);
 
   if (args.empty()) {

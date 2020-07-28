@@ -27,6 +27,7 @@
 
 #include <android-base/stringprintf.h>
 
+#include "command.h"
 #include "event_selection_set.h"
 #include "SampleComparator.h"
 
@@ -322,5 +323,36 @@ class CounterSummaries {
   std::vector<CounterSummary> summaries_;
   bool csv_;
 };
+
+inline const OptionFormatMap& GetStatCmdOptionFormats() {
+  static const OptionFormatMap option_formats = {
+      {"-a", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
+      {"--app", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
+      {"--cpu", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--csv", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--duration", {OptionValueType::DOUBLE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--interval", {OptionValueType::DOUBLE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--interval-only-values",
+       {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"-e", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
+      {"--group", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
+      {"--in-app", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--no-inherit", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"-o", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
+      {"--out-fd", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::CHECK_FD}},
+      {"-p", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
+      {"--per-core", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--per-thread", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--sort", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--stop-signal-fd", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::CHECK_FD}},
+      {"-t", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
+      {"--tracepoint-events",
+       {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::CHECK_PATH}},
+      {"--use-devfreq-counters",
+       {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
+      {"--verbose", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+  };
+  return option_formats;
+}
 
 }  // namespace simpleperf
