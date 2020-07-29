@@ -336,7 +336,7 @@ void ReportLib::SetCurrentSample() {
     const Symbol* symbol = thread_tree_.FindSymbol(map, ip, &vaddr_in_file);
     CallChainEntry entry;
     entry.ip = ip;
-    entry.symbol.dso_name = map->dso->Path().c_str();
+    entry.symbol.dso_name = map->dso->GetReportPath().data();
     entry.symbol.vaddr_in_file = vaddr_in_file;
     entry.symbol.symbol_name = symbol->DemangledName();
     entry.symbol.symbol_addr = symbol->addr;
@@ -354,8 +354,6 @@ void ReportLib::SetCurrentSample() {
         // Not enough info to map an offset in a jitted method to an offset in a dex file. So just
         // use the symbol_addr.
         entry.symbol.vaddr_in_file = entry.symbol.symbol_addr;
-      } else {
-        entry.symbol.dso_name = "[JIT cache]";
       }
     }
 
