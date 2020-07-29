@@ -119,6 +119,7 @@ class ScopedTempFiles {
   // If delete_in_destructor = true, the temp file will be deleted in the destructor of
   // ScopedTempFile. Otherwise, it should be deleted by the caller.
   static std::unique_ptr<TemporaryFile> CreateTempFile(bool delete_in_destructor = true);
+  static void RegisterTempFile(const std::string& path);
 
  private:
   static std::string tmp_dir_;

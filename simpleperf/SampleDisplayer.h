@@ -81,7 +81,7 @@ std::string DisplayComm(const EntryT* sample) {
 
 template <typename EntryT>
 std::string DisplayDso(const EntryT* sample) {
-  return sample->map->dso->Path();
+  return std::string{sample->map->dso->GetReportPath()};
 }
 
 template <typename EntryT>
@@ -91,7 +91,7 @@ std::string DisplaySymbol(const EntryT* sample) {
 
 template <typename EntryT>
 std::string DisplayDsoFrom(const EntryT* sample) {
-  return sample->branch_from.map->dso->Path();
+  return std::string{sample->branch_from.map->dso->GetReportPath()};
 }
 
 template <typename EntryT>
