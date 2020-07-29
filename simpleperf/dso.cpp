@@ -373,11 +373,10 @@ bool Dso::IsForJavaMethod() {
     return true;
   }
   if (type_ == DSO_ELF_FILE) {
-    // JIT symfiles for JITed Java methods are dumped as temporary files, whose name are in format
-    // "TemporaryFile-XXXXXX".
-    size_t pos = path_.rfind('/');
-    pos = (pos == std::string::npos) ? 0 : pos + 1;
-    return strncmp(&path_[pos], "TemporaryFile", strlen("TemporaryFile")) == 0;
+    // JITDebugReader generates jit symfiles in "jit_app_cache:<file_start>-<file_end>" format.
+    if (path_.find(':') != std::string::npos) {
+      return true;
+    }
   }
   return false;
 }
@@ -484,6 +483,13 @@ class ElfDso : public Dso {
  public:
   ElfDso(const std::string& path, const std::string& debug_file_path)
       : Dso(DSO_ELF_FILE, path, debug_file_path) {}
+
+  std::string_view GetReportPath() const override {
+    if (size_t colon_pos = path_.find(':'); colon_pos != std::string::npos) {
+      return "[JIT app cache]";
+    }
+    return path_;
+  }
 
   void SetMinExecutableVaddr(uint64_t min_vaddr, uint64_t file_offset) override {
     min_vaddr_ = min_vaddr;
