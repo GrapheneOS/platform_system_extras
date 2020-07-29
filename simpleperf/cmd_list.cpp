@@ -47,8 +47,7 @@ static EventTypeStatus IsEventTypeSupported(const EventType& event_type) {
   }
   if (event_type.type != PERF_TYPE_RAW) {
     perf_event_attr attr = CreateDefaultPerfEventAttr(event_type);
-    // Exclude kernel to list supported events even when
-    // /proc/sys/kernel/perf_event_paranoid is 2.
+    // Exclude kernel to list supported events even when kernel recording isn't allowed.
     attr.exclude_kernel = 1;
     return IsEventAttrSupported(attr, event_type.name) ? EventTypeStatus::SUPPORTED
                                                        : EventTypeStatus::NOT_SUPPORTED;

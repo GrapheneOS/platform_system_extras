@@ -4,7 +4,7 @@
 - [Android platform profiling](#android-platform-profiling)
   - [Table of Contents](#table-of-contents)
   - [General Tips](#general-tips)
-  - [Start simpleperf from system_server process](#start-simpleperf-from-systemserver-process)
+  - [Start simpleperf from system_server process](#start-simpleperf-from-system_server-process)
   - [Hardware PMU counter limit](#hardware-pmu-counter-limit)
 
 ## General Tips
@@ -12,8 +12,8 @@
 Here are some tips for Android platform developers, who build and flash system images on rooted
 devices:
 1. After running `adb root`, simpleperf can be used to profile any process or system wide.
-2. It is recommended to use the latest simpleperf available in AOSP master, if you are not working
-on the current master branch. Scripts are in `system/extras/simpleperf/scripts`, binaries are in
+2. It is recommended to use the latest simpleperf available in AOSP main, if you are not working
+on the current main branch. Scripts are in `system/extras/simpleperf/scripts`, binaries are in
 `system/extras/simpleperf/scripts/bin/android`.
 3. It is recommended to use `app_profiler.py` for recording, and `report_html.py` for reporting.
 Below is an example.
