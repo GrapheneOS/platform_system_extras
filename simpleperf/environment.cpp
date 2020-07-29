@@ -275,22 +275,24 @@ bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>
 }
 
 /*
- * perf event paranoia level:
- *  -1 - not paranoid at all
+ * perf event allow level:
+ *  -1 - everything allowed
  *   0 - disallow raw tracepoint access for unpriv
  *   1 - disallow cpu events for unpriv
  *   2 - disallow kernel profiling for unpriv
  *   3 - disallow user profiling for unpriv
  */
-static bool ReadPerfEventParanoid(int* value) {
+static const char* perf_event_allow_path = "/proc/sys/kernel/perf_event_paranoid";
+
+static bool ReadPerfEventAllowStatus(int* value) {
   std::string s;
-  if (!android::base::ReadFileToString("/proc/sys/kernel/perf_event_paranoid", &s)) {
-    PLOG(DEBUG) << "failed to read /proc/sys/kernel/perf_event_paranoid";
+  if (!android::base::ReadFileToString(perf_event_allow_path, &s)) {
+    PLOG(DEBUG) << "failed to read " << perf_event_allow_path;
     return false;
   }
   s = android::base::Trim(s);
   if (!android::base::ParseInt(s.c_str(), value)) {
-    PLOG(ERROR) << "failed to parse /proc/sys/kernel/perf_event_paranoid: " << s;
+    PLOG(ERROR) << "failed to parse " << perf_event_allow_path << ": " << s;
     return false;
   }
   return true;
@@ -307,7 +309,7 @@ bool CanRecordRawData() {
   return false;
 #else
   int value;
-  return ReadPerfEventParanoid(&value) && value == -1;
+  return ReadPerfEventAllowStatus(&value) && value == -1;
 #endif
 }
 
@@ -323,16 +325,16 @@ static const char* GetLimitLevelDescription(int limit_level) {
 }
 
 bool CheckPerfEventLimit() {
-  // Root is not limited by /proc/sys/kernel/perf_event_paranoid. However, the monitored threads
+  // Root is not limited by perf_event_allow_path. However, the monitored threads
   // may create child processes not running as root. To make sure the child processes have
-  // enough permission to create inherited tracepoint events, write -1 to perf_event_paranoid.
+  // enough permission to create inherited tracepoint events, write -1 to perf_event_allow_path.
   // See http://b/62230699.
   if (IsRoot()) {
-    return android::base::WriteStringToFile("-1", "/proc/sys/kernel/perf_event_paranoid");
+    return android::base::WriteStringToFile("-1", perf_event_allow_path);
   }
   int limit_level;
-  bool can_read_paranoid = ReadPerfEventParanoid(&limit_level);
-  if (can_read_paranoid && limit_level <= 1) {
+  bool can_read_allow_file = ReadPerfEventAllowStatus(&limit_level);
+  if (can_read_allow_file && limit_level <= 1) {
     return true;
   }
 #if defined(__ANDROID__)
@@ -345,25 +347,25 @@ bool CheckPerfEventLimit() {
   if (prop_value == "0") {
     return true;
   }
-  // Try to enable perf_event_paranoid by setprop security.perf_harden=0.
+  // Try to enable perf events by setprop security.perf_harden=0.
   if (android::base::SetProperty(prop_name, "0")) {
     sleep(1);
-    if (can_read_paranoid && ReadPerfEventParanoid(&limit_level) && limit_level <= 1) {
+    if (can_read_allow_file && ReadPerfEventAllowStatus(&limit_level) && limit_level <= 1) {
       return true;
     }
     if (android::base::GetProperty(prop_name, "") == "0") {
       return true;
     }
   }
-  if (can_read_paranoid) {
-    LOG(WARNING) << "/proc/sys/kernel/perf_event_paranoid is " << limit_level
-        << ", " << GetLimitLevelDescription(limit_level) << ".";
+  if (can_read_allow_file) {
+    LOG(WARNING) << perf_event_allow_path << " is " << limit_level << ", "
+                 << GetLimitLevelDescription(limit_level) << ".";
   }
   LOG(WARNING) << "Try using `adb shell setprop security.perf_harden 0` to allow profiling.";
   return false;
 #else
-  if (can_read_paranoid) {
-    LOG(WARNING) << "/proc/sys/kernel/perf_event_paranoid is " << limit_level
+  if (can_read_allow_file) {
+    LOG(WARNING) << perf_event_allow_path << " is " << limit_level
         << ", " << GetLimitLevelDescription(limit_level) << ".";
     return false;
   }

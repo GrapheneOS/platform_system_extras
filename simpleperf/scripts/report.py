@@ -192,8 +192,8 @@ class ReportWindow(object):
 
   """A window used to display report file."""
 
-  def __init__(self, master, report_context, title_line, report_items):
-    frame = Frame(master)
+  def __init__(self, main, report_context, title_line, report_items):
+    frame = Frame(main)
     frame.pack(fill=BOTH, expand=1)
 
     font = Font(family='courier', size=12)
