@@ -20,7 +20,7 @@ The latest document is [here](https://android.googlesource.com/platform/system/e
   - [Executable commands reference](#executable-commands-reference)
   - [Scripts reference](#scripts-reference)
   - [Answers to common issues](#answers-to-common-issues)
-    - [Why we suggest profiling on Android &gt;= N devices?](#why-we-suggest-profiling-on-android-gt-n-devices)
+    - [Why we suggest profiling on Android >= N devices?](#why-we-suggest-profiling-on-android--n-devices)
     - [Suggestions about recording call graphs](#suggestions-about-recording-call-graphs)
     - [How to solve missing symbols in report?](#how-to-solve-missing-symbols-in-report)
     - [Fix broken callchain stopped at C functions](#fix-broken-callchain-stopped-at-c-functions)
@@ -233,7 +233,7 @@ Patches can be uploaded to android-review.googlesource.com as [here](https://sou
 or sent to email addresses listed [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/OWNERS).
 
 If you want to compile simpleperf C++ source code, follow below steps:
-1. Download AOSP master branch as [here](https://source.android.com/setup/build/requirements).
+1. Download AOSP main branch as [here](https://source.android.com/setup/build/requirements).
 2. Build simpleperf.
 ```sh
 $ . build/envsetup.sh

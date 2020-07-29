@@ -26,7 +26,6 @@ cc_defaults {
         // Try some more extreme warnings.
         "-Wpedantic",
         "-Wunreachable-code-aggressive",
-        // And disable some dumb things.
         "-Wno-zero-length-array",
         "-Wno-c99-extensions",
         "-Wno-language-extension-token",
