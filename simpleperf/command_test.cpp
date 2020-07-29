@@ -79,16 +79,17 @@ TEST(command, PreprocessOptions) {
   std::vector<std::pair<OptionName, OptionValue>> ordered_options;
   std::vector<std::string> non_option_args;
 
-  std::unordered_map<OptionName, OptionFormat> option_formats = {
-      {"--bool-option", {OptionValueType::NONE, OptionType::SINGLE}},
-      {"--str-option", {OptionValueType::STRING, OptionType::MULTIPLE}},
-      {"--opt-str-option", {OptionValueType::OPT_STRING, OptionType::MULTIPLE}},
-      {"--uint-option", {OptionValueType::UINT, OptionType::SINGLE}},
-      {"--double-option", {OptionValueType::DOUBLE, OptionType::SINGLE}},
+  OptionFormatMap option_formats = {
+      {"--bool-option", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--str-option", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
+      {"--opt-str-option",
+       {OptionValueType::OPT_STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
+      {"--uint-option", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--double-option", {OptionValueType::DOUBLE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
 
       // ordered options
-      {"--ord-str-option", {OptionValueType::STRING, OptionType::ORDERED}},
-      {"--ord-uint-option", {OptionValueType::UINT, OptionType::ORDERED}},
+      {"--ord-str-option", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
+      {"--ord-uint-option", {OptionValueType::UINT, OptionType::ORDERED, AppRunnerType::ALLOWED}},
   };
 
   // Check options.

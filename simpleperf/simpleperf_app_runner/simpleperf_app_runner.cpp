@@ -23,6 +23,7 @@
 
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <android-base/file.h>
@@ -32,6 +33,15 @@
 #include <private/android_filesystem_config.h>
 #include <scoped_minijail.h>
 #include <selinux/android.h>
+
+#include "../cmd_api_impl.h"
+#include "../cmd_stat_impl.h"
+#include "../cmd_record_impl.h"
+
+using android::base::ParseInt;
+using android::base::Realpath;
+using android::base::StartsWith;
+using namespace simpleperf;
 
 // simpleperf_app_runner is used to run simpleperf to profile apps with <profileable shell="true">
 // on user devices. It works as below:
@@ -97,90 +107,54 @@ std::vector<gid_t> GetSupplementaryGids(uid_t userAppId) {
   return gids;
 }
 
-static void CheckSimpleperfArguments(const char* cmdname, char** args) {
-  if (strcmp(cmdname, "stat") != 0 && strcmp(cmdname, "record") != 0 &&
-      strcmp(cmdname, "api-collect") != 0) {
-    error(1, 0, "cmd isn't allowed: %s", cmdname);
+static void CheckSimpleperfArguments(std::string_view cmd_name, char** args) {
+  const OptionFormatMap& common_formats = GetCommonOptionFormatMap();
+  const OptionFormatMap* formats = nullptr;
+  if (cmd_name == "api-collect") {
+    formats = &GetApiCollectCmdOptionFormats();
+  } else if (cmd_name == "record") {
+    formats = &GetRecordCmdOptionFormats();
+  } else if (cmd_name == "stat") {
+    formats = &GetStatCmdOptionFormats();
+  } else {
+    error(1, 0, "cmd isn't allowed: %s", cmd_name.data());
   }
-  std::set<std::string> zero_arg_options = {
-      "-b",
-      "--csv",
-      "--exclude-perf",
-      "--exit-with-parent",
-      "-g",
-      "--in-app",
-      "--interval-only-values",
-      "--log-to-android-buffer",
-      "--no-callchain-joiner",
-      "--no-cut-samples",
-      "--no-dump-kernel-symbols",
-      "--no-dump-symbols",
-      "--no-inherit",
-      "--no-unwind",
-      "--per-core",
-      "--per-thread",
-      "--post-unwind=no",
-      "--post-unwind=yes",
-      "--trace-offcpu",
-      "--verbose",
-  };
-  std::set<std::string> one_arg_options = {
-      "--addr-filter",
-      "--aux-buffer-size",
-      "-c",
-      "--call-graph",
-      "--callchain-joiner-min-matching-nodes",
-      "--clockid",
-      "--cpu",
-      "--cpu-percent",
-      "--duration",
-      "-e",
-      "-f",
-      "--group",
-      "--interval",
-      "-j",
-      "--log",
-      "-m",
-      "-p",
-      "--size-limit",
-      "-t",
-  };
-  // options with a file descriptor
-  std::set<std::string> fd_options = {
-      "--start_profiling_fd",
-      "--stop-signal-fd",
-      "--out-fd",
-  };
-  // options with path from /data/local/tmp/
-  std::set<std::string> path_options = {
-      "--symfs",
-      "--tracepoint-events",
-  };
-  one_arg_options.insert(fd_options.begin(), fd_options.end());
-  one_arg_options.insert(path_options.begin(), path_options.end());
-  for (int i = 0; args[i] != nullptr; ++i) {
-    if (zero_arg_options.count(args[i])) {
-      continue;
-    } else if (one_arg_options.count(args[i])) {
-      if (args[i + 1] == nullptr) {
-        error(1, 0, "invalid arg: %s", args[i]);
+
+  for (size_t i = 0; args[i] != nullptr; ++i) {
+    auto it = formats->find(args[i]);
+    if (it == formats->end()) {
+      it = common_formats.find(args[i]);
+      if (it == common_formats.end()) {
+        error(1, 0, "arg isn't allowed: %s", args[i]);
       }
-      if (fd_options.count(args[i])) {
-        // Check if the file descriptor is valid.
+    }
+    const OptionFormat& format = it->second;
+    if (format.value_type != OptionValueType::NONE && args[i + 1] == nullptr) {
+      error(1, 0, "invalid arg: %s", args[i]);
+    }
+    switch (format.app_runner_type) {
+      case AppRunnerType::ALLOWED:
+        break;
+      case AppRunnerType::NOT_ALLOWED:
+        error(1, 0, "arg isn't allowed: %s", args[i]);
+        break;
+      case AppRunnerType::CHECK_FD: {
         int fd;
-        if (!android::base::ParseInt(args[i + 1], &fd) || fd < 3 || fcntl(fd, F_GETFD) == -1) {
+        if (!ParseInt(args[i + 1], &fd) || fd < 3 || fcntl(fd, F_GETFD) == -1) {
           error(1, 0, "invalid fd for arg: %s", args[i]);
         }
-      } else if (path_options.count(args[i])) {
+        break;
+      }
+      case AppRunnerType::CHECK_PATH: {
         std::string path;
-        if (!android::base::Realpath(args[i + 1], &path) ||
-            !android::base::StartsWith(path, "/data/local/tmp/")) {
+        if (!Realpath(args[i + 1], &path) || !StartsWith(path, "/data/local/tmp/")) {
           error(1, 0, "invalid path for arg: %s", args[i]);
         }
+        break;
       }
+    }
+    if (format.value_type != OptionValueType::NONE) {
       ++i;
-    } else {
-      error(1, 0, "arg isn't allowed: %s", args[i]);
     }
   }
 }
