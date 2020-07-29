@@ -863,6 +863,10 @@ std::unique_ptr<TemporaryFile> ScopedTempFiles::CreateTempFile(bool delete_in_de
   return tmp_file;
 }
 
+void ScopedTempFiles::RegisterTempFile(const std::string& path) {
+  files_to_delete_.emplace_back(path);
+}
+
 bool SignalIsIgnored(int signo) {
   struct sigaction act;
   if (sigaction(signo, nullptr, &act) != 0) {
