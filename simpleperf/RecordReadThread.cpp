@@ -286,8 +286,8 @@ bool RecordReadThread::SendCmdToReadThread(Cmd cmd, void* cmd_arg) {
     cmd_ = cmd;
     cmd_arg_ = cmd_arg;
   }
-  char dummy = 0;
-  if (TEMP_FAILURE_RETRY(write(write_cmd_fd_, &dummy, 1)) != 1) {
+  char unused = 0;
+  if (TEMP_FAILURE_RETRY(write(write_cmd_fd_, &unused, 1)) != 1) {
     return false;
   }
   std::unique_lock<std::mutex> lock(cmd_mutex_);
@@ -310,8 +310,8 @@ std::unique_ptr<Record> RecordReadThread::GetRecord() {
     return r;
   }
   if (has_data_notification_) {
-    char dummy;
-    TEMP_FAILURE_RETRY(read(read_data_fd_, &dummy, 1));
+    char unused;
+    TEMP_FAILURE_RETRY(read(read_data_fd_, &unused, 1));
     has_data_notification_ = false;
   }
   return nullptr;
@@ -342,8 +342,8 @@ RecordReadThread::Cmd RecordReadThread::GetCmd() {
 }
 
 bool RecordReadThread::HandleCmd(IOEventLoop& loop) {
-  char dummy;
-  TEMP_FAILURE_RETRY(read(read_cmd_fd_, &dummy, 1));
+  char unused;
+  TEMP_FAILURE_RETRY(read(read_cmd_fd_, &unused, 1));
   bool result = true;
   switch (GetCmd()) {
     case CMD_ADD_EVENT_FDS:
@@ -618,8 +618,8 @@ void RecordReadThread::ReadAuxDataFromKernelBuffer(bool* has_data) {
 bool RecordReadThread::SendDataNotificationToMainThread() {
   if (!has_data_notification_.load(std::memory_order_relaxed)) {
     has_data_notification_ = true;
-    char dummy = 0;
-    if (TEMP_FAILURE_RETRY(write(write_data_fd_, &dummy, 1)) != 1) {
+    char unused = 0;
+    if (TEMP_FAILURE_RETRY(write(write_data_fd_, &unused, 1)) != 1) {
       PLOG(ERROR) << "write";
       return false;
     }

@@ -17,9 +17,11 @@
 #include "JITDebugReader.h"
 
 #include <inttypes.h>
+#include <stdio.h>
 #include <sys/mman.h>
 #include <sys/uio.h>
 #include <sys/user.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <unordered_map>
@@ -28,6 +30,7 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
 #include "dso.h"
@@ -35,6 +38,8 @@
 #include "read_apk.h"
 #include "read_elf.h"
 #include "utils.h"
+
+using android::base::StringPrintf;
 
 namespace simpleperf {
 
@@ -206,6 +211,55 @@ static_assert(sizeof(JITCodeEntry64) == 40, "");
 static_assert(sizeof(JITCodeEntry64V2) == 48, "");
 #endif
 
+class TempSymFile {
+ public:
+  static std::unique_ptr<TempSymFile> Create(std::string&& path, bool remove_in_destructor) {
+    FILE* fp = fopen(path.data(), "web");
+    if (fp == nullptr) {
+      PLOG(ERROR) << "failed to create " << path;
+      return nullptr;
+    }
+    if (remove_in_destructor) {
+      ScopedTempFiles::RegisterTempFile(path);
+    }
+    return std::unique_ptr<TempSymFile>(new TempSymFile(std::move(path), fp));
+  }
+
+  bool WriteEntry(const char* data, size_t size) {
+    if (fwrite(data, size, 1, fp_.get()) != 1) {
+      PLOG(ERROR) << "failed to write to " << path_;
+      return false;
+    }
+    file_offset_ += size;
+    return true;
+  }
+
+  bool Flush() {
+    if (fflush(fp_.get()) != 0) {
+      PLOG(ERROR) << "failed to flush " << path_;
+      return false;
+    }
+    return true;
+  }
+
+  const std::string& GetPath() const { return path_; }
+  uint64_t GetOffset() const { return file_offset_; }
+
+ private:
+  TempSymFile(std::string&& path, FILE* fp)
+      : path_(std::move(path)), fp_(fp, fclose) {}
+
+  const std::string path_;
+  std::unique_ptr<FILE, decltype(&fclose)> fp_;
+  uint64_t file_offset_ = 0;
+};
+
+JITDebugReader::JITDebugReader(const std::string& symfile_prefix, SymFileOption symfile_option,
+                               SyncOption sync_option)
+    : symfile_prefix_(symfile_prefix), symfile_option_(symfile_option), sync_option_(sync_option) {}
+
+JITDebugReader::~JITDebugReader() {}
+
 bool JITDebugReader::RegisterDebugInfoCallback(IOEventLoop* loop,
                                              const debug_info_callback_t& callback) {
   debug_info_callback_ = callback;
@@ -264,7 +318,7 @@ bool JITDebugReader::UpdateRecord(const Record* record) {
 }
 
 bool JITDebugReader::FlushDebugInfo(uint64_t timestamp) {
-  if (sync_with_records_) {
+  if (sync_option_ == SyncOption::kSyncWithRecords) {
     if (!debug_info_q_.empty() && debug_info_q_.top().timestamp < timestamp) {
       std::vector<JITDebugInfo> debug_info;
       while (!debug_info_q_.empty() && debug_info_q_.top().timestamp < timestamp) {
@@ -284,7 +338,9 @@ bool JITDebugReader::ReadAllProcesses() {
   std::vector<JITDebugInfo> debug_info;
   for (auto it = processes_.begin(); it != processes_.end();) {
     Process& process = it->second;
-    ReadProcess(process, &debug_info);
+    if (!ReadProcess(process, &debug_info)) {
+      return false;
+    }
     if (process.died) {
       LOG(DEBUG) << "Stop monitoring process " << process.pid;
       it = processes_.erase(it);
@@ -305,80 +361,85 @@ bool JITDebugReader::ReadProcess(pid_t pid) {
   auto it = processes_.find(pid);
   if (it != processes_.end()) {
     std::vector<JITDebugInfo> debug_info;
-    ReadProcess(it->second, &debug_info);
-    return AddDebugInfo(debug_info, false);
+    return ReadProcess(it->second, &debug_info) && AddDebugInfo(debug_info, false);
   }
   return true;
 }
 
-void JITDebugReader::ReadProcess(Process& process, std::vector<JITDebugInfo>* debug_info) {
+bool JITDebugReader::ReadProcess(Process& process, std::vector<JITDebugInfo>* debug_info) {
   if (process.died || (!process.initialized && !InitializeProcess(process))) {
-    return;
+    return true;
   }
   // 1. Read descriptors.
   Descriptor jit_descriptor;
   Descriptor dex_descriptor;
   if (!ReadDescriptors(process, &jit_descriptor, &dex_descriptor)) {
-    return;
+    return true;
   }
   // 2. Return if descriptors are not changed.
   if (jit_descriptor.action_seqlock == process.last_jit_descriptor.action_seqlock &&
       dex_descriptor.action_seqlock == process.last_dex_descriptor.action_seqlock) {
-    return;
+    return true;
   }
 
   // 3. Read new symfiles.
-  auto check_descriptor = [&](Descriptor& descriptor, bool is_jit) {
-      Descriptor tmp_jit_descriptor;
-      Descriptor tmp_dex_descriptor;
-      if (!ReadDescriptors(process, &tmp_jit_descriptor, &tmp_dex_descriptor)) {
+  return ReadDebugInfo(process, jit_descriptor, debug_info) &&
+         ReadDebugInfo(process, dex_descriptor, debug_info);
+}
+
+bool JITDebugReader::ReadDebugInfo(Process& process, Descriptor& new_descriptor,
+                                   std::vector<JITDebugInfo>* debug_info) {
+  DescriptorType type = new_descriptor.type;
+  Descriptor* old_descriptor =
+      (type == DescriptorType::kJIT) ? &process.last_jit_descriptor : &process.last_dex_descriptor;
+
+  bool has_update = new_descriptor.action_seqlock != old_descriptor->action_seqlock &&
+                    (new_descriptor.action_seqlock & 1) == 0;
+  LOG(DEBUG) << (type == DescriptorType::kJIT ? "JIT" : "Dex") << " symfiles of pid " << process.pid
+             << ": old seqlock " << old_descriptor->action_seqlock << ", new seqlock "
+             << new_descriptor.action_seqlock;
+  if (!has_update) {
+    return true;
+  }
+  std::vector<CodeEntry> new_entries;
+  // Adding or removing one code entry will make two increments of action_seqlock. So we should
+  // not read more than (seqlock_diff / 2) new entries.
+  uint32_t read_entry_limit = (new_descriptor.action_seqlock - old_descriptor->action_seqlock) / 2;
+  if (!ReadNewCodeEntries(process, new_descriptor, old_descriptor->action_timestamp,
+                          read_entry_limit, &new_entries)) {
+    return true;
+  }
+  // If the descriptor was changed while we were reading new entries, skip reading debug info this
+  // time.
+  if (IsDescriptorChanged(process, new_descriptor)) {
+    return true;
+  }
+  LOG(DEBUG) << (type == DescriptorType::kJIT ? "JIT" : "Dex") << " symfiles of pid " << process.pid
+             << ": read " << new_entries.size() << " new entries";
+
+  if (!new_entries.empty()) {
+    if (type == DescriptorType::kJIT) {
+      if (!ReadJITCodeDebugInfo(process, new_entries, debug_info)) {
         return false;
       }
-      if (is_jit) {
-        return descriptor.action_seqlock == tmp_jit_descriptor.action_seqlock;
-      }
-      return descriptor.action_seqlock == tmp_dex_descriptor.action_seqlock;
-  };
-
-  auto read_debug_info = [&](Descriptor& new_descriptor, Descriptor& old_descriptor, bool is_jit) {
-    bool has_update = new_descriptor.action_seqlock != old_descriptor.action_seqlock &&
-                      (new_descriptor.action_seqlock & 1) == 0;
-    LOG(DEBUG) << (is_jit ? "JIT" : "Dex") << " symfiles of pid " << process.pid
-        << ": old seqlock " << old_descriptor.action_seqlock
-        << ", new seqlock " << new_descriptor.action_seqlock;
-    if (!has_update) {
-      return false;
-    }
-    std::vector<CodeEntry> new_entries;
-    // Adding or removing one code entry will make two increments of action_seqlock. So we should
-    // not read more than (seqlock_diff / 2) new entries.
-    uint32_t read_entry_limit = (new_descriptor.action_seqlock - old_descriptor.action_seqlock) / 2;
-    if (!ReadNewCodeEntries(process, new_descriptor, old_descriptor.action_timestamp,
-                            read_entry_limit, &new_entries)) {
-      return false;
-    }
-    // Check if the descriptor was changed while we were reading new entries.
-    if (!check_descriptor(new_descriptor, is_jit)) {
-      return false;
-    }
-    LOG(DEBUG) << (is_jit ? "JIT" : "Dex") << " symfiles of pid " << process.pid
-               << ": read " << new_entries.size() << " new entries";
-    if (new_entries.empty()) {
-      return true;
-    }
-    if (is_jit) {
-      ReadJITCodeDebugInfo(process, new_entries, debug_info);
     } else {
       ReadDexFileDebugInfo(process, new_entries, debug_info);
     }
+  }
+  *old_descriptor = new_descriptor;
+  return true;
+}
+
+bool JITDebugReader::IsDescriptorChanged(Process& process, Descriptor& prev_descriptor) {
+  Descriptor tmp_jit_descriptor;
+  Descriptor tmp_dex_descriptor;
+  if (!ReadDescriptors(process, &tmp_jit_descriptor, &tmp_dex_descriptor)) {
     return true;
-  };
-  if (read_debug_info(jit_descriptor, process.last_jit_descriptor, true)) {
-    process.last_jit_descriptor = jit_descriptor;
   }
-  if (read_debug_info(dex_descriptor, process.last_dex_descriptor, false)) {
-    process.last_dex_descriptor = dex_descriptor;
+  if (prev_descriptor.type == DescriptorType::kJIT) {
+    return prev_descriptor.action_seqlock != tmp_jit_descriptor.action_seqlock;
   }
+  return prev_descriptor.action_seqlock != tmp_dex_descriptor.action_seqlock;
 }
 
 bool JITDebugReader::InitializeProcess(Process& process) {
@@ -490,10 +551,15 @@ bool JITDebugReader::ReadDescriptors(Process& process, Descriptor* jit_descripto
                      descriptors_buf_.data())) {
     return false;
   }
-  return LoadDescriptor(process.is_64bit, &descriptors_buf_[process.jit_descriptor_offset],
-                        jit_descriptor) &&
-      LoadDescriptor(process.is_64bit, &descriptors_buf_[process.dex_descriptor_offset],
-                     dex_descriptor);
+  if (!LoadDescriptor(process.is_64bit, &descriptors_buf_[process.jit_descriptor_offset],
+                      jit_descriptor) ||
+      !LoadDescriptor(process.is_64bit, &descriptors_buf_[process.dex_descriptor_offset],
+                      dex_descriptor)) {
+    return false;
+  }
+  jit_descriptor->type = DescriptorType::kJIT;
+  dex_descriptor->type = DescriptorType::kDEX;
+  return true;
 }
 
 bool JITDebugReader::LoadDescriptor(bool is_64bit, const char* data, Descriptor* descriptor) {
@@ -583,10 +649,12 @@ bool JITDebugReader::ReadNewCodeEntriesImpl(Process& process, const Descriptor& 
   return true;
 }
 
-void JITDebugReader::ReadJITCodeDebugInfo(Process& process,
+bool JITDebugReader::ReadJITCodeDebugInfo(Process& process,
                                           const std::vector<CodeEntry>& jit_entries,
                                           std::vector<JITDebugInfo>* debug_info) {
   std::vector<char> data;
+  bool need_flush_app_symfile = false;
+
   for (auto& jit_entry : jit_entries) {
     if (jit_entry.symfile_size > MAX_JIT_SYMFILE_SIZE) {
       continue;
@@ -600,22 +668,32 @@ void JITDebugReader::ReadJITCodeDebugInfo(Process& process,
     if (!IsValidElfFileMagic(data.data(), jit_entry.symfile_size)) {
       continue;
     }
-    std::unique_ptr<TemporaryFile> tmp_file = ScopedTempFiles::CreateTempFile(!keep_symfiles_);
-    if (tmp_file == nullptr || !android::base::WriteFully(tmp_file->fd, data.data(),
-                                                          jit_entry.symfile_size)) {
-      continue;
+    if (!app_symfile_) {
+      std::string path = symfile_prefix_ + "_jit_app_cache";
+      app_symfile_ =
+          TempSymFile::Create(std::move(path), symfile_option_ == SymFileOption::kDropSymFiles);
+      if (!app_symfile_) {
+        return false;
+      }
     }
-    if (keep_symfiles_) {
-      tmp_file->DoNotRemove();
+    uint64_t file_offset = app_symfile_->GetOffset();
+    if (!app_symfile_->WriteEntry(data.data(), jit_entry.symfile_size)) {
+      return false;
     }
+    need_flush_app_symfile = true;
+
     auto callback = [&](const ElfFileSymbol& symbol) {
       if (symbol.len == 0) {  // Some arm labels can have zero length.
         return;
       }
       LOG(VERBOSE) << "JITSymbol " << symbol.name << " at [" << std::hex << symbol.vaddr
                    << " - " << (symbol.vaddr + symbol.len) << " with size " << symbol.len;
+
+      // Pass out the location of the symfile for unwinding and symbolization.
+      std::string location_in_file =
+          StringPrintf(":%" PRIu64 "-%" PRIu64, file_offset, file_offset + jit_entry.symfile_size);
       debug_info->emplace_back(process.pid, jit_entry.timestamp, symbol.vaddr, symbol.len,
-                               tmp_file->path);
+                               app_symfile_->GetPath() + location_in_file, file_offset);
     };
     ElfStatus status;
     auto elf = ElfFile::Open(data.data(), jit_entry.symfile_size, &status);
@@ -623,6 +701,13 @@ void JITDebugReader::ReadJITCodeDebugInfo(Process& process,
       elf->ParseSymbols(callback);
     }
   }
+
+  if (need_flush_app_symfile) {
+    if (!app_symfile_->Flush()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void JITDebugReader::ReadDexFileDebugInfo(Process& process,
@@ -673,7 +758,7 @@ void JITDebugReader::ReadDexFileDebugInfo(Process& process,
 bool JITDebugReader::AddDebugInfo(const std::vector<JITDebugInfo>& debug_info,
                                     bool sync_kernel_records) {
   if (!debug_info.empty()) {
-    if (sync_with_records_) {
+    if (sync_option_ == SyncOption::kSyncWithRecords) {
       for (auto& info : debug_info) {
         debug_info_q_.push(std::move(info));
       }
