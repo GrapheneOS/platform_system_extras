@@ -170,6 +170,9 @@ class JITDebugReader {
     Descriptor last_jit_descriptor;
     // The state we know about the remote dex debug descriptor.
     Descriptor last_dex_descriptor;
+
+    // memory space for /memfd:jit-zygote-cache
+    std::vector<std::pair<uint64_t, uint64_t>> jit_zygote_cache_ranges_;
   };
 
   // The location of descriptors in libart.so.
@@ -203,6 +206,7 @@ class JITDebugReader {
 
   bool ReadJITCodeDebugInfo(Process& process, const std::vector<CodeEntry>& jit_entries,
                        std::vector<JITDebugInfo>* debug_info);
+  TempSymFile* GetTempSymFile(Process& process, const CodeEntry& jit_entry);
   void ReadDexFileDebugInfo(Process& process, const std::vector<CodeEntry>& dex_entries,
                        std::vector<JITDebugInfo>* debug_info);
   bool AddDebugInfo(const std::vector<JITDebugInfo>& debug_info, bool sync_kernel_records);
@@ -226,6 +230,7 @@ class JITDebugReader {
 
   // temporary files used to store jit symfiles created by the app process and the zygote process.
   std::unique_ptr<TempSymFile> app_symfile_;
+  std::unique_ptr<TempSymFile> zygote_symfile_;
 };
 
 }  //namespace simpleperf
