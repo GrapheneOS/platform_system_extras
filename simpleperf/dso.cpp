@@ -29,18 +29,20 @@
 #include <android-base/strings.h>
 
 #include "environment.h"
+#include "JITDebugReader.h"
 #include "read_apk.h"
 #include "read_dex_file.h"
 #include "read_elf.h"
 #include "utils.h"
 
+using android::base::EndsWith;
 using namespace simpleperf;
 
 namespace simpleperf_dso_impl {
 
 std::string RemovePathSeparatorSuffix(const std::string& path) {
   // Don't remove path separator suffix for '/'.
-  if (android::base::EndsWith(path, OS_PATH_SEPARATOR) && path.size() > 1u) {
+  if (EndsWith(path, OS_PATH_SEPARATOR) && path.size() > 1u) {
     return path.substr(0, path.size() - 1);
   }
   return path;
@@ -486,7 +488,13 @@ class ElfDso : public Dso {
 
   std::string_view GetReportPath() const override {
     if (size_t colon_pos = path_.find(':'); colon_pos != std::string::npos) {
-      return "[JIT app cache]";
+      std::string file_path = path_.substr(0, colon_pos);
+      if (EndsWith(file_path, kJITAppCacheFile)) {
+        return "[JIT app cache]";
+      }
+      if (EndsWith(file_path, kJITZygoteCacheFile)) {
+        return "[JIT zygote cache]";
+      }
     }
     return path_;
   }
