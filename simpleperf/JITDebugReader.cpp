@@ -39,6 +39,7 @@
 #include "read_elf.h"
 #include "utils.h"
 
+using android::base::StartsWith;
 using android::base::StringPrintf;
 
 namespace simpleperf {
@@ -54,6 +55,9 @@ static constexpr size_t MAX_JIT_SYMFILE_SIZE = 1024 * 1024u;
 // In system wide profiling, we may need to check JIT debug info changes for many processes, to
 // avoid spending all time checking, wait 100 ms between any two checks.
 static constexpr size_t kUpdateJITDebugInfoIntervalInMs = 100;
+
+// map name used for jit zygote cache
+static const char* kJITZygoteCacheMmapPrefix = "/memfd:jit-zygote-cache";
 
 // Match the format of JITDescriptor in art/runtime/jit/debugger_interface.cc.
 template <typename ADDRT>
@@ -231,13 +235,17 @@ class TempSymFile {
       return false;
     }
     file_offset_ += size;
+    need_flush_ = true;
     return true;
   }
 
   bool Flush() {
-    if (fflush(fp_.get()) != 0) {
-      PLOG(ERROR) << "failed to flush " << path_;
-      return false;
+    if (need_flush_) {
+      if (fflush(fp_.get()) != 0) {
+        PLOG(ERROR) << "failed to flush " << path_;
+        return false;
+      }
+      need_flush_ = false;
     }
     return true;
   }
@@ -252,6 +260,7 @@ class TempSymFile {
   const std::string path_;
   std::unique_ptr<FILE, decltype(&fclose)> fp_;
   uint64_t file_offset_ = 0;
+  bool need_flush_ = false;
 };
 
 JITDebugReader::JITDebugReader(const std::string& symfile_prefix, SymFileOption symfile_option,
@@ -472,6 +481,13 @@ bool JITDebugReader::InitializeProcess(Process& process) {
   process.descriptors_size = location->size;
   process.jit_descriptor_offset = location->jit_descriptor_offset;
   process.dex_descriptor_offset = location->dex_descriptor_offset;
+
+  for (auto& map : thread_mmaps) {
+    if (StartsWith(map.name, kJITZygoteCacheMmapPrefix)) {
+      process.jit_zygote_cache_ranges_.emplace_back(map.start_addr, map.start_addr + map.len);
+    }
+  }
+
   process.initialized = true;
   return true;
 }
@@ -653,7 +669,6 @@ bool JITDebugReader::ReadJITCodeDebugInfo(Process& process,
                                           const std::vector<CodeEntry>& jit_entries,
                                           std::vector<JITDebugInfo>* debug_info) {
   std::vector<char> data;
-  bool need_flush_app_symfile = false;
 
   for (auto& jit_entry : jit_entries) {
     if (jit_entry.symfile_size > MAX_JIT_SYMFILE_SIZE) {
@@ -668,32 +683,28 @@ bool JITDebugReader::ReadJITCodeDebugInfo(Process& process,
     if (!IsValidElfFileMagic(data.data(), jit_entry.symfile_size)) {
       continue;
     }
-    if (!app_symfile_) {
-      std::string path = symfile_prefix_ + "_jit_app_cache";
-      app_symfile_ =
-          TempSymFile::Create(std::move(path), symfile_option_ == SymFileOption::kDropSymFiles);
-      if (!app_symfile_) {
-        return false;
-      }
-    }
-    uint64_t file_offset = app_symfile_->GetOffset();
-    if (!app_symfile_->WriteEntry(data.data(), jit_entry.symfile_size)) {
+    TempSymFile* symfile = GetTempSymFile(process, jit_entry);
+    if (symfile == nullptr) {
       return false;
     }
-    need_flush_app_symfile = true;
+    uint64_t file_offset = symfile->GetOffset();
+    if (!symfile->WriteEntry(data.data(), jit_entry.symfile_size)) {
+      return false;
+    }
 
     auto callback = [&](const ElfFileSymbol& symbol) {
       if (symbol.len == 0) {  // Some arm labels can have zero length.
         return;
       }
-      LOG(VERBOSE) << "JITSymbol " << symbol.name << " at [" << std::hex << symbol.vaddr
-                   << " - " << (symbol.vaddr + symbol.len) << " with size " << symbol.len;
-
       // Pass out the location of the symfile for unwinding and symbolization.
       std::string location_in_file =
           StringPrintf(":%" PRIu64 "-%" PRIu64, file_offset, file_offset + jit_entry.symfile_size);
       debug_info->emplace_back(process.pid, jit_entry.timestamp, symbol.vaddr, symbol.len,
-                               app_symfile_->GetPath() + location_in_file, file_offset);
+                               symfile->GetPath() + location_in_file, file_offset);
+
+      LOG(VERBOSE) << "JITSymbol " << symbol.name << " at [" << std::hex << symbol.vaddr
+                   << " - " << (symbol.vaddr + symbol.len) << " with size " << symbol.len
+                   << " in " << symfile->GetPath() << location_in_file;
     };
     ElfStatus status;
     auto elf = ElfFile::Open(data.data(), jit_entry.symfile_size, &status);
@@ -702,12 +713,37 @@ bool JITDebugReader::ReadJITCodeDebugInfo(Process& process,
     }
   }
 
-  if (need_flush_app_symfile) {
-    if (!app_symfile_->Flush()) {
-      return false;
-    }
+  if (app_symfile_) {
+    app_symfile_->Flush();
+  }
+  if (zygote_symfile_) {
+    zygote_symfile_->Flush();
   }
   return true;
+}
+
+TempSymFile* JITDebugReader::GetTempSymFile(Process& process, const CodeEntry& jit_entry) {
+  bool is_zygote = false;
+  for (const auto& range : process.jit_zygote_cache_ranges_) {
+    if (jit_entry.symfile_addr >= range.first && jit_entry.symfile_addr < range.second) {
+      is_zygote = true;
+      break;
+    }
+  }
+  if (is_zygote) {
+    if (!zygote_symfile_) {
+      std::string path = symfile_prefix_ + "_jit_zygote_cache";
+      zygote_symfile_ =
+          TempSymFile::Create(std::move(path), symfile_option_ == SymFileOption::kDropSymFiles);
+    }
+    return zygote_symfile_.get();
+  }
+  if (!app_symfile_) {
+      std::string path = symfile_prefix_ + "_jit_app_cache";
+      app_symfile_ =
+          TempSymFile::Create(std::move(path), symfile_option_ == SymFileOption::kDropSymFiles);
+  }
+  return app_symfile_.get();
 }
 
 void JITDebugReader::ReadDexFileDebugInfo(Process& process,
