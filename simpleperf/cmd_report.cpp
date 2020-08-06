@@ -235,7 +235,7 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
       return false;
     }
     if (!dso_filter_.empty() &&
-        dso_filter_.find(sample->map->dso->Path()) == dso_filter_.end()) {
+        dso_filter_.find(sample->map->dso->GetReportPath().data()) == dso_filter_.end()) {
       return false;
     }
     if (!symbol_filter_.empty() &&
