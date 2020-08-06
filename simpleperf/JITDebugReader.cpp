@@ -732,14 +732,14 @@ TempSymFile* JITDebugReader::GetTempSymFile(Process& process, const CodeEntry& j
   }
   if (is_zygote) {
     if (!zygote_symfile_) {
-      std::string path = symfile_prefix_ + "_jit_zygote_cache";
+      std::string path = symfile_prefix_ + "_" + kJITZygoteCacheFile;
       zygote_symfile_ =
           TempSymFile::Create(std::move(path), symfile_option_ == SymFileOption::kDropSymFiles);
     }
     return zygote_symfile_.get();
   }
   if (!app_symfile_) {
-      std::string path = symfile_prefix_ + "_jit_app_cache";
+      std::string path = symfile_prefix_ + "_" + kJITAppCacheFile;
       app_symfile_ =
           TempSymFile::Create(std::move(path), symfile_option_ == SymFileOption::kDropSymFiles);
   }
