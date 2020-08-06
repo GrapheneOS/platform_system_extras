@@ -36,6 +36,9 @@
 
 namespace simpleperf {
 
+inline constexpr const char* kJITAppCacheFile = "jit_app_cache";
+inline constexpr const char* kJITZygoteCacheFile = "jit_zygote_cache";
+
 // JITDebugInfo represents the debug info of a JITed Java method or a dex file.
 struct JITDebugInfo {
   enum {
