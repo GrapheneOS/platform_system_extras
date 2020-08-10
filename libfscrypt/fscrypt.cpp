@@ -203,9 +203,7 @@ bool ParseOptionsForApiLevel(unsigned int first_api_level, const std::string& op
         }
     }
     // Default to v2 after Q
-    constexpr unsigned int pre_gki_level = 29;
-    auto is_gki = first_api_level > pre_gki_level;
-    options->version = is_gki ? 2 : 1;
+    options->version = first_api_level > __ANDROID_API_Q__ ? 2 : 1;
     options->flags = 0;
     options->use_hw_wrapped_key = false;
     if (parts.size() > 2 && !parts[2].empty()) {
@@ -234,7 +232,8 @@ bool ParseOptionsForApiLevel(unsigned int first_api_level, const std::string& op
     // For everything else, use 16-byte padding.  This is more secure (it helps
     // hide the length of filenames), and it makes the inputs evenly divisible
     // into cipher blocks which is more efficient for encryption and decryption.
-    if (!is_gki && options->version == 1 && options->filenames_mode == FSCRYPT_MODE_AES_256_CTS) {
+    if (first_api_level <= __ANDROID_API_Q__ && options->version == 1 &&
+        options->filenames_mode == FSCRYPT_MODE_AES_256_CTS) {
         options->flags |= FSCRYPT_POLICY_FLAGS_PAD_4;
     } else {
         options->flags |= FSCRYPT_POLICY_FLAGS_PAD_16;
