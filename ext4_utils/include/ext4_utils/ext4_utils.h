@@ -125,7 +125,7 @@ int bitmap_get_bit(u8 *bitmap, u32 bit);	// vold
 u64 get_block_device_size(int fd);		// recovery
 int is_block_device_fd(int fd);			// wipe.c
 u64 get_file_size(int fd);			// fs_mgr
-
+int ext4_bg_has_super_block(int bg);
 int read_ext(int fd, int verbose);		// vold
 
 #ifdef __cplusplus
