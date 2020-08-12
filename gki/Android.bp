@@ -28,4 +28,10 @@ python_binary_host {
             embedded_launcher: true,
         },
     },
+    target: {
+        darwin: {
+            // required module "brillo_update_payload" is disabled on darwin
+            enabled: false,
+        },
+    },
 }
