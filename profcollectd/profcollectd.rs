@@ -14,34 +14,35 @@
 // limitations under the License.
 //
 
-#include <stdlib.h>
+//! Daemon program to collect system traces.
 
-#include <iostream>
+use std::env;
 
-#include "libprofcollectd.h"
-
-namespace {
-
-void print_help() {
-  std::cout << R"(
+fn print_help() {
+    println!(
+        r#"(
 usage: profcollectd [command]
     boot      Start daemon and schedule profile collection after a short delay.
     run       Start daemon but do not schedule profile collection.
-)";
+)"#
+    );
 }
 
-}  // namespace
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 2 {
+        print_help();
+        std::process::exit(1);
+    }
 
-int main(int argc, char** argv) {
-  if (argc != 2) {
-    print_help();
-    exit(EXIT_SUCCESS);
-  } else if (std::string(argv[1]) == "boot") {
-    android::profcollectd::InitService(/* start = */ true);
-  } else if (std::string(argv[1]) == "run") {
-    android::profcollectd::InitService(/* start = */ false);
-  } else {
-    print_help();
-    exit(EXIT_FAILURE);
-  }
+    let action = &args[1];
+    match action.as_str() {
+        "boot" => libprofcollectd::init_service(true),
+        "run" => libprofcollectd::init_service(false),
+        "help" => print_help(),
+        _ => {
+            print_help();
+            std::process::exit(1);
+        }
+    }
 }
