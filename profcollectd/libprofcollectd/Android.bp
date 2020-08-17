@@ -14,6 +14,37 @@
 // limitations under the License.
 //
 
+rust_bindgen {
+    name: "libprofcollectd_bindgen",
+    crate_name: "profcollectd_bindgen",
+    source_stem: "libprofcollectd_bindgen",
+    wrapper_src: "include/libprofcollectd.hpp",
+}
+
+rust_library {
+    name: "libprofcollectd_rust",
+    stem: "liblibprofcollectd",
+    crate_name: "libprofcollectd",
+    srcs: ["include/libprofcollectd.rs"],
+    rustlibs: ["libprofcollectd_bindgen"],
+    shared_libs: ["libprofcollectd"],
+}
+
+cc_defaults {
+    name: "libprofcollectd_defaults",
+
+    // We are only doing this for C++20. Can be removed after it becomes default.
+    cpp_std: "experimental",
+
+    tidy: true,
+    tidy_checks: [
+        "-google-runtime-int",
+        "-google-explicit-constructor",
+        "-bugprone-unhandled-self-assignment",
+        "-bugprone-macro-parentheses",
+    ],
+}
+
 cc_library {
     name: "libprofcollectd",
 
