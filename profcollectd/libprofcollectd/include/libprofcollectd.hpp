@@ -16,18 +16,14 @@
 
 #pragma once
 
-namespace android {
-namespace profcollectd {
+extern "C" {
+  // Daemon side operations.
+  void InitService(bool start);
 
-// Daemon side operations.
-void InitService(bool start);
-
-// Client side operations.
-void ScheduleCollection();
-void TerminateCollection();
-void TraceOnce();
-void Process();
-void ReadConfig();
-
-}  // namespace profcollectd
-}  // namespace android
+  // Client side operations.
+  void ScheduleCollection();
+  void TerminateCollection();
+  void TraceOnce();
+  void Process();
+  void ReadConfig();
+}
