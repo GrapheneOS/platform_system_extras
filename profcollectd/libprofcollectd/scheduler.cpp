@@ -113,16 +113,19 @@ OptError ProfcollectdScheduler::ReadConfig() {
 
   config.buildFingerprint = GetProperty("ro.build.fingerprint", "unknown");
   config.collectionInterval = std::chrono::seconds(
-      GetIntProperty("profcollectd.collection_interval",
+      GetIntProperty("persist.profcollectd.collection_interval",
                      std::get<const int>(CONFIG_COLLECTION_INTERVAL_SEC.second)));
   config.samplingPeriod = std::chrono::milliseconds(GetIntProperty(
-      "profcollectd.sampling_period_ms", std::get<const int>(CONFIG_SAMPLING_PERIOD_MS.second)));
-  config.traceOutputDir = GetProperty("profcollectd.trace_output_dir",
+      "persist.profcollectd.sampling_period_ms",
+      std::get<const int>(CONFIG_SAMPLING_PERIOD_MS.second)));
+  config.traceOutputDir = GetProperty("persist.profcollectd.trace_output_dir",
                                       std::get<const char*>(CONFIG_TRACE_OUTDIR.second));
   config.profileOutputDir =
-      GetProperty("profcollectd.output_dir", std::get<const char*>(CONFIG_PROFILE_OUTDIR.second));
+      GetProperty("persist.profcollectd.output_dir",
+                  std::get<const char*>(CONFIG_PROFILE_OUTDIR.second));
   config.binaryFilter =
-      GetProperty("profcollectd.binary_filter", std::get<const char*>(CONFIG_BINARY_FILTER.second));
+      GetProperty("persist.profcollectd.binary_filter",
+                  std::get<const char*>(CONFIG_BINARY_FILTER.second));
   ClearOnConfigChange(config);
 
   return std::nullopt;
