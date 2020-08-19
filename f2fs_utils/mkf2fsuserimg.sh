@@ -112,7 +112,10 @@ fi
 SLOAD_F2FS_CMD="sload_f2fs $SLOAD_OPTS $OUTPUT_FILE"
 echo $SLOAD_F2FS_CMD
 $SLOAD_F2FS_CMD
-if [ $? -ne 0 ]; then
+# allow 1: Filesystem errors corrected
+ret=$?
+if [ $ret -ne 0 ] && [ $ret -ne 1 ]; then
   rm -f $OUTPUT_FILE
   exit 4
 fi
+exit 0
