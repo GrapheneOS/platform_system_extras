@@ -25,7 +25,7 @@ rust_library {
     name: "libprofcollectd_rust",
     stem: "liblibprofcollectd",
     crate_name: "libprofcollectd",
-    srcs: ["include/libprofcollectd.rs"],
+    srcs: ["lib.rs"],
     rustlibs: ["libprofcollectd_bindgen"],
     shared_libs: ["libprofcollectd"],
 }
