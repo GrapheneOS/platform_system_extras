@@ -13,7 +13,6 @@ cc_library_shared {
 
     include_dirs: [
         "external/f2fs-tools/include",
-        "system/core/include/log",
     ],
 
     export_include_dirs: ["."]
@@ -32,7 +31,6 @@ cc_binary {
 
     include_dirs: [
         "external/f2fs-tools/include",
-        "system/core/include/log",
     ],
 }
 
