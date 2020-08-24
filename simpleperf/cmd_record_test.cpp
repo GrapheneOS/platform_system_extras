@@ -277,7 +277,9 @@ static bool InCloudAndroid() {
 #if defined(__ANDROID__)
   std::string prop_value = android::base::GetProperty("ro.build.flavor", "");
   if (android::base::StartsWith(prop_value, "cf_x86_phone") ||
-      android::base::StartsWith(prop_value, "aosp_cf_x86_phone")) {
+      android::base::StartsWith(prop_value, "aosp_cf_x86_phone") ||
+      android::base::StartsWith(prop_value, "cf_x86_64_phone") ||
+      android::base::StartsWith(prop_value, "aosp_cf_x86_64_phone")) {
     return true;
   }
 #endif
