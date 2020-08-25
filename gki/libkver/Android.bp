@@ -55,3 +55,25 @@ cc_test {
         "test.cpp",
     ],
 }
+
+cc_fuzz {
+    name: "libkver_fuzzer",
+    dictionary: "fuzzer.dict",
+    corpus: ["corpus/*"],
+    host_supported: true,
+    fuzz_config: {
+        cc: ["android-systems-team+bugs@google.com"],
+        componentid: 30545, // Android Systems
+        hotlists: ["2515285"], // gki-updates
+        fuzz_on_haiku_host: true,
+        fuzz_on_haiku_device: false,
+    },
+    static_libs: [
+        "libbase",
+        "libkver",
+        "liblog",
+    ],
+    srcs: [
+        "fuzzer.cpp",
+    ],
+}
