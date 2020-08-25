@@ -21,6 +21,7 @@
 
 #include <map>
 #include <optional>
+#include <regex>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,20 @@
 #include "environment.h"
 #include "perf_event.h"
 #include "utils.h"
+
+using android::base::Split;
+using android::base::StartsWith;
+
+template <>
+void MoveFromBinaryFormat(std::string& data, const char*& p) {
+  data.clear();
+  while (*p != '\0') {
+    data.push_back(*p++);
+  }
+  p++;
+}
+
+namespace simpleperf {
 
 const char TRACING_INFO_MAGIC[10] = {23,  8,   68,  't', 'r',
                                      'a', 'c', 'i', 'n', 'g'};
@@ -50,15 +65,6 @@ static void AppendData(std::vector<char>& data, const char* s) {
 template <>
 void AppendData(std::vector<char>& data, const std::string& s) {
   data.insert(data.end(), s.c_str(), s.c_str() + s.size() + 1);
-}
-
-template <>
-void MoveFromBinaryFormat(std::string& data, const char*& p) {
-  data.clear();
-  while (*p != '\0') {
-    data.push_back(*p++);
-  }
-  p++;
 }
 
 static void AppendFile(std::vector<char>& data, const std::string& file,
@@ -281,55 +287,62 @@ enum class FormatParsingState {
 // Parse lines like: field:char comm[16]; offset:8; size:16;  signed:1;
 static TracingField ParseTracingField(const std::string& s) {
   TracingField field;
-  size_t start = 0;
   std::string name;
   std::string value;
-  for (size_t i = 0; i < s.size(); ++i) {
-    if (!isspace(s[i]) && (i == 0 || isspace(s[i - 1]))) {
-      start = i;
-    } else if (s[i] == ':') {
-      name = s.substr(start, i - start);
-      start = i + 1;
-    } else if (s[i] == ';') {
-      value = s.substr(start, i - start);
-      if (name == "field") {
-        // Parse value with brackets like "comm[16]", or just a field name.
-        size_t left_bracket_pos = value.find('[');
-        if (left_bracket_pos == std::string::npos) {
-          field.name = value;
-          field.elem_count = 1;
-        } else {
-          field.name = value.substr(0, left_bracket_pos);
-          field.elem_count = 1;
-          size_t right_bracket_pos = value.find(']', left_bracket_pos);
-          if (right_bracket_pos != std::string::npos) {
-            size_t len = right_bracket_pos - left_bracket_pos - 1;
-            size_t elem_count;
-            // Array size may not be a number, like field:u32 rates[IEEE80211_NUM_BANDS].
-            if (android::base::ParseUint(value.substr(left_bracket_pos + 1, len), &elem_count)) {
-              field.elem_count = elem_count;
-            }
+  std::regex re(R"((\w+):(.+?);)");
+
+  std::sregex_iterator match_it(s.begin(), s.end(), re);
+  std::sregex_iterator match_end;
+  while (match_it != match_end) {
+    std::smatch match = *match_it++;
+    std::string name = match.str(1);
+    std::string value = match.str(2);
+
+    if (name == "field") {
+      std::string last_value_part = Split(value, " \t").back();
+
+      if (StartsWith(value, "__data_loc char[]")) {
+        // Parse value like "__data_loc char[] name".
+        field.name = last_value_part;
+        field.elem_count = 1;
+        field.is_dynamic = true;
+      } else if (auto left_bracket_pos = last_value_part.find('[');
+                 left_bracket_pos != std::string::npos) {
+        // Parse value with brackets like "char comm[16]".
+        field.name = last_value_part.substr(0, left_bracket_pos);
+        field.elem_count = 1;
+        if (size_t right_bracket_pos = last_value_part.find(']', left_bracket_pos);
+            right_bracket_pos != std::string::npos) {
+          size_t len = right_bracket_pos - left_bracket_pos - 1;
+          size_t elem_count;
+          // Array size may not be a number, like field:u32 rates[IEEE80211_NUM_BANDS].
+          if (android::base::ParseUint(last_value_part.substr(left_bracket_pos + 1, len),
+                                       &elem_count)) {
+            field.elem_count = elem_count;
           }
         }
-      } else if (name == "offset") {
-        field.offset =
-            static_cast<size_t>(strtoull(value.c_str(), nullptr, 10));
-      } else if (name == "size") {
-        size_t size = static_cast<size_t>(strtoull(value.c_str(), nullptr, 10));
-        CHECK_EQ(size % field.elem_count, 0u);
-        field.elem_size = size / field.elem_count;
-      } else if (name == "signed") {
-        int is_signed = static_cast<int>(strtoull(value.c_str(), nullptr, 10));
-        field.is_signed = (is_signed == 1);
+      } else {
+        // Parse value like "int common_pid".
+        field.name = last_value_part;
+        field.elem_count = 1;
       }
+    } else if (name == "offset") {
+      field.offset = static_cast<size_t>(strtoull(value.c_str(), nullptr, 10));
+    } else if (name == "size") {
+      size_t size = static_cast<size_t>(strtoull(value.c_str(), nullptr, 10));
+      CHECK_EQ(size % field.elem_count, 0u);
+      field.elem_size = size / field.elem_count;
+    } else if (name == "signed") {
+      int is_signed = static_cast<int>(strtoull(value.c_str(), nullptr, 10));
+      field.is_signed = (is_signed == 1);
     }
   }
   return field;
 }
 
-static TracingFormat ParseTracingFormat(const std::string& data) {
+TracingFormat ParseTracingFormat(const std::string& data) {
   TracingFormat format;
-  std::vector<std::string> strs = android::base::Split(data, "\n");
+  std::vector<std::string> strs = Split(data, "\n");
   FormatParsingState state = FormatParsingState::READ_NAME;
   for (const auto& s : strs) {
     if (state == FormatParsingState::READ_NAME) {
@@ -608,7 +621,7 @@ std::optional<std::string> AdjustTracepointFilter(const std::string& filter, boo
 }
 
 std::optional<FieldNameSet> GetFieldNamesForTracepointEvent(const EventType& event) {
-  std::vector<std::string> strs = android::base::Split(event.name, ":");
+  std::vector<std::string> strs = Split(event.name, ":");
   if (strs.size() != 2) {
     return {};
   }
@@ -623,3 +636,5 @@ std::optional<FieldNameSet> GetFieldNamesForTracepointEvent(const EventType& eve
   }
   return names;
 }
+
+}  // namespace simpleperf
