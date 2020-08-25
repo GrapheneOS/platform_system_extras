@@ -29,6 +29,8 @@
 #include "tracing.h"
 #include "utils.h"
 
+using namespace simpleperf;
+
 class ReportLib;
 
 extern "C" {
