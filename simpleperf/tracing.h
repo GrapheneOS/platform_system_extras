@@ -26,12 +26,21 @@
 #include "event_type.h"
 #include "utils.h"
 
+namespace simpleperf {
+
 struct TracingField {
   std::string name;
-  size_t offset;
-  size_t elem_size;
-  size_t elem_count;
-  bool is_signed;
+  size_t offset = 0;
+  size_t elem_size = 0;
+  size_t elem_count = 1;
+  bool is_signed = false;
+  bool is_dynamic = false;
+
+  bool operator==(const TracingField& other) const {
+    return name == other.name && offset == other.offset && elem_size == other.elem_size &&
+           elem_count == other.elem_count && is_signed == other.is_signed &&
+           is_dynamic == other.is_dynamic;
+  }
 };
 
 struct TracingFieldPlace {
@@ -113,5 +122,8 @@ using FieldNameSet = std::set<std::string>;
 std::optional<std::string> AdjustTracepointFilter(const std::string& filter, bool use_quote,
                                                   FieldNameSet* used_fields);
 std::optional<FieldNameSet> GetFieldNamesForTracepointEvent(const EventType& event);
+TracingFormat ParseTracingFormat(const std::string& data);
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_TRACING_H_
