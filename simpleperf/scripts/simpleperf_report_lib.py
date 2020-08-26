@@ -83,12 +83,14 @@ class TracingFieldFormatStruct(ct.Structure):
        elem_size: size of the element type.
        elem_count: the number of elements in this field, more than one if the field is an array.
        is_signed: whether the element type is signed or unsigned.
+       is_dynamic: whether the element is a dynamic string.
     """
     _fields_ = [('_name', ct.c_char_p),
                 ('offset', ct.c_uint32),
                 ('elem_size', ct.c_uint32),
                 ('elem_count', ct.c_uint32),
-                ('is_signed', ct.c_uint32)]
+                ('is_signed', ct.c_uint32),
+                ('is_dynamic', ct.c_uint32)]
 
     _unpack_key_dict = {1: 'b', 2: 'h', 4: 'i', 8: 'q'}
 
@@ -102,6 +104,13 @@ class TracingFieldFormatStruct(ct.Structure):
             an array of int values, etc. If the type can't be parsed, return a byte array or an
             array of byte arrays.
         """
+        if self.is_dynamic:
+            offset, max_len = struct.unpack('<HH', data[self.offset:self.offset + 4])
+            length = 0
+            while length < max_len and bytes_to_str(data[offset + length]) != '\x00':
+                length += 1
+            return bytes_to_str(data[offset: offset + length])
+
         if self.elem_count > 1 and self.elem_size == 1:
             # Probably the field is a string.
             # Don't use self.is_signed, which has different values on x86 and arm.
