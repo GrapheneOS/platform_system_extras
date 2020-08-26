@@ -56,7 +56,8 @@ const char* OneTimeFreeAllocator::AllocateString(std::string_view s) {
     cur_ = p;
     end_ = p + alloc_size;
   }
-  strcpy(cur_, s.data());
+  memcpy(cur_, s.data(), s.size());
+  cur_[s.size()] = '\0';
   const char* result = cur_;
   cur_ += size;
   return result;
