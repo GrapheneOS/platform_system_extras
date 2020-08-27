@@ -219,3 +219,11 @@ TEST(dso, kernel_module) {
   std::unique_ptr<Dso> dso = Dso::CreateDso(DSO_KERNEL_MODULE, ELF_FILE, false);
   ASSERT_EQ(dso->GetDebugFilePath(), GetTestData(ELF_FILE));
 }
+
+TEST(dso, symbol_map_file) {
+  auto dso = Dso::CreateDso(DSO_SYMBOL_MAP_FILE, "perf-123.map");
+  ASSERT_TRUE(dso);
+  ASSERT_EQ(DSO_SYMBOL_MAP_FILE, dso->type());
+  ASSERT_EQ(0x12345678, dso->IpToVaddrInFile(0x12345678, 0x0, 0x0));
+  ASSERT_EQ(0x12345678, dso->IpToVaddrInFile(0x12345678, 0xe9201000, 0xa5000));
+}
