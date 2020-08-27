@@ -42,7 +42,7 @@ class KernelRelease {
   std::string string() const;
 
   // Return the KMI version corresponding to this KernelRelease.
-  const KmiVersion kmi_version() const { return kmi_version_; }
+  const KmiVersion& kmi_version() const { return kmi_version_; }
 
   // Getters of each field.
   uint64_t version() const { return kmi_version().version(); }
