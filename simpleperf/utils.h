@@ -30,8 +30,12 @@
 #include <android-base/unique_fd.h>
 #include <ziparchive/zip_archive.h>
 
+static inline uint64_t AlignDown(uint64_t value, uint64_t alignment) {
+  return value & ~(alignment - 1);
+}
+
 static inline uint64_t Align(uint64_t value, uint64_t alignment) {
-  return (value + alignment - 1) & ~(alignment - 1);
+  return AlignDown(value + alignment - 1, alignment);
 }
 
 #ifdef _WIN32
