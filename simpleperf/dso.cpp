@@ -691,6 +691,16 @@ class KernelModuleDso : public Dso {
   }
 };
 
+class SymbolMapFileDso : public Dso {
+ public:
+  SymbolMapFileDso(const std::string& path) : Dso(DSO_SYMBOL_MAP_FILE, path, path) {}
+
+  uint64_t IpToVaddrInFile(uint64_t ip, uint64_t, uint64_t) override { return ip; }
+
+ protected:
+  std::vector<Symbol> LoadSymbols() override { return {}; }
+};
+
 class UnknownDso : public Dso {
  public:
   UnknownDso(const std::string& path) : Dso(DSO_UNKNOWN_FILE, path, path) {}
@@ -722,6 +732,8 @@ std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_pat
     }
     case DSO_DEX_FILE:
       return std::unique_ptr<Dso>(new DexFileDso(dso_path, dso_path));
+    case DSO_SYMBOL_MAP_FILE:
+      return std::unique_ptr<Dso>(new SymbolMapFileDso(dso_path));
     case DSO_UNKNOWN_FILE:
       return std::unique_ptr<Dso>(new UnknownDso(dso_path));
     default:
@@ -745,6 +757,8 @@ const char* DsoTypeToString(DsoType dso_type) {
       return "dso_elf_file";
     case DSO_DEX_FILE:
       return "dso_dex_file";
+    case DSO_SYMBOL_MAP_FILE:
+      return "dso_symbol_map_file";
     default:
       return "unknown";
   }
