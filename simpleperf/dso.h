@@ -106,6 +106,7 @@ enum DsoType {
   DSO_KERNEL_MODULE,
   DSO_ELF_FILE,
   DSO_DEX_FILE,  // For files containing dex files, like .vdex files.
+  DSO_SYMBOL_MAP_FILE,
   DSO_UNKNOWN_FILE,
 };
 
