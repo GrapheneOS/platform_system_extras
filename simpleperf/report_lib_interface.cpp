@@ -54,6 +54,7 @@ struct TracingFieldFormat {
   uint32_t elem_size;
   uint32_t elem_count;
   uint32_t is_signed;
+  uint32_t is_dynamic;
 };
 
 struct TracingDataFormat {
@@ -409,6 +410,7 @@ void ReportLib::CreateEvents() {
         field.elem_size = format.fields[i].elem_size;
         field.elem_count = format.fields[i].elem_count;
         field.is_signed = format.fields[i].is_signed;
+        field.is_dynamic = format.fields[i].is_dynamic;
       }
       if (tracing_info.fields.empty()) {
         tracing_info.data_format.size = 0;
