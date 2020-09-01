@@ -21,9 +21,9 @@
 
 #include "command.h"
 
-struct AddrFilter;
-
 namespace simpleperf {
+
+struct AddrFilter;
 
 std::vector<AddrFilter> ParseAddrFilterOption(const std::string& s);
 
