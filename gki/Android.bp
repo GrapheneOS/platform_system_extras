@@ -35,3 +35,34 @@ python_binary_host {
         },
     },
 }
+
+apex_key {
+    name: "com.android.gki.key",
+    public_key: "com.android.gki.avbpubkey",
+    private_key: "com.android.gki.pem",
+}
+
+sh_binary {
+    name: "com.android.gki.preinstall",
+    src: "preinstall.sh",
+}
+
+sh_binary {
+    name: "com.android.gki.postinstall",
+    src: "postinstall.sh",
+}
+
+// Common defaults for all GKI APEXes.
+apex_defaults {
+    name: "com.android.gki_defaults",
+    binaries: [
+        "update_engine_stable_client",
+        "com.android.gki.preinstall",
+        "com.android.gki.postinstall",
+    ],
+    file_contexts: ":com.android.gki-file_contexts",
+    // Key to sign apex_payload.img
+    key: "com.android.gki.key",
+    // Key to sign APEX. Left empty to use defaults.
+    certificate: "",
+}
