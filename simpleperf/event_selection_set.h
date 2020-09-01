@@ -33,6 +33,8 @@
 #include "record.h"
 #include "RecordReadThread.h"
 
+namespace simpleperf {
+
 constexpr double DEFAULT_PERIOD_TO_CHECK_MONITORED_TARGETS_IN_SEC = 1;
 constexpr uint64_t DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT = 4000;
 constexpr uint64_t DEFAULT_SAMPLE_PERIOD_FOR_TRACEPOINT_EVENT = 1;
@@ -225,5 +227,7 @@ bool IsDwarfCallChainSamplingSupported();
 bool IsDumpingRegsForTracepointEventsSupported();
 bool IsSettingClockIdSupported();
 bool IsMmap2Supported();
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_EVENT_SELECTION_SET_H_

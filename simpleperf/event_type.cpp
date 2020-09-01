@@ -33,7 +33,7 @@
 #include "event_attr.h"
 #include "utils.h"
 
-using namespace simpleperf;
+namespace simpleperf {
 
 struct EventFormat {
   EventFormat(const std::string& name, const std::string& attr, int shift)
@@ -389,3 +389,5 @@ std::unique_ptr<EventTypeAndModifier> ParseEventType(const std::string& event_ty
 bool IsEtmEventType(uint32_t type) {
   return g_etm_event_type != 0 && type == g_etm_event_type;
 }
+
+}  // namespace simpleperf

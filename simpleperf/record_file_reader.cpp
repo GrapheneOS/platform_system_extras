@@ -27,6 +27,8 @@
 #include "record.h"
 #include "utils.h"
 
+namespace simpleperf {
+
 using namespace PerfFileFormat;
 
 namespace PerfFileFormat {
@@ -624,8 +626,6 @@ std::vector<std::unique_ptr<Record>> RecordFileReader::DataSection() {
   });
   return records;
 }
-
-namespace simpleperf {
 
 bool IsPerfDataFile(const std::string& filename) {
   auto fd = FileHelper::OpenReadOnly(filename);
