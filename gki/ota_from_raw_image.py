@@ -21,6 +21,7 @@ Generate payload.bin from a single image.
 import argparse
 import logging
 import os
+import re
 import shutil
 import sys
 from zipfile import ZipFile
@@ -39,6 +40,9 @@ def _ParseArgs():
   parser.add_argument("--key", type=str,
                       help="Key to use to sign the package. If unspecified, script does not sign "
                            "the package and payload_properties.txt is not generated.")
+  parser.add_argument("--kernel-release-file", type=str,
+                      help="If boot is in input, a file containing the kernel release of the boot "
+                           "image. Create the file with `extract_kernel --output-release`.")
   parser.add_argument("--out", type=str, required=True,
                       help="Required output directory to payload.bin and payload_properties.txt")
   parser.add_argument("input", metavar="NAME:IMAGE", nargs="+",
@@ -60,10 +64,31 @@ def _PrepareEnvironment(args):
       os.environ["GENERATOR"] = path
 
 
+def _GetKernelRelease(line):
+  """
+  Get GKI kernel release string from the given line.
+  """
+  PATTERN = r"^(\d+[.]\d+[.]\d+-android\d+-\d+).*$"
+  mo = re.match(PATTERN, line)
+  assert mo, "Kernel release '{}' does not match regex r'{}'".format(line, PATTERN)
+  return mo.group(1)
+
+
+def _GetKernelReleaseFromFile(filename):
+  """
+  Get GKI kernel release string from the given text file.
+  """
+  assert filename, "--kernel-release-file must be specified if boot is in input"
+  with open(filename) as f:
+    line = f.read().strip()
+    return _GetKernelRelease(line)
+
+
 def CreateOtaFromRawImages(args):
   _PrepareEnvironment(args)
 
   tf = common.MakeTempFile("target_files", ".zip")
+  payload_additional_args = ["--is_partial_update", "true"]
   with ZipFile(tf, "w") as zip:
     names = []
     for pair_str in args.input:
@@ -72,6 +97,10 @@ def CreateOtaFromRawImages(args):
       name, img_path = tuple(pair)
       zip.write(img_path, arcname=os.path.join("IMAGES", name + ".img"))
       names.append(name)
+      if name == "boot":
+        payload_additional_args += ["--partition_timestamps",
+                                    "boot:" + _GetKernelReleaseFromFile(args.kernel_release_file)]
+
     zip.writestr("META/ab_partitions.txt", "\n".join(names) + "\n")
     zip.writestr("META/dynamic_partitions_info.txt", """
 virtual_ab=true
@@ -79,8 +108,7 @@ super_partition_groups=
     """)
 
   payload = Payload()
-  additional_args = ["--is_partial_update", "true"]
-  payload.Generate(tf, None, additional_args)
+  payload.Generate(tf, None, payload_additional_args)
 
   if args.key:
     OPTIONS.package_key = args.key
