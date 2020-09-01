@@ -30,7 +30,8 @@
 
 #include "record_equal_test.h"
 
-using namespace PerfFileFormat;
+using namespace simpleperf;
+using namespace simpleperf::PerfFileFormat;
 
 class RecordFileTest : public ::testing::Test {
  protected:

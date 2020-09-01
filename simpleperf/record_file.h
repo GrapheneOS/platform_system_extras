@@ -36,6 +36,8 @@
 #include "record_file_format.h"
 #include "thread_tree.h"
 
+namespace simpleperf {
+
 // RecordFileWriter writes to a perf record file, like perf.data.
 // User should call RecordFileWriter::Close() to finish writing the file, otherwise the file will
 // be removed in RecordFileWriter::~RecordFileWriter().
@@ -214,8 +216,8 @@ class RecordFileReader {
   DISALLOW_COPY_AND_ASSIGN(RecordFileReader);
 };
 
-namespace simpleperf {
-  bool IsPerfDataFile(const std::string& filename);
-}
+bool IsPerfDataFile(const std::string& filename);
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_RECORD_FILE_H_

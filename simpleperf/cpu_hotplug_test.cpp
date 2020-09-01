@@ -37,6 +37,8 @@
 #include "event_type.h"
 #include "utils.h"
 
+using namespace simpleperf;
+
 static auto test_duration_for_long_tests = std::chrono::seconds(120);
 static auto cpu_hotplug_interval = std::chrono::microseconds(1000);
 static bool verbose_mode = false;

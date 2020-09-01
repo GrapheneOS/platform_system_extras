@@ -35,6 +35,8 @@
 #include "record.h"
 #include "utils.h"
 
+namespace simpleperf {
+
 using namespace PerfFileFormat;
 
 std::unique_ptr<RecordFileWriter> RecordFileWriter::CreateInstance(const std::string& filename) {
@@ -498,3 +500,5 @@ bool RecordFileWriter::Close() {
   record_fp_ = nullptr;
   return result;
 }
+
+}  // namespace simpleperf
