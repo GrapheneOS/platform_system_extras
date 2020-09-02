@@ -21,6 +21,8 @@
 #include "record.h"
 #include "record_equal_test.h"
 
+using namespace simpleperf;
+
 class RecordTest : public ::testing::Test {
  protected:
   virtual void SetUp() {

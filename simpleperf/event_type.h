@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+namespace simpleperf {
+
 // EventType represents one type of event, like cpu_cycle_event, cache_misses_event.
 // The user knows one event type by its name, and the kernel knows one event type by its
 // (type, config) pair. EventType connects the two representations, and tells the user if
@@ -98,5 +100,7 @@ struct EventTypeAndModifier {
 
 std::unique_ptr<EventTypeAndModifier> ParseEventType(const std::string& event_type_str);
 bool IsEtmEventType(uint32_t type);
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_EVENT_H_
