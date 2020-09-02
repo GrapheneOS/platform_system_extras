@@ -1114,6 +1114,22 @@ class TestReportLib(TestBase):
                 self.assertIsNone(tracing_data)
         self.assertTrue(has_tracing_data)
 
+    def test_dynamic_field_in_tracing_data(self):
+        self.report_lib.SetRecordFile(TEST_HELPER.testdata_path(
+            'perf_with_tracepoint_event_dynamic_field.data'))
+        has_dynamic_field = False
+        while self.report_lib.GetNextSample():
+            event = self.report_lib.GetEventOfCurrentSample()
+            tracing_data = self.report_lib.GetTracingDataOfCurrentSample()
+            if event.name == 'kprobes:myopen':
+                self.assertIsNotNone(tracing_data)
+                self.assertIn('name', tracing_data)
+                if tracing_data['name'] == '/sys/kernel/debug/tracing/events/kprobes/myopen/format':
+                    has_dynamic_field = True
+            else:
+                self.assertIsNone(tracing_data)
+        self.assertTrue(has_dynamic_field)
+
 
 class TestRunSimpleperfOnDevice(TestBase):
     def test_smoke(self):
