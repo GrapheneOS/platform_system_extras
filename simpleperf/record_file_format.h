@@ -67,6 +67,7 @@ meta_info feature section:
 
 */
 
+namespace simpleperf {
 namespace PerfFileFormat {
 
 enum {
@@ -124,5 +125,6 @@ struct FileAttr {
 };
 
 }  // namespace PerfFileFormat
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_RECORD_FILE_FORMAT_H_

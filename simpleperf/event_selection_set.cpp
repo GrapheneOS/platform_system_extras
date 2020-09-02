@@ -35,7 +35,8 @@
 #include "RecordReadThread.h"
 
 using android::base::StringPrintf;
-using namespace simpleperf;
+
+namespace simpleperf {
 
 bool IsBranchSamplingSupported() {
   const EventType* type = FindEventTypeByName("cpu-cycles");
@@ -832,3 +833,5 @@ bool EventSelectionSet::SetEnableEvents(bool enable) {
   }
   return true;
 }
+
+}  // namespace simpleperf
