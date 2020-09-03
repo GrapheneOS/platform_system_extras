@@ -518,6 +518,12 @@ TEST_F(ReportCommandTest, dso_path_for_jit_cache) {
   ASSERT_NE(content.find("[JIT app cache]"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, generic_jit_symbols) {
+  Report("perf_with_generic_git_symbols.data", {"--sort", "symbol"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(std::string::npos, content.find("generic_jit_symbol_one"));
+}
+
 #if defined(__linux__)
 #include "event_selection_set.h"
 
