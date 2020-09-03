@@ -31,6 +31,7 @@
 #include <android-base/logging.h>
 #include <android-base/file.h>
 #include <android-base/parseint.h>
+#include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
 #if defined(__ANDROID__)
@@ -49,6 +50,7 @@
 #include "OfflineUnwinder.h"
 #include "read_apk.h"
 #include "read_elf.h"
+#include "read_symbol_map.h"
 #include "record.h"
 #include "record_file.h"
 #include "thread_tree.h"
@@ -1632,6 +1634,25 @@ bool RecordCommand::JoinCallChains() {
   return reader->ReadDataSection(record_callback);
 }
 
+namespace {
+
+void LoadSymbolMapFile(int pid, const std::string& package, ThreadTree* thread_tree) {
+  // On Linux, symbol map files usually go to /tmp/perf-<pid>.map
+  // On Android, there is no directory where any process can create files.
+  // For now, use /data/local/tmp/perf-<pid>.map, which works for standalone programs,
+  // and /data/data/<package>/perf-<pid>.map, which works for apps.
+  auto path = package.empty()
+      ? android::base::StringPrintf("/data/local/tmp/perf-%d.map", pid)
+      : android::base::StringPrintf("/data/data/%s/perf-%d.map", package.c_str(), pid);
+
+  auto symbols = ReadSymbolMapFromFile(path);
+  if (!symbols.empty()) {
+    thread_tree->AddSymbolsForProcess(pid, &symbols);
+  }
+}
+
+}  // namespace
+
 bool RecordCommand::DumpAdditionalFeatures(
     const std::vector<std::string>& args) {
   // Read data section of perf.data to collect hit file information.
@@ -1641,11 +1662,17 @@ bool RecordCommand::DumpAdditionalFeatures(
     Dso::ReadKernelSymbolsFromProc();
     kernel_symbols_available = true;
   }
+  std::unordered_set<int> loaded_symbol_maps;
   std::vector<uint64_t> auxtrace_offset;
   auto callback = [&](const Record* r) {
     thread_tree_.Update(*r);
     if (r->type() == PERF_RECORD_SAMPLE) {
-      CollectHitFileInfo(*reinterpret_cast<const SampleRecord*>(r));
+      auto sample = reinterpret_cast<const SampleRecord*>(r);
+      // Symbol map files are available after recording. Load one for the process.
+      if (loaded_symbol_maps.insert(sample->tid_data.pid).second) {
+        LoadSymbolMapFile(sample->tid_data.pid, app_package_name_, &thread_tree_);
+      }
+      CollectHitFileInfo(*sample);
     } else if (r->type() == PERF_RECORD_AUXTRACE) {
       auto auxtrace = static_cast<const AuxTraceRecord*>(r);
       auxtrace_offset.emplace_back(auxtrace->location.file_offset - auxtrace->size());
