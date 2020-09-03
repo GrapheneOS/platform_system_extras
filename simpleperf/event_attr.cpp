@@ -27,6 +27,8 @@
 #include "event_type.h"
 #include "utils.h"
 
+namespace simpleperf {
+
 static std::string BitsToString(const std::string& name, uint64_t bits,
                                 const std::vector<std::pair<int, std::string>>& bit_names) {
   std::string result;
@@ -245,3 +247,5 @@ std::string GetEventNameByAttr(const perf_event_attr& attr) {
   }
   return "unknown";
 }
+
+}  // namespace simpleperf

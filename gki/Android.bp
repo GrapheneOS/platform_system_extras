@@ -14,12 +14,23 @@
 // limitations under the License.
 //
 
-python_binary_host {
-    name: "ota_from_raw_image",
-    srcs: ["ota_from_raw_image.py",],
+python_defaults {
+    name: "ota_from_raw_image_defaults",
     libs: [
         "releasetools_ota_from_target_files",
     ],
+    target: {
+        darwin: {
+            // required module "brillo_update_payload" is disabled on darwin
+            enabled: false,
+        },
+    },
+}
+
+python_binary_host {
+    name: "ota_from_raw_image",
+    defaults: ["ota_from_raw_image_defaults"],
+    srcs: ["ota_from_raw_image.py"],
     required: [
         "brillo_update_payload",
     ],
@@ -28,10 +39,53 @@ python_binary_host {
             embedded_launcher: true,
         },
     },
-    target: {
-        darwin: {
-            // required module "brillo_update_payload" is disabled on darwin
-            enabled: false,
+}
+
+python_test_host {
+    name: "ota_from_raw_image_test",
+    defaults: ["ota_from_raw_image_defaults"],
+    test_suites: ["general-tests"],
+    srcs: [
+        "ota_from_raw_image.py",
+        "ota_from_raw_image_test.py",
+    ],
+    version: {
+        py3: {
+            // When using embedded launcher, atest will try (but may fail) to load libc++.so from
+            // host, because the test executable won't be able to find the needed libs via its
+            // runpath.
+            embedded_launcher: false,
         },
     },
+}
+
+apex_key {
+    name: "com.android.gki.key",
+    public_key: "com.android.gki.avbpubkey",
+    private_key: "com.android.gki.pem",
+}
+
+sh_binary {
+    name: "com.android.gki.preinstall",
+    src: "preinstall.sh",
+}
+
+sh_binary {
+    name: "com.android.gki.postinstall",
+    src: "postinstall.sh",
+}
+
+// Common defaults for all GKI APEXes.
+apex_defaults {
+    name: "com.android.gki_defaults",
+    binaries: [
+        "update_engine_stable_client",
+        "com.android.gki.preinstall",
+        "com.android.gki.postinstall",
+    ],
+    file_contexts: ":com.android.gki-file_contexts",
+    // Key to sign apex_payload.img
+    key: "com.android.gki.key",
+    // Key to sign APEX. Left empty to use defaults.
+    certificate: "",
 }
