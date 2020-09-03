@@ -29,6 +29,17 @@
 
 namespace simpleperf {
 
+namespace {
+
+// Real map file path depends on where the process can create files.
+// For example, app can create files only in its data directory.
+// Use normalized name inherited from pid instead.
+std::string GetSymbolMapDsoName(int pid) {
+  return android::base::StringPrintf("perf-%d.map", pid);
+}
+
+}  // namespace
+
 void ThreadTree::SetThreadName(int pid, int tid, const std::string& comm) {
   ThreadEntry* thread = FindThreadOrNew(pid, tid);
   if (comm != thread->comm) {
@@ -92,6 +103,14 @@ ThreadEntry* ThreadTree::CreateThread(int pid, int tid) {
   };
   auto pair = thread_tree_.insert(std::make_pair(tid, std::unique_ptr<ThreadEntry>(thread)));
   CHECK(pair.second);
+  if (pid == tid) {
+    // If there is a symbol map dso for the process, add maps for the symbols.
+    auto name = GetSymbolMapDsoName(pid);
+    auto it = user_dso_tree_.find(name);
+    if (it != user_dso_tree_.end()) {
+      AddThreadMapsForDsoSymbols(thread, it->second.get());
+    }
+  }
   return thread;
 }
 
@@ -173,17 +192,6 @@ Dso* ThreadTree::FindUserDsoOrNew(const std::string& filename, uint64_t start_ad
   }
   return it->second.get();
 }
-
-namespace {
-
-// Real map file path depends on where the process can create files.
-// For example, app can create files only in its data directory.
-// Use normalized name inherited from pid instead.
-std::string GetSymbolMapDsoName(int pid) {
-  return android::base::StringPrintf("perf-%d.map", pid);
-}
-
-}  // namespace
 
 void ThreadTree::AddSymbolsForProcess(int pid, std::vector<Symbol>* symbols) {
   auto name = GetSymbolMapDsoName(pid);
