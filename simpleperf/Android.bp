@@ -647,3 +647,16 @@ cc_test {
         },
     },
 }
+
+python_library_host {
+    name: "simpleperf_report_lib",
+    srcs: [
+        "scripts/simpleperf_report_lib.py",
+        "scripts/utils.py",
+    ],
+    data: [
+        "scripts/bin/darwin/x86_64/libsimpleperf_report.dylib",
+        "scripts/bin/linux/x86_64/libsimpleperf_report.so",
+        "scripts/bin/windows/**/*.dll",
+    ],
+}
