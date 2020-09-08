@@ -30,6 +30,7 @@ command:
     stop        Terminate periodic collection.
     once        Request an one-off trace.
     process     Convert traces to perf profiles.
+    report      Create a report containing all profiles.
     reconfig    Refresh configuration.
     help        Print this message.
 )"#
@@ -60,6 +61,10 @@ fn main() {
         "process" => {
             println!("Processing traces");
             libprofcollectd::process();
+        }
+        "report" => {
+            println!("Creating profile report");
+            libprofcollectd::create_profile_report();
         }
         "reconfig" => {
             println!("Refreshing configuration");
