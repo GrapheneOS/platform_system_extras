@@ -23,5 +23,6 @@ interface IProfCollectd {
     void TerminateCollection();
     void TraceOnce(@utf8InCpp String tag);
     void ProcessProfile();
+    void CreateProfileReport();
     @utf8InCpp String GetSupportedProvider();
 }

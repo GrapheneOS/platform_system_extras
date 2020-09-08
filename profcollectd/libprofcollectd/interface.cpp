@@ -78,6 +78,10 @@ void Process() {
   GetIProfcollectdService()->ProcessProfile();
 }
 
+void CreateProfileReport() {
+  GetIProfcollectdService()->CreateProfileReport();
+}
+
 void ReadConfig() {
   GetIProfcollectdService()->ReadConfig();
 }
