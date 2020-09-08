@@ -25,5 +25,6 @@ extern "C" {
   void TerminateCollection();
   void TraceOnce();
   void Process();
+  void CreateProfileReport();
   void ReadConfig();
 }

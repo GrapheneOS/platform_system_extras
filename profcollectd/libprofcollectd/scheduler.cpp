@@ -176,7 +176,21 @@ OptError ProfcollectdScheduler::ProcessProfile() {
   }
 
   const std::lock_guard<std::mutex> lock(mu);
-  hwtracer->Process(config.traceOutputDir, config.profileOutputDir, config.binaryFilter);
+  bool success =
+      hwtracer->Process(config.traceOutputDir, config.profileOutputDir, config.binaryFilter);
+  if (!success) {
+    static std::string errmsg = "Process profiles failed";
+    return errmsg;
+  }
+  return std::nullopt;
+}
+
+OptError ProfcollectdScheduler::CreateProfileReport() {
+  auto processFailureMsg = ProcessProfile();
+  if (processFailureMsg) {
+    return processFailureMsg;
+  }
+
   std::vector<fs::path> profiles;
   profiles.insert(profiles.begin(), fs::directory_iterator(config.profileOutputDir),
                   fs::directory_iterator());
