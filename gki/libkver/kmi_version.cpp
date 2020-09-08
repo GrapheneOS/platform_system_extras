@@ -43,4 +43,8 @@ std::string KmiVersion::string() const {
                                      android_release(), generation());
 }
 
+std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> KmiVersion::tuple() const {
+  return std::make_tuple(version(), patch_level(), android_release(), generation());
+}
+
 }  // namespace android::kver

@@ -45,4 +45,8 @@ std::string KernelRelease::string() const {
                                      sub_level(), android_release(), generation());
 }
 
+std::tuple<uint64_t, uint64_t, uint64_t> KernelRelease::kernel_version_tuple() const {
+  return std::make_tuple(version(), patch_level(), sub_level());
+}
+
 }  // namespace android::kver
