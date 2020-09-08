@@ -54,6 +54,13 @@ pub fn process() {
     }
 }
 
+/// Create profile report.
+pub fn create_profile_report() {
+    unsafe {
+        profcollectd_bindgen::CreateProfileReport();
+    }
+}
+
 /// Read configs from environment variables.
 pub fn read_config() {
     unsafe {
