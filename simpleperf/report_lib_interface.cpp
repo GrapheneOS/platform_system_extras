@@ -24,6 +24,7 @@
 #include "dso.h"
 #include "event_attr.h"
 #include "event_type.h"
+#include "JITDebugReader.h"
 #include "record_file.h"
 #include "thread_tree.h"
 #include "tracing.h"
@@ -357,6 +358,9 @@ void ReportLib::SetCurrentSample() {
         // Not enough info to map an offset in a jitted method to an offset in a dex file. So just
         // use the symbol_addr.
         entry.symbol.vaddr_in_file = entry.symbol.symbol_addr;
+      } else if (!JITDebugReader::IsPathInJITSymFile(map->dso->Path())) {
+        // Old JITSymFiles use names like "TemporaryFile-XXXXXX". So give them a better name.
+        entry.symbol.dso_name = "[JIT cache]";
       }
     }
 
