@@ -228,17 +228,8 @@ bool ParseOptionsForApiLevel(unsigned int first_api_level, const std::string& op
         }
     }
 
-    // In the original setting of v1 policies and AES-256-CTS we used 4-byte
-    // padding of filenames, so retain that on old first_api_levels.
-    //
-    // For everything else, use 16-byte padding.  This is more secure (it helps
-    // hide the length of filenames), and it makes the inputs evenly divisible
-    // into cipher blocks which is more efficient for encryption and decryption.
-    if (!is_gki && options->version == 1 && options->filenames_mode == FSCRYPT_MODE_AES_256_CTS) {
-        options->flags |= FSCRYPT_POLICY_FLAGS_PAD_4;
-    } else {
-        options->flags |= FSCRYPT_POLICY_FLAGS_PAD_16;
-    }
+    // GrapheneOS has always used the maximum 32 byte padding.
+    options->flags |= FSCRYPT_POLICY_FLAGS_PAD_32;
 
     // Use DIRECT_KEY for Adiantum, since it's much more efficient but just as
     // secure since Android doesn't reuse the same master key for multiple
