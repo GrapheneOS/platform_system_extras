@@ -14,7 +14,14 @@
 # limitations under the License.
 
 import unittest
+import os.path
+
+def load_tests(loader, standard_tests, _pattern):
+    this_dir = os.path.dirname(__file__)
+    perf2cfg_tests = loader.discover(start_dir=os.path.join(this_dir, 'tests'),
+                                     pattern='test*.py')
+    standard_tests.addTests(perf2cfg_tests)
+    return standard_tests
 
 if __name__ == '__main__':
-    # Setting module to None enables test discovery
-    unittest.main(module=None, verbosity=2)
+    unittest.main(verbosity=2)

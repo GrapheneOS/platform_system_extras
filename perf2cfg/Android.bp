@@ -34,6 +34,7 @@ python_binary_host {
 
 python_test_host {
     name: "perf2cfg_test",
+    test_suites: ["general-tests"],
     srcs: [
         "perf2cfg_test.py",
         "tests/*.py",
