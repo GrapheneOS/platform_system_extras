@@ -35,10 +35,6 @@ class KernelRelease {
   // Return nullopt if any error.
   static std::optional<KernelRelease> Parse(const std::string& s, bool allow_suffix = false);
 
-  // Parse from uname(). nullopt if it is not in a valid format.
-  // e.g. it does not contain a KMI version string,
-  static std::optional<KernelRelease> FromUname();
-
   // Return string representation of the kernel release object, excluding the suffix.
   // e.g. "5.4.42-android12-0".
   // To get the KMI version string, see kmi_version().string().
