@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <string_view>
 #include <vector>
 
 #include <android-base/file.h>
@@ -36,6 +37,7 @@
 #include "utils.h"
 
 using android::base::EndsWith;
+using android::base::StartsWith;
 using namespace simpleperf;
 
 namespace simpleperf_dso_impl {
@@ -176,7 +178,7 @@ std::string DebugElfFileFinder::FindDebugFile(const std::string& dso_path, bool 
 
 std::string DebugElfFileFinder::GetPathInSymFsDir(const std::string& path) {
   auto add_symfs_prefix = [&](const std::string& path) {
-    if (android::base::StartsWith(path, OS_PATH_SEPARATOR)) {
+    if (StartsWith(path, OS_PATH_SEPARATOR)) {
       return symfs_dir_ + path;
     }
     return symfs_dir_ + OS_PATH_SEPARATOR + path;
@@ -375,10 +377,13 @@ bool Dso::IsForJavaMethod() {
     return true;
   }
   if (type_ == DSO_ELF_FILE) {
-    // JITDebugReader generates jit symfiles in "jit_app_cache:<file_start>-<file_end>" format.
-    if (path_.find(':') != std::string::npos) {
+    if (JITDebugReader::IsPathInJITSymFile(path_)) {
       return true;
     }
+    // JITDebugReader in old versions generates symfiles in 'TemporaryFile-XXXXXX'.
+    size_t pos = path_.rfind('/');
+    pos = (pos == std::string::npos) ? 0 : pos + 1;
+    return StartsWith(std::string_view(&path_[pos], path_.size() - pos), "TemporaryFile");
   }
   return false;
 }
@@ -487,14 +492,11 @@ class ElfDso : public Dso {
       : Dso(DSO_ELF_FILE, path, debug_file_path) {}
 
   std::string_view GetReportPath() const override {
-    if (size_t colon_pos = path_.find(':'); colon_pos != std::string::npos) {
-      std::string file_path = path_.substr(0, colon_pos);
-      if (EndsWith(file_path, kJITAppCacheFile)) {
+    if (JITDebugReader::IsPathInJITSymFile(path_)) {
+      if (path_.find(kJITAppCacheFile) != path_.npos) {
         return "[JIT app cache]";
       }
-      if (EndsWith(file_path, kJITZygoteCacheFile)) {
-        return "[JIT zygote cache]";
-      }
+      return "[JIT zygote cache]";
     }
     return path_;
   }
