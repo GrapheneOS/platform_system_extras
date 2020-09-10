@@ -20,7 +20,6 @@
 
 #include <optional>
 #include <string>
-#include <string_view>
 
 #include <kver/kmi_version.h>
 
@@ -50,6 +49,10 @@ class KernelRelease {
   uint64_t sub_level() const { return sub_level_; }
   uint64_t android_release() const { return kmi_version().android_release(); }
   uint64_t generation() const { return kmi_version().generation(); }
+
+  // Let a kernel release be w.x.y-androidz-k.
+  // Returns (w, x, y)
+  std::tuple<uint64_t, uint64_t, uint64_t> kernel_version_tuple() const;
 
  private:
   KernelRelease() = default;

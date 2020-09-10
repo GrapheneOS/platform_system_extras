@@ -1,0 +1,8 @@
+{
+  "presubmit": [
+    {
+      "name": "perf2cfg_test",
+      "host": true
+    }
+  ]
+}

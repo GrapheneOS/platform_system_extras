@@ -20,6 +20,7 @@
 #include <gtest/gtest.h>
 #include <kver/kernel_release.h>
 #include <kver/kmi_version.h>
+#include <kver/utils.h>
 
 using std::string_literals::operator""s;
 
@@ -118,6 +119,64 @@ TEST(KernelRelease, ParseWithSuffixAllowed) {
   EXPECT_EQ(42, res->sub_level());
   EXPECT_EQ(12, res->android_release());
   EXPECT_EQ(1, res->generation());
+}
+
+bool IsKernelUpdateValid(const std::string& old_release, const std::string& new_release) {
+  return IsKernelUpdateValid(KernelRelease::Parse(old_release), KernelRelease::Parse(new_release));
+}
+
+TEST(KernelRelease, IsUpdateValid) {
+  EXPECT_TRUE(IsKernelUpdateValid("5.4.42-not-gki", "")) << "Legacy update should pass";
+  EXPECT_FALSE(IsKernelUpdateValid("5.4.42-android12-0", ""))
+      << "From GKI to non-GKI is a downgrade";
+
+  EXPECT_TRUE(IsKernelUpdateValid("5.4.42-not-gki", "5.4.42-android12-0"))
+      << "Non-GKI to GKI should pass";
+  EXPECT_TRUE(IsKernelUpdateValid("5.4.42-not-gki", "5.4.42-android12-0"))
+      << "Non-GKI to GKI should pass";
+
+  EXPECT_TRUE(IsKernelUpdateValid("5.4.42-android12-0", "5.4.42-android12-0"))
+      << "Update to self should be fine";
+
+  EXPECT_FALSE(IsKernelUpdateValid("5.4.42-android12-1", "5.4.42-android12-0"))
+      << "Should detect downgrade of KMI version";
+  EXPECT_FALSE(IsKernelUpdateValid("5.4.42-android13-0", "5.4.42-android12-0"))
+      << "Should detect downgrade of KMI version";
+  EXPECT_FALSE(IsKernelUpdateValid("5.10.42-android12-0", "5.4.42-android12-0"))
+      << "Should detect downgrade of KMI version";
+  EXPECT_FALSE(IsKernelUpdateValid("6.1.42-android12-0", "5.4.42-android12-0"))
+      << "Should detect downgrade of KMI version";
+
+  EXPECT_FALSE(IsKernelUpdateValid("5.4.42-android13-0", "5.10.42-android12-0"))
+      << "Should detect downgrade of Android release";
+
+  EXPECT_FALSE(IsKernelUpdateValid("5.4.43-android12-0", "5.4.42-android12-0"))
+      << "Should detect downgrade of w.x.y";
+  EXPECT_FALSE(IsKernelUpdateValid("5.10.5-android12-0", "5.4.42-android12-0"))
+      << "Should detect downgrade of w.x.y";
+  EXPECT_FALSE(IsKernelUpdateValid("6.1.10-android12-0", "5.4.42-android12-0"))
+      << "Should detect downgrade of w.x.y";
+
+  EXPECT_TRUE(IsKernelUpdateValid("5.4.42-android12-0", "5.4.42-android12-1"))
+      << "Update to newer KMI is fine";
+  EXPECT_TRUE(IsKernelUpdateValid("5.4.42-android12-0", "5.4.42-android13-0"))
+      << "Update to newer KMI is fine";
+  EXPECT_TRUE(IsKernelUpdateValid("5.4.42-android12-0", "5.10.42-android12-0"))
+      << "Update to newer KMI is fine";
+  EXPECT_TRUE(IsKernelUpdateValid("5.4.42-android12-0", "6.1.42-android12-0"))
+      << "Update to newer KMI is fine";
+
+  EXPECT_TRUE(IsKernelUpdateValid("5.4.42-android12-0", "5.4.42-android12-1"))
+      << "Update to newer KMI is fine";
+  EXPECT_TRUE(IsKernelUpdateValid("5.4.42-android12-1", "5.4.42-android13-0"))
+      << "Update to newer KMI is fine";
+
+  EXPECT_TRUE(IsKernelUpdateValid("5.4.42-android12-0", "5.4.43-android12-0"))
+      << "Update to newer w.x.y is fine";
+  EXPECT_TRUE(IsKernelUpdateValid("5.4.42-android12-0", "5.10.5-android12-0"))
+      << "Update to newer w.x.y is fine";
+  EXPECT_TRUE(IsKernelUpdateValid("5.4.42-android12-0", "6.1.5-android12-0"))
+      << "Update to newer w.x.y is fine";
 }
 
 }  // namespace android::kver

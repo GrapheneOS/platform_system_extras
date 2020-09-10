@@ -20,7 +20,7 @@
 
 #include <optional>
 #include <string>
-#include <string_view>
+#include <tuple>
 
 namespace android::kver {
 
@@ -41,6 +41,10 @@ class KmiVersion {
   uint64_t patch_level() const { return patch_level_; }
   uint64_t android_release() const { return release_; }
   uint64_t generation() const { return gen_; }
+
+  // Let a KMI version be w.x-androidz-k.
+  // Returns (w, x, z, k).
+  std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> tuple() const;
 
  private:
   friend class KernelRelease;
