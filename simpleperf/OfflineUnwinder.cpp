@@ -39,6 +39,7 @@
 #include <unwindstack/UserX86_64.h>
 
 #include "environment.h"
+#include "JITDebugReader.h"
 #include "OfflineUnwinder_impl.h"
 #include "perf_regs.h"
 #include "read_apk.h"
@@ -138,9 +139,11 @@ static unwindstack::MapInfo* CreateMapInfo(const MapEntry* entry) {
     }
   } else if (entry->flags & map_flags::PROT_JIT_SYMFILE_MAP) {
     // Remove location_in_file suffix, which isn't recognized by libunwindstack.
-    if (size_t colon_pos = entry->dso->GetDebugFilePath().find(':');
-        colon_pos != std::string::npos) {
-      name_holder = entry->dso->GetDebugFilePath().substr(0, colon_pos);
+    const std::string& path = entry->dso->GetDebugFilePath();
+    if (JITDebugReader::IsPathInJITSymFile(path)) {
+      size_t colon_pos = path.rfind(':');
+      CHECK_NE(colon_pos, std::string::npos);
+      name_holder = path.substr(0, colon_pos);
       name = name_holder.data();
     }
   }

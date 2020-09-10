@@ -15,32 +15,6 @@
 //
 
 cc_defaults {
-    name: "simpleperf_defaults",
-
-    cflags: [
-        "-Wall",
-        "-Wextra",
-        "-Werror",
-        "-Wimplicit-fallthrough",
-
-        // Try some more extreme warnings.
-        "-Wpedantic",
-        "-Wunreachable-code-aggressive",
-        "-Wno-zero-length-array",
-        "-Wno-c99-extensions",
-        "-Wno-language-extension-token",
-        "-Wno-gnu-zero-variadic-macro-arguments",
-        "-Wno-nested-anon-types",
-        "-Wno-gnu-statement-expression",
-        "-Wno-vla-extension",
-    ],
-    cppflags: [
-        "-Wno-sign-compare",
-        "-Wno-unused-parameter",
-    ],
-}
-
-cc_defaults {
     name: "libsimpleperf_elf_read_static_reqs_defaults",
     static_libs: [
         "libLLVMObject",
@@ -53,32 +27,6 @@ cc_defaults {
         "libz",
         "libziparchive",
     ],
-}
-
-cc_library_static {
-    name: "libsimpleperf_elf_read",
-    defaults: [
-        "simpleperf_defaults",
-        "libsimpleperf_elf_read_static_reqs_defaults",
-    ],
-    host_supported: true,
-
-    export_include_dirs: [
-        ".",
-    ],
-
-    static_libs: [
-        "libbase",
-    ],
-
-    srcs: [
-        "read_apk.cpp",
-        "read_elf.cpp",
-        "utils.cpp",
-    ],
-
-    group_static_libs: true,
-    use_version_lib: true,
 }
 
 cc_defaults {
