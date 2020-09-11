@@ -133,6 +133,11 @@ class JITDebugReader {
   // Flush all debug info registered before timestamp.
   bool FlushDebugInfo(uint64_t timestamp);
 
+  static bool IsPathInJITSymFile(const std::string& path) {
+    return path.find(std::string("_") + kJITAppCacheFile + ":") != path.npos ||
+           path.find(std::string("_") + kJITZygoteCacheFile + ":") != path.npos;
+  }
+
  private:
   enum class DescriptorType {
     kDEX,
