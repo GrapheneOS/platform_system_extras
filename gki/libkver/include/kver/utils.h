@@ -20,11 +20,25 @@
 #include <string>
 
 #include <kver/kernel_release.h>
+#include <kver/kmi_version.h>
 
 namespace android::kver {
 
 // Check if new_release is a valid update against old_release.
 bool IsKernelUpdateValid(const std::optional<KernelRelease>& old_kernel_release,
                          const std::optional<KernelRelease>& new_kernel_release);
+
+// These functions defines how kernel releases and KMI versions are related to
+// APEX package names and versions.
+
+// Defines how kernel release is mapped to APEX package names.
+// e.g. "com.android.gki.kmi_5_4_android12_0"
+std::string GetApexName(const KmiVersion& kmi_version);
+
+// Defines how kernel release is mapped to APEX versions.
+uint64_t GetApexVersion(const KernelRelease& kernel_release);
+
+// Return the APEX version for a factory GKI APEX.
+uint64_t GetFactoryApexVersion();
 
 }  // namespace android::kver
