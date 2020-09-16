@@ -89,3 +89,22 @@ apex_defaults {
     // Key to sign APEX. Left empty to use defaults.
     certificate: "",
 }
+
+// Helper binary to build APEX manifest for GKI.
+cc_binary_host {
+    name: "build_gki_apex_manifest",
+    srcs: [
+        "build_gki_apex_manifest.cpp",
+    ],
+    static_libs: [
+        "libbase",
+        "libgflags",
+        "libjsoncpp",
+        "libkver",
+        "liblog",
+    ],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+}
