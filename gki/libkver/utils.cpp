@@ -17,6 +17,7 @@
 #include <inttypes.h>
 #include <sys/utsname.h>
 
+#include <android-base/stringprintf.h>
 #include <android-base/logging.h>
 #include <kver/kernel_release.h>
 #include <kver/utils.h>
@@ -67,6 +68,24 @@ bool IsKernelUpdateValid(const std::optional<KernelRelease>& old_kernel_release,
   LOG(INFO) << "Allow to update from " << old_kernel_release->string() << " to "
             << new_kernel_release->string();
   return true;
+}
+
+// Keep in sync with kmi.go.
+std::string GetApexName(const KmiVersion& kmi_version) {
+  static constexpr const char* KMI_VERSION_APEX_NAME_FORMAT{
+      "com.android.gki.kmi_%" PRIu64 "_%" PRIu64 "_android%" PRIu64 "_%" PRIu64};
+  return android::base::StringPrintf(KMI_VERSION_APEX_NAME_FORMAT, kmi_version.version(), kmi_version.patch_level(),
+                                     kmi_version.android_release(), kmi_version.generation());
+}
+
+uint64_t GetApexVersion(const KernelRelease& kernel_release) {
+  // TODO(b/168255100): define APEX version
+  return kernel_release.sub_level();
+}
+
+uint64_t GetFactoryApexVersion() {
+  // TODO(b/168255100): define APEX version
+  return 1;
 }
 
 }  // namespace android::kver
