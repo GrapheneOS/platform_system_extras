@@ -1,8 +1,0 @@
-{
-  "presubmit": [
-    {
-      "name": "ota_from_raw_image_test",
-      "host": true
-    }
-  ]
-}
