@@ -138,100 +138,143 @@ def is_executable_available(executable, option='--help'):
     except OSError:
         return False
 
-DEFAULT_NDK_PATH = {
-    'darwin': 'Library/Android/sdk/ndk',
-    'linux': 'Android/Sdk/ndk',
-    'windows': 'AppData/Local/Android/sdk/ndk',
-}
 
-EXPECTED_TOOLS = {
-    'adb': {
-        'is_binutils': False,
-        'test_option': 'version',
-        'path_in_ndk': lambda _: '../platform-tools/adb',
-    },
-    'readelf': {
-        'is_binutils': True,
-        'accept_tool_without_arch': True,
-    },
-    'llvm-symbolizer': {
-        'is_binutils': False,
-        'path_in_ndk':
-            lambda platform: 'toolchains/llvm/prebuilt/%s-x86_64/bin/llvm-symbolizer' % platform,
-    },
-    'objdump': {
-        'is_binutils': True,
-    },
-    'strip': {
-        'is_binutils': True,
-    },
-}
+class ToolFinder:
+    """ Find tools in ndk or sdk. """
+    DEFAULT_SDK_PATH = {
+        'darwin': 'Library/Android/sdk',
+        'linux': 'Android/Sdk',
+        'windows': 'AppData/Local/Android/sdk',
+    }
 
-def _get_binutils_path_in_ndk(toolname, arch, platform):
-    if not arch:
-        arch = 'arm64'
-    if arch == 'arm64':
-        name = 'aarch64-linux-android-' + toolname
-    elif arch == 'arm':
-        name = 'arm-linux-androideabi-' + toolname
-    elif arch == 'x86_64':
-        name = 'x86_64-linux-android-' + toolname
-    elif arch == 'x86':
-        name = 'i686-linux-android-' + toolname
-    else:
-        log_fatal('unexpected arch %s' % arch)
-    path = 'toolchains/llvm/prebuilt/%s-x86_64/bin/%s' % (platform, name)
-    return (name, path)
+    EXPECTED_TOOLS = {
+        'adb': {
+            'is_binutils': False,
+            'test_option': 'version',
+            'path_in_sdk': 'platform-tools/adb',
+        },
+        'readelf': {
+            'is_binutils': True,
+            'accept_tool_without_arch': True,
+        },
+        'llvm-symbolizer': {
+            'is_binutils': False,
+            'path_in_ndk':
+                lambda platform: 'toolchains/llvm/prebuilt/%s-x86_64/bin/llvm-symbolizer' % platform,
+        },
+        'objdump': {
+            'is_binutils': True,
+        },
+        'strip': {
+            'is_binutils': True,
+        },
+    }
 
-def find_tool_path(toolname, ndk_path=None, arch=None):
-    if toolname not in EXPECTED_TOOLS:
+    @classmethod
+    def find_ndk_and_sdk_paths(cls, ndk_path=None):
+        # Use the given ndk path.
+        if ndk_path and os.path.isdir(ndk_path):
+            ndk_path = os.path.abspath(ndk_path)
+            yield ndk_path, cls.find_sdk_path(ndk_path)
+        # Find ndk in the parent directory containing simpleperf scripts.
+        ndk_path = os.path.dirname(os.path.abspath(get_script_dir()))
+        yield ndk_path, cls.find_sdk_path(ndk_path)
+        # Find ndk in the default sdk installation path.
+        if is_windows():
+            home = os.environ.get('HOMEDRIVE') + os.environ.get('HOMEPATH')
+        else:
+            home = os.environ.get('HOME')
+        if home:
+            platform = get_platform()
+            sdk_path = os.path.join(home, cls.DEFAULT_SDK_PATH[platform].replace('/', os.sep))
+            if os.path.isdir(sdk_path):
+                path = os.path.join(sdk_path, 'ndk')
+                if os.path.isdir(path):
+                    # Android Studio can install multiple ndk versions in 'ndk'.
+                    # Find the newest one.
+                    ndk_version = None
+                    for name in os.listdir(path):
+                        if not ndk_version or ndk_version < name:
+                            ndk_version = name
+                    if ndk_version:
+                        yield os.path.join(path, ndk_version), sdk_path
+            ndk_path = os.path.join(sdk_path, 'ndk-bundle')
+            if os.path.isdir(ndk_path):
+                yield ndk_path, sdk_path
+
+    @classmethod
+    def find_sdk_path(cls, ndk_path):
+        path = ndk_path
+        for _ in range(2):
+            path = os.path.dirname(path)
+            if os.path.isdir(os.path.join(path, 'platform-tools')):
+                return path
         return None
-    tool_info = EXPECTED_TOOLS[toolname]
-    is_binutils = tool_info['is_binutils']
-    test_option = tool_info.get('test_option', '--help')
-    platform = get_platform()
-    if is_binutils:
-        toolname_with_arch, path_in_ndk = _get_binutils_path_in_ndk(toolname, arch, platform)
-    else:
-        toolname_with_arch = toolname
-        path_in_ndk = tool_info['path_in_ndk'](platform)
-    path_in_ndk = path_in_ndk.replace('/', os.sep)
 
-    # 1. Find tool in the given ndk path.
-    if ndk_path:
-        path = os.path.join(ndk_path, path_in_ndk)
-        if is_executable_available(path, test_option):
-            return path
+    @classmethod
+    def _get_binutils_path_in_ndk(cls, toolname, arch, platform):
+        if not arch:
+            arch = 'arm64'
+        if arch == 'arm64':
+            name = 'aarch64-linux-android-' + toolname
+        elif arch == 'arm':
+            name = 'arm-linux-androideabi-' + toolname
+        elif arch == 'x86_64':
+            name = 'x86_64-linux-android-' + toolname
+        elif arch == 'x86':
+            name = 'i686-linux-android-' + toolname
+        else:
+            log_fatal('unexpected arch %s' % arch)
+        path = 'toolchains/llvm/prebuilt/%s-x86_64/bin/%s' % (platform, name)
+        return (name, path)
 
-    # 2. Find tool in the ndk directory containing simpleperf scripts.
-    path = os.path.join('..', path_in_ndk)
-    if is_executable_available(path, test_option):
-        return path
+    @classmethod
+    def find_tool_path(cls, toolname, ndk_path=None, arch=None):
+        tool_info = cls.EXPECTED_TOOLS.get(toolname)
+        if not tool_info:
+            return None
+        is_binutils = tool_info['is_binutils']
+        test_option = tool_info.get('test_option', '--help')
+        platform = get_platform()
+        path_in_ndk = None
+        path_in_sdk = None
+        if is_binutils:
+            toolname_with_arch, path_in_ndk = cls._get_binutils_path_in_ndk(
+                toolname, arch, platform)
+        else:
+            toolname_with_arch = toolname
+            if 'path_in_ndk' in tool_info:
+                path_in_ndk = tool_info['path_in_ndk'](platform)
+            elif 'path_in_sdk' in tool_info:
+                path_in_sdk = tool_info['path_in_sdk']
+        if path_in_ndk:
+            path_in_ndk = path_in_ndk.replace('/', os.sep)
+        elif path_in_sdk:
+            path_in_sdk = path_in_sdk.replace('/', os.sep)
 
-    # 3. Find tool in the default ndk installation path.
-    home = os.environ.get('HOMEPATH') if is_windows() else os.environ.get('HOME')
-    if home:
-        default_ndk_path = os.path.join(home, DEFAULT_NDK_PATH[platform].replace('/', os.sep))
-        if os.path.isdir(default_ndk_path):
-            # Android Studio can install multiple ndk versions. Find the newest one.
-            ndk_version = None
-            for name in os.listdir(default_ndk_path):
-                if not ndk_version or ndk_version < name:
-                    ndk_version = name
-            if ndk_version:
-                path = os.path.join(default_ndk_path, ndk_version, path_in_ndk)
+        for ndk_dir, sdk_dir in cls.find_ndk_and_sdk_paths(ndk_path):
+            if path_in_ndk and ndk_dir:
+                path = os.path.join(ndk_dir, path_in_ndk)
+                if is_executable_available(path, test_option):
+                    return path
+            elif path_in_sdk and sdk_dir:
+                path = os.path.join(sdk_dir, path_in_sdk)
                 if is_executable_available(path, test_option):
                     return path
 
-    # 4. Find tool in $PATH.
-    if is_executable_available(toolname_with_arch, test_option):
-        return toolname_with_arch
+        # Find tool in $PATH.
+        if is_executable_available(toolname_with_arch, test_option):
+            return toolname_with_arch
 
-    # 5. Find tool without arch in $PATH.
-    if is_binutils and tool_info.get('accept_tool_without_arch'):
-        if is_executable_available(toolname, test_option):
-            return toolname
-    return None
+        # Find tool without arch in $PATH.
+        if is_binutils and tool_info.get('accept_tool_without_arch'):
+            if is_executable_available(toolname, test_option):
+                return toolname
+        return None
+
+
+def find_tool_path(toolname, ndk_path=None, arch=None):
+    return ToolFinder.find_tool_path(toolname, ndk_path, arch)
 
 
 class AdbHelper(object):
@@ -241,6 +284,7 @@ class AdbHelper(object):
             log_exit("Can't find adb in PATH environment.")
         self.adb_path = adb_path
         self.enable_switch_to_root = enable_switch_to_root
+        self.serial_number = None
 
 
     def run(self, adb_args):
@@ -250,7 +294,12 @@ class AdbHelper(object):
     def run_and_return_output(self, adb_args, log_output=True, log_stderr=True):
         adb_args = [self.adb_path] + adb_args
         log_debug('run adb cmd: %s' % adb_args)
-        subproc = subprocess.Popen(adb_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        env = None
+        if self.serial_number:
+            env = os.environ.copy()
+            env['ANDROID_SERIAL'] = self.serial_number
+        subproc = subprocess.Popen(
+            adb_args, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout_data, stderr_data = subproc.communicate()
         stdout_data = bytes_to_str(stdout_data)
         stderr_data = bytes_to_str(stderr_data)
