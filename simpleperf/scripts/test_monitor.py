@@ -33,7 +33,7 @@ import subprocess
 import sys
 import time
 
-from utils import log_exit, log_info
+from utils import AdbHelper, log_exit, log_info
 
 Device = collections.namedtuple('Device', ['name', 'serial_number'])
 
@@ -131,7 +131,7 @@ class Task:
         env = os.environ.copy()
         if self.device.serial_number:
             env['ANDROID_SERIAL'] = self.device.serial_number
-        if not self._is_device_available(env):
+        if not self._is_device_available():
             for t in self.tests:
                 if t not in self.test_results:
                     self.test_results[t] = 'DEVICE_NOT_AVAILABLE'
@@ -151,10 +151,12 @@ class Task:
             shutil.rmtree(self.test_dir)
         os.mkdir(self.test_dir)
 
-    def _is_device_available(self, env):
-        res = subprocess.run('adb shell pwd', env=env, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, shell=True)
-        return res.returncode == 0
+    def _is_device_available(self):
+        adb = AdbHelper()
+        if self.device.serial_number:
+            adb.serial_number = self.device.serial_number
+        res, _ = adb.run_and_return_output(['shell', 'pwd'], log_output=False, log_stderr=False)
+        return res
 
     def update_status(self):
         if self.finished():
