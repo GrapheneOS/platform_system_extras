@@ -259,7 +259,8 @@ cc_library_static {
 
     target: {
         linux: {
-            // See note for libdexfile_support_static in simpleperf_ndk.
+            // See note for libdexfile_external_static_defaults in
+            // simpleperf_ndk.
             static_libs: ["libdexfile_support"],
         },
     },
@@ -303,6 +304,12 @@ cc_binary {
     name: "simpleperf_ndk",
     defaults: [
         "simpleperf_static_libs",
+        // In the NDK we need libdexfile_external_static which links
+        // libdexfile_external and its ART dependencies statically. However in
+        // other libraries we must use libdexfile_support, which dlopen's
+        // libdexfile_external.so from the ART APEX, to avoid getting ART
+        // internals in the system image.
+        "libdexfile_external_static_defaults",
     ],
     dist: {
         targets: ["simpleperf"],
@@ -355,14 +362,6 @@ cc_binary {
                 dir: "simpleperf/darwin/x86_64",
             },
         },
-        linux: {
-            // In the NDK we need libdexfile_support_static which links
-            // libdexfile_external and its ART dependencies statically. However
-            // in other libraries we must use libdexfile_support, which dlopen's
-            // libdexfile_external.so from the ART APEX, to avoid getting ART
-            // internals in the system image.
-            static_libs: ["libdexfile_support_static"],
-        },
         linux_glibc_x86: {
             dist: {
                 dir: "simpleperf/linux/x86",
@@ -391,6 +390,8 @@ cc_library {
     name: "libsimpleperf_record",
     defaults: [
         "simpleperf_static_libs",
+        // See note for libdexfile_external_static_defaults in simpleperf_ndk.
+        "libdexfile_external_static_defaults",
     ],
     export_include_dirs: ["include"],
     ldflags: ["-Wl,--exclude-libs,ALL"],
@@ -407,10 +408,6 @@ cc_library {
         windows: {
             enabled: false,
         },
-        linux: {
-            // See note for libdexfile_support_static in simpleperf_ndk.
-            static_libs: ["libdexfile_support"],
-        },
     },
 }
 
@@ -419,6 +416,8 @@ cc_library_shared {
     name: "libsimpleperf_report",
     defaults: [
         "simpleperf_static_libs",
+        // See note for libdexfile_external_static_defaults in simpleperf_ndk.
+        "libdexfile_external_static_defaults",
     ],
     dist: {
         targets: ["simpleperf"],
@@ -434,9 +433,6 @@ cc_library_shared {
         },
         linux: {
             ldflags: ["-Wl,--exclude-libs,ALL"],
-            // See note for libdexfile_support_static in simpleperf_ndk. This is
-            // part of the NDK, so use libdexfile_support_static.
-            static_libs: ["libdexfile_support_static"],
         },
         darwin: {
             dist: {
