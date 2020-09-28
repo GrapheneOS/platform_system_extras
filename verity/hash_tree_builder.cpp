@@ -17,6 +17,7 @@
 #include "verity/hash_tree_builder.h"
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 
 #include <android-base/file.h>
@@ -297,6 +298,22 @@ bool HashTreeBuilder::WriteHashTreeToFile(const std::string& output) const {
   return WriteHashTreeToFd(output_fd, 0);
 }
 
+bool HashTreeBuilder::WriteHashTree(
+    std::function<bool(const void*, size_t)> callback) const {
+  CHECK(!verity_tree_.empty());
+
+  // Reads reversely to output the verity tree top-down.
+  for (size_t i = verity_tree_.size(); i > 0; i--) {
+    const auto& level_blocks = verity_tree_[i - 1];
+    if (!callback(level_blocks.data(), level_blocks.size())) {
+      PLOG(ERROR) << "Failed to write the hash tree level " << i;
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool HashTreeBuilder::WriteHashTreeToFd(int fd, uint64_t offset) const {
   CHECK(!verity_tree_.empty());
 
@@ -305,17 +322,9 @@ bool HashTreeBuilder::WriteHashTreeToFd(int fd, uint64_t offset) const {
     return false;
   }
 
-  // Reads reversely to output the verity tree top-down.
-  for (size_t i = verity_tree_.size(); i > 0; i--) {
-    const auto& level_blocks = verity_tree_[i - 1];
-    if (!android::base::WriteFully(fd, level_blocks.data(),
-                                   level_blocks.size())) {
-      PLOG(ERROR) << "Failed to write the hash tree level " << i;
-      return false;
-    }
-  }
-
-  return true;
+  return WriteHashTree([fd](auto data, auto size) {
+    return android::base::WriteFully(fd, data, size);
+  });
 }
 
 void HashTreeBuilder::AppendPaddings(std::vector<unsigned char>* data) {
