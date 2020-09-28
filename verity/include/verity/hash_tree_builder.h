@@ -20,6 +20,7 @@
 #include <inttypes.h>
 #include <stddef.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -51,6 +52,7 @@ class HashTreeBuilder {
   // Writes the computed hash tree top-down to |output|.
   bool WriteHashTreeToFile(const std::string& output) const;
   bool WriteHashTreeToFd(int fd, uint64_t offset) const;
+  bool WriteHashTree(std::function<bool(const void*, size_t)> callback) const;
 
   size_t hash_size() const { return hash_size_; }
   const std::vector<unsigned char>& root_hash() const { return root_hash_; }
