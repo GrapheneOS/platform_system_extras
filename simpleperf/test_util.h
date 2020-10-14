@@ -45,10 +45,18 @@ bool IsRoot();
     }                                                                                              \
   } while (0)
 
+#define TEST_REQUIRE_ROOT() \
+  do { \
+    if (!IsRoot()) { \
+      GTEST_LOG_(INFO) << "Skip this test as it needs root privileges."; \
+      return; \
+    } \
+  } while (0)
+
 #if defined(__ANDROID__)
 #define TEST_REQUIRE_HOST_ROOT()
 #else
-#define TEST_REQUIRE_HOST_ROOT()  if (!IsRoot()) return
+#define TEST_REQUIRE_HOST_ROOT()  TEST_REQUIRE_ROOT()
 #endif
 
 bool IsInNativeAbi();
