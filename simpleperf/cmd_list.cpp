@@ -86,8 +86,7 @@ static EventTypeStatus IsEventTypeSupported(const EventType& event_type) {
 }
 
 static void PrintEventTypesOfType(const std::string& type_name, const std::string& type_desc,
-                                  const std::function<bool(const EventType&)>& is_type_fn,
-                                  const std::set<EventType>& event_types) {
+                                  const std::function<bool(const EventType&)>& is_type_fn) {
   printf("List of %s:\n", type_desc.c_str());
   if (GetBuildArch() == ARCH_ARM || GetBuildArch() == ARCH_ARM64) {
     if (type_name == "raw") {
@@ -103,11 +102,11 @@ static void PrintEventTypesOfType(const std::string& type_name, const std::strin
       printf("  # More cache events are available in `simpleperf list raw`.\n");
     }
   }
-  for (auto& event_type : event_types) {
+  auto callback = [&](const EventType& event_type) {
     if (is_type_fn(event_type)) {
       EventTypeStatus status = IsEventTypeSupported(event_type);
       if (status == EventTypeStatus::NOT_SUPPORTED) {
-        continue;
+        return true;
       }
       printf("  %s", event_type.name.c_str());
       if (status == EventTypeStatus::MAY_NOT_SUPPORTED) {
@@ -118,7 +117,9 @@ static void PrintEventTypesOfType(const std::string& type_name, const std::strin
       }
       printf("\n");
     }
-  }
+    return true;
+  };
+  EventTypeManager::Instance().ForEachType(callback);
   printf("\n");
 }
 
@@ -199,11 +200,9 @@ bool ListCommand::Run(const std::vector<std::string>& args) {
     }
   }
 
-  auto& event_types = GetAllEventTypes();
-
   for (auto& name : names) {
     auto it = type_map.find(name);
-    PrintEventTypesOfType(name, it->second.first, it->second.second, event_types);
+    PrintEventTypesOfType(name, it->second.first, it->second.second);
   }
   return true;
 }
