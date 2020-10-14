@@ -37,12 +37,14 @@ std::vector<std::string> GetAllEvents() {
   if (!CheckPerfEventLimit()) {
     return result;
   }
-  for (auto& type : GetAllEventTypes()) {
+  auto callback = [&](const EventType& type) {
     perf_event_attr attr = CreateDefaultPerfEventAttr(type);
     if (IsEventAttrSupported(attr, type.name)) {
       result.push_back(type.name);
     }
-  }
+    return true;
+  };
+  EventTypeManager::Instance().ForEachType(callback);
   return result;
 }
 
