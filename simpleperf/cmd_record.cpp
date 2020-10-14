@@ -395,6 +395,7 @@ class RecordCommand : public Command {
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
+  time_stat_.prepare_recording_time = GetSystemClock();
   ScopedCurrentArch scoped_arch(GetMachineArch());
   if (!CheckPerfEventLimit()) {
     return false;
@@ -425,7 +426,6 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   }
-  time_stat_.prepare_recording_time = GetSystemClock();
   if (!PrepareRecording(workload.get())) {
     return false;
   }
@@ -895,7 +895,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   trace_offcpu_ = options.PullBoolValue("--trace-offcpu");
 
   if (auto value = options.PullValue("--tracepoint-events"); value) {
-    if (!SetTracepointEventsFilePath(*value->str_value)) {
+    if (!EventTypeManager::Instance().ReadTracepointsFromFile(*value->str_value)) {
       return false;
     }
   }
