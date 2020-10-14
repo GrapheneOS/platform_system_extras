@@ -646,7 +646,7 @@ bool InAppRunner::RunCmdInApp(const std::string& cmd, const std::vector<std::str
     // them in tracepoint_file in shell's context, and pass the path of tracepoint_file to the
     // child process using --tracepoint-events option.
     const std::string tracepoint_file = "/data/local/tmp/tracepoint_events";
-    if (!android::base::WriteStringToFile(GetTracepointEvents(), tracepoint_file)) {
+    if (!EventTypeManager::Instance().WriteTracepointsToFile(tracepoint_file)) {
       PLOG(ERROR) << "Failed to store tracepoint events";
       return false;
     }
