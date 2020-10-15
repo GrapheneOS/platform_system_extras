@@ -715,7 +715,7 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
   }
 
   if (auto value = options.PullValue("--tracepoint-events"); value) {
-    if (!SetTracepointEventsFilePath(*value->str_value)) {
+    if (!EventTypeManager::Instance().ReadTracepointsFromFile(*value->str_value)) {
       return false;
     }
   }

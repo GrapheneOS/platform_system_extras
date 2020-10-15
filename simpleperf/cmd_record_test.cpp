@@ -91,8 +91,8 @@ TEST(record_cmd, system_wide_option) {
   TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-a"})));
 }
 
-void CheckEventType(const std::string& record_file, const std::string& event_type,
-                    uint64_t sample_period, uint64_t sample_freq) {
+static void CheckEventType(const std::string& record_file, const std::string& event_type,
+                           uint64_t sample_period, uint64_t sample_freq) {
   const EventType* type = FindEventTypeByName(event_type);
   ASSERT_TRUE(type != nullptr);
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(record_file);
@@ -339,12 +339,14 @@ bool HasPmuCounter() {
   static int has_pmu_counter = -1;
   if (has_pmu_counter == -1) {
     has_pmu_counter = 0;
-    for (auto& event_type : GetAllEventTypes()) {
+    auto callback = [&](const EventType& event_type) {
       if (event_type.IsPmuEvent()) {
         has_pmu_counter = 1;
-        break;
+        return false;
       }
-    }
+      return true;
+    };
+    EventTypeManager::Instance().ForEachType(callback);
   }
   return has_pmu_counter == 1;
 }
@@ -654,11 +656,11 @@ TEST(record_cmd, trace_offcpu_option) {
   OMIT_TEST_ON_NON_NATIVE_ABIS();
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({"--trace-offcpu", "-f", "1000"}, tmpfile.path));
+  CheckEventType(tmpfile.path, "sched:sched_switch", 1u, 0u);
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
   ASSERT_TRUE(reader);
   auto info_map = reader->GetMetaInfoFeature();
   ASSERT_EQ(info_map["trace_offcpu"], "true");
-  CheckEventType(tmpfile.path, "sched:sched_switch", 1u, 0u);
   // Release recording environment in perf.data, to avoid affecting tests below.
   reader.reset();
 

@@ -55,12 +55,7 @@ bool PrepareCommand::Run(const std::vector<std::string>&) {
     return false;
   }
   // Create tracepoint_events file.
-  if (!android::base::WriteStringToFile(GetTracepointEvents(),
-                                        "/data/local/tmp/tracepoint_events")) {
-    PLOG(ERROR) << "failed to write tracepoint_events file";
-    return false;
-  }
-  return true;
+  return EventTypeManager::Instance().WriteTracepointsToFile("/data/local/tmp/tracepoint_events");
 }
 
 class CollectCommand : public Command {

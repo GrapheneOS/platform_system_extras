@@ -231,21 +231,24 @@ bool IsCpuSupported(const perf_event_attr& attr) {
 }
 
 std::string GetEventNameByAttr(const perf_event_attr& attr) {
-  for (const auto& event_type : GetAllEventTypes()) {
+  std::string name = "unknown";
+  auto callback = [&](const EventType& event_type) {
     // An event type uses both type and config value to define itself. But etm event type
     // only uses type value (whose config value is used to set etm options).
     if (event_type.type == attr.type &&
-        (event_type.config == attr.config || IsEtmEventType(event_type.type))) {
-      std::string name = event_type.name;
+        (event_type.config == attr.config || event_type.IsEtmEvent())) {
+      name = event_type.name;
       if (attr.exclude_user && !attr.exclude_kernel) {
         name += ":k";
       } else if (attr.exclude_kernel && !attr.exclude_user) {
         name += ":u";
       }
-      return name;
+      return false;
     }
-  }
-  return "unknown";
+    return true;
+  };
+  EventTypeManager::Instance().ForEachType(callback);
+  return name;
 }
 
 }  // namespace simpleperf
