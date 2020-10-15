@@ -25,8 +25,8 @@ import os.path
 import shutil
 
 from simpleperf_report_lib import ReportLib
-from utils import log_info, log_warning, log_exit
-from utils import Addr2Nearestline, extant_dir, flatten_arg_list, is_windows, SourceFileSearcher
+from simpleperf_utils import (Addr2Nearestline, extant_dir, flatten_arg_list, is_windows,
+                              log_exit, log_info, log_warning, SourceFileSearcher)
 
 class SourceLine(object):
     def __init__(self, file_id, function, line):
