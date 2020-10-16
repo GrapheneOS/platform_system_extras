@@ -40,6 +40,7 @@
 #include "ETMRecorder.h"
 #include "event_selection_set.h"
 #include "get_test_data.h"
+#include "ProbeEvents.h"
 #include "record.h"
 #include "record_file.h"
 #include "test_util.h"
@@ -290,8 +291,7 @@ static bool InCloudAndroid() {
 bool HasTracepointEvents() {
   static int has_tracepoint_events = -1;
   if (has_tracepoint_events == -1) {
-    // Cloud Android doesn't support tracepoint events.
-    has_tracepoint_events = InCloudAndroid() ? 0 : 1;
+    has_tracepoint_events = (GetTraceFsDir() != nullptr) ? 1 : 0;
   }
   return has_tracepoint_events == 1;
 }
@@ -507,10 +507,7 @@ TEST(record_cmd, no_dump_symbols) {
 }
 
 TEST(record_cmd, dump_kernel_symbols) {
-  if (!IsRoot()) {
-    GTEST_LOG_(INFO) << "Test requires root privilege";
-    return;
-  }
+  TEST_REQUIRE_ROOT();
   TemporaryFile tmpfile;
   ASSERT_TRUE(RecordCmd()->Run({"-a", "-o", tmpfile.path, "-e", GetDefaultEvent(), "sleep", "1"}));
   bool has_kernel_symbols = false;
@@ -1130,4 +1127,14 @@ TEST(record_cmd, ParseAddrFilterOption) {
   // Test kernel filters.
   ASSERT_EQ(option_to_str("filter 0x12345678-0x1234567a"), "filter 0x12345678/0x2");
   ASSERT_EQ(option_to_str("start 0x12345678,stop 0x1234567a"), "start 0x12345678,stop 0x1234567a");
+}
+
+TEST(record_cmd, kprobe_option) {
+  TEST_REQUIRE_ROOT();
+  ProbeEvents probe_events;
+  if (!probe_events.IsKprobeSupported()) {
+    GTEST_LOG_(INFO) << "Skip this test as kprobe isn't supported by the kernel.";
+    return;
+  }
+  ASSERT_TRUE(RunRecordCmd({"-e", "kprobes:myprobe", "--kprobe", "p:myprobe do_sys_open"}));
 }

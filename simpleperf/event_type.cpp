@@ -78,7 +78,7 @@ class EventTypeFinder {
   }
 
   virtual const EventType* FindType(const std::string& name) {
-    const auto types = GetTypes();
+    const auto& types = GetTypes();
     auto it = types.find(EventType(name, 0, 0, "", ""));
     if (it != types.end()) {
       return &*it;
