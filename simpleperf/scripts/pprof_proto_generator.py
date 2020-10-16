@@ -30,8 +30,8 @@ import os
 import os.path
 
 from simpleperf_report_lib import ReportLib
-from utils import Addr2Nearestline, extant_dir, find_real_dso_path, find_tool_path, flatten_arg_list
-from utils import log_info, log_exit, ReadElf
+from simpleperf_utils import (Addr2Nearestline, extant_dir, find_real_dso_path, find_tool_path,
+                              flatten_arg_list, log_info, log_exit, ReadElf)
 try:
     import profile_pb2
 except ImportError:

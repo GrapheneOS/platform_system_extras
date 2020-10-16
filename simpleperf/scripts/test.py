@@ -55,10 +55,10 @@ import unittest
 from app_profiler import NativeLibDownloader
 from binary_cache_builder import BinaryCacheBuilder
 from simpleperf_report_lib import ReportLib
-from utils import log_exit, log_info, log_fatal
-from utils import AdbHelper, Addr2Nearestline, bytes_to_str, find_tool_path, get_script_dir
-from utils import is_elf_file, is_python3, is_windows, Objdump, ReadElf, remove, SourceFileSearcher
-from utils import str_to_bytes
+from simpleperf_utils import (
+    AdbHelper, Addr2Nearestline, bytes_to_str, find_tool_path, get_script_dir, is_elf_file,
+    is_python3, is_windows, log_exit, log_info, log_fatal, Objdump, ReadElf, remove,
+    SourceFileSearcher, str_to_bytes)
 
 try:
     # pylint: disable=unused-import

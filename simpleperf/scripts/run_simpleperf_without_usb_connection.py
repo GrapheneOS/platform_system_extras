@@ -32,7 +32,7 @@ import subprocess
 import sys
 import time
 
-from utils import AdbHelper, get_target_binary_path, log_warning
+from simpleperf_utils import AdbHelper, get_target_binary_path, log_warning
 
 def start_recording(args):
     adb = AdbHelper()
