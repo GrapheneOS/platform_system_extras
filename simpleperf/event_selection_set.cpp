@@ -788,6 +788,17 @@ bool EventSelectionSet::FinishReadMmapEventData() {
   return true;
 }
 
+void EventSelectionSet::CloseEventFiles() {
+  if (record_read_thread_) {
+    record_read_thread_->StopReadThread();
+  }
+  for (auto& group : groups_) {
+    for (auto& event : group) {
+      event.event_fds.clear();
+    }
+  }
+}
+
 bool EventSelectionSet::StopWhenNoMoreTargets(double check_interval_in_sec) {
   return loop_->AddPeriodicEvent(SecondToTimeval(check_interval_in_sec),
                                  [&]() { return CheckMonitoredTargets(); });

@@ -272,10 +272,13 @@ bool RecordReadThread::SyncKernelBuffer() {
 }
 
 bool RecordReadThread::StopReadThread() {
-  bool result = SendCmdToReadThread(CMD_STOP_THREAD, nullptr);
-  if (result) {
-    read_thread_->join();
-    read_thread_ = nullptr;
+  bool result = true;
+  if (read_thread_ != nullptr) {
+    result = SendCmdToReadThread(CMD_STOP_THREAD, nullptr);
+    if (result) {
+      read_thread_->join();
+      read_thread_ = nullptr;
+    }
   }
   return result;
 }

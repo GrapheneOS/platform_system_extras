@@ -31,6 +31,7 @@
 #include <android-base/logging.h>
 #include <android-base/file.h>
 #include <android-base/parseint.h>
+#include <android-base/scopeguard.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
@@ -48,6 +49,7 @@
 #include "IOEventLoop.h"
 #include "JITDebugReader.h"
 #include "OfflineUnwinder.h"
+#include "ProbeEvents.h"
 #include "read_apk.h"
 #include "read_elf.h"
 #include "read_symbol_map.h"
@@ -141,6 +143,7 @@ class RecordCommand : public Command {
 "               1) an event name listed in `simpleperf list`;\n"
 "               2) a raw PMU event in rN format. N is a hex number.\n"
 "                  For example, r1b selects event number 0x1b.\n"
+"               3) a kprobe event added by --kprobe option.\n"
 "             Modifiers can be added to define how the event should be\n"
 "             monitored. Possible modifiers are:\n"
 "                u - monitor user space events only\n"
@@ -151,6 +154,11 @@ class RecordCommand : public Command {
 "             same time.\n"
 "--trace-offcpu   Generate samples when threads are scheduled off cpu.\n"
 "                 Similar to \"-c 1 -e sched:sched_switch\".\n"
+"--kprobe kprobe_event1,kprobe_event2,...\n"
+"             Add kprobe events during recording. The kprobe_event format is in\n"
+"             Documentation/trace/kprobetrace.rst in the kernel. Examples:\n"
+"               'p:myprobe do_sys_open $arg2:string'   - add event kprobes:myprobe\n"
+"               'r:myretprobe do_sys_open $retval:s64' - add event kprobes:myretprobe\n"
 "\n"
 "Select monitoring options:\n"
 "-f freq      Set event sample frequency. It means recording at most [freq]\n"
@@ -305,7 +313,8 @@ class RecordCommand : public Command {
 
  private:
   bool ParseOptions(const std::vector<std::string>& args,
-                    std::vector<std::string>* non_option_args);
+                    std::vector<std::string>* non_option_args,
+                    ProbeEvents* probe_events);
   bool AdjustPerfEventLimit();
   bool PrepareRecording(Workload* workload);
   bool DoRecording(Workload* workload);
@@ -397,13 +406,22 @@ class RecordCommand : public Command {
 bool RecordCommand::Run(const std::vector<std::string>& args) {
   time_stat_.prepare_recording_time = GetSystemClock();
   ScopedCurrentArch scoped_arch(GetMachineArch());
+
   if (!CheckPerfEventLimit()) {
     return false;
   }
   AllowMoreOpenedFiles();
 
   std::vector<std::string> workload_args;
-  if (!ParseOptions(args, &workload_args)) {
+  ProbeEvents probe_events;
+  auto clear_probe_events_guard = android::base::make_scope_guard([this, &probe_events] {
+    if (!probe_events.IsEmpty()) {
+      // probe events can be deleted only when no perf event file is using them.
+      event_selection_set_.CloseEventFiles();
+      probe_events.Clear();
+    }
+  });
+  if (!ParseOptions(args, &workload_args, &probe_events)) {
     return false;
   }
   if (!AdjustPerfEventLimit()) {
@@ -727,7 +745,8 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
 }
 
 bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
-                                 std::vector<std::string>* non_option_args) {
+                                 std::vector<std::string>* non_option_args,
+                                 ProbeEvents* probe_events) {
   OptionValueMap options;
   std::vector<std::pair<OptionName, OptionValue>> ordered_options;
 
@@ -813,6 +832,17 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
           return false;
         }
         branch_sampling_ |= it->second;
+      }
+    }
+  }
+
+  if (auto values = options.PullValues("--kprobe"); values) {
+    for (const auto& value : values.value()) {
+      std::vector<std::string> cmds = android::base::Split(*value.str_value, ",");
+      for (const auto& cmd : cmds) {
+        if (!probe_events->AddKprobe(cmd)) {
+          return false;
+        }
       }
     }
   }

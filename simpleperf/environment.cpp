@@ -949,15 +949,16 @@ std::string GetCompleteProcessName(pid_t pid) {
 }
 
 const char* GetTraceFsDir() {
-  static const char* tracefs_dirs[] = {
-    "/sys/kernel/debug/tracing", "/sys/kernel/tracing"
-  };
-  for (const char* path : tracefs_dirs) {
-    if (IsDir(path)) {
-      return path;
+  static const char* tracefs_dir = nullptr;
+  if (tracefs_dir == nullptr) {
+    for (const char* path : {"/sys/kernel/debug/tracing", "/sys/kernel/tracing"}) {
+      if (IsDir(path)) {
+        tracefs_dir = path;
+        break;
+      }
     }
   }
-  return nullptr;
+  return tracefs_dir;
 }
 
 bool GetKernelVersion(int* major, int* minor) {
