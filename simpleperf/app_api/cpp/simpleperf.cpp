@@ -32,6 +32,8 @@
 
 namespace simpleperf {
 
+constexpr int AID_USER_OFFSET = 100000;
+
 enum RecordCmd {
   CMD_PAUSE_RECORDING = 1,
   CMD_RESUME_RECORDING,
@@ -477,6 +479,11 @@ ProfileSession::ProfileSession() {
     }
   }
   std::string app_data_dir = "/data/data/" + s;
+  int uid = getuid();
+  if (uid >= AID_USER_OFFSET) {
+    int user_id = uid / AID_USER_OFFSET;
+    app_data_dir = "/data/user/" + std::to_string(user_id) + "/" + s;
+  }
   impl_ = new ProfileSessionImpl(app_data_dir);
 }
 

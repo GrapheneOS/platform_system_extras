@@ -607,15 +607,17 @@ std::set<pid_t> WaitForAppProcesses(const std::string& package_name) {
   }
 }
 
-bool IsAppDebuggable(const std::string& package_name) {
-  return Workload::RunCmd({"run-as", package_name, "echo", ">/dev/null", "2>/dev/null"}, false);
-}
-
 namespace {
+
+bool IsAppDebuggable(const std::string& user_id, const std::string& package_name) {
+  return Workload::RunCmd(
+      {"run-as", package_name, "--user", user_id, "echo", ">/dev/null", "2>/dev/null"}, false);
+}
 
 class InAppRunner {
  public:
-  InAppRunner(const std::string& package_name) : package_name_(package_name) {}
+  InAppRunner(int user_id, const std::string& package_name)
+      : user_id_(std::to_string(user_id)), package_name_(package_name) {}
   virtual ~InAppRunner() {
     if (!tracepoint_file_.empty()) {
       unlink(tracepoint_file_.c_str());
@@ -628,6 +630,7 @@ class InAppRunner {
  protected:
   virtual std::vector<std::string> GetPrefixArgs(const std::string& cmd) = 0;
 
+  const std::string user_id_;
   const std::string package_name_;
   std::string tracepoint_file_;
 };
@@ -737,19 +740,24 @@ bool InAppRunner::RunCmdInApp(const std::string& cmd, const std::vector<std::str
 
 class RunAs : public InAppRunner {
  public:
-  RunAs(const std::string& package_name) : InAppRunner(package_name) {}
+  RunAs(int user_id, const std::string& package_name) : InAppRunner(user_id, package_name) {}
   virtual ~RunAs() {
     if (simpleperf_copied_in_app_) {
-      Workload::RunCmd({"run-as", package_name_, "rm", "-rf", "simpleperf"});
+      Workload::RunCmd({"run-as", package_name_, "--user", user_id_, "rm", "-rf", "simpleperf"});
     }
   }
   bool Prepare() override;
 
  protected:
   std::vector<std::string> GetPrefixArgs(const std::string& cmd) {
-    return {"run-as", package_name_,
-            simpleperf_copied_in_app_ ? "./simpleperf" : simpleperf_path_, cmd,
-            "--app", package_name_};
+    return {"run-as",
+            package_name_,
+            "--user",
+            user_id_,
+            simpleperf_copied_in_app_ ? "./simpleperf" : simpleperf_path_,
+            cmd,
+            "--app",
+            package_name_};
   }
 
   bool simpleperf_copied_in_app_ = false;
@@ -758,7 +766,7 @@ class RunAs : public InAppRunner {
 
 bool RunAs::Prepare() {
   // Test if run-as can access the package.
-  if (!IsAppDebuggable(package_name_)) {
+  if (!IsAppDebuggable(user_id_, package_name_)) {
     return false;
   }
   // run-as can't run /data/local/tmp/simpleperf directly. So copy simpleperf binary if needed.
@@ -773,7 +781,8 @@ bool RunAs::Prepare() {
   if (android::base::StartsWith(simpleperf_path_, "/system")) {
     return true;
   }
-  if (!Workload::RunCmd({"run-as", package_name_, "cp", simpleperf_path_, "simpleperf"})) {
+  if (!Workload::RunCmd(
+          {"run-as", package_name_, "--user", user_id_, "cp", simpleperf_path_, "simpleperf"})) {
     return false;
   }
   simpleperf_copied_in_app_ = true;
@@ -782,14 +791,15 @@ bool RunAs::Prepare() {
 
 class SimpleperfAppRunner : public InAppRunner {
  public:
-  SimpleperfAppRunner(const std::string& package_name) : InAppRunner(package_name) {}
+  SimpleperfAppRunner(int user_id, const std::string& package_name)
+      : InAppRunner(user_id, package_name) {}
   bool Prepare() override {
     return GetAndroidVersion() >= kAndroidVersionP + 1;
   }
 
  protected:
   std::vector<std::string> GetPrefixArgs(const std::string& cmd) {
-    return {"simpleperf_app_runner", package_name_, cmd};
+    return {"simpleperf_app_runner", package_name_, "--user", user_id_, cmd};
   }
 };
 
@@ -803,18 +813,33 @@ void SetRunInAppToolForTesting(bool run_as, bool simpleperf_app_runner) {
   allow_simpleperf_app_runner = simpleperf_app_runner;
 }
 
+static int GetCurrentUserId() {
+  std::unique_ptr<FILE, decltype(&pclose)> fd(popen("am get-current-user", "r"), pclose);
+  if (fd) {
+    char buf[128];
+    if (fgets(buf, sizeof(buf), fd.get()) != nullptr) {
+      int user_id;
+      if (android::base::ParseInt(android::base::Trim(buf), &user_id, 0)) {
+        return user_id;
+      }
+    }
+  }
+  return 0;
+}
+
 bool RunInAppContext(const std::string& app_package_name, const std::string& cmd,
                      const std::vector<std::string>& args, size_t workload_args_size,
                      const std::string& output_filepath, bool need_tracepoint_events) {
+  int user_id = GetCurrentUserId();
   std::unique_ptr<InAppRunner> in_app_runner;
   if (allow_run_as) {
-    in_app_runner.reset(new RunAs(app_package_name));
+    in_app_runner.reset(new RunAs(user_id, app_package_name));
     if (!in_app_runner->Prepare()) {
       in_app_runner = nullptr;
     }
   }
   if (!in_app_runner && allow_simpleperf_app_runner) {
-    in_app_runner.reset(new SimpleperfAppRunner(app_package_name));
+    in_app_runner.reset(new SimpleperfAppRunner(user_id, app_package_name));
     if (!in_app_runner->Prepare()) {
       in_app_runner = nullptr;
     }
