@@ -33,7 +33,7 @@ import os.path
 import shutil
 import zipfile
 
-from utils import AdbHelper, get_target_binary_path, log_exit, log_info, remove
+from simpleperf_utils import AdbHelper, get_target_binary_path, log_exit, log_info, remove
 
 def prepare_recording(args):
     adb = AdbHelper()
