@@ -642,7 +642,11 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
     app_package_name_ = *value->str_value;
   }
   if (auto value = options.PullValue("--cpu"); value) {
-    cpus_ = GetCpusFromString(*value->str_value);
+    if (auto cpus = GetCpusFromString(*value->str_value); cpus) {
+      cpus_.assign(cpus->begin(), cpus->end());
+    } else {
+      return false;
+    }
   }
 
   csv_ = options.PullBoolValue("--csv");
@@ -655,21 +659,17 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
   }
   interval_only_values_ = options.PullBoolValue("--interval-only-values");
 
-  if (auto values = options.PullValues("-e"); values) {
-    for (const auto& value : values.value()) {
-      for (const auto& event_type : Split(*value.str_value, ",")) {
-        if (!event_selection_set_.AddEventType(event_type)) {
-          return false;
-        }
+  for (const OptionValue& value : options.PullValues("-e")) {
+    for (const auto& event_type : Split(*value.str_value, ",")) {
+      if (!event_selection_set_.AddEventType(event_type)) {
+        return false;
       }
     }
   }
 
-  if (auto values = options.PullValues("--group"); values) {
-    for (const auto& value : values.value()) {
-      if (!event_selection_set_.AddEventGroup(Split(*value.str_value, ","))) {
-        return false;
-      }
+  for (const OptionValue& value : options.PullValues("--group")) {
+    if (!event_selection_set_.AddEventGroup(Split(*value.str_value, ","))) {
+      return false;
     }
   }
 
@@ -686,13 +686,11 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
   report_per_core_ = options.PullBoolValue("--per-core");
   report_per_thread_ = options.PullBoolValue("--per-thread");
 
-  if (auto values = options.PullValues("-p"); values) {
-    for (const auto& value : values.value()) {
-      std::set<pid_t> pids;
-      if (!GetValidThreadsFromThreadString(*value.str_value, &pids)) {
-        return false;
-      }
-      event_selection_set_.AddMonitoredProcesses(pids);
+  for (const OptionValue& value : options.PullValues("-p")) {
+    if (auto pids = GetTidsFromString(*value.str_value, true); pids) {
+      event_selection_set_.AddMonitoredProcesses(pids.value());
+    } else {
+      return false;
     }
   }
 
@@ -704,13 +702,11 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
     stop_signal_fd_.reset(static_cast<int>(value->uint_value));
   }
 
-  if (auto values = options.PullValues("-t"); values) {
-    for (const auto& value : values.value()) {
-      std::set<pid_t> tids;
-      if (!GetValidThreadsFromThreadString(*value.str_value, &tids)) {
-        return false;
-      }
-      event_selection_set_.AddMonitoredThreads(tids);
+  for (const OptionValue& value : options.PullValues("-t")) {
+    if (auto tids = GetTidsFromString(*value.str_value, true); tids) {
+      event_selection_set_.AddMonitoredThreads(tids.value());
+    } else {
+      return false;
     }
   }
 

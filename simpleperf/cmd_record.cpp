@@ -803,7 +803,11 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   }
 
   if (auto value = options.PullValue("--cpu"); value) {
-    cpus_ = GetCpusFromString(*value->str_value);
+    if (auto cpus = GetCpusFromString(*value->str_value); cpus) {
+      cpus_.assign(cpus->begin(), cpus->end());
+    } else {
+      return false;
+    }
   }
 
   if (!options.PullUintValue("--cpu-percent", &cpu_time_max_percent_, 1, 100)) {
@@ -822,27 +826,23 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
 
   in_app_context_ = options.PullBoolValue("--in-app");
 
-  if (auto values = options.PullValues("-j"); values) {
-    for (const auto& value : values.value()) {
-      std::vector<std::string> branch_sampling_types = android::base::Split(*value.str_value, ",");
-      for (auto& type : branch_sampling_types) {
-        auto it = branch_sampling_type_map.find(type);
-        if (it == branch_sampling_type_map.end()) {
-          LOG(ERROR) << "unrecognized branch sampling filter: " << type;
-          return false;
-        }
-        branch_sampling_ |= it->second;
+  for (const OptionValue& value : options.PullValues("-j")) {
+    std::vector<std::string> branch_sampling_types = android::base::Split(*value.str_value, ",");
+    for (auto& type : branch_sampling_types) {
+      auto it = branch_sampling_type_map.find(type);
+      if (it == branch_sampling_type_map.end()) {
+        LOG(ERROR) << "unrecognized branch sampling filter: " << type;
+        return false;
       }
+      branch_sampling_ |= it->second;
     }
   }
 
-  if (auto values = options.PullValues("--kprobe"); values) {
-    for (const auto& value : values.value()) {
-      std::vector<std::string> cmds = android::base::Split(*value.str_value, ",");
-      for (const auto& cmd : cmds) {
-        if (!probe_events->AddKprobe(cmd)) {
-          return false;
-        }
+  for (const OptionValue& value : options.PullValues("--kprobe")) {
+    std::vector<std::string> cmds = android::base::Split(*value.str_value, ",");
+    for (const auto& cmd : cmds) {
+      if (!probe_events->AddKprobe(cmd)) {
+        return false;
       }
     }
   }
@@ -871,13 +871,11 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     out_fd_.reset(static_cast<int>(value->uint_value));
   }
 
-  if (auto values = options.PullValues("-p"); values) {
-    for (const auto& value : values.value()) {
-      std::set<pid_t> pids;
-      if (!GetValidThreadsFromThreadString(*value.str_value, &pids)) {
-        return false;
-      }
-      event_selection_set_.AddMonitoredProcesses(pids);
+  for (const OptionValue& value : options.PullValues("-p")) {
+    if (auto pids = GetTidsFromString(*value.str_value, true); pids) {
+      event_selection_set_.AddMonitoredProcesses(pids.value());
+    } else {
+      return false;
     }
   }
 
@@ -912,13 +910,11 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     }
   }
 
-  if (auto values = options.PullValues("-t"); values) {
-    for (const auto& value : values.value()) {
-      std::set<pid_t> tids;
-      if (!GetValidThreadsFromThreadString(*value.str_value, &tids)) {
-        return false;
-      }
-      event_selection_set_.AddMonitoredThreads(tids);
+  for (const OptionValue& value : options.PullValues("-t")) {
+    if (auto tids = GetTidsFromString(*value.str_value, true); tids) {
+      event_selection_set_.AddMonitoredThreads(tids.value());
+    } else {
+      return false;
     }
   }
 

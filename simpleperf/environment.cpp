@@ -89,7 +89,9 @@ std::vector<int> GetOnlineCpus() {
   LineReader reader(fp);
   char* line;
   if ((line = reader.ReadLine()) != nullptr) {
-    result = GetCpusFromString(line);
+    if (auto cpus = GetCpusFromString(line); cpus) {
+      result.assign(cpus->begin(), cpus->end());
+    }
   }
   CHECK(!result.empty()) << "can't get online cpu information";
   return result;
@@ -255,23 +257,6 @@ bool GetModuleBuildId(const std::string& module_name, BuildId* build_id,
                       const std::string& sysfs_dir) {
   std::string notefile = sysfs_dir + "/module/" + module_name + "/notes/.note.gnu.build-id";
   return GetBuildIdFromNoteFile(notefile, build_id) == ElfStatus::NO_ERROR;
-}
-
-bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>* tid_set) {
-  std::vector<std::string> strs = android::base::Split(tid_str, ",");
-  for (const auto& s : strs) {
-    int tid;
-    if (!android::base::ParseInt(s.c_str(), &tid, 0)) {
-      LOG(ERROR) << "Invalid tid '" << s << "'";
-      return false;
-    }
-    if (!IsDir(android::base::StringPrintf("/proc/%d", tid))) {
-      LOG(ERROR) << "Non existing thread '" << tid << "'";
-      return false;
-    }
-    tid_set->insert(tid);
-  }
-  return true;
 }
 
 /*
