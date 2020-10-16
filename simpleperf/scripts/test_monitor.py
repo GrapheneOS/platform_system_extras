@@ -33,7 +33,7 @@ import subprocess
 import sys
 import time
 
-from utils import AdbHelper, log_exit, log_info
+from simpleperf_utils import AdbHelper, log_exit, log_info
 
 Device = collections.namedtuple('Device', ['name', 'serial_number'])
 

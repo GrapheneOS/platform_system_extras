@@ -23,9 +23,8 @@ import os
 import sys
 
 from simpleperf_report_lib import ReportLib
-from utils import log_info, log_exit
-from utils import Addr2Nearestline, get_script_dir, Objdump, open_report_in_browser
-from utils import SourceFileSearcher
+from simpleperf_utils import (Addr2Nearestline, get_script_dir, log_exit, log_info, Objdump,
+                              open_report_in_browser, SourceFileSearcher)
 
 MAX_CALLSTACK_LENGTH = 750
 

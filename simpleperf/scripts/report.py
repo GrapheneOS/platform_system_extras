@@ -39,7 +39,7 @@ except ImportError:
     from tkFont import Font
     from ttk import *
 
-from utils import *
+from simpleperf_utils import *
 
 PAD_X = 3
 PAD_Y = 3
