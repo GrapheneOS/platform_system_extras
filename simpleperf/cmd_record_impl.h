@@ -50,6 +50,7 @@ inline const OptionFormatMap& GetRecordCmdOptionFormats() {
       {"--group", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
       {"--in-app", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
       {"-j", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
+      {"--kprobe", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::NOT_ALLOWED}},
       {"-m", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
       {"--no-callchain-joiner",
        {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},

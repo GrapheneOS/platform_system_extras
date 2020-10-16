@@ -169,6 +169,7 @@ class EventSelectionSet {
   bool PrepareToReadMmapEventData(const std::function<bool(Record*)>& callback);
   bool SyncKernelBuffer();
   bool FinishReadMmapEventData();
+  void CloseEventFiles();
 
   const simpleperf::RecordStat& GetRecordStat() {
     return record_read_thread_->GetStat();
