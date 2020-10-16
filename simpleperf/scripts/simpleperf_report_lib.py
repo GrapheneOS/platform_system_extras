@@ -23,7 +23,7 @@
 import collections
 import ctypes as ct
 import struct
-from utils import bytes_to_str, get_host_binary_path, is_windows, str_to_bytes
+from simpleperf_utils import bytes_to_str, get_host_binary_path, is_windows, str_to_bytes
 
 
 def _get_native_lib():

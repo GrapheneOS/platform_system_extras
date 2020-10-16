@@ -599,7 +599,7 @@ python_library_host {
     name: "simpleperf_report_lib",
     srcs: [
         "scripts/simpleperf_report_lib.py",
-        "scripts/utils.py",
+        "scripts/simpleperf_utils.py",
     ],
     data: [
         "scripts/bin/darwin/x86_64/libsimpleperf_report.dylib",
