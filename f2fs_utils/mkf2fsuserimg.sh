@@ -8,7 +8,7 @@ Usage:
 ${0##*/} OUTPUT_FILE SIZE
          [-S] [-C FS_CONFIG] [-f SRC_DIR] [-D PRODUCT_OUT]
          [-s FILE_CONTEXTS] [-t MOUNT_POINT] [-T TIMESTAMP]
-         [-L LABEL] [--prjquota] [--casefold]
+         [-L LABEL] [--prjquota] [--casefold] [--compression]
 EOT
 }
 
@@ -82,6 +82,11 @@ if [[ "$1" == "--prjquota" ]]; then
 fi
 if [[ "$1" == "--casefold" ]]; then
   MKFS_OPTS+=" -O casefold -C utf8"
+  shift;
+fi
+
+if [[ "$1" == "--compression" ]]; then
+  MKFS_OPTS+=" -O compression,extra_attr"
   shift;
 fi
 
