@@ -44,7 +44,7 @@ import copy
 import re
 import subprocess
 
-from utils import bytes_to_str, log_exit, log_fatal, get_host_binary_path
+from simpleperf_utils import bytes_to_str, log_exit, log_fatal, get_host_binary_path
 
 
 class MapEntry(object):

@@ -40,7 +40,7 @@ import sys
 SCRIPTS_PATH = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.append(SCRIPTS_PATH)
 from simpleperf_report_lib import ReportLib
-from utils import log_exit, log_fatal, log_info, AdbHelper, open_report_in_browser
+from simpleperf_utils import log_exit, log_fatal, log_info, AdbHelper, open_report_in_browser
 
 from data_types import Process
 from svg_renderer import get_proper_scaled_time_string, render_svg

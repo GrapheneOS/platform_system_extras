@@ -26,8 +26,8 @@ import os.path
 import shutil
 
 from simpleperf_report_lib import ReportLib
-from utils import AdbHelper, extant_dir, extant_file, flatten_arg_list, log_info, log_warning
-from utils import ReadElf, set_log_level
+from simpleperf_utils import (AdbHelper, extant_dir, extant_file, flatten_arg_list, log_info,
+                              log_warning, ReadElf, set_log_level)
 
 def is_jit_symfile(dso_name):
     return dso_name.split('/')[-1].startswith('TemporaryFile')
