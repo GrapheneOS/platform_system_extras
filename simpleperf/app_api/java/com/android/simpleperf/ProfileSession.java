@@ -17,6 +17,7 @@
 package com.android.simpleperf;
 
 import android.os.Build;
+import android.system.Os;
 import android.system.OsConstants;
 
 import android.support.annotation.NonNull;
@@ -106,7 +107,14 @@ public class ProfileSession {
         if (packageName.isEmpty()) {
             throw new Error("failed to find packageName");
         }
-        mAppDataDir = "/data/data/" + packageName;
+        final int AID_USER_OFFSET = 100000;
+        int uid = Os.getuid();
+        if (uid >= AID_USER_OFFSET) {
+            int user_id = uid / AID_USER_OFFSET;
+            mAppDataDir = "/data/user/" + user_id + "/" + packageName;
+        } else {
+            mAppDataDir = "/data/data/" + packageName;
+        }
         mSimpleperfDataDir = mAppDataDir + "/simpleperf_data";
     }
 
