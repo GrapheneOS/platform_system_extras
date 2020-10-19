@@ -30,6 +30,7 @@
 #include <android-base/unique_fd.h>
 
 #include "environment.h"
+#include "event_type.h"
 #include "utils.h"
 
 using android::base::ParseInt;
@@ -41,6 +42,8 @@ using android::base::WriteStringToFd;
 using namespace simpleperf;
 
 namespace simpleperf {
+
+static const std::string kKprobeEventPrefix = "kprobes:";
 
 bool ProbeEvents::ParseKprobeEventName(const std::string& kprobe_cmd, ProbeEvent* event) {
   // kprobe_cmd is in formats described in <kernel>/Documentation/trace/kprobetrace.rst:
@@ -116,12 +119,26 @@ bool ProbeEvents::AddKprobe(const std::string& kprobe_cmd) {
   return true;
 }
 
+bool ProbeEvents::IsProbeEvent(const std::string& event_name) {
+  return android::base::StartsWith(event_name, kKprobeEventPrefix);
+}
+
+bool ProbeEvents::CreateProbeEventIfNotExist(const std::string& event_name) {
+  if (EventTypeManager::Instance().FindType(event_name) != nullptr) {
+    return true;
+  }
+  std::string function_name = event_name.substr(kKprobeEventPrefix.size());
+  return AddKprobe(StringPrintf("p:%s %s", function_name.c_str(), function_name.c_str()));
+}
+
 void ProbeEvents::Clear() {
   for (const auto& kprobe_event : kprobe_events_) {
     if (!WriteKprobeCmd("-:" + kprobe_event.group_name + "/" + kprobe_event.event_name)) {
       LOG(WARNING) << "failed to delete kprobe event " << kprobe_event.group_name << ":"
                    << kprobe_event.event_name;
     }
+    EventTypeManager::Instance().RemoveProbeType(kprobe_event.group_name + ":" +
+                                                 kprobe_event.event_name);
   }
   kprobe_events_.clear();
 }
@@ -141,9 +158,6 @@ bool ProbeEvents::WriteKprobeCmd(const std::string& kprobe_cmd) {
     PLOG(ERROR) << "failed to write '" << kprobe_cmd << "' to " << path;
     return false;
   }
-  fd.reset();
-  std::string data;
-  android::base::ReadFileToString(path, &data);
   return true;
 }
 

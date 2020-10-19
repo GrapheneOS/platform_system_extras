@@ -1137,4 +1137,7 @@ TEST(record_cmd, kprobe_option) {
     return;
   }
   ASSERT_TRUE(RunRecordCmd({"-e", "kprobes:myprobe", "--kprobe", "p:myprobe do_sys_open"}));
+  // A default kprobe event is created if not given an explicit --kprobe option.
+  ASSERT_TRUE(RunRecordCmd({"-e", "kprobes:do_sys_open"}));
+  ASSERT_TRUE(RunRecordCmd({"--group", "kprobes:do_sys_open"}));
 }
