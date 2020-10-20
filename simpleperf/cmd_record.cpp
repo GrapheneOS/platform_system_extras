@@ -1814,7 +1814,6 @@ bool RecordCommand::DumpBuildIdFeature() {
 }
 
 bool RecordCommand::DumpFileFeature() {
-  std::vector<Dso*> dso_v = thread_tree_.GetAllDsos();
   return record_file_writer_->WriteFileFeatures(thread_tree_.GetAllDsos());
 }
 
