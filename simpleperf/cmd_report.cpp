@@ -41,6 +41,8 @@
 #include "tracing.h"
 #include "utils.h"
 
+using android::base::Split;
+
 namespace {
 
 static std::set<std::string> branch_sort_keys = {
@@ -62,6 +64,7 @@ struct SampleEntry {
   // accumuated when appearing in other sample's callchain
   uint64_t accumulated_period;
   uint64_t sample_count;
+  int cpu;
   pid_t pid;
   pid_t tid;
   const char* thread_comm;
@@ -72,13 +75,14 @@ struct SampleEntry {
   // a callchain tree representing all callchains in the sample
   CallChainRoot<SampleEntry> callchain;
 
-  SampleEntry(uint64_t time, uint64_t period, uint64_t accumulated_period,
-              uint64_t sample_count, const ThreadEntry* thread,
-              const MapEntry* map, const Symbol* symbol, uint64_t vaddr_in_file)
+  SampleEntry(uint64_t time, uint64_t period, uint64_t accumulated_period, uint64_t sample_count,
+              int cpu, const ThreadEntry* thread, const MapEntry* map, const Symbol* symbol,
+              uint64_t vaddr_in_file)
       : time(time),
         period(period),
         accumulated_period(accumulated_period),
         sample_count(sample_count),
+        cpu(cpu),
         pid(thread->pid),
         tid(thread->tid),
         thread_comm(thread->comm),
@@ -120,11 +124,13 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
         total_period_(0),
         total_error_callchains_(0) {}
 
-  void SetFilters(const std::unordered_set<int>& pid_filter,
+  void SetFilters(const std::unordered_set<int>& cpu_filter,
+                  const std::unordered_set<int>& pid_filter,
                   const std::unordered_set<int>& tid_filter,
                   const std::unordered_set<std::string>& comm_filter,
                   const std::unordered_set<std::string>& dso_filter,
                   const std::unordered_set<std::string>& symbol_filter) {
+    cpu_filter_ = cpu_filter;
     pid_filter_ = pid_filter;
     tid_filter_ = tid_filter;
     comm_filter_ = comm_filter;
@@ -169,8 +175,8 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
         thread_tree_->FindSymbol(map, r.ip_data.ip, &vaddr_in_file);
     uint64_t period = GetPeriod(r);
     *acc_info = period;
-    return InsertSample(std::unique_ptr<SampleEntry>(
-        new SampleEntry(r.time_data.time, period, 0, 1, thread, map, symbol, vaddr_in_file)));
+    return InsertSample(std::make_unique<SampleEntry>(r.time_data.time, period, 0, 1, r.Cpu(),
+                                                      thread, map, symbol, vaddr_in_file));
   }
 
   SampleEntry* CreateBranchSample(const SampleRecord& r,
@@ -185,9 +191,9 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
     uint64_t to_vaddr_in_file;
     const Symbol* to_symbol =
         thread_tree_->FindSymbol(to_map, item.to, &to_vaddr_in_file);
-    std::unique_ptr<SampleEntry> sample(
-        new SampleEntry(r.time_data.time, r.period_data.period, 0, 1, thread,
-                        to_map, to_symbol, to_vaddr_in_file));
+    auto sample =
+        std::make_unique<SampleEntry>(r.time_data.time, r.period_data.period, 0, 1, r.Cpu(), thread,
+                                      to_map, to_symbol, to_vaddr_in_file);
     sample->branch_from.map = from_map;
     sample->branch_from.symbol = from_symbol;
     sample->branch_from.vaddr_in_file = from_vaddr_in_file;
@@ -207,8 +213,8 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
     }
     uint64_t vaddr_in_file;
     const Symbol* symbol = thread_tree_->FindSymbol(map, ip, &vaddr_in_file);
-    std::unique_ptr<SampleEntry> callchain_sample(new SampleEntry(
-        sample->time, 0, acc_info, 0, thread, map, symbol, vaddr_in_file));
+    auto callchain_sample = std::make_unique<SampleEntry>(sample->time, 0, acc_info, 0, sample->cpu,
+                                                          thread, map, symbol, vaddr_in_file);
     callchain_sample->thread_comm = sample->thread_comm;
     return InsertCallChainSample(std::move(callchain_sample), callchain);
   }
@@ -222,25 +228,22 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
   }
 
   bool FilterSample(const SampleEntry* sample) override {
-    if (!pid_filter_.empty() &&
-        pid_filter_.find(sample->pid) == pid_filter_.end()) {
+    if (!cpu_filter_.empty() && cpu_filter_.count(sample->cpu) == 0) {
       return false;
     }
-    if (!tid_filter_.empty() &&
-        tid_filter_.find(sample->tid) == tid_filter_.end()) {
+    if (!pid_filter_.empty() && pid_filter_.count(sample->pid) == 0) {
       return false;
     }
-    if (!comm_filter_.empty() &&
-        comm_filter_.find(sample->thread_comm) == comm_filter_.end()) {
+    if (!tid_filter_.empty() && tid_filter_.count(sample->tid) == 0) {
       return false;
     }
-    if (!dso_filter_.empty() &&
-        dso_filter_.find(sample->map->dso->GetReportPath().data()) == dso_filter_.end()) {
+    if (!comm_filter_.empty() && comm_filter_.count(sample->thread_comm) == 0) {
       return false;
     }
-    if (!symbol_filter_.empty() &&
-        symbol_filter_.find(sample->symbol->DemangledName()) ==
-            symbol_filter_.end()) {
+    if (!dso_filter_.empty() && dso_filter_.count(sample->map->dso->GetReportPath().data()) == 0) {
+      return false;
+    }
+    if (!symbol_filter_.empty() && symbol_filter_.count(sample->symbol->DemangledName()) == 0) {
       return false;
     }
     return true;
@@ -260,6 +263,7 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
  private:
   ThreadTree* thread_tree_;
 
+  std::unordered_set<int> cpu_filter_;
   std::unordered_set<int> pid_filter_;
   std::unordered_set<int> tid_filter_;
   std::unordered_set<std::string> comm_filter_;
@@ -326,6 +330,7 @@ struct SampleTreeBuilderOptions {
   std::unordered_set<std::string> comm_filter;
   std::unordered_set<std::string> dso_filter;
   std::unordered_set<std::string> symbol_filter;
+  std::unordered_set<int> cpu_filter;
   std::unordered_set<int> pid_filter;
   std::unordered_set<int> tid_filter;
   bool use_branch_address;
@@ -341,7 +346,7 @@ struct SampleTreeBuilderOptions {
     } else {
       builder.reset(new EventCountSampleTreeBuilder(comparator, thread_tree));
     }
-    builder->SetFilters(pid_filter, tid_filter, comm_filter, dso_filter, symbol_filter);
+    builder->SetFilters(cpu_filter, pid_filter, tid_filter, comm_filter, dso_filter, symbol_filter);
     builder->SetBranchSampleOption(use_branch_address);
     builder->SetCallChainSampleOptions(accumulate_callchain, build_callchain,
                                        use_caller_as_callchain_root);
@@ -384,6 +389,9 @@ class ReportCommand : public Command {
 "      option.\n"
 "--children    Print the overhead accumulated by appearing in the callchain.\n"
 "--comms comm1,comm2,...   Report only for selected comms.\n"
+"--cpu   cpu_item1,cpu_item2,...\n"
+"                  Report samples on the selected cpus. cpu_item can be cpu\n"
+"                  number like 1, or cpu range like 0-3.\n"
 "--csv                     Report in csv format.\n"
 "--dsos dso1,dso2,...      Report only for selected dsos.\n"
 "--full-callgraph  Print full call graph. Used with -g option. By default,\n"
@@ -445,6 +453,8 @@ class ReportCommand : public Command {
 
  private:
   bool ParseOptions(const std::vector<std::string>& args);
+  bool BuildSampleComparatorAndDisplayer(bool print_sample_count,
+                                         const std::vector<std::string>& sort_keys);
   void ReadMetaInfoFromRecordFile();
   bool ReadEventAttrFromRecordFile();
   bool ReadFeaturesFromRecordFile();
@@ -517,137 +527,140 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
 }
 
 bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
-  bool demangle = true;
-  bool show_ip_for_unknown_symbol = true;
-  std::string vmlinux;
-  bool print_sample_count = false;
-  std::vector<std::string> sort_keys = {"comm", "pid", "tid", "dso", "symbol"};
+  static OptionFormatMap option_formats = {
+    {"-b", {OptionValueType::NONE, OptionType::SINGLE}},
+    {"--children", {OptionValueType::NONE, OptionType::SINGLE}},
+    {"--comms", {OptionValueType::STRING, OptionType::MULTIPLE}},
+    {"--cpu", {OptionValueType::STRING, OptionType::MULTIPLE}},
+    {"--csv", {OptionValueType::NONE, OptionType::SINGLE}},
+    {"--dsos", {OptionValueType::STRING, OptionType::MULTIPLE}},
+    {"--full-callgraph", {OptionValueType::NONE, OptionType::SINGLE}},
+    {"-g", {OptionValueType::OPT_STRING, OptionType::SINGLE}},
+    {"-i", {OptionValueType::STRING, OptionType::SINGLE}},
+    {"--kallsyms", {OptionValueType::STRING, OptionType::SINGLE}},
+    {"--max-stack", {OptionValueType::UINT, OptionType::SINGLE}},
+    {"-n", {OptionValueType::NONE, OptionType::SINGLE}},
+    {"--no-demangle", {OptionValueType::NONE, OptionType::SINGLE}},
+    {"--no-show-ip", {OptionValueType::NONE, OptionType::SINGLE}},
+    {"-o", {OptionValueType::STRING, OptionType::SINGLE}},
+    {"--percent-limit", {OptionValueType::DOUBLE, OptionType::SINGLE}},
+    {"--pids", {OptionValueType::STRING, OptionType::MULTIPLE}},
+    {"--tids", {OptionValueType::STRING, OptionType::MULTIPLE}},
+    {"--raw-period", {OptionValueType::NONE, OptionType::SINGLE}},
+    {"--sort", {OptionValueType::STRING, OptionType::SINGLE}},
+    {"--symbols", {OptionValueType::STRING, OptionType::MULTIPLE}},
+    {"--symfs", {OptionValueType::STRING, OptionType::SINGLE}},
+    {"--vmlinux", {OptionValueType::STRING, OptionType::SINGLE}},
+  };
 
-  for (size_t i = 0; i < args.size(); ++i) {
-    if (args[i] == "-b") {
-      use_branch_address_ = true;
-    } else if (args[i] == "--children") {
-      accumulate_callchain_ = true;
-    } else if (args[i] == "--comms" || args[i] == "--dsos") {
-      std::unordered_set<std::string>& filter =
-          (args[i] == "--comms" ? sample_tree_builder_options_.comm_filter
-                                : sample_tree_builder_options_.dso_filter);
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      std::vector<std::string> strs = android::base::Split(args[i], ",");
-      filter.insert(strs.begin(), strs.end());
-    } else if (args[i] == "--csv") {
-      report_csv_ = true;
-    } else if (args[i] == "--full-callgraph") {
-      brief_callgraph_ = false;
-    } else if (args[i] == "-g") {
-      print_callgraph_ = true;
-      accumulate_callchain_ = true;
-      if (i + 1 < args.size() && args[i + 1][0] != '-') {
-        ++i;
-        if (args[i] == "callee") {
-          callgraph_show_callee_ = true;
-        } else if (args[i] == "caller") {
-          callgraph_show_callee_ = false;
-        } else {
-          LOG(ERROR) << "Unknown argument with -g option: " << args[i];
-          return false;
-        }
-      }
-    } else if (args[i] == "-i") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      record_filename_ = args[i];
+  OptionValueMap options;
+  std::vector<std::pair<OptionName, OptionValue>> ordered_options;
+  std::vector<std::string> non_option_args;
 
-    } else if (args[i] == "--kallsyms") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      std::string kallsyms;
-      if (!android::base::ReadFileToString(args[i], &kallsyms)) {
-        LOG(ERROR) << "Can't read kernel symbols from " << args[i];
-        return false;
-      }
-      Dso::SetKallsyms(kallsyms);
-    } else if (args[i] == "--max-stack") {
-      if (!GetUintOption(args, &i, &callgraph_max_stack_)) {
-        return false;
-      }
-    } else if (args[i] == "-n") {
-      print_sample_count = true;
+  if (!PreprocessOptions(args, option_formats, &options, &ordered_options, &non_option_args)) {
+    return false;
+  }
 
-    } else if (args[i] == "--no-demangle") {
-      demangle = false;
-    } else if (args[i] == "--no-show-ip") {
-      show_ip_for_unknown_symbol = false;
-    } else if (args[i] == "-o") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      report_filename_ = args[i];
-    } else if (args[i] == "--percent-limit") {
-      if (!GetDoubleOption(args, &i, &callgraph_percent_limit_)) {
-        return false;
-      }
-    } else if (args[i] == "--pids" || args[i] == "--tids") {
-      const std::string& option = args[i];
-      std::unordered_set<int>& filter =
-          (option == "--pids" ? sample_tree_builder_options_.pid_filter
-                              : sample_tree_builder_options_.tid_filter);
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      std::vector<std::string> strs = android::base::Split(args[i], ",");
-      for (const auto& s : strs) {
-        int id;
-        if (!android::base::ParseInt(s.c_str(), &id, 0)) {
-          LOG(ERROR) << "invalid id in " << option << " option: " << s;
-          return false;
-        }
-        filter.insert(id);
-      }
-    } else if (args[i] == "--raw-period") {
-      raw_period_ = true;
-    } else if (args[i] == "--sort") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      sort_keys = android::base::Split(args[i], ",");
-    } else if (args[i] == "--symbols") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      std::vector<std::string> strs = android::base::Split(args[i], ";");
-      sample_tree_builder_options_.symbol_filter.insert(strs.begin(), strs.end());
-    } else if (args[i] == "--symfs") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      if (!Dso::SetSymFsDir(args[i])) {
-        return false;
-      }
-    } else if (args[i] == "--vmlinux") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      vmlinux = args[i];
+  // Process options.
+  use_branch_address_ = options.PullBoolValue("-b");
+  accumulate_callchain_ = options.PullBoolValue("--children");
+  for (const OptionValue& value : options.PullValues("--comms")) {
+    std::vector<std::string> strs = Split(*value.str_value, ",");
+    sample_tree_builder_options_.comm_filter.insert(strs.begin(), strs.end());
+  }
+  for (const OptionValue& value : options.PullValues("--cpu")) {
+    if (auto cpus = GetCpusFromString(*value.str_value); cpus) {
+      sample_tree_builder_options_.cpu_filter.insert(cpus->begin(), cpus->end());
     } else {
-      ReportUnknownOption(args, i);
       return false;
     }
   }
-
-  Dso::SetDemangle(demangle);
-  if (!vmlinux.empty()) {
-    Dso::SetVmlinux(vmlinux);
+  report_csv_ = options.PullBoolValue("--csv");
+  for (const OptionValue& value : options.PullValues("--dsos")) {
+    std::vector<std::string> strs = Split(*value.str_value, ",");
+    sample_tree_builder_options_.dso_filter.insert(strs.begin(), strs.end());
   }
+  brief_callgraph_ = !options.PullBoolValue("--full-callgraph");
 
-  if (show_ip_for_unknown_symbol) {
+  if (auto value = options.PullValue("-g"); value) {
+    print_callgraph_ = true;
+    accumulate_callchain_ = true;
+    if (value->str_value != nullptr) {
+      if (*value->str_value == "callee") {
+        callgraph_show_callee_ = true;
+      } else if (*value->str_value == "caller") {
+        callgraph_show_callee_ = false;
+      } else {
+        LOG(ERROR) << "Unknown argument with -g option: " << *value->str_value;
+        return false;
+      }
+    }
+  }
+  options.PullStringValue("-i", &record_filename_);
+  if (auto value = options.PullValue("--kallsyms"); value) {
+    std::string kallsyms;
+    if (!android::base::ReadFileToString(*value->str_value, &kallsyms)) {
+      LOG(ERROR) << "Can't read kernel symbols from " << *value->str_value;
+      return false;
+    }
+    Dso::SetKallsyms(kallsyms);
+  }
+  if (!options.PullUintValue("--max-stack", &callgraph_max_stack_)) {
+    return false;
+  }
+  bool print_sample_count = options.PullBoolValue("-n");
+
+  Dso::SetDemangle(!options.PullBoolValue("--no-demangle"));
+
+  if (!options.PullBoolValue("--no-show-ip")) {
     thread_tree_.ShowIpForUnknownSymbol();
   }
 
+  options.PullStringValue("-o", &report_filename_);
+  if (!options.PullDoubleValue("--percent-limit", &callgraph_percent_limit_, 0)) {
+    return false;
+  }
+
+  for (const OptionValue& value : options.PullValues("--pids")) {
+    if (auto pids = GetTidsFromString(*value.str_value, false); pids) {
+      sample_tree_builder_options_.pid_filter.insert(pids->begin(), pids->end());
+    } else {
+      return false;
+    }
+  }
+  for (const OptionValue& value : options.PullValues("--tids")) {
+    if (auto tids = GetTidsFromString(*value.str_value, false); tids) {
+      sample_tree_builder_options_.tid_filter.insert(tids->begin(), tids->end());
+    } else {
+      return false;
+    }
+  }
+  raw_period_ = options.PullBoolValue("--raw-period");
+
+  std::vector<std::string> sort_keys = {"comm", "pid", "tid", "dso", "symbol"};
+  if (auto value = options.PullValue("--sort"); value) {
+    sort_keys = Split(*value->str_value, ",");
+  }
+
+  for (const OptionValue& value : options.PullValues("--symbols")) {
+    std::vector<std::string> symbols = Split(*value.str_value, ";");
+    sample_tree_builder_options_.symbol_filter.insert(symbols.begin(), symbols.end());
+  }
+
+  if (auto value = options.PullValue("--symfs"); value) {
+    if (!Dso::SetSymFsDir(*value->str_value)) {
+      return false;
+    }
+  }
+  if (auto value = options.PullValue("--vmlinux"); value) {
+    Dso::SetVmlinux(*value->str_value);
+  }
+  CHECK(options.values.empty());
+  return BuildSampleComparatorAndDisplayer(print_sample_count, sort_keys);
+}
+
+bool ReportCommand::BuildSampleComparatorAndDisplayer(bool print_sample_count,
+                                                      const std::vector<std::string>& sort_keys) {
   SampleDisplayer<SampleEntry, SampleTree> displayer;
   displayer.SetReportFormat(report_csv_);
   SampleComparator<SampleEntry> comparator;

@@ -101,8 +101,17 @@ TEST(utils, ArchiveHelper) {
 }
 
 TEST(utils, GetCpusFromString) {
-  ASSERT_EQ(GetCpusFromString(""), std::vector<int>());
-  ASSERT_EQ(GetCpusFromString("0-2"), std::vector<int>({0, 1, 2}));
-  ASSERT_EQ(GetCpusFromString("0,2-3"), std::vector<int>({0, 2, 3}));
-  ASSERT_EQ(GetCpusFromString("1,0-3,3,4"), std::vector<int>({0, 1, 2, 3, 4}));
+  ASSERT_EQ(GetCpusFromString("0-2"), std::make_optional<std::set<int>>({0, 1, 2}));
+  ASSERT_EQ(GetCpusFromString("0,2-3"), std::make_optional<std::set<int>>({0, 2, 3}));
+  ASSERT_EQ(GetCpusFromString("1,0-3,3,4"), std::make_optional<std::set<int>>({0, 1, 2, 3, 4}));
+  ASSERT_EQ(GetCpusFromString("0,1-3, 5, 7-8"),
+            std::make_optional<std::set<int>>({0, 1, 2, 3, 5, 7, 8}));
+  ASSERT_EQ(GetCpusFromString(""), std::nullopt);
+  ASSERT_EQ(GetCpusFromString("-3"), std::nullopt);
+  ASSERT_EQ(GetCpusFromString("3,2-1"), std::nullopt);
+}
+
+TEST(utils, GetTidsFromString) {
+  ASSERT_EQ(GetTidsFromString("0,12,9", false), std::make_optional(std::set<pid_t>({0, 9, 12})));
+  ASSERT_EQ(GetTidsFromString("-2", false), std::nullopt);
 }

@@ -59,7 +59,7 @@ enum class AppRunnerType {
 struct OptionFormat {
   OptionValueType value_type;
   OptionType type;
-  AppRunnerType app_runner_type;
+  AppRunnerType app_runner_type = AppRunnerType::NOT_ALLOWED;
 };
 
 using OptionFormatMap = std::unordered_map<OptionName, OptionFormat>;
@@ -103,6 +103,13 @@ struct OptionValueMap {
     return true;
   }
 
+  void PullStringValue(const OptionName& name, std::string* value) {
+    if (auto option_value = PullValue(name); option_value) {
+      CHECK(option_value->str_value != nullptr);
+      *value = *option_value->str_value;
+    }
+  }
+
   std::optional<OptionValue> PullValue(const OptionName& name) {
     std::optional<OptionValue> res;
     if (auto it = values.find(name); it != values.end()) {
@@ -112,7 +119,7 @@ struct OptionValueMap {
     return res;
   }
 
-  std::optional<std::vector<OptionValue>> PullValues(const OptionName& name) {
+  std::vector<OptionValue> PullValues(const OptionName& name) {
     auto pair = values.equal_range(name);
     if (pair.first != pair.second) {
       std::vector<OptionValue> res;
