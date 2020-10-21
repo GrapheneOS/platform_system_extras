@@ -120,8 +120,7 @@ void ext4_create_fs_aux_info()
 	aux_info.blocks_per_tind = aux_info.blocks_per_dind * aux_info.blocks_per_dind;
 
 	aux_info.bg_desc_blocks =
-		DIV_ROUND_UP(aux_info.groups * sizeof(struct ext2_group_desc),
-			info.block_size);
+		DIV_ROUND_UP(aux_info.groups * (size_t)info.bg_desc_size, info.block_size);
 
 	aux_info.default_i_flags = EXT4_NOATIME_FL;
 
@@ -166,7 +165,8 @@ void ext4_create_fs_aux_info()
 	if (!aux_info.sb)
 		critical_error_errno("calloc");
 
-	aux_info.bg_desc = (struct ext2_group_desc *)calloc(info.block_size, aux_info.bg_desc_blocks);
+	aux_info.bg_desc =
+		(struct ext2_group_desc *)calloc(aux_info.groups, sizeof(struct ext2_group_desc));
 	if (!aux_info.bg_desc)
 		critical_error_errno("calloc");
 	aux_info.xattrs = NULL;
@@ -266,6 +266,51 @@ u64 get_file_size(int fd)
 	return computed_size;
 }
 
+static void read_block_group_descriptors(int fd)
+{
+	size_t size = info.block_size * (size_t)aux_info.bg_desc_blocks;
+	void *buf = malloc(size);
+	ssize_t ret;
+
+	if (!buf)
+		critical_error("failed to alloc buffer");
+
+	ret = read(fd, buf, size);
+	if (ret < 0) {
+		free(buf);
+		critical_error_errno("failed to read block group descriptors");
+	}
+	if (ret != size) {
+		free(buf);
+		critical_error("failed to read all the block group descriptors");
+	}
+	const struct ext4_group_desc *gdp = (const struct ext4_group_desc *)buf;
+	bool extended = (info.bg_desc_size >= EXT4_MIN_DESC_SIZE_64BIT);
+	for (size_t i = 0; i < aux_info.groups; i++) {
+		aux_info.bg_desc[i].bg_block_bitmap =
+			(extended ? (u64)gdp->bg_block_bitmap_hi << 32 : 0) |
+			gdp->bg_block_bitmap_lo;
+		aux_info.bg_desc[i].bg_inode_bitmap =
+			(extended ? (u64)gdp->bg_inode_bitmap_hi << 32 : 0) |
+			gdp->bg_inode_bitmap_lo;
+		aux_info.bg_desc[i].bg_inode_table =
+			(extended ? (u64)gdp->bg_inode_table_hi << 32 : 0) |
+			gdp->bg_inode_table_lo;
+		aux_info.bg_desc[i].bg_free_blocks_count =
+			(extended ? (u32)gdp->bg_free_blocks_count_hi << 16 : 0) |
+			gdp->bg_free_blocks_count_lo;
+		aux_info.bg_desc[i].bg_free_inodes_count =
+			(extended ? (u32)gdp->bg_free_inodes_count_hi << 16 : 0) |
+			gdp->bg_free_inodes_count_lo;
+		aux_info.bg_desc[i].bg_used_dirs_count =
+			(extended ? (u32)gdp->bg_used_dirs_count_hi << 16 : 0) |
+			gdp->bg_used_dirs_count_lo;
+		aux_info.bg_desc[i].bg_flags = gdp->bg_flags;
+		gdp = (const struct ext4_group_desc *)((u8 *)gdp + info.bg_desc_size);
+	}
+	free(buf);
+}
+
 int read_ext(int fd, int verbose)
 {
 	off64_t ret;
@@ -283,11 +328,7 @@ int read_ext(int fd, int verbose)
 	if (ret < 0)
 		critical_error_errno("failed to seek to block group descriptors");
 
-	ret = read(fd, aux_info.bg_desc, info.block_size * aux_info.bg_desc_blocks);
-	if (ret < 0)
-		critical_error_errno("failed to read block group descriptors");
-	if (ret != (int)info.block_size * (int)aux_info.bg_desc_blocks)
-		critical_error("failed to read all of block group descriptors");
+	read_block_group_descriptors(fd);
 
 	if (verbose) {
 		printf("Found filesystem with parameters:\n");
@@ -300,6 +341,7 @@ int read_ext(int fd, int verbose)
 		printf("    Blocks: %" PRIext4u64 "\n", aux_info.len_blocks);
 		printf("    Block groups: %d\n", aux_info.groups);
 		printf("    Reserved block group size: %d\n", info.bg_desc_reserve_blocks);
+		printf("    Block group descriptor size: %d\n", info.bg_desc_size);
 		printf("    Used %d/%d inodes and %d/%d blocks\n",
 			aux_info.sb->s_inodes_count - aux_info.sb->s_free_inodes_count,
 			aux_info.sb->s_inodes_count,

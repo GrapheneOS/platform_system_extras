@@ -85,16 +85,13 @@ struct block_group_info;
 struct xattr_list_element;
 
 struct ext2_group_desc {
-	u32 bg_block_bitmap;
-	u32 bg_inode_bitmap;
-	u32 bg_inode_table;
-	u16 bg_free_blocks_count;
-	u16 bg_free_inodes_count;
-	u16 bg_used_dirs_count;
+	u64 bg_block_bitmap;
+	u64 bg_inode_bitmap;
+	u64 bg_inode_table;
+	u32 bg_free_blocks_count;
+	u32 bg_free_inodes_count;
+	u32 bg_used_dirs_count;
 	u16 bg_flags;
-	u32 bg_reserved[2];
-	u16 bg_reserved16;
-	u16 bg_checksum;
 };
 
 struct fs_aux_info {
