@@ -109,8 +109,8 @@ class EventTypeManager {
   // Iterate through all event types, and stop when callback returns false.
   bool ForEachType(const std::function<bool (const EventType&)>& callback);
   const EventType* FindType(const std::string& name);
-
   const EventType* AddRawType(const std::string& name);
+  void RemoveProbeType(const std::string& name);
   const EventTypeFinder* GetScopedFinder() { return scoped_finder_.get(); }
   void SetScopedFinder(std::unique_ptr<EventTypeFinder>&& finder);
 
