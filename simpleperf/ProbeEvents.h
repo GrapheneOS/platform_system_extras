@@ -38,7 +38,9 @@ class ProbeEvents {
 
   // Accept kprobe cmd as in <linux_kernel>/Documentation/trace/kprobetrace.rst.
   bool AddKprobe(const std::string& kprobe_cmd);
-
+  bool IsProbeEvent(const std::string& event_name);
+  // If not exist, add a kprobe tracepoint at the function entry.
+  bool CreateProbeEventIfNotExist(const std::string& event_name);
   bool IsEmpty() const { return kprobe_events_.empty(); }
   void Clear();
 
