@@ -34,6 +34,9 @@ int ext4_parse_sb(struct ext4_super_block *sb, struct fs_info *info)
 	info->feat_compat = sb->s_feature_compat;
 	info->feat_incompat = sb->s_feature_incompat;
 	info->bg_desc_reserve_blocks = sb->s_reserved_gdt_blocks;
+	info->bg_desc_size =
+		(sb->s_feature_incompat & EXT4_FEATURE_INCOMPAT_64BIT) ?
+		sb->s_desc_size : EXT4_MIN_DESC_SIZE;
 	info->label = sb->s_volume_name;
 
 	len_blocks = ((uint64_t)sb->s_blocks_count_hi << 32) +
