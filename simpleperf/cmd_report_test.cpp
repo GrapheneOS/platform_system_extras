@@ -16,10 +16,12 @@
 
 #include <gtest/gtest.h>
 
+#include <regex>
 #include <set>
 #include <unordered_map>
 
 #include <android-base/file.h>
+#include <android-base/parseint.h>
 #include <android-base/strings.h>
 
 #include "command.h"
@@ -63,6 +65,17 @@ class ReportCommandTest : public ::testing::Test {
     }
     ASSERT_GE(lines.size(), 2u);
     success = true;
+  }
+
+  size_t GetSampleCount() {
+    std::smatch m;
+    if (std::regex_search(content, m, std::regex(R"(Samples: (\d+))"))) {
+      size_t count;
+      if (android::base::ParseUint(m[1], &count)) {
+        return count;
+      }
+    }
+    return 0;
   }
 
   std::string content;
@@ -221,7 +234,7 @@ TEST_F(ReportCommandTest, wrong_pid_filter_option) {
         Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--pids", "2,bogus"});
         exit(success ? 0 : 1);
       },
-      testing::ExitedWithCode(1), "invalid id in --pids option: bogus");
+      testing::ExitedWithCode(1), "Invalid tid 'bogus'");
 }
 
 TEST_F(ReportCommandTest, tid_filter_option) {
@@ -245,7 +258,7 @@ TEST_F(ReportCommandTest, wrong_tid_filter_option) {
         Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--tids", "2,bogus"});
         exit(success ? 0 : 1);
       },
-      testing::ExitedWithCode(1), "invalid id in --tids option: bogus");
+      testing::ExitedWithCode(1), "Invalid tid 'bogus'");
 }
 
 TEST_F(ReportCommandTest, comm_filter_option) {
@@ -522,6 +535,22 @@ TEST_F(ReportCommandTest, generic_jit_symbols) {
   Report("perf_with_generic_git_symbols.data", {"--sort", "symbol"});
   ASSERT_TRUE(success);
   ASSERT_NE(std::string::npos, content.find("generic_jit_symbol_one"));
+}
+
+TEST_F(ReportCommandTest, cpu_option) {
+  Report("perf.data");
+  ASSERT_TRUE(success);
+  ASSERT_EQ(2409, GetSampleCount());
+  Report("perf.data", {"--cpu", "2"});
+  ASSERT_TRUE(success);
+  ASSERT_EQ(603, GetSampleCount());
+  Report("perf.data", {"--cpu", "2-6,16"});
+  ASSERT_TRUE(success);
+  ASSERT_EQ(1806, GetSampleCount());
+  Report("perf.data", {"--cpu", "2-6", "--cpu", "16"});
+  ASSERT_TRUE(success);
+  ASSERT_EQ(1806, GetSampleCount());
+  ASSERT_FALSE(ReportCmd()->Run({"-i", GetTestData("perf.data"), "--cpu", "-2"}));
 }
 
 #if defined(__linux__)
