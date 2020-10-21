@@ -989,6 +989,11 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     } else if (name == "-e") {
       std::vector<std::string> event_types = android::base::Split(*value.str_value, ",");
       for (auto& event_type : event_types) {
+        if (probe_events->IsProbeEvent(event_type)) {
+          if (!probe_events->CreateProbeEventIfNotExist(event_type)) {
+            return false;
+          }
+        }
         size_t group_id;
         if (!event_selection_set_.AddEventType(event_type, &group_id)) {
           return false;
@@ -1005,6 +1010,13 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       dwarf_callchain_sampling_ = true;
     } else if (name == "--group") {
       std::vector<std::string> event_types = android::base::Split(*value.str_value, ",");
+      for (const auto& event_type : event_types) {
+        if (probe_events->IsProbeEvent(event_type)) {
+          if (!probe_events->CreateProbeEventIfNotExist(event_type)) {
+            return false;
+          }
+        }
+      }
       size_t group_id;
       if (!event_selection_set_.AddEventGroup(event_types, &group_id)) {
         return false;
