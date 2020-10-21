@@ -80,16 +80,16 @@ TEST(command, PreprocessOptions) {
   std::vector<std::string> non_option_args;
 
   OptionFormatMap option_formats = {
-      {"--bool-option", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--str-option", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
-      {"--opt-str-option",
-       {OptionValueType::OPT_STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
-      {"--uint-option", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--double-option", {OptionValueType::DOUBLE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+      {"--bool-option", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--str-option", {OptionValueType::STRING, OptionType::MULTIPLE}},
+      {"--str2-option", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"--opt-str-option", {OptionValueType::OPT_STRING, OptionType::MULTIPLE}},
+      {"--uint-option", {OptionValueType::UINT, OptionType::SINGLE}},
+      {"--double-option", {OptionValueType::DOUBLE, OptionType::SINGLE}},
 
       // ordered options
-      {"--ord-str-option", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
-      {"--ord-uint-option", {OptionValueType::UINT, OptionType::ORDERED, AppRunnerType::ALLOWED}},
+      {"--ord-str-option", {OptionValueType::STRING, OptionType::ORDERED}},
+      {"--ord-uint-option", {OptionValueType::UINT, OptionType::ORDERED}},
   };
 
   // Check options.
@@ -97,7 +97,9 @@ TEST(command, PreprocessOptions) {
                                    "--str-option",
                                    "str1",
                                    "--str-option",
-                                   "str2",
+                                   "str1_2",
+                                   "--str2-option",
+                                   "str2_value",
                                    "--opt-str-option",
                                    "--opt-str-option",
                                    "opt_str",
@@ -107,11 +109,14 @@ TEST(command, PreprocessOptions) {
                                    "-32.75"};
   ASSERT_TRUE(cmd.PreprocessOptions(args, option_formats, &options, &ordered_options, nullptr));
   ASSERT_TRUE(options.PullBoolValue("--bool-option"));
-  auto values = options.PullValues("--str-option").value();
+  auto values = options.PullValues("--str-option");
   ASSERT_EQ(values.size(), 2);
   ASSERT_EQ(*values[0].str_value, "str1");
-  ASSERT_EQ(*values[1].str_value, "str2");
-  values = options.PullValues("--opt-str-option").value();
+  ASSERT_EQ(*values[1].str_value, "str1_2");
+  std::string str2_value;
+  options.PullStringValue("--str2-option", &str2_value);
+  ASSERT_EQ(str2_value, "str2_value");
+  values = options.PullValues("--opt-str-option");
   ASSERT_EQ(values.size(), 2);
   ASSERT_TRUE(values[0].str_value == nullptr);
   ASSERT_EQ(*values[1].str_value, "opt_str");

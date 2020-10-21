@@ -462,7 +462,10 @@ std::vector<int> EventType::GetPmuCpumask() {
     LOG(DEBUG) << "cannot read cpumask content in " << pmu;
     return empty_result;
   }
-  return GetCpusFromString(cpumask_content);
+  if (auto cpus = GetCpusFromString(cpumask_content); cpus) {
+    return std::vector<int>(cpus->begin(), cpus->end());
+  }
+  return empty_result;
 }
 
 std::string ScopedEventTypes::BuildString(const std::vector<const EventType*>& event_types) {

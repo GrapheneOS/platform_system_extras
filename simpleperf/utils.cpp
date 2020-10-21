@@ -31,12 +31,18 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <build/version.h>
 
 #include <7zCrc.h>
 #include <Xz.h>
 #include <XzCrc64.h>
+
+using android::base::ParseInt;
+using android::base::Split;
+using android::base::StringPrintf;
 
 void OneTimeFreeAllocator::Clear() {
   for (auto& p : v_) {
@@ -408,34 +414,55 @@ timeval SecondToTimeval(double time_in_sec) {
 constexpr int SIMPLEPERF_VERSION = 1;
 
 std::string GetSimpleperfVersion() {
-  return android::base::StringPrintf("%d.build.%s", SIMPLEPERF_VERSION,
-                                     android::build::GetBuildNumber().c_str());
+  return StringPrintf("%d.build.%s", SIMPLEPERF_VERSION, android::build::GetBuildNumber().c_str());
 }
 
-std::vector<int> GetCpusFromString(const std::string& s) {
-  std::set<int> cpu_set;
-  bool have_dash = false;
-  const char* p = s.c_str();
-  char* endp;
-  int last_cpu;
-  int cpu;
-  // Parse line like: 0,1-3, 5, 7-8
-  while ((cpu = static_cast<int>(strtol(p, &endp, 10))) != 0 || endp != p) {
-    if (have_dash && !cpu_set.empty()) {
-      for (int t = last_cpu + 1; t < cpu; ++t) {
-        cpu_set.insert(t);
-      }
-    }
-    have_dash = false;
-    cpu_set.insert(cpu);
-    last_cpu = cpu;
-    p = endp;
-    while (!isdigit(*p) && *p != '\0') {
-      if (*p == '-') {
-        have_dash = true;
-      }
-      ++p;
+// Parse a line like: 0,1-3, 5, 7-8
+std::optional<std::set<int>> GetCpusFromString(const std::string& s) {
+  std::string str;
+  for (char c : s) {
+    if (!isspace(c)) {
+      str += c;
     }
   }
-  return std::vector<int>(cpu_set.begin(), cpu_set.end());
+  std::set<int> cpus;
+  int cpu1;
+  int cpu2;
+  for (const std::string& p : Split(str, ",")) {
+    size_t split_pos = p.find('-');
+    if (split_pos == std::string::npos) {
+      if (!ParseInt(p, &cpu1, 0)) {
+        LOG(ERROR) << "failed to parse cpu: " << p;
+        return std::nullopt;
+      }
+      cpus.insert(cpu1);
+    } else {
+      if (!ParseInt(p.substr(0, split_pos), &cpu1, 0) ||
+          !ParseInt(p.substr(split_pos + 1), &cpu2, 0) || cpu1 > cpu2) {
+        LOG(ERROR) << "failed to parse cpu: " << p;
+        return std::nullopt;
+      }
+      while (cpu1 <= cpu2) {
+        cpus.insert(cpu1++);
+      }
+    }
+  }
+  return cpus;
+}
+
+std::optional<std::set<pid_t>> GetTidsFromString(const std::string& s, bool check_if_exists) {
+  std::set<pid_t> tids;
+  for (const auto& p : Split(s, ",")) {
+    int tid;
+    if (!ParseInt(p.c_str(), &tid, 0)) {
+      LOG(ERROR) << "Invalid tid '" << p << "'";
+      return std::nullopt;
+    }
+    if (check_if_exists && !IsDir(StringPrintf("/proc/%d", tid))) {
+      LOG(ERROR) << "Non existing thread '" << tid << "'";
+      return std::nullopt;
+    }
+    tids.insert(tid);
+  }
+  return tids;
 }
