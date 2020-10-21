@@ -100,6 +100,8 @@ enum DsoType {
   DSO_DEX_FILE,  // For files containing dex files, like .vdex files.
   DSO_SYMBOL_MAP_FILE,
   DSO_UNKNOWN_FILE,
+  // DSO_UNKNOWN_FILE is written to the file feature section in recording files. Changing its value
+  // may cause compatibility issue. So put new DsoTypes below.
 };
 
 struct KernelSymbol;
