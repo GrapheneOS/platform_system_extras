@@ -71,9 +71,6 @@ std::vector<pid_t> GetThreadsInProcess(pid_t pid);
 bool ReadThreadNameAndPid(pid_t tid, std::string* comm, pid_t* pid);
 bool GetProcessForThread(pid_t tid, pid_t* pid);
 bool GetThreadName(pid_t tid, std::string* name);
-
-bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>* tid_set);
-
 bool CheckPerfEventLimit();
 bool SetPerfEventLimits(uint64_t sample_freq, size_t cpu_percent, uint64_t mlock_kb);
 bool GetMaxSampleFrequency(uint64_t* max_sample_freq);
