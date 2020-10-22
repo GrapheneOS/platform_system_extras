@@ -283,6 +283,14 @@ static bool InCloudAndroid() {
       android::base::StartsWith(prop_value, "aosp_cf_x86_64_phone")) {
     return true;
   }
+  // aosp_x86* builds may also run on cloud Android. Detect it by checking
+  /// if cpu-cycles isn't supported.
+  if (android::base::StartsWith(prop_value, "aosp_x86")) {
+    const EventType* type = FindEventTypeByName("cpu-cycles", false);
+    CHECK(type != nullptr);
+    perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
+    return !IsEventAttrSupported(attr, "cpu-cycles");
+  }
 #endif
 #endif
   return false;
