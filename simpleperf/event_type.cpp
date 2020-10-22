@@ -142,11 +142,14 @@ class TracepointSystemFinder : public EventTypeFinder {
     std::string path = tracefs_dir + std::string("/events/") + strs[0] + "/" + strs[1] + "/id";
     uint64_t id;
     if (!ReadEventId(path, &id)) {
-      LOG(ERROR) << "failed to read event id";
       return nullptr;
     }
     auto res = types_.emplace(name, PERF_TYPE_TRACEPOINT, id, "", "");
     return &*res.first;
+  }
+
+  void RemoveType(const std::string& name) {
+    types_.erase(EventType(name, 0, 0, "", ""));
   }
 
   std::string ToString() {
@@ -439,6 +442,10 @@ const EventType* EventTypeManager::AddRawType(const std::string& name) {
   return raw_finder.AddType(EventType(name, PERF_TYPE_RAW, config, "", ""));
 }
 
+void EventTypeManager::RemoveProbeType(const std::string& name) {
+  GetTracepointSystemFinder().RemoveType(name);
+}
+
 void EventTypeManager::SetScopedFinder(std::unique_ptr<EventTypeFinder>&& finder) {
   scoped_finder_ = std::move(finder);
 }
@@ -455,7 +462,10 @@ std::vector<int> EventType::GetPmuCpumask() {
     LOG(DEBUG) << "cannot read cpumask content in " << pmu;
     return empty_result;
   }
-  return GetCpusFromString(cpumask_content);
+  if (auto cpus = GetCpusFromString(cpumask_content); cpus) {
+    return std::vector<int>(cpus->begin(), cpus->end());
+  }
+  return empty_result;
 }
 
 std::string ScopedEventTypes::BuildString(const std::vector<const EventType*>& event_types) {
