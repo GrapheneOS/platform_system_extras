@@ -17,8 +17,8 @@
 #include <optional>
 #include <sstream>
 
-#include <sysexits.h>
 #include <android/hardware/boot/1.1/IBootControl.h>
+#include <sysexits.h>
 
 using android::sp;
 
@@ -36,8 +36,7 @@ namespace V1_1 = android::hardware::boot::V1_1;
 
 enum BootCtlVersion { BOOTCTL_V1_0, BOOTCTL_V1_1 };
 
-static void usage(FILE* where, BootCtlVersion bootVersion, int /* argc */, char* argv[])
-{
+static void usage(FILE* where, BootCtlVersion bootVersion, int /* argc */, char* argv[]) {
     fprintf(where,
             "%s - command-line wrapper for the boot HAL.\n"
             "\n"
@@ -70,34 +69,28 @@ static void usage(FILE* where, BootCtlVersion bootVersion, int /* argc */, char*
 
 static int do_hal_info(const sp<V1_0::IBootControl> module) {
     module->interfaceDescriptor([&](const auto& descriptor) {
-        fprintf(stdout,
-                "HAL Version: %s\n",
-                descriptor.c_str());
+        fprintf(stdout, "HAL Version: %s\n", descriptor.c_str());
     });
     return EX_OK;
 }
 
-static int do_get_number_slots(sp<V1_0::IBootControl> module)
-{
+static int do_get_number_slots(sp<V1_0::IBootControl> module) {
     uint32_t numSlots = module->getNumberSlots();
     fprintf(stdout, "%u\n", numSlots);
     return EX_OK;
 }
 
-static int do_get_current_slot(sp<V1_0::IBootControl> module)
-{
+static int do_get_current_slot(sp<V1_0::IBootControl> module) {
     Slot curSlot = module->getCurrentSlot();
     fprintf(stdout, "%u\n", curSlot);
     return EX_OK;
 }
 
-static std::function<void(CommandResult)> generate_callback(CommandResult *crp) {
-    return [=](CommandResult cr){
-        *crp = cr;
-    };
+static std::function<void(CommandResult)> generate_callback(CommandResult* crp) {
+    return [=](CommandResult cr) { *crp = cr; };
 }
 
-static int handle_return(const Return<void> &ret, CommandResult cr, const char* errStr) {
+static int handle_return(const Return<void>& ret, CommandResult cr, const char* errStr) {
     if (!ret.isOk()) {
         fprintf(stderr, errStr, ret.description().c_str());
         return EX_SOFTWARE;
@@ -108,30 +101,25 @@ static int handle_return(const Return<void> &ret, CommandResult cr, const char* 
     return EX_OK;
 }
 
-static int do_mark_boot_successful(sp<V1_0::IBootControl> module)
-{
+static int do_mark_boot_successful(sp<V1_0::IBootControl> module) {
     CommandResult cr;
     Return<void> ret = module->markBootSuccessful(generate_callback(&cr));
     return handle_return(ret, cr, "Error marking as having booted successfully: %s\n");
 }
 
-static int do_set_active_boot_slot(sp<V1_0::IBootControl> module,
-                                   Slot slot_number)
-{
+static int do_set_active_boot_slot(sp<V1_0::IBootControl> module, Slot slot_number) {
     CommandResult cr;
     Return<void> ret = module->setActiveBootSlot(slot_number, generate_callback(&cr));
     return handle_return(ret, cr, "Error setting active boot slot: %s\n");
 }
 
-static int do_set_slot_as_unbootable(sp<V1_0::IBootControl> module,
-                                     Slot slot_number)
-{
+static int do_set_slot_as_unbootable(sp<V1_0::IBootControl> module, Slot slot_number) {
     CommandResult cr;
     Return<void> ret = module->setSlotAsUnbootable(slot_number, generate_callback(&cr));
     return handle_return(ret, cr, "Error setting slot as unbootable: %s\n");
 }
 
-static int handle_return(const Return<BoolResult> &ret, const char* errStr) {
+static int handle_return(const Return<BoolResult>& ret, const char* errStr) {
     if (!ret.isOk()) {
         fprintf(stderr, errStr, ret.description().c_str());
         return EX_SOFTWARE;
@@ -144,20 +132,17 @@ static int handle_return(const Return<BoolResult> &ret, const char* errStr) {
     return EX_SOFTWARE;
 }
 
-static int do_is_slot_bootable(sp<V1_0::IBootControl> module, Slot slot_number)
-{
+static int do_is_slot_bootable(sp<V1_0::IBootControl> module, Slot slot_number) {
     Return<BoolResult> ret = module->isSlotBootable(slot_number);
     return handle_return(ret, "Error calling isSlotBootable(): %s\n");
 }
 
-static int do_is_slot_marked_successful(sp<V1_0::IBootControl> module,
-                                        Slot slot_number)
-{
+static int do_is_slot_marked_successful(sp<V1_0::IBootControl> module, Slot slot_number) {
     Return<BoolResult> ret = module->isSlotMarkedSuccessful(slot_number);
     return handle_return(ret, "Error calling isSlotMarkedSuccessful(): %s\n");
 }
 
-std::optional<MergeStatus> stringToMergeStatus(const std::string &status) {
+std::optional<MergeStatus> stringToMergeStatus(const std::string& status) {
     if (status == "cancelled") return MergeStatus::CANCELLED;
     if (status == "merging") return MergeStatus::MERGING;
     if (status == "none") return MergeStatus::NONE;
@@ -167,7 +152,7 @@ std::optional<MergeStatus> stringToMergeStatus(const std::string &status) {
 }
 
 static int do_set_snapshot_merge_status(sp<V1_1::IBootControl> module, BootCtlVersion bootVersion,
-                                        int argc, char *argv[]) {
+                                        int argc, char* argv[]) {
     if (argc != 3) {
         usage(stderr, bootVersion, argc, argv);
         exit(EX_USAGE);
@@ -213,20 +198,18 @@ static int do_get_snapshot_merge_status(sp<V1_1::IBootControl> module) {
 }
 
 static int do_get_suffix(sp<V1_0::IBootControl> module, Slot slot_number) {
-    std::function<void(hidl_string)> cb = [](hidl_string suffix){
+    std::function<void(hidl_string)> cb = [](hidl_string suffix) {
         fprintf(stdout, "%s\n", suffix.c_str());
     };
     Return<void> ret = module->getSuffix(slot_number, cb);
     if (!ret.isOk()) {
-        fprintf(stderr, "Error calling getSuffix(): %s\n",
-                ret.description().c_str());
+        fprintf(stderr, "Error calling getSuffix(): %s\n", ret.description().c_str());
         return EX_SOFTWARE;
     }
     return EX_OK;
 }
 
-static uint32_t parse_slot(BootCtlVersion bootVersion, int pos, int argc, char *argv[])
-{
+static uint32_t parse_slot(BootCtlVersion bootVersion, int pos, int argc, char* argv[]) {
     if (pos > argc - 1) {
         usage(stderr, bootVersion, argc, argv);
         exit(EX_USAGE);
@@ -242,8 +225,7 @@ static uint32_t parse_slot(BootCtlVersion bootVersion, int pos, int argc, char *
     return (uint32_t)ret;
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char* argv[]) {
     sp<V1_0::IBootControl> v1_0_module;
     sp<V1_1::IBootControl> v1_1_module;
     BootCtlVersion bootVersion = BOOTCTL_V1_0;
@@ -286,8 +268,7 @@ int main(int argc, char *argv[])
 
     // Functions present from version 1.1
     if (strcmp(argv[1], "set-snapshot-merge-status") == 0 ||
-        strcmp(argv[1], "get-snapshot-merge-status") == 0 ) {
-
+        strcmp(argv[1], "get-snapshot-merge-status") == 0) {
         if (v1_1_module == nullptr) {
             fprintf(stderr, "Error getting bootctrl v1.1 module.\n");
             return EX_SOFTWARE;
