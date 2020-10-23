@@ -19,8 +19,8 @@
 #include <stdio.h>
 #include <sys/sysinfo.h>
 
-#include <memory>
 #include <limits>
+#include <memory>
 #include <string>
 
 #include <android-base/file.h>
@@ -103,8 +103,8 @@ std::unique_ptr<EventType> ETMRecorder::BuildEventType() {
   if (etm_event_type == -1) {
     return nullptr;
   }
-  return std::make_unique<EventType>(
-      "cs-etm", etm_event_type, 0, "CoreSight ETM instruction tracing", "arm");
+  return std::make_unique<EventType>("cs-etm", etm_event_type, 0,
+                                     "CoreSight ETM instruction tracing", "arm");
 }
 
 bool ETMRecorder::CheckEtmSupport() {
@@ -140,17 +140,16 @@ bool ETMRecorder::CheckEtmSupport() {
 
 bool ETMRecorder::ReadEtmInfo() {
   int cpu_count = get_nprocs_conf();
-  for (const auto &name : GetEntriesInDir(ETM_DIR)) {
+  for (const auto& name : GetEntriesInDir(ETM_DIR)) {
     int cpu;
     if (sscanf(name.c_str(), "cpu%d", &cpu) == 1) {
-      ETMPerCpu &cpu_info = etm_info_[cpu];
-      bool success =
-          ReadValueInEtmDir(name + "/trcidr/trcidr0", &cpu_info.trcidr0) &&
-          ReadValueInEtmDir(name + "/trcidr/trcidr1", &cpu_info.trcidr1) &&
-          ReadValueInEtmDir(name + "/trcidr/trcidr2", &cpu_info.trcidr2) &&
-          ReadValueInEtmDir(name + "/trcidr/trcidr4", &cpu_info.trcidr4) &&
-          ReadValueInEtmDir(name + "/trcidr/trcidr8", &cpu_info.trcidr8) &&
-          ReadValueInEtmDir(name + "/mgmt/trcauthstatus", &cpu_info.trcauthstatus);
+      ETMPerCpu& cpu_info = etm_info_[cpu];
+      bool success = ReadValueInEtmDir(name + "/trcidr/trcidr0", &cpu_info.trcidr0) &&
+                     ReadValueInEtmDir(name + "/trcidr/trcidr1", &cpu_info.trcidr1) &&
+                     ReadValueInEtmDir(name + "/trcidr/trcidr2", &cpu_info.trcidr2) &&
+                     ReadValueInEtmDir(name + "/trcidr/trcidr4", &cpu_info.trcidr4) &&
+                     ReadValueInEtmDir(name + "/trcidr/trcidr8", &cpu_info.trcidr8) &&
+                     ReadValueInEtmDir(name + "/mgmt/trcauthstatus", &cpu_info.trcauthstatus);
       if (!success) {
         return false;
       }
@@ -160,7 +159,7 @@ bool ETMRecorder::ReadEtmInfo() {
 }
 
 bool ETMRecorder::FindSinkConfig() {
-  for (const auto &name : GetEntriesInDir(ETM_DIR + "sinks")) {
+  for (const auto& name : GetEntriesInDir(ETM_DIR + "sinks")) {
     if (name.find("etr") != -1) {
       if (ReadValueInEtmDir("sinks/" + name, &sink_config_)) {
         return true;

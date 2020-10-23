@@ -70,7 +70,7 @@ int GetFeatureId(const std::string& feature_name) {
   return -1;
 }
 
-} // namespace PerfFileFormat
+}  // namespace PerfFileFormat
 
 std::unique_ptr<RecordFileReader> RecordFileReader::CreateInstance(const std::string& filename) {
   std::string mode = std::string("rb") + CLOSE_ON_EXEC_MODE;
@@ -89,9 +89,11 @@ std::unique_ptr<RecordFileReader> RecordFileReader::CreateInstance(const std::st
 }
 
 RecordFileReader::RecordFileReader(const std::string& filename, FILE* fp)
-    : filename_(filename), record_fp_(fp), event_id_pos_in_sample_records_(0),
-      event_id_reverse_pos_in_non_sample_records_(0), read_record_size_(0) {
-}
+    : filename_(filename),
+      record_fp_(fp),
+      event_id_pos_in_sample_records_(0),
+      event_id_reverse_pos_in_non_sample_records_(0),
+      read_record_size_(0) {}
 
 RecordFileReader::~RecordFileReader() {
   if (record_fp_ != nullptr) {
@@ -124,7 +126,7 @@ bool RecordFileReader::ReadAttrSection() {
   size_t attr_count = header_.attrs.size / header_.attr_size;
   if (header_.attr_size != sizeof(FileAttr)) {
     LOG(DEBUG) << "attr size (" << header_.attr_size << ") in " << filename_
-                 << " doesn't match expected size (" << sizeof(FileAttr) << ")";
+               << " doesn't match expected size (" << sizeof(FileAttr) << ")";
   }
   if (attr_count == 0) {
     LOG(ERROR) << "no attr in file " << filename_;
@@ -155,7 +157,7 @@ bool RecordFileReader::ReadAttrSection() {
       attrs.push_back(file_attr.attr);
     }
     if (!GetCommonEventIdPositionsForAttrs(attrs, &event_id_pos_in_sample_records_,
-                                               &event_id_reverse_pos_in_non_sample_records_)) {
+                                           &event_id_reverse_pos_in_non_sample_records_)) {
       return false;
     }
   }
@@ -310,7 +312,8 @@ std::unique_ptr<Record> RecordFileReader::ReadRecord() {
     } else {
       if (header.size > event_id_reverse_pos_in_non_sample_records_) {
         has_event_id = true;
-        event_id = *reinterpret_cast<uint64_t*>(p.get() + header.size - event_id_reverse_pos_in_non_sample_records_);
+        event_id = *reinterpret_cast<uint64_t*>(p.get() + header.size -
+                                                event_id_reverse_pos_in_non_sample_records_);
       }
     }
     if (has_event_id) {
@@ -457,10 +460,8 @@ std::vector<uint64_t> RecordFileReader::ReadAuxTraceFeature() {
   return auxtrace_offset;
 }
 
-bool RecordFileReader::ReadFileFeature(size_t& read_pos,
-                                       std::string* file_path,
-                                       uint32_t* file_type,
-                                       uint64_t* min_vaddr,
+bool RecordFileReader::ReadFileFeature(size_t& read_pos, std::string* file_path,
+                                       uint32_t* file_type, uint64_t* min_vaddr,
                                        uint64_t* file_offset_of_min_vaddr,
                                        std::vector<Symbol>* symbols,
                                        std::vector<uint64_t>* dex_file_offsets) {
@@ -632,7 +633,7 @@ bool IsPerfDataFile(const std::string& filename) {
   if (fd.ok()) {
     PerfFileFormat::FileHeader header;
     return android::base::ReadFully(fd, &header, sizeof(header)) &&
-      memcmp(header.magic, PERF_MAGIC, sizeof(header.magic)) == 0;
+           memcmp(header.magic, PERF_MAGIC, sizeof(header.magic)) == 0;
   }
   return false;
 }

@@ -77,9 +77,7 @@ class RecordFileWriter {
   bool Read(void* buf, size_t len);
   bool GetFilePos(uint64_t* file_pos);
   bool WriteStringWithLength(const std::string& s);
-  bool WriteFileFeature(const std::string& file_path,
-                        uint32_t file_type,
-                        uint64_t min_vaddr,
+  bool WriteFileFeature(const std::string& file_path, uint32_t file_type, uint64_t min_vaddr,
                         uint64_t file_offset_of_min_vaddr,
                         const std::vector<const Symbol*>& symbols,
                         const std::vector<uint64_t>* dex_file_offsets);
@@ -109,9 +107,7 @@ class RecordFileReader {
 
   ~RecordFileReader();
 
-  const PerfFileFormat::FileHeader& FileHeader() const {
-    return header_;
-  }
+  const PerfFileFormat::FileHeader& FileHeader() const { return header_; }
 
   std::vector<EventAttrWithId> AttrSection() const {
     std::vector<EventAttrWithId> result(file_attrs_.size());

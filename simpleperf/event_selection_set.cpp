@@ -21,18 +21,18 @@
 #include <thread>
 
 #include <android-base/logging.h>
-#include <android-base/strings.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 
-#include "environment.h"
 #include "ETMRecorder.h"
+#include "IOEventLoop.h"
+#include "RecordReadThread.h"
+#include "environment.h"
 #include "event_attr.h"
 #include "event_type.h"
-#include "IOEventLoop.h"
 #include "perf_regs.h"
 #include "tracing.h"
 #include "utils.h"
-#include "RecordReadThread.h"
 
 using android::base::StringPrintf;
 
@@ -55,8 +55,7 @@ bool IsDwarfCallChainSamplingSupported() {
     return false;
   }
   perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
-  attr.sample_type |=
-      PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER;
+  attr.sample_type |= PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER;
   attr.exclude_callchain_user = 1;
   attr.sample_regs_user = GetSupportedRegMask(GetBuildArch());
   attr.sample_stack_user = 8192;
@@ -165,11 +164,9 @@ bool EventSelectionSet::BuildAndCheckEventSelection(const std::string& event_nam
     return false;
   }
   if (for_stat_cmd_) {
-    if (event_type->event_type.name == "cpu-clock" ||
-        event_type->event_type.name == "task-clock") {
+    if (event_type->event_type.name == "cpu-clock" || event_type->event_type.name == "task-clock") {
       if (event_type->exclude_user || event_type->exclude_kernel) {
-        LOG(ERROR) << "Modifier u and modifier k used in event type "
-                   << event_type->event_type.name
+        LOG(ERROR) << "Modifier u and modifier k used in event type " << event_type->event_type.name
                    << " are not supported by the kernel.";
         return false;
       }
@@ -221,8 +218,7 @@ bool EventSelectionSet::BuildAndCheckEventSelection(const std::string& event_nam
   // PMU events are provided by kernel, so they should be supported
   if (!event_type->event_type.IsPmuEvent() &&
       !IsEventAttrSupported(selection->event_attr, selection->event_type_modifier.name)) {
-    LOG(ERROR) << "Event type '" << event_type->name
-               << "' is not supported on the device";
+    LOG(ERROR) << "Event type '" << event_type->name << "' is not supported on the device";
     return false;
   }
   if (set_default_sample_freq) {
@@ -234,8 +230,7 @@ bool EventSelectionSet::BuildAndCheckEventSelection(const std::string& event_nam
   for (const auto& group : groups_) {
     for (const auto& sel : group) {
       if (sel.event_type_modifier.name == selection->event_type_modifier.name) {
-        LOG(ERROR) << "Event type '" << sel.event_type_modifier.name
-                   << "' appears more than once";
+        LOG(ERROR) << "Event type '" << sel.event_type_modifier.name << "' appears more than once";
         return false;
       }
     }
@@ -247,8 +242,8 @@ bool EventSelectionSet::AddEventType(const std::string& event_name, size_t* grou
   return AddEventGroup(std::vector<std::string>(1, event_name), group_id);
 }
 
-bool EventSelectionSet::AddEventGroup(
-    const std::vector<std::string>& event_names, size_t* group_id) {
+bool EventSelectionSet::AddEventGroup(const std::vector<std::string>& event_names,
+                                      size_t* group_id) {
   EventSelectionGroup group;
   bool first_event = groups_.empty();
   bool first_in_group = true;
@@ -292,8 +287,7 @@ std::vector<const EventType*> EventSelectionSet::GetTracepointEvents() const {
   std::vector<const EventType*> result;
   for (const auto& group : groups_) {
     for (const auto& selection : group) {
-      if (selection.event_type_modifier.event_type.type ==
-          PERF_TYPE_TRACEPOINT) {
+      if (selection.event_type_modifier.event_type.type == PERF_TYPE_TRACEPOINT) {
         result.push_back(&selection.event_type_modifier.event_type);
       }
     }
@@ -396,11 +390,9 @@ void EventSelectionSet::SetSampleSpeed(size_t group_id, const SampleSpeed& speed
 
 bool EventSelectionSet::SetBranchSampling(uint64_t branch_sample_type) {
   if (branch_sample_type != 0 &&
-      (branch_sample_type &
-       (PERF_SAMPLE_BRANCH_ANY | PERF_SAMPLE_BRANCH_ANY_CALL |
-        PERF_SAMPLE_BRANCH_ANY_RETURN | PERF_SAMPLE_BRANCH_IND_CALL)) == 0) {
-    LOG(ERROR) << "Invalid branch_sample_type: 0x" << std::hex
-               << branch_sample_type;
+      (branch_sample_type & (PERF_SAMPLE_BRANCH_ANY | PERF_SAMPLE_BRANCH_ANY_CALL |
+                             PERF_SAMPLE_BRANCH_ANY_RETURN | PERF_SAMPLE_BRANCH_IND_CALL)) == 0) {
+    LOG(ERROR) << "Invalid branch_sample_type: 0x" << std::hex << branch_sample_type;
     return false;
   }
   if (branch_sample_type != 0 && !IsBranchSamplingSupported()) {
@@ -436,12 +428,10 @@ bool EventSelectionSet::EnableDwarfCallChainSampling(uint32_t dump_stack_size) {
   }
   for (auto& group : groups_) {
     for (auto& selection : group) {
-      selection.event_attr.sample_type |= PERF_SAMPLE_CALLCHAIN |
-                                          PERF_SAMPLE_REGS_USER |
-                                          PERF_SAMPLE_STACK_USER;
+      selection.event_attr.sample_type |=
+          PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER;
       selection.event_attr.exclude_callchain_user = 1;
-      selection.event_attr.sample_regs_user =
-          GetSupportedRegMask(GetMachineArch());
+      selection.event_attr.sample_regs_user = GetSupportedRegMask(GetMachineArch());
       selection.event_attr.sample_stack_user = dump_stack_size;
     }
   }
@@ -541,8 +531,7 @@ bool EventSelectionSet::SetTracepointFilter(const std::string& filter) {
 static bool CheckIfCpusOnline(const std::vector<int>& cpus) {
   std::vector<int> online_cpus = GetOnlineCpus();
   for (const auto& cpu : cpus) {
-    if (std::find(online_cpus.begin(), online_cpus.end(), cpu) ==
-        online_cpus.end()) {
+    if (std::find(online_cpus.begin(), online_cpus.end(), cpu) == online_cpus.end()) {
       LOG(ERROR) << "cpu " << cpu << " is not online.";
       return false;
     }
@@ -550,8 +539,7 @@ static bool CheckIfCpusOnline(const std::vector<int>& cpus) {
   return true;
 }
 
-bool EventSelectionSet::OpenEventFilesOnGroup(EventSelectionGroup& group,
-                                              pid_t tid, int cpu,
+bool EventSelectionSet::OpenEventFilesOnGroup(EventSelectionGroup& group, pid_t tid, int cpu,
                                               std::string* failed_event_type) {
   std::vector<std::unique_ptr<EventFd>> event_fds;
   // Given a tid and cpu, events on the same group should be all opened
@@ -561,8 +549,8 @@ bool EventSelectionSet::OpenEventFilesOnGroup(EventSelectionGroup& group,
     std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(
         selection.event_attr, tid, cpu, group_fd, selection.event_type_modifier.name, false);
     if (!event_fd) {
-        *failed_event_type = selection.event_type_modifier.name;
-        return false;
+      *failed_event_type = selection.event_type_modifier.name;
+      return false;
     }
     LOG(VERBOSE) << "OpenEventFile for " << event_fd->Name();
     event_fds.push_back(std::move(event_fd));
@@ -729,10 +717,9 @@ bool EventSelectionSet::ReadCounters(std::vector<CountersInfo>* counters) {
 bool EventSelectionSet::MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pages,
                                        size_t aux_buffer_size, size_t record_buffer_size,
                                        bool allow_cutting_samples, bool exclude_perf) {
-  record_read_thread_.reset(
-      new simpleperf::RecordReadThread(record_buffer_size, groups_[0][0].event_attr, min_mmap_pages,
-                                       max_mmap_pages, aux_buffer_size, allow_cutting_samples,
-                                       exclude_perf));
+  record_read_thread_.reset(new simpleperf::RecordReadThread(
+      record_buffer_size, groups_[0][0].event_attr, min_mmap_pages, max_mmap_pages, aux_buffer_size,
+      allow_cutting_samples, exclude_perf));
   return true;
 }
 

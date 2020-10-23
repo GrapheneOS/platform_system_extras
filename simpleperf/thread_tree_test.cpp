@@ -130,9 +130,10 @@ TEST_F(ThreadTreeTest, reused_tid_without_thread_exit) {
 }
 
 TEST_F(ThreadTreeTest, add_symbols_for_process) {
-  std::string symbol_map("0x2000 0x20 two\n"
-                         "0x1000 0x10 one\n"
-                         "0x3000 0x30 three\n");
+  std::string symbol_map(
+      "0x2000 0x20 two\n"
+      "0x1000 0x10 one\n"
+      "0x3000 0x30 three\n");
 
   auto symbols = ReadSymbolMapFromString(symbol_map);
 

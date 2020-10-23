@@ -36,73 +36,73 @@ void CheckElfFileSymbols(const std::map<std::string, ElfFileSymbol>& symbols);
 
 bool IsRoot();
 
-#define TEST_IN_ROOT(TestStatement)                                                                \
-  do {                                                                                             \
-    if (IsRoot()) {                                                                                \
-      TestStatement;                                                                               \
-    } else {                                                                                       \
-      GTEST_LOG_(INFO) << "Didn't test \"" << #TestStatement << "\" requires root privileges";     \
-    }                                                                                              \
+#define TEST_IN_ROOT(TestStatement)                                                            \
+  do {                                                                                         \
+    if (IsRoot()) {                                                                            \
+      TestStatement;                                                                           \
+    } else {                                                                                   \
+      GTEST_LOG_(INFO) << "Didn't test \"" << #TestStatement << "\" requires root privileges"; \
+    }                                                                                          \
   } while (0)
 
-#define TEST_REQUIRE_ROOT() \
-  do { \
-    if (!IsRoot()) { \
+#define TEST_REQUIRE_ROOT()                                              \
+  do {                                                                   \
+    if (!IsRoot()) {                                                     \
       GTEST_LOG_(INFO) << "Skip this test as it needs root privileges."; \
-      return; \
-    } \
+      return;                                                            \
+    }                                                                    \
   } while (0)
 
 #if defined(__ANDROID__)
 #define TEST_REQUIRE_HOST_ROOT()
 #else
-#define TEST_REQUIRE_HOST_ROOT()  TEST_REQUIRE_ROOT()
+#define TEST_REQUIRE_HOST_ROOT() TEST_REQUIRE_ROOT()
 #endif
 
 bool IsInNativeAbi();
 // Used to skip tests not supposed to run on non-native ABIs.
-#define OMIT_TEST_ON_NON_NATIVE_ABIS()  \
-  do { \
-    if (!IsInNativeAbi()) { \
+#define OMIT_TEST_ON_NON_NATIVE_ABIS()                                      \
+  do {                                                                      \
+    if (!IsInNativeAbi()) {                                                 \
       GTEST_LOG_(INFO) << "Skip this test as it only runs on native ABIs."; \
-      return; \
-    } \
+      return;                                                               \
+    }                                                                       \
   } while (0)
 
 bool HasHardwareCounter();
-#define TEST_REQUIRE_HW_COUNTER() \
-  do { \
-    if (!HasHardwareCounter()) { \
+#define TEST_REQUIRE_HW_COUNTER()                                                              \
+  do {                                                                                         \
+    if (!HasHardwareCounter()) {                                                               \
       GTEST_LOG_(INFO) << "Skip this test as the machine doesn't have hardware PMU counters."; \
-      return; \
-    } \
+      return;                                                                                  \
+    }                                                                                          \
   } while (0)
 
 bool HasPmuCounter();
-#define TEST_REQUIRE_PMU_COUNTER() \
-  do { \
-    if (!HasPmuCounter()) { \
+#define TEST_REQUIRE_PMU_COUNTER()                                                              \
+  do {                                                                                          \
+    if (!HasPmuCounter()) {                                                                     \
       GTEST_LOG_(INFO) << "Skip this test as the machine doesn't have low-level PMU counters."; \
-      return; \
-    } \
+      return;                                                                                   \
+    }                                                                                           \
   } while (0)
 
 bool HasTracepointEvents();
-#define TEST_REQUIRE_TRACEPOINT_EVENTS() \
-  do { \
-    if (!HasTracepointEvents()) { \
+#define TEST_REQUIRE_TRACEPOINT_EVENTS()                                                      \
+  do {                                                                                        \
+    if (!HasTracepointEvents()) {                                                             \
       GTEST_LOG_(INFO) << "Skip this test as the machine doesn't support tracepoint events."; \
-      return; \
-    } \
+      return;                                                                                 \
+    }                                                                                         \
   } while (0)
 
 #if defined(IN_CTS_TEST)
 #define TEST_REQUIRE_APPS()
 #else
-#define TEST_REQUIRE_APPS() \
-  do { \
+#define TEST_REQUIRE_APPS()                                              \
+  do {                                                                   \
     GTEST_LOG_(INFO) << "Skip this test as test apps aren't available."; \
-    return; \
+    return;                                                              \
   } while (0)
 #endif
 
@@ -180,7 +180,7 @@ class AppHelper {
 #elif defined(__arm__)
     return "armeabi-v7a";
 #else
-    #error "unrecognized ABI"
+#error "unrecognized ABI"
 #endif
   }
 

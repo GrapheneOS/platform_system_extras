@@ -33,7 +33,7 @@ class HelpCommand : public Command {
 "    Without subcommand, print short help string for every subcommand.\n"
 "    With subcommand, print long help string for the subcommand.\n\n"
                 // clang-format on
-                ) {}
+        ) {}
 
   bool Run(const std::vector<std::string>& args) override;
 
@@ -75,7 +75,7 @@ void HelpCommand::PrintShortHelp() {
 "    --version     Print version of simpleperf.\n"
       "subcommands:\n"
       // clang-format on
-      );
+  );
   for (auto& cmd_name : GetAllCommandNames()) {
     std::unique_ptr<Command> cmd = CreateCommandInstance(cmd_name);
     printf("    %-20s%s\n", cmd_name.c_str(), cmd->ShortHelpString().c_str());
@@ -89,8 +89,7 @@ void HelpCommand::PrintLongHelpForOneCommand(const Command& command) {
 namespace simpleperf {
 
 void RegisterHelpCommand() {
-  RegisterCommand("help",
-                  [] { return std::unique_ptr<Command>(new HelpCommand); });
+  RegisterCommand("help", [] { return std::unique_ptr<Command>(new HelpCommand); });
 }
 
 }  // namespace simpleperf

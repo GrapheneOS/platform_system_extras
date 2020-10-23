@@ -38,15 +38,16 @@
 #include <unwindstack/UserX86.h>
 #include <unwindstack/UserX86_64.h>
 
-#include "environment.h"
 #include "JITDebugReader.h"
 #include "OfflineUnwinder_impl.h"
+#include "environment.h"
 #include "perf_regs.h"
 #include "read_apk.h"
 #include "thread_tree.h"
 
 static_assert(simpleperf::map_flags::PROT_JIT_SYMFILE_MAP ==
-              unwindstack::MAPS_FLAGS_JIT_SYMFILE_MAP, "");
+                  unwindstack::MAPS_FLAGS_JIT_SYMFILE_MAP,
+              "");
 
 namespace simpleperf {
 
@@ -58,8 +59,8 @@ unwindstack::Regs* OfflineUnwinderImpl::GetBacktraceRegs(const RegSet& regs) {
     case ARCH_ARM: {
       unwindstack::arm_user_regs arm_user_regs;
       memset(&arm_user_regs, 0, sizeof(arm_user_regs));
-      static_assert(
-          static_cast<int>(unwindstack::ARM_REG_R0) == static_cast<int>(PERF_REG_ARM_R0), "");
+      static_assert(static_cast<int>(unwindstack::ARM_REG_R0) == static_cast<int>(PERF_REG_ARM_R0),
+                    "");
       static_assert(
           static_cast<int>(unwindstack::ARM_REG_LAST) == static_cast<int>(PERF_REG_ARM_MAX), "");
       for (size_t i = unwindstack::ARM_REG_R0; i < unwindstack::ARM_REG_LAST; ++i) {
@@ -188,9 +189,8 @@ void UnwindMaps::UpdateMaps(const MapSet& map_set) {
                  maps_.begin());
   }
 
-  std::sort(entries_.begin(), entries_.end(), [](const auto& e1, const auto& e2) {
-    return e1->start_addr < e2->start_addr;
-  });
+  std::sort(entries_.begin(), entries_.end(),
+            [](const auto& e1, const auto& e2) { return e1->start_addr < e2->start_addr; });
   // Use Sort() to sort maps_ and create prev_real_map links.
   // prev_real_map is needed by libunwindstack to find the start of an embedded lib in an apk.
   // See http://b/120981155.

@@ -53,8 +53,7 @@ class IOEventLoop {
   bool AddSignalEvent(int sig, const std::function<bool()>& callback);
 
   // Register a vector of signal Events.
-  bool AddSignalEvents(std::vector<int> sigs,
-                       const std::function<bool()>& callback);
+  bool AddSignalEvents(std::vector<int> sigs, const std::function<bool()>& callback);
 
   // Register a periodic Event, so [callback] is called periodically every
   // [duration].

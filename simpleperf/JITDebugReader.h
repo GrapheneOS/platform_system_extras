@@ -30,8 +30,8 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 
-#include "environment.h"
 #include "IOEventLoop.h"
+#include "environment.h"
 #include "record.h"
 
 namespace simpleperf {
@@ -85,9 +85,7 @@ struct JITDebugInfo {
         file_offset(0),
         extracted_dex_file_map(extracted_dex_file_map) {}
 
-  bool operator>(const JITDebugInfo& other) const {
-    return timestamp > other.timestamp;
-  }
+  bool operator>(const JITDebugInfo& other) const { return timestamp > other.timestamp; }
 };
 
 class TempSymFile;
@@ -102,7 +100,7 @@ class JITDebugReader {
   };
 
   enum class SyncOption {
-    kNoSync,  // Don't sync debug info with records.
+    kNoSync,           // Don't sync debug info with records.
     kSyncWithRecords,  // Sync debug info with records based on monotonic timestamp.
   };
 
@@ -113,9 +111,7 @@ class JITDebugReader {
 
   ~JITDebugReader();
 
-  bool SyncWithRecords() const {
-    return sync_option_ == SyncOption::kSyncWithRecords;
-  }
+  bool SyncWithRecords() const { return sync_option_ == SyncOption::kSyncWithRecords; }
 
   typedef std::function<bool(const std::vector<JITDebugInfo>&, bool)> debug_info_callback_t;
   bool RegisterDebugInfoCallback(IOEventLoop* loop, const debug_info_callback_t& callback);
@@ -148,7 +144,7 @@ class JITDebugReader {
   struct Descriptor {
     DescriptorType type;
     int version = 0;
-    uint32_t action_seqlock = 0;  // incremented before and after any modification
+    uint32_t action_seqlock = 0;    // incremented before and after any modification
     uint64_t action_timestamp = 0;  // CLOCK_MONOTONIC time of last action
     uint64_t first_entry_addr = 0;
   };
@@ -196,8 +192,7 @@ class JITDebugReader {
                      std::vector<JITDebugInfo>* debug_info);
   bool IsDescriptorChanged(Process& process, Descriptor& old_descriptor);
   bool InitializeProcess(Process& process);
-  const DescriptorsLocation* GetDescriptorsLocation(const std::string& art_lib_path,
-                                                    bool is_64bit);
+  const DescriptorsLocation* GetDescriptorsLocation(const std::string& art_lib_path, bool is_64bit);
   bool ReadRemoteMem(Process& process, uint64_t remote_addr, uint64_t size, void* data);
   bool ReadDescriptors(Process& process, Descriptor* jit_descriptor, Descriptor* dex_descriptor);
   bool LoadDescriptor(bool is_64bit, const char* data, Descriptor* descriptor);
@@ -213,10 +208,10 @@ class JITDebugReader {
                               std::vector<CodeEntry>* new_code_entries);
 
   bool ReadJITCodeDebugInfo(Process& process, const std::vector<CodeEntry>& jit_entries,
-                       std::vector<JITDebugInfo>* debug_info);
+                            std::vector<JITDebugInfo>* debug_info);
   TempSymFile* GetTempSymFile(Process& process, const CodeEntry& jit_entry);
   void ReadDexFileDebugInfo(Process& process, const std::vector<CodeEntry>& dex_entries,
-                       std::vector<JITDebugInfo>* debug_info);
+                            std::vector<JITDebugInfo>* debug_info);
   bool AddDebugInfo(const std::vector<JITDebugInfo>& debug_info, bool sync_kernel_records);
 
   const std::string symfile_prefix_;
@@ -241,6 +236,6 @@ class JITDebugReader {
   std::unique_ptr<TempSymFile> zygote_symfile_;
 };
 
-}  //namespace simpleperf
+}  // namespace simpleperf
 
-#endif   // SIMPLE_PERF_JIT_DEBUG_READER_H_
+#endif  // SIMPLE_PERF_JIT_DEBUG_READER_H_
