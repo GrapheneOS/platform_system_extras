@@ -22,9 +22,9 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 
+#include "ETMRecorder.h"
 #include "command.h"
 #include "environment.h"
-#include "ETMRecorder.h"
 #include "event_attr.h"
 #include "event_fd.h"
 #include "event_selection_set.h"
@@ -143,8 +143,7 @@ class ListCommand : public Command {
 "                     dwarf-based-call-graph\n"
 "                     trace-offcpu\n"
                 // clang-format on
-                ) {
-  }
+        ) {}
 
   bool Run(const std::vector<std::string>& args) override;
 
@@ -158,28 +157,22 @@ bool ListCommand::Run(const std::vector<std::string>& args) {
   }
 
   static std::map<std::string, std::pair<std::string, std::function<bool(const EventType&)>>>
-      type_map = {
-          {"hw",
-           {"hardware events", [](const EventType& e) { return e.type == PERF_TYPE_HARDWARE; }}},
-          {"sw",
-           {"software events", [](const EventType& e) { return e.type == PERF_TYPE_SOFTWARE; }}},
-          {"cache",
-           {"hw-cache events", [](const EventType& e) { return e.type == PERF_TYPE_HW_CACHE; }}},
-          {"raw",
-           {"raw events provided by cpu pmu",
-            [](const EventType& e) { return e.type == PERF_TYPE_RAW; }}},
-          {"tracepoint",
-           {"tracepoint events",
-            [](const EventType& e) { return e.type == PERF_TYPE_TRACEPOINT; }}},
+      type_map =
+  { {"hw", {"hardware events", [](const EventType& e) { return e.type == PERF_TYPE_HARDWARE; }}},
+    {"sw", {"software events", [](const EventType& e) { return e.type == PERF_TYPE_SOFTWARE; }}},
+    {"cache", {"hw-cache events", [](const EventType& e) { return e.type == PERF_TYPE_HW_CACHE; }}},
+    {"raw",
+     {"raw events provided by cpu pmu",
+      [](const EventType& e) { return e.type == PERF_TYPE_RAW; }}},
+    {"tracepoint",
+     {"tracepoint events", [](const EventType& e) { return e.type == PERF_TYPE_TRACEPOINT; }}},
 #if defined(__arm__) || defined(__aarch64__)
-          {"cs-etm",
-           {"coresight etm events",
-            [](const EventType& e) {
-              return e.type == ETMRecorder::GetInstance().GetEtmEventType();
-            }}},
+    {"cs-etm",
+     {"coresight etm events",
+      [](const EventType& e) { return e.type == ETMRecorder::GetInstance().GetEtmEventType(); }}},
 #endif
-          {"pmu", {"pmu events", [](const EventType& e) { return e.IsPmuEvent(); }}},
-      };
+    {"pmu", {"pmu events", [](const EventType& e) { return e.IsPmuEvent(); }}},
+  };
 
   std::vector<std::string> names;
   if (args.empty()) {

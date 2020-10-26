@@ -17,9 +17,9 @@
 // Add fake functions to build successfully on darwin.
 #include <android-base/logging.h>
 
-#include "read_dex_file.h"
-#include "environment.h"
 #include "OfflineUnwinder.h"
+#include "environment.h"
+#include "read_dex_file.h"
 
 bool GetKernelBuildId(BuildId*) {
   return false;

@@ -38,19 +38,17 @@ static std::unique_ptr<Command> ReportCmd() {
 
 class ReportCommandTest : public ::testing::Test {
  protected:
-  void Report(
-      const std::string& perf_data,
-      const std::vector<std::string>& add_args = std::vector<std::string>()) {
+  void Report(const std::string& perf_data,
+              const std::vector<std::string>& add_args = std::vector<std::string>()) {
     ReportRaw(GetTestData(perf_data), add_args);
   }
 
-  void ReportRaw(
-      const std::string& perf_data,
-      const std::vector<std::string>& add_args = std::vector<std::string>()) {
+  void ReportRaw(const std::string& perf_data,
+                 const std::vector<std::string>& add_args = std::vector<std::string>()) {
     success = false;
     TemporaryFile tmp_file;
-    std::vector<std::string> args = {
-        "-i", perf_data, "--symfs", GetTestDataDir(), "-o", tmp_file.path};
+    std::vector<std::string> args = {"-i", perf_data,    "--symfs", GetTestDataDir(),
+                                     "-o", tmp_file.path};
     args.insert(args.end(), add_args.begin(), add_args.end());
     ASSERT_TRUE(ReportCmd()->Run(args));
     ASSERT_TRUE(android::base::ReadFileToString(tmp_file.path, &content));
@@ -99,8 +97,7 @@ TEST_F(ReportCommandTest, sort_option_pid) {
   Report(PERF_DATA, {"--sort", "pid"});
   ASSERT_TRUE(success);
   size_t line_index = 0;
-  while (line_index < lines.size() &&
-         lines[line_index].find("Pid") == std::string::npos) {
+  while (line_index < lines.size() && lines[line_index].find("Pid") == std::string::npos) {
     line_index++;
   }
   ASSERT_LT(line_index + 2, lines.size());
@@ -110,8 +107,7 @@ TEST_F(ReportCommandTest, sort_option_more_than_one) {
   Report(PERF_DATA, {"--sort", "comm,pid,dso,symbol"});
   ASSERT_TRUE(success);
   size_t line_index = 0;
-  while (line_index < lines.size() &&
-         lines[line_index].find("Overhead") == std::string::npos) {
+  while (line_index < lines.size() && lines[line_index].find("Overhead") == std::string::npos) {
     line_index++;
   }
   ASSERT_LT(line_index + 1, lines.size());
@@ -129,8 +125,7 @@ TEST_F(ReportCommandTest, children_option) {
   for (size_t i = 0; i < lines.size(); ++i) {
     char name[1024];
     std::pair<double, double> pair;
-    if (sscanf(lines[i].c_str(), "%lf%%%lf%%%s", &pair.first, &pair.second,
-               name) == 3) {
+    if (sscanf(lines[i].c_str(), "%lf%%%lf%%%s", &pair.first, &pair.second, name) == 3) {
       map.insert(std::make_pair(name, pair));
     }
   }
@@ -182,8 +177,7 @@ TEST_F(ReportCommandTest, callgraph_option) {
 static bool AllItemsWithString(std::vector<std::string>& lines,
                                const std::vector<std::string>& strs) {
   size_t line_index = 0;
-  while (line_index < lines.size() &&
-         lines[line_index].find("Overhead") == std::string::npos) {
+  while (line_index < lines.size() && lines[line_index].find("Overhead") == std::string::npos) {
     line_index++;
   }
   if (line_index == lines.size() || line_index + 1 == lines.size()) {
@@ -210,19 +204,16 @@ TEST_F(ReportCommandTest, pid_filter_option) {
   ASSERT_TRUE(success);
   ASSERT_FALSE(AllItemsWithString(lines, {"17441"}));
   ASSERT_FALSE(AllItemsWithString(lines, {"17441", "17443"}));
-  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS,
-         {"--sort", "pid", "--pids", "17441"});
+  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--sort", "pid", "--pids", "17441"});
   ASSERT_TRUE(success);
   ASSERT_TRUE(AllItemsWithString(lines, {"17441"}));
-  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS,
-         {"--sort", "pid", "--pids", "17441,17443"});
+  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--sort", "pid", "--pids", "17441,17443"});
   ASSERT_TRUE(success);
   ASSERT_TRUE(AllItemsWithString(lines, {"17441", "17443"}));
 
   // Test that --pids option is not the same as --tids option.
   // Thread 17445 and 17441 are in process 17441.
-  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS,
-         {"--sort", "tid", "--pids", "17441"});
+  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--sort", "tid", "--pids", "17441"});
   ASSERT_TRUE(success);
   ASSERT_NE(content.find("17441"), std::string::npos);
   ASSERT_NE(content.find("17445"), std::string::npos);
@@ -242,12 +233,10 @@ TEST_F(ReportCommandTest, tid_filter_option) {
   ASSERT_TRUE(success);
   ASSERT_FALSE(AllItemsWithString(lines, {"17441"}));
   ASSERT_FALSE(AllItemsWithString(lines, {"17441", "17445"}));
-  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS,
-         {"--sort", "tid", "--tids", "17441"});
+  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--sort", "tid", "--tids", "17441"});
   ASSERT_TRUE(success);
   ASSERT_TRUE(AllItemsWithString(lines, {"17441"}));
-  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS,
-         {"--sort", "tid", "--tids", "17441,17445"});
+  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--sort", "tid", "--tids", "17441,17445"});
   ASSERT_TRUE(success);
   ASSERT_TRUE(AllItemsWithString(lines, {"17441", "17445"}));
 }
@@ -292,12 +281,10 @@ TEST_F(ReportCommandTest, symbol_filter_option) {
   ASSERT_TRUE(success);
   ASSERT_FALSE(AllItemsWithString(lines, {"func2(int, int)"}));
   ASSERT_FALSE(AllItemsWithString(lines, {"main", "func2(int, int)"}));
-  Report(PERF_DATA_WITH_SYMBOLS,
-         {"--sort", "symbol", "--symbols", "func2(int, int)"});
+  Report(PERF_DATA_WITH_SYMBOLS, {"--sort", "symbol", "--symbols", "func2(int, int)"});
   ASSERT_TRUE(success);
   ASSERT_TRUE(AllItemsWithString(lines, {"func2(int, int)"}));
-  Report(PERF_DATA_WITH_SYMBOLS,
-         {"--sort", "symbol", "--symbols", "main;func2(int, int)"});
+  Report(PERF_DATA_WITH_SYMBOLS, {"--sort", "symbol", "--symbols", "main;func2(int, int)"});
   ASSERT_TRUE(success);
   ASSERT_TRUE(AllItemsWithString(lines, {"main", "func2(int, int)"}));
 }
@@ -317,19 +304,16 @@ TEST_F(ReportCommandTest, use_branch_address) {
       }
     }
   }
-  ASSERT_NE(hit_set.find(std::make_pair<std::string, std::string>(
-                "GlobalFunc", "CalledFunc")),
+  ASSERT_NE(hit_set.find(std::make_pair<std::string, std::string>("GlobalFunc", "CalledFunc")),
             hit_set.end());
-  ASSERT_NE(hit_set.find(std::make_pair<std::string, std::string>(
-                "CalledFunc", "GlobalFunc")),
+  ASSERT_NE(hit_set.find(std::make_pair<std::string, std::string>("CalledFunc", "GlobalFunc")),
             hit_set.end());
 }
 
 TEST_F(ReportCommandTest, report_symbols_of_nativelib_in_apk) {
   Report(NATIVELIB_IN_APK_PERF_DATA);
   ASSERT_TRUE(success);
-  ASSERT_NE(content.find(GetUrlInApk(APK_FILE, NATIVELIB_IN_APK)),
-            std::string::npos);
+  ASSERT_NE(content.find(GetUrlInApk(APK_FILE, NATIVELIB_IN_APK)), std::string::npos);
   ASSERT_NE(content.find("Func2"), std::string::npos);
 }
 
@@ -377,8 +361,7 @@ TEST_F(ReportCommandTest, report_sort_vaddr_in_file) {
 }
 
 TEST_F(ReportCommandTest, check_build_id) {
-  Report(PERF_DATA_FOR_BUILD_ID_CHECK,
-         {"--symfs", GetTestData(CORRECT_SYMFS_FOR_BUILD_ID_CHECK)});
+  Report(PERF_DATA_FOR_BUILD_ID_CHECK, {"--symfs", GetTestData(CORRECT_SYMFS_FOR_BUILD_ID_CHECK)});
   ASSERT_TRUE(success);
   ASSERT_NE(content.find("main"), std::string::npos);
   ASSERT_EXIT(
@@ -408,8 +391,7 @@ TEST_F(ReportCommandTest, no_show_ip_option) {
 TEST_F(ReportCommandTest, no_symbol_table_warning) {
   ASSERT_EXIT(
       {
-        Report(PERF_DATA,
-               {"--symfs", GetTestData(SYMFS_FOR_NO_SYMBOL_TABLE_WARNING)});
+        Report(PERF_DATA, {"--symfs", GetTestData(SYMFS_FOR_NO_SYMBOL_TABLE_WARNING)});
         if (!success) {
           exit(1);
         }
@@ -424,8 +406,7 @@ TEST_F(ReportCommandTest, no_symbol_table_warning) {
 TEST_F(ReportCommandTest, read_elf_file_warning) {
   ASSERT_EXIT(
       {
-        Report(PERF_DATA,
-               {"--symfs", GetTestData(SYMFS_FOR_READ_ELF_FILE_WARNING)});
+        Report(PERF_DATA, {"--symfs", GetTestData(SYMFS_FOR_READ_ELF_FILE_WARNING)});
         if (!success) {
           exit(1);
         }
@@ -454,12 +435,10 @@ TEST_F(ReportCommandTest, max_stack_and_percent_limit_option) {
   ASSERT_TRUE(success);
   ASSERT_NE(content.find("89.03"), std::string::npos);
 
-  Report(PERF_DATA_MAX_STACK_AND_PERCENT_LIMIT,
-         {"-g", "--percent-limit", "90"});
+  Report(PERF_DATA_MAX_STACK_AND_PERCENT_LIMIT, {"-g", "--percent-limit", "90"});
   ASSERT_TRUE(success);
   ASSERT_EQ(content.find("89.03"), std::string::npos);
-  Report(PERF_DATA_MAX_STACK_AND_PERCENT_LIMIT,
-         {"-g", "--percent-limit", "70"});
+  Report(PERF_DATA_MAX_STACK_AND_PERCENT_LIMIT, {"-g", "--percent-limit", "70"});
   ASSERT_TRUE(success);
   ASSERT_NE(content.find("89.03"), std::string::npos);
 }
@@ -568,16 +547,14 @@ TEST_F(ReportCommandTest, dwarf_callgraph) {
   CreateProcesses(1, &workloads);
   std::string pid = std::to_string(workloads[0]->GetPid());
   TemporaryFile tmp_file;
-  ASSERT_TRUE(
-      RecordCmd()->Run({"-p", pid, "-g", "-o", tmp_file.path, "sleep", SLEEP_SEC}));
+  ASSERT_TRUE(RecordCmd()->Run({"-p", pid, "-g", "-o", tmp_file.path, "sleep", SLEEP_SEC}));
   ReportRaw(tmp_file.path, {"-g"});
   ASSERT_TRUE(success);
 }
 
 TEST_F(ReportCommandTest, report_dwarf_callgraph_of_nativelib_in_apk) {
   Report(NATIVELIB_IN_APK_PERF_DATA, {"-g"});
-  ASSERT_NE(content.find(GetUrlInApk(APK_FILE, NATIVELIB_IN_APK)),
-            std::string::npos);
+  ASSERT_NE(content.find(GetUrlInApk(APK_FILE, NATIVELIB_IN_APK)), std::string::npos);
   ASSERT_NE(content.find("Func2"), std::string::npos);
   ASSERT_NE(content.find("Func1"), std::string::npos);
   ASSERT_NE(content.find("GlobalFunc"), std::string::npos);
@@ -591,8 +568,8 @@ TEST_F(ReportCommandTest, exclude_kernel_callchain) {
   CreateProcesses(1, &workloads);
   std::string pid = std::to_string(workloads[0]->GetPid());
   TemporaryFile tmpfile;
-  ASSERT_TRUE(RecordCmd()->Run({"--trace-offcpu", "-e", "cpu-cycles:u", "-p", pid,
-                                "--duration", "2", "-o", tmpfile.path, "-g"}));
+  ASSERT_TRUE(RecordCmd()->Run({"--trace-offcpu", "-e", "cpu-cycles:u", "-p", pid, "--duration",
+                                "2", "-o", tmpfile.path, "-g"}));
   ReportRaw(tmpfile.path, {"-g"});
   ASSERT_TRUE(success);
   ASSERT_EQ(content.find("[kernel.kallsyms]"), std::string::npos);

@@ -27,9 +27,9 @@
 #include <android-base/strings.h>
 
 #include "CallChainJoiner.h"
+#include "OfflineUnwinder.h"
 #include "command.h"
 #include "environment.h"
-#include "OfflineUnwinder.h"
 #include "perf_regs.h"
 #include "record_file.h"
 #include "thread_tree.h"
@@ -56,7 +56,7 @@ struct MemStat {
 static bool GetMemStat(MemStat* stat) {
   std::string s;
   if (!android::base::ReadFileToString(android::base::StringPrintf("/proc/%d/status", getpid()),
-                                                                   &s)) {
+                                       &s)) {
     PLOG(ERROR) << "Failed to read process status";
     return false;
   }
@@ -91,13 +91,12 @@ class DebugUnwindCommand : public Command {
 "--symfs <dir>  Look for files with symbols relative to this directory.\n"
 "--time time    Only unwind samples recorded at selected time.\n"
                 // clang-format on
-               ),
-          input_filename_("perf.data"),
-          output_filename_("perf.data.debug"),
-          offline_unwinder_(OfflineUnwinder::Create(true)),
-          callchain_joiner_(DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE, 1, true),
-          selected_time_(0) {
-  }
+                ),
+        input_filename_("perf.data"),
+        output_filename_("perf.data.debug"),
+        offline_unwinder_(OfflineUnwinder::Create(true)),
+        callchain_joiner_(DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE, 1, true),
+        selected_time_(0) {}
 
   bool Run(const std::vector<std::string>& args);
 
@@ -190,7 +189,7 @@ bool DebugUnwindCommand::UnwindRecordFile() {
   std::string record_cmd = android::base::Join(reader_->ReadCmdlineFeature(), " ");
   if (record_cmd.find("--no-unwind") == std::string::npos ||
       (record_cmd.find("-g") == std::string::npos &&
-          record_cmd.find("--call-graph dwarf") == std::string::npos)) {
+       record_cmd.find("--call-graph dwarf") == std::string::npos)) {
     LOG(ERROR) << input_filename_ << " isn't recorded with \"-g --no-unwind\"";
     return false;
   }
@@ -207,9 +206,7 @@ bool DebugUnwindCommand::UnwindRecordFile() {
   if (!GetMemStat(&stat_.mem_before_unwinding)) {
     return false;
   }
-  auto callback = [this](std::unique_ptr<Record> record) {
-    return ProcessRecord(record.get());
-  };
+  auto callback = [this](std::unique_ptr<Record> record) { return ProcessRecord(record.get()); };
   if (!reader_->ReadDataSection(callback)) {
     return false;
   }
@@ -238,15 +235,15 @@ bool DebugUnwindCommand::ProcessRecord(Record* record) {
       std::vector<uint64_t> ips;
       std::vector<uint64_t> sps;
       if (!offline_unwinder_->UnwindCallChain(*thread, regs, r.stack_user_data.data,
-                                             r.GetValidStackSize(), &ips, &sps)) {
+                                              r.GetValidStackSize(), &ips, &sps)) {
         return false;
       }
 
       const UnwindingResult& unwinding_result = offline_unwinder_->GetUnwindingResult();
       stat_.unwinding_sample_count++;
       stat_.total_unwinding_time_in_ns += unwinding_result.used_time;
-      stat_.max_unwinding_time_in_ns = std::max(stat_.max_unwinding_time_in_ns,
-                                                unwinding_result.used_time);
+      stat_.max_unwinding_time_in_ns =
+          std::max(stat_.max_unwinding_time_in_ns, unwinding_result.used_time);
       if (!writer_->WriteRecord(UnwindingResultRecord(r.time_data.time, unwinding_result))) {
         return false;
       }
@@ -388,10 +385,11 @@ bool DebugUnwindCommand::WriteFeatureSections() {
 void DebugUnwindCommand::PrintStat() {
   printf("Unwinding sample count: %" PRIu64 "\n", stat_.unwinding_sample_count);
   if (stat_.unwinding_sample_count > 0u) {
-    printf("Average unwinding time: %f us\n", static_cast<double>(stat_.total_unwinding_time_in_ns)
-           / 1000 / stat_.unwinding_sample_count);
-    printf("Max unwinding time: %f us\n", static_cast<double>(stat_.max_unwinding_time_in_ns)
-           / 1000);
+    printf("Average unwinding time: %f us\n",
+           static_cast<double>(stat_.total_unwinding_time_in_ns) / 1000 /
+               stat_.unwinding_sample_count);
+    printf("Max unwinding time: %f us\n",
+           static_cast<double>(stat_.max_unwinding_time_in_ns) / 1000);
   }
   printf("Memory change:\n");
   PrintIndented(1, "VmPeak: %s -> %s\n", stat_.mem_before_unwinding.vm_peak.c_str(),
@@ -410,7 +408,7 @@ namespace simpleperf {
 
 void RegisterDebugUnwindCommand() {
   RegisterCommand("debug-unwind",
-                  []{ return std::unique_ptr<Command>(new DebugUnwindCommand()); });
+                  [] { return std::unique_ptr<Command>(new DebugUnwindCommand()); });
 }
 
 }  // namespace simpleperf

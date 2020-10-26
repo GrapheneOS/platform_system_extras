@@ -46,7 +46,10 @@ using android::base::Split;
 namespace {
 
 static std::set<std::string> branch_sort_keys = {
-    "dso_from", "dso_to", "symbol_from", "symbol_to",
+    "dso_from",
+    "dso_to",
+    "symbol_from",
+    "symbol_to",
 };
 struct BranchFromEntry {
   const MapEntry* map;
@@ -54,8 +57,7 @@ struct BranchFromEntry {
   uint64_t vaddr_in_file;
   uint64_t flags;
 
-  BranchFromEntry()
-      : map(nullptr), symbol(nullptr), vaddr_in_file(0), flags(0) {}
+  BranchFromEntry() : map(nullptr), symbol(nullptr), vaddr_in_file(0), flags(0) {}
 };
 
 struct SampleEntry {
@@ -94,9 +96,7 @@ struct SampleEntry {
   SampleEntry(SampleEntry&&) = default;
   SampleEntry(SampleEntry&) = delete;
 
-  uint64_t GetPeriod() const {
-    return period;
-  }
+  uint64_t GetPeriod() const { return period; }
 };
 
 struct SampleTree {
@@ -138,9 +138,7 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
     symbol_filter_ = symbol_filter;
   }
 
-  void SetEventName(const std::string& event_name) {
-    event_name_ = event_name;
-  }
+  void SetEventName(const std::string& event_name) { event_name_ = event_name; }
 
   SampleTree GetSampleTree() {
     AddCallChainDuplicateInfo();
@@ -164,33 +162,25 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
  protected:
   virtual uint64_t GetPeriod(const SampleRecord& r) = 0;
 
-  SampleEntry* CreateSample(const SampleRecord& r, bool in_kernel,
-                            uint64_t* acc_info) override {
-    const ThreadEntry* thread =
-        thread_tree_->FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-    const MapEntry* map =
-        thread_tree_->FindMap(thread, r.ip_data.ip, in_kernel);
+  SampleEntry* CreateSample(const SampleRecord& r, bool in_kernel, uint64_t* acc_info) override {
+    const ThreadEntry* thread = thread_tree_->FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
+    const MapEntry* map = thread_tree_->FindMap(thread, r.ip_data.ip, in_kernel);
     uint64_t vaddr_in_file;
-    const Symbol* symbol =
-        thread_tree_->FindSymbol(map, r.ip_data.ip, &vaddr_in_file);
+    const Symbol* symbol = thread_tree_->FindSymbol(map, r.ip_data.ip, &vaddr_in_file);
     uint64_t period = GetPeriod(r);
     *acc_info = period;
     return InsertSample(std::make_unique<SampleEntry>(r.time_data.time, period, 0, 1, r.Cpu(),
                                                       thread, map, symbol, vaddr_in_file));
   }
 
-  SampleEntry* CreateBranchSample(const SampleRecord& r,
-                                  const BranchStackItemType& item) override {
-    const ThreadEntry* thread =
-        thread_tree_->FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
+  SampleEntry* CreateBranchSample(const SampleRecord& r, const BranchStackItemType& item) override {
+    const ThreadEntry* thread = thread_tree_->FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
     const MapEntry* from_map = thread_tree_->FindMap(thread, item.from);
     uint64_t from_vaddr_in_file;
-    const Symbol* from_symbol =
-        thread_tree_->FindSymbol(from_map, item.from, &from_vaddr_in_file);
+    const Symbol* from_symbol = thread_tree_->FindSymbol(from_map, item.from, &from_vaddr_in_file);
     const MapEntry* to_map = thread_tree_->FindMap(thread, item.to);
     uint64_t to_vaddr_in_file;
-    const Symbol* to_symbol =
-        thread_tree_->FindSymbol(to_map, item.to, &to_vaddr_in_file);
+    const Symbol* to_symbol = thread_tree_->FindSymbol(to_map, item.to, &to_vaddr_in_file);
     auto sample =
         std::make_unique<SampleEntry>(r.time_data.time, r.period_data.period, 0, 1, r.Cpu(), thread,
                                       to_map, to_symbol, to_vaddr_in_file);
@@ -223,9 +213,7 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
     return thread_tree_->FindThreadOrNew(sample->pid, sample->tid);
   }
 
-  uint64_t GetPeriodForCallChain(const uint64_t& acc_info) override {
-    return acc_info;
-  }
+  uint64_t GetPeriodForCallChain(const uint64_t& acc_info) override { return acc_info; }
 
   bool FilterSample(const SampleEntry* sample) override {
     if (!cpu_filter_.empty() && cpu_filter_.count(sample->cpu) == 0) {
@@ -282,12 +270,10 @@ class EventCountSampleTreeBuilder : public ReportCmdSampleTreeBuilder {
  public:
   EventCountSampleTreeBuilder(const SampleComparator<SampleEntry>& sample_comparator,
                               ThreadTree* thread_tree)
-      : ReportCmdSampleTreeBuilder(sample_comparator, thread_tree) { }
+      : ReportCmdSampleTreeBuilder(sample_comparator, thread_tree) {}
 
  protected:
-  uint64_t GetPeriod(const SampleRecord& r) override {
-    return r.period_data.period;
-  }
+  uint64_t GetPeriod(const SampleRecord& r) override { return r.period_data.period; }
 };
 
 // Build sample tree based on the time difference between current sample and next sample.
@@ -295,7 +281,7 @@ class TimestampSampleTreeBuilder : public ReportCmdSampleTreeBuilder {
  public:
   TimestampSampleTreeBuilder(const SampleComparator<SampleEntry>& sample_comparator,
                              ThreadTree* thread_tree)
-      : ReportCmdSampleTreeBuilder(sample_comparator, thread_tree) { }
+      : ReportCmdSampleTreeBuilder(sample_comparator, thread_tree) {}
 
   void ReportCmdProcessSampleRecord(std::shared_ptr<SampleRecord>& r) override {
     pid_t tid = static_cast<pid_t>(r->tid_data.tid);
@@ -355,18 +341,14 @@ struct SampleTreeBuilderOptions {
 };
 
 using ReportCmdSampleTreeSorter = SampleTreeSorter<SampleEntry>;
-using ReportCmdSampleTreeDisplayer =
-    SampleTreeDisplayer<SampleEntry, SampleTree>;
+using ReportCmdSampleTreeDisplayer = SampleTreeDisplayer<SampleEntry, SampleTree>;
 
-using ReportCmdCallgraphDisplayer =
-    CallgraphDisplayer<SampleEntry, CallChainNode<SampleEntry>>;
+using ReportCmdCallgraphDisplayer = CallgraphDisplayer<SampleEntry, CallChainNode<SampleEntry>>;
 
-class ReportCmdCallgraphDisplayerWithVaddrInFile
-    : public ReportCmdCallgraphDisplayer {
+class ReportCmdCallgraphDisplayerWithVaddrInFile : public ReportCmdCallgraphDisplayer {
  protected:
   std::string PrintSampleName(const SampleEntry* sample) override {
-    return android::base::StringPrintf("%s [+0x%" PRIx64 "]",
-                                       sample->symbol->DemangledName(),
+    return android::base::StringPrintf("%s [+0x%" PRIx64 "]", sample->symbol->DemangledName(),
                                        sample->vaddr_in_file);
   }
 };
@@ -379,9 +361,8 @@ struct EventAttrWithName {
 class ReportCommand : public Command {
  public:
   ReportCommand()
-      : Command(
-            "report", "report sampling information in perf.data",
-            // clang-format off
+      : Command("report", "report sampling information in perf.data",
+                // clang-format off
 "Usage: simpleperf report [options]\n"
 "The default options are: -i perf.data --sort comm,pid,tid,dso,symbol.\n"
 "-b    Use the branch-to addresses in sampled take branches instead of the\n"
@@ -433,8 +414,8 @@ class ReportCommand : public Command {
 "--symfs <dir>         Look for files with symbols relative to this directory.\n"
 "--tids tid1,tid2,...  Report only for selected tids.\n"
 "--vmlinux <file>      Parse kernel symbols from <file>.\n"
-            // clang-format on
-            ),
+                // clang-format on
+                ),
         record_filename_("perf.data"),
         record_file_arch_(GetBuildArch()),
         use_branch_address_(false),
@@ -528,29 +509,29 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
 
 bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   static OptionFormatMap option_formats = {
-    {"-b", {OptionValueType::NONE, OptionType::SINGLE}},
-    {"--children", {OptionValueType::NONE, OptionType::SINGLE}},
-    {"--comms", {OptionValueType::STRING, OptionType::MULTIPLE}},
-    {"--cpu", {OptionValueType::STRING, OptionType::MULTIPLE}},
-    {"--csv", {OptionValueType::NONE, OptionType::SINGLE}},
-    {"--dsos", {OptionValueType::STRING, OptionType::MULTIPLE}},
-    {"--full-callgraph", {OptionValueType::NONE, OptionType::SINGLE}},
-    {"-g", {OptionValueType::OPT_STRING, OptionType::SINGLE}},
-    {"-i", {OptionValueType::STRING, OptionType::SINGLE}},
-    {"--kallsyms", {OptionValueType::STRING, OptionType::SINGLE}},
-    {"--max-stack", {OptionValueType::UINT, OptionType::SINGLE}},
-    {"-n", {OptionValueType::NONE, OptionType::SINGLE}},
-    {"--no-demangle", {OptionValueType::NONE, OptionType::SINGLE}},
-    {"--no-show-ip", {OptionValueType::NONE, OptionType::SINGLE}},
-    {"-o", {OptionValueType::STRING, OptionType::SINGLE}},
-    {"--percent-limit", {OptionValueType::DOUBLE, OptionType::SINGLE}},
-    {"--pids", {OptionValueType::STRING, OptionType::MULTIPLE}},
-    {"--tids", {OptionValueType::STRING, OptionType::MULTIPLE}},
-    {"--raw-period", {OptionValueType::NONE, OptionType::SINGLE}},
-    {"--sort", {OptionValueType::STRING, OptionType::SINGLE}},
-    {"--symbols", {OptionValueType::STRING, OptionType::MULTIPLE}},
-    {"--symfs", {OptionValueType::STRING, OptionType::SINGLE}},
-    {"--vmlinux", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"-b", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--children", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--comms", {OptionValueType::STRING, OptionType::MULTIPLE}},
+      {"--cpu", {OptionValueType::STRING, OptionType::MULTIPLE}},
+      {"--csv", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--dsos", {OptionValueType::STRING, OptionType::MULTIPLE}},
+      {"--full-callgraph", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"-g", {OptionValueType::OPT_STRING, OptionType::SINGLE}},
+      {"-i", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"--kallsyms", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"--max-stack", {OptionValueType::UINT, OptionType::SINGLE}},
+      {"-n", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--no-demangle", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--no-show-ip", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"-o", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"--percent-limit", {OptionValueType::DOUBLE, OptionType::SINGLE}},
+      {"--pids", {OptionValueType::STRING, OptionType::MULTIPLE}},
+      {"--tids", {OptionValueType::STRING, OptionType::MULTIPLE}},
+      {"--raw-period", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--sort", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"--symbols", {OptionValueType::STRING, OptionType::MULTIPLE}},
+      {"--symfs", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"--vmlinux", {OptionValueType::STRING, OptionType::SINGLE}},
   };
 
   OptionValueMap options;
@@ -685,8 +666,7 @@ bool ReportCommand::BuildSampleComparatorAndDisplayer(bool print_sample_count,
   }
 
   for (auto& key : sort_keys) {
-    if (!use_branch_address_ &&
-        branch_sort_keys.find(key) != branch_sort_keys.end()) {
+    if (!use_branch_address_ && branch_sort_keys.find(key) != branch_sort_keys.end()) {
       LOG(ERROR) << "sort key '" << key << "' can only be used with -b option.";
       return false;
     }
@@ -748,8 +728,7 @@ bool ReportCommand::BuildSampleComparatorAndDisplayer(bool print_sample_count,
     }
     if (has_symbol_key) {
       if (has_vaddr_in_file_key) {
-        displayer.AddExclusiveDisplayFunction(
-            ReportCmdCallgraphDisplayerWithVaddrInFile());
+        displayer.AddExclusiveDisplayFunction(ReportCmdCallgraphDisplayerWithVaddrInFile());
       } else {
         displayer.AddExclusiveDisplayFunction(ReportCmdCallgraphDisplayer(
             callgraph_max_stack_, callgraph_percent_limit_, brief_callgraph_));
@@ -799,8 +778,7 @@ bool ReportCommand::ReadEventAttrFromRecordFile() {
       }
     }
     if (!has_branch_stack) {
-      LOG(ERROR) << record_filename_
-                 << " is not recorded with branch stack sampling option.";
+      LOG(ERROR) << record_filename_ << " is not recorded with branch stack sampling option.";
       return false;
     }
   }
@@ -820,8 +798,7 @@ bool ReportCommand::ReadEventAttrFromRecordFile() {
 bool ReportCommand::ReadFeaturesFromRecordFile() {
   record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
 
-  std::string arch =
-      record_file_reader_->ReadFeatureString(PerfFileFormat::FEAT_ARCH);
+  std::string arch = record_file_reader_->ReadFeatureString(PerfFileFormat::FEAT_ARCH);
   if (!arch.empty()) {
     record_file_arch_ = GetArchType(arch);
     if (record_file_arch_ == ARCH_UNSUPPORTED) {
@@ -840,9 +817,8 @@ bool ReportCommand::ReadFeaturesFromRecordFile() {
         if (s == "-a") {
           system_wide_collection_ = true;
           break;
-        } else if (s == "--call-graph" || s == "--cpu" || s == "-e" ||
-                   s == "-f" || s == "-F" || s == "-j" || s == "-m" ||
-                   s == "-o" || s == "-p" || s == "-t") {
+        } else if (s == "--call-graph" || s == "--cpu" || s == "-e" || s == "-f" || s == "-F" ||
+                   s == "-j" || s == "-m" || s == "-o" || s == "-p" || s == "-t") {
           i++;
         } else if (!s.empty() && s[0] != '-') {
           break;
@@ -852,8 +828,8 @@ bool ReportCommand::ReadFeaturesFromRecordFile() {
   }
   if (record_file_reader_->HasFeature(PerfFileFormat::FEAT_TRACING_DATA)) {
     std::vector<char> tracing_data;
-    if (!record_file_reader_->ReadFeatureSection(
-            PerfFileFormat::FEAT_TRACING_DATA, &tracing_data)) {
+    if (!record_file_reader_->ReadFeatureSection(PerfFileFormat::FEAT_TRACING_DATA,
+                                                 &tracing_data)) {
       return false;
     }
     if (!ProcessTracingData(tracing_data)) {
@@ -880,9 +856,7 @@ bool ReportCommand::ReadSampleTreeFromRecordFile() {
   }
 
   if (!record_file_reader_->ReadDataSection(
-          [this](std::unique_ptr<Record> record) {
-            return ProcessRecord(std::move(record));
-          })) {
+          [this](std::unique_ptr<Record> record) { return ProcessRecord(std::move(record)); })) {
     return false;
   }
   for (size_t i = 0; i < sample_tree_builder_.size(); ++i) {
@@ -911,7 +885,6 @@ bool ReportCommand::ProcessRecord(std::unique_ptr<Record> record) {
   }
   return true;
 }
-
 
 void ReportCommand::ProcessSampleRecordInTraceOffCpuMode(std::unique_ptr<Record> record,
                                                          size_t attr_id) {
@@ -962,8 +935,8 @@ bool ReportCommand::PrintReport() {
     }
     EventAttrWithName& attr = event_attrs_[i];
     SampleTree& sample_tree = sample_tree_[i];
-    fprintf(report_fp, "Event: %s (type %u, config %llu)\n", attr.name.c_str(),
-            attr.attr.type, attr.attr.config);
+    fprintf(report_fp, "Event: %s (type %u, config %llu)\n", attr.name.c_str(), attr.attr.type,
+            attr.attr.config);
     fprintf(report_fp, "Samples: %" PRIu64 "\n", sample_tree.total_samples);
     if (sample_tree.total_error_callchains != 0) {
       fprintf(report_fp, "Error Callchains: %" PRIu64 ", %f%%\n",
@@ -994,8 +967,7 @@ void ReportCommand::PrintReportContext(FILE* report_fp) {
 namespace simpleperf {
 
 void RegisterReportCommand() {
-  RegisterCommand("report",
-                  [] { return std::unique_ptr<Command>(new ReportCommand()); });
+  RegisterCommand("report", [] { return std::unique_ptr<Command>(new ReportCommand()); });
 }
 
 }  // namespace simpleperf

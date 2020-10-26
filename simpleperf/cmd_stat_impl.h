@@ -27,9 +27,9 @@
 
 #include <android-base/stringprintf.h>
 
+#include "SampleComparator.h"
 #include "command.h"
 #include "event_selection_set.h"
-#include "SampleComparator.h"
 
 namespace simpleperf {
 

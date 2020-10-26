@@ -36,8 +36,8 @@
 #include <selinux/android.h>
 
 #include "../cmd_api_impl.h"
-#include "../cmd_stat_impl.h"
 #include "../cmd_record_impl.h"
+#include "../cmd_stat_impl.h"
 
 using android::base::ParseInt;
 using android::base::ParseUint;

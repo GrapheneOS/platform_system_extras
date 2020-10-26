@@ -25,9 +25,9 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
+#include "ETMDecoder.h"
 #include "command.h"
 #include "dso.h"
-#include "ETMDecoder.h"
 #include "event_attr.h"
 #include "event_type.h"
 #include "perf_regs.h"
@@ -47,8 +47,7 @@ struct SymbolInfo {
   uint64_t vaddr_in_file;
 };
 
-using ExtractFieldFn =
-    std::function<std::string(const TracingField&, const PerfSampleRawType&)>;
+using ExtractFieldFn = std::function<std::string(const TracingField&, const PerfSampleRawType&)>;
 
 struct EventInfo {
   size_t tp_data_size = 0;
@@ -154,17 +153,25 @@ ExtractFieldFn GetExtractFieldFunction(const TracingField& field) {
   }
   if (field.elem_count == 1) {
     switch (field.elem_size) {
-      case 1: return ExtractIntField<int8_t>;
-      case 2: return ExtractIntField<int16_t>;
-      case 4: return ExtractIntField<int32_t>;
-      case 8: return ExtractIntField<int64_t>;
+      case 1:
+        return ExtractIntField<int8_t>;
+      case 2:
+        return ExtractIntField<int16_t>;
+      case 4:
+        return ExtractIntField<int32_t>;
+      case 8:
+        return ExtractIntField<int64_t>;
     }
   } else {
     switch (field.elem_size) {
-      case 1: return ExtractIntArrayField<int8_t>;
-      case 2: return ExtractIntArrayField<int16_t>;
-      case 4: return ExtractIntArrayField<int32_t>;
-      case 8: return ExtractIntArrayField<int64_t>;
+      case 1:
+        return ExtractIntArrayField<int8_t>;
+      case 2:
+        return ExtractIntArrayField<int16_t>;
+      case 4:
+        return ExtractIntArrayField<int32_t>;
+      case 8:
+        return ExtractIntArrayField<int64_t>;
     }
   }
   return ExtractUnknownField;
@@ -180,7 +187,7 @@ class DumpRecordCommand : public Command {
 "--dump-etm type1,type2,...   Dump etm data. A type is one of raw, packet and element.\n"
 "--symdir <dir>               Look for binaries in a directory recursively.\n"
                 // clang-format on
-      ) {}
+        ) {}
 
   bool Run(const std::vector<std::string>& args);
 
@@ -273,7 +280,7 @@ void DumpRecordCommand::DumpFileHeader() {
   printf("attr_size: %" PRId64 "\n", header.attr_size);
   if (header.attr_size != sizeof(FileAttr)) {
     LOG(WARNING) << "record file attr size " << header.attr_size
-                  << " doesn't match expected attr size " << sizeof(FileAttr);
+                 << " doesn't match expected attr size " << sizeof(FileAttr);
   }
   printf("attrs[file section]: offset %" PRId64 ", size %" PRId64 "\n", header.attrs.offset,
          header.attrs.size);
@@ -315,9 +322,7 @@ bool DumpRecordCommand::DumpDataSection() {
   thread_tree_.ShowIpForUnknownSymbol();
   record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
 
-  auto record_callback = [&](std::unique_ptr<Record> r) {
-    return ProcessRecord(r.get());
-  };
+  auto record_callback = [&](std::unique_ptr<Record> r) { return ProcessRecord(r.get()); };
   return record_file_reader_->ReadDataSection(record_callback);
 }
 
@@ -397,7 +402,7 @@ void DumpRecordCommand::ProcessCallChainRecord(const CallChainRecord& cr) {
 }
 
 SymbolInfo DumpRecordCommand::GetSymbolInfo(uint32_t pid, uint32_t tid, uint64_t ip,
-                                             bool in_kernel) {
+                                            bool in_kernel) {
   ThreadEntry* thread = thread_tree_.FindThreadOrNew(pid, tid);
   const MapEntry* map = thread_tree_.FindMap(thread, ip, in_kernel);
   SymbolInfo info;
@@ -469,9 +474,9 @@ bool DumpRecordCommand::DumpFeatureSection() {
       std::vector<uint64_t> dex_file_offsets;
       size_t read_pos = 0;
       PrintIndented(1, "file:\n");
-      while (record_file_reader_->ReadFileFeature(read_pos, &file_path, &file_type,
-                                                  &min_vaddr, &file_offset_of_min_vaddr,
-                                                  &symbols, &dex_file_offsets)) {
+      while (record_file_reader_->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr,
+                                                  &file_offset_of_min_vaddr, &symbols,
+                                                  &dex_file_offsets)) {
         PrintIndented(2, "file_path %s\n", file_path.c_str());
         PrintIndented(2, "file_type %s\n", DsoTypeToString(static_cast<DsoType>(file_type)));
         PrintIndented(2, "min_vaddr 0x%" PRIx64 "\n", min_vaddr);
