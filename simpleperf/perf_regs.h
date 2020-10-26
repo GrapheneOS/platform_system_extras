@@ -18,13 +18,13 @@
 #define SIMPLE_PERF_PERF_REGS_H_
 
 #if defined(USE_BIONIC_UAPI_HEADERS)
-#include <uapi/asm-x86/asm/perf_regs.h>
 #include <uapi/asm-arm/asm/perf_regs.h>
+#include <uapi/asm-x86/asm/perf_regs.h>
 #define perf_event_arm_regs perf_event_arm64_regs
 #include <uapi/asm-arm64/asm/perf_regs.h>
 #else
-#include <asm-x86/asm/perf_regs.h>
 #include <asm-arm/asm/perf_regs.h>
+#include <asm-x86/asm/perf_regs.h>
 #define perf_event_arm_regs perf_event_arm64_regs
 #include <asm-arm64/asm/perf_regs.h>
 #endif
@@ -73,12 +73,8 @@ class ScopedCurrentArch {
     current_arch = saved_arch;
     current_arch32 = GetArchForAbi(saved_arch, PERF_SAMPLE_REGS_ABI_32);
   }
-  static ArchType GetCurrentArch() {
-    return current_arch;
-  }
-  static ArchType GetCurrentArch32() {
-    return current_arch32;
-  }
+  static ArchType GetCurrentArch() { return current_arch; }
+  static ArchType GetCurrentArch32() { return current_arch32; }
 
  private:
   ArchType saved_arch;

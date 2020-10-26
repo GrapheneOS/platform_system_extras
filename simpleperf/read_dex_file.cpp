@@ -83,16 +83,16 @@ bool ReadSymbolsFromDexFile(const std::string& file_path,
   if (fd == -1) {
     return false;
   }
-  return ReadSymbols(
-      dex_file_offsets, symbols, [&](uint64_t offset) -> std::unique_ptr<art_api::dex::DexFile> {
-        std::string error_msg;
-        std::unique_ptr<art_api::dex::DexFile> dex_file =
-            art_api::dex::DexFile::OpenFromFd(fd, offset, file_path, &error_msg);
-        if (dex_file == nullptr) {
-          LOG(WARNING) << "Failed to read dex file symbols from '" << file_path
-                       << "': " << error_msg;
-          return nullptr;
-        }
-        return dex_file;
-      });
+  return ReadSymbols(dex_file_offsets, symbols,
+                     [&](uint64_t offset) -> std::unique_ptr<art_api::dex::DexFile> {
+                       std::string error_msg;
+                       std::unique_ptr<art_api::dex::DexFile> dex_file =
+                           art_api::dex::DexFile::OpenFromFd(fd, offset, file_path, &error_msg);
+                       if (dex_file == nullptr) {
+                         LOG(WARNING) << "Failed to read dex file symbols from '" << file_path
+                                      << "': " << error_msg;
+                         return nullptr;
+                       }
+                       return dex_file;
+                     });
 }

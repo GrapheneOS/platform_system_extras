@@ -22,12 +22,9 @@ using namespace simpleperf;
 
 class MockCommand : public Command {
  public:
-  MockCommand() : Command("mock", "mock_short_help", "mock_long_help") {
-  }
+  MockCommand() : Command("mock", "mock_short_help", "mock_long_help") {}
 
-  bool Run(const std::vector<std::string>&) override {
-    return true;
-  }
+  bool Run(const std::vector<std::string>&) override { return true; }
 };
 
 TEST(command, CreateCommandInstance) {
@@ -93,20 +90,11 @@ TEST(command, PreprocessOptions) {
   };
 
   // Check options.
-  std::vector<std::string> args = {"--bool-option",
-                                   "--str-option",
-                                   "str1",
-                                   "--str-option",
-                                   "str1_2",
-                                   "--str2-option",
-                                   "str2_value",
-                                   "--opt-str-option",
-                                   "--opt-str-option",
-                                   "opt_str",
-                                   "--uint-option",
-                                   "34",
-                                   "--double-option",
-                                   "-32.75"};
+  std::vector<std::string> args = {
+      "--bool-option",    "--str-option",  "str1",          "--str-option",
+      "str1_2",           "--str2-option", "str2_value",    "--opt-str-option",
+      "--opt-str-option", "opt_str",       "--uint-option", "34",
+      "--double-option",  "-32.75"};
   ASSERT_TRUE(cmd.PreprocessOptions(args, option_formats, &options, &ordered_options, nullptr));
   ASSERT_TRUE(options.PullBoolValue("--bool-option"));
   auto values = options.PullValues("--str-option");

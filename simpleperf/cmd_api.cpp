@@ -30,8 +30,8 @@
 
 #include "cmd_api_impl.h"
 #include "command.h"
-#include "event_type.h"
 #include "environment.h"
+#include "event_type.h"
 #include "utils.h"
 #include "workload.h"
 
@@ -43,9 +43,8 @@ const std::string SIMPLEPERF_DATA_DIR = "simpleperf_data";
 class PrepareCommand : public Command {
  public:
   PrepareCommand()
-      : Command("api-prepare", "Prepare recording via app api",
-                "Usage: simpleperf api-prepare\n"
-                ) {}
+      : Command("api-prepare", "Prepare recording via app api", "Usage: simpleperf api-prepare\n") {
+  }
   bool Run(const std::vector<std::string>& args);
 };
 
@@ -74,7 +73,8 @@ class CollectCommand : public Command {
 "--stop-signal-fd <fd>  Stop recording when fd is readable.\n"
 #endif
                 // clang-format on
-                ) {}
+        ) {
+  }
   bool Run(const std::vector<std::string>& args);
 
  private:
@@ -153,8 +153,8 @@ void CollectCommand::HandleStopSignal() {
 }
 
 bool CollectCommand::CollectRecordingData() {
-  std::unique_ptr<FILE, decltype(&fclose)>  fp(android::base::Fdopen(std::move(out_fd_), "w"),
-                                               fclose);
+  std::unique_ptr<FILE, decltype(&fclose)> fp(android::base::Fdopen(std::move(out_fd_), "w"),
+                                              fclose);
   if (fp == nullptr) {
     PLOG(ERROR) << "failed to call fdopen";
     return false;
@@ -217,10 +217,8 @@ bool CollectCommand::RemoveRecordingData() {
 namespace simpleperf {
 
 void RegisterAPICommands() {
-  RegisterCommand("api-prepare",
-                  []{ return std::unique_ptr<Command>(new PrepareCommand()); });
-  RegisterCommand("api-collect",
-                  []{ return std::unique_ptr<Command>(new CollectCommand()); });
+  RegisterCommand("api-prepare", [] { return std::unique_ptr<Command>(new PrepareCommand()); });
+  RegisterCommand("api-collect", [] { return std::unique_ptr<Command>(new CollectCommand()); });
 }
 
 }  // namespace simpleperf

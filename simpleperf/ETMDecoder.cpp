@@ -53,7 +53,9 @@ class DecodeErrorLogger : public ocsdDefaultErrorLogger {
   ocsdMsgLogger msg_logger_;
 };
 
-static bool IsRespError(ocsd_datapath_resp_t resp) { return resp >= OCSD_RESP_ERR_CONT; }
+static bool IsRespError(ocsd_datapath_resp_t resp) {
+  return resp >= OCSD_RESP_ERR_CONT;
+}
 
 // Used instead of DecodeTree in OpenCSD to avoid linking decoders not for ETMV4 instruction tracing
 // in OpenCSD.
@@ -172,9 +174,7 @@ class MapLocator : public PacketCallback {
   ThreadTree& GetThreadTree() { return thread_tree_; }
 
   // Return current thread id of a trace_id. If not available, return -1.
-  pid_t GetTid(uint8_t trace_id) const {
-    return trace_data_[trace_id].tid;
-  }
+  pid_t GetTid(uint8_t trace_id) const { return trace_data_[trace_id].tid; }
 
   ocsd_datapath_resp_t ProcessPacket(uint8_t trace_id, ocsd_datapath_op_t op,
                                      ocsd_trc_index_t index_sop,
@@ -660,7 +660,7 @@ class ETMDecoderImpl : public ETMDecoder {
     InstallElementCallback(instr_range_parser_.get());
   }
 
-  void RegisterCallback(const BranchListCallbackFn& callback ){
+  void RegisterCallback(const BranchListCallbackFn& callback) {
     InstallMapLocator();
     branch_list_parser_.reset(new BranchListParser(*map_locator_, callback));
     branch_list_parser_->CheckConfigs(configs_);

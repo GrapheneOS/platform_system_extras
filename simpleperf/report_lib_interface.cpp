@@ -17,14 +17,14 @@
 #include <memory>
 #include <utility>
 
-#include <android-base/logging.h>
 #include <android-base/file.h>
+#include <android-base/logging.h>
 #include <android-base/strings.h>
 
+#include "JITDebugReader.h"
 #include "dso.h"
 #include "event_attr.h"
 #include "event_type.h"
-#include "JITDebugReader.h"
 #include "record_file.h"
 #include "thread_tree.h"
 #include "tracing.h"
@@ -138,13 +138,11 @@ struct EventInfo {
 class ReportLib {
  public:
   ReportLib()
-      : log_severity_(
-            new android::base::ScopedLogSeverity(android::base::INFO)),
+      : log_severity_(new android::base::ScopedLogSeverity(android::base::INFO)),
         record_filename_("perf.data"),
         current_thread_(nullptr),
         trace_offcpu_(false),
-        show_art_frames_(false) {
-  }
+        show_art_frames_(false) {}
 
   bool SetLogSeverity(const char* log_level);
 
@@ -299,8 +297,8 @@ void ReportLib::SetCurrentSample() {
   current_sample_.in_kernel = r.InKernel();
   current_sample_.cpu = r.cpu_data.cpu;
   if (trace_offcpu_) {
-    uint64_t next_time = std::max(next_sample_cache_[r.tid_data.tid]->time_data.time,
-                                  r.time_data.time + 1);
+    uint64_t next_time =
+        std::max(next_sample_cache_[r.tid_data.tid]->time_data.time, r.time_data.time + 1);
     current_sample_.period = next_time - r.time_data.time;
   } else {
     current_sample_.period = r.period_data.period;
@@ -312,7 +310,7 @@ void ReportLib::SetCurrentSample() {
   bool near_java_method = false;
   auto is_map_for_interpreter = [](const MapEntry* map) {
     return android::base::EndsWith(map->dso->Path(), "/libart.so") ||
-      android::base::EndsWith(map->dso->Path(), "/libartd.so");
+           android::base::EndsWith(map->dso->Path(), "/libartd.so");
   };
   for (size_t i = 0; i < ips.size(); ++i) {
     const MapEntry* map = thread_tree_.FindMap(current_thread_, ips[i], i < kernel_ip_count);
@@ -323,7 +321,7 @@ void ReportLib::SetCurrentSample() {
         while (!ip_maps.empty() && is_map_for_interpreter(ip_maps.back().second)) {
           ip_maps.pop_back();
         }
-      } else if (is_map_for_interpreter(map)){
+      } else if (is_map_for_interpreter(map)) {
         if (near_java_method) {
           continue;
         }

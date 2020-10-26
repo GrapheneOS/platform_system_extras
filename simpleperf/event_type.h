@@ -34,25 +34,22 @@ inline const std::string kETMEventName = "cs-etm";
 // the event type is supported by the kernel.
 
 struct EventType {
-  EventType(const std::string& name, uint32_t type, uint64_t config,
-            const std::string& description, const std::string& limited_arch)
-      : name(name), type(type), config(config), description(description),
-        limited_arch(limited_arch) {
-  }
+  EventType(const std::string& name, uint32_t type, uint64_t config, const std::string& description,
+            const std::string& limited_arch)
+      : name(name),
+        type(type),
+        config(config),
+        description(description),
+        limited_arch(limited_arch) {}
 
-  EventType() : type(0), config(0) {
-  }
+  EventType() : type(0), config(0) {}
 
   bool operator<(const EventType& other) const {
     return strcasecmp(name.c_str(), other.name.c_str()) < 0;
   }
 
-  bool IsPmuEvent() const {
-    return name.find('/') != std::string::npos;
-  }
-  bool IsEtmEvent() const {
-    return name == kETMEventName;
-  }
+  bool IsPmuEvent() const { return name.find('/') != std::string::npos; }
+  bool IsEtmEvent() const { return name == kETMEventName; }
 
   std::vector<int> GetPmuCpumask();
 
@@ -89,8 +86,7 @@ struct EventTypeAndModifier {
         exclude_hv(false),
         exclude_host(false),
         exclude_guest(false),
-        precise_ip(0) {
-  }
+        precise_ip(0) {}
 };
 
 enum class EventFinderType;
@@ -107,7 +103,7 @@ class EventTypeManager {
   bool WriteTracepointsToFile(const std::string& filepath);
 
   // Iterate through all event types, and stop when callback returns false.
-  bool ForEachType(const std::function<bool (const EventType&)>& callback);
+  bool ForEachType(const std::function<bool(const EventType&)>& callback);
   const EventType* FindType(const std::string& name);
   const EventType* AddRawType(const std::string& name);
   void RemoveProbeType(const std::string& name);
