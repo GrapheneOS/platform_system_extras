@@ -98,7 +98,7 @@ static void log_ls(const char* dirname) {
     std::array<const char*, 3> argv = {"ls", "-laZ", dirname};
     int status = 0;
     auto res =
-        logwrap_fork_execvp(argv.size(), argv.data(), &status, false, LOG_ALOG, false, nullptr);
+            logwrap_fork_execvp(argv.size(), argv.data(), &status, false, LOG_ALOG, false, nullptr);
     if (res != 0) {
         PLOG(ERROR) << argv[0] << " " << argv[1] << " " << argv[2] << "failed";
         return;
@@ -196,7 +196,7 @@ bool ParseOptionsForApiLevel(unsigned int first_api_level, const std::string& op
     } else {
         options->filenames_mode = FSCRYPT_MODE_AES_256_CTS;
     }
-    if (parts.size() > 1 && !parts[1].empty()){
+    if (parts.size() > 1 && !parts[1].empty()) {
         if (!LookupModeByName(filenames_modes, parts[1], &options->filenames_mode)) {
             LOG(ERROR) << "Invalid file names encryption mode: " << parts[1];
             return false;
@@ -244,12 +244,16 @@ bool ParseOptionsForApiLevel(unsigned int first_api_level, const std::string& op
     // encryption modes.
     if (options->contents_mode == FSCRYPT_MODE_ADIANTUM) {
         if (options->filenames_mode != FSCRYPT_MODE_ADIANTUM) {
-            LOG(ERROR) << "Adiantum must be both contents and filenames mode or neither, invalid options: " << options_string;
+            LOG(ERROR) << "Adiantum must be both contents and filenames mode or neither, invalid "
+                          "options: "
+                       << options_string;
             return false;
         }
         options->flags |= FSCRYPT_POLICY_FLAG_DIRECT_KEY;
     } else if (options->filenames_mode == FSCRYPT_MODE_ADIANTUM) {
-        LOG(ERROR) << "Adiantum must be both contents and filenames mode or neither, invalid options: " << options_string;
+        LOG(ERROR)
+                << "Adiantum must be both contents and filenames mode or neither, invalid options: "
+                << options_string;
         return false;
     }
 
