@@ -9,7 +9,7 @@ cc_defaults {
 
 cc_library_static {
     name: "libprofile-extras",
-    defaults: ["libprofile-defaults",],
+    defaults: ["libprofile-defaults"],
 
     native_bridge_supported: true,
     vendor_available: true,
@@ -26,7 +26,7 @@ cc_library_static {
 
 cc_library_static {
     name: "libprofile-extras_ndk",
-    defaults: ["libprofile-defaults",],
+    defaults: ["libprofile-defaults"],
     native_bridge_supported: true,
     vendor_available: true,
     vndk: {
@@ -76,7 +76,7 @@ cc_library_static {
 cc_test {
     name: "libprofile-extras-test",
     srcs: [
-        "profile-extras-test.cpp"
+        "profile-extras-test.cpp",
     ],
     static_libs: [
         "libprofile-extras",
