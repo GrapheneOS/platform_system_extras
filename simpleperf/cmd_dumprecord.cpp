@@ -185,6 +185,7 @@ class DumpRecordCommand : public Command {
 "Usage: simpleperf dumprecord [options] [perf_record_file]\n"
 "    Dump different parts of a perf record file. Default file is perf.data.\n"
 "--dump-etm type1,type2,...   Dump etm data. A type is one of raw, packet and element.\n"
+"-i <record_file>             Record file to dump. Default is perf.data.\n"
 "--symdir <dir>               Look for binaries in a directory recursively.\n"
                 // clang-format on
         ) {}
@@ -234,6 +235,7 @@ bool DumpRecordCommand::Run(const std::vector<std::string>& args) {
 bool DumpRecordCommand::ParseOptions(const std::vector<std::string>& args) {
   const OptionFormatMap option_formats = {
       {"--dump-etm", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"-i", {OptionValueType::STRING, OptionType::SINGLE}},
       {"--symdir", {OptionValueType::STRING, OptionType::MULTIPLE}},
   };
   OptionValueMap options;
@@ -247,6 +249,7 @@ bool DumpRecordCommand::ParseOptions(const std::vector<std::string>& args) {
       return false;
     }
   }
+  options.PullStringValue("-i", &record_filename_);
   for (const OptionValue& value : options.PullValues("--symdir")) {
     if (!Dso::AddSymbolDir(*value.str_value)) {
       return false;
