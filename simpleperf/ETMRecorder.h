@@ -22,8 +22,8 @@
 #include <memory>
 
 #include "event_type.h"
-#include "record.h"
 #include "perf_event.h"
+#include "record.h"
 
 namespace simpleperf {
 
@@ -75,4 +75,4 @@ class ETMRecorder {
   std::map<int, ETMPerCpu> etm_info_;
 };
 
-} // namespace simpleperf
+}  // namespace simpleperf

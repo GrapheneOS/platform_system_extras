@@ -89,8 +89,7 @@ struct TracingFormat {
         return field;
       }
     }
-    LOG(FATAL) << "Couldn't find field " << name << "in TracingFormat of "
-               << this->name;
+    LOG(FATAL) << "Couldn't find field " << name << "in TracingFormat of " << this->name;
     return fields[0];
   }
 };
@@ -112,8 +111,7 @@ class Tracing {
   std::vector<TracingFormat> tracing_formats_;
 };
 
-bool GetTracingData(const std::vector<const EventType*>& event_types,
-                    std::vector<char>* data);
+bool GetTracingData(const std::vector<const EventType*>& event_types, std::vector<char>* data);
 
 // use_quote: whether or not to use quotes in string operands
 // used_fields: field names used in the filter

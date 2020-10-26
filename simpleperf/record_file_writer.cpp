@@ -63,8 +63,7 @@ RecordFileWriter::RecordFileWriter(const std::string& filename, FILE* fp)
       data_section_offset_(0),
       data_section_size_(0),
       feature_section_offset_(0),
-      feature_count_(0) {
-}
+      feature_count_(0) {}
 
 RecordFileWriter::~RecordFileWriter() {
   if (record_fp_ != nullptr) {
@@ -345,22 +344,20 @@ bool RecordFileWriter::WriteFileFeatures(const std::vector<Dso*>& files) {
     std::sort(dump_symbols.begin(), dump_symbols.end(), Symbol::CompareByAddr);
 
     const std::vector<uint64_t>* dex_file_offsets = dso->DexFileOffsets();
-    if (!WriteFileFeature(dso->Path(), dso_type, min_vaddr, file_offset_of_min_vaddr,
-                          dump_symbols, dex_file_offsets)) {
+    if (!WriteFileFeature(dso->Path(), dso_type, min_vaddr, file_offset_of_min_vaddr, dump_symbols,
+                          dex_file_offsets)) {
       return false;
     }
   }
   return true;
 }
 
-bool RecordFileWriter::WriteFileFeature(const std::string& file_path,
-                                        uint32_t file_type,
-                                        uint64_t min_vaddr,
-                                        uint64_t file_offset_of_min_vaddr,
+bool RecordFileWriter::WriteFileFeature(const std::string& file_path, uint32_t file_type,
+                                        uint64_t min_vaddr, uint64_t file_offset_of_min_vaddr,
                                         const std::vector<const Symbol*>& symbols,
                                         const std::vector<uint64_t>* dex_file_offsets) {
-  uint32_t size = file_path.size() + 1 + sizeof(uint32_t) * 2 +
-      sizeof(uint64_t) + symbols.size() * (sizeof(uint64_t) + sizeof(uint32_t));
+  uint32_t size = file_path.size() + 1 + sizeof(uint32_t) * 2 + sizeof(uint64_t) +
+                  symbols.size() * (sizeof(uint64_t) + sizeof(uint32_t));
   for (const auto& symbol : symbols) {
     size += strlen(symbol->Name()) + 1;
   }

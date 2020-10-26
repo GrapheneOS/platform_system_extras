@@ -29,8 +29,8 @@
 #include <android-base/logging.h>
 #include <android-base/strings.h>
 
-#include "environment.h"
 #include "JITDebugReader.h"
+#include "environment.h"
 #include "read_apk.h"
 #include "read_dex_file.h"
 #include "read_elf.h"
@@ -199,7 +199,7 @@ std::string DebugElfFileFinder::GetPathInSymFsDir(const std::string& path) {
   std::replace(elf_path.begin(), elf_path.end(), '/', OS_PATH_SEPARATOR);
   return add_symfs_prefix(elf_path);
 }
-}  // namespace simpleperf_dso_imp
+}  // namespace simpleperf_dso_impl
 
 static OneTimeFreeAllocator symbol_name_allocator;
 
@@ -208,8 +208,7 @@ Symbol::Symbol(std::string_view name, uint64_t addr, uint64_t len)
       len(len),
       name_(symbol_name_allocator.AllocateString(name)),
       demangled_name_(nullptr),
-      dump_id_(UINT_MAX) {
-}
+      dump_id_(UINT_MAX) {}
 
 const char* Symbol::DemangledName() const {
   if (demangled_name_ == nullptr) {
@@ -232,10 +231,11 @@ size_t Dso::dso_count_;
 uint32_t Dso::g_dump_id_;
 simpleperf_dso_impl::DebugElfFileFinder Dso::debug_elf_file_finder_;
 
-void Dso::SetDemangle(bool demangle) { demangle_ = demangle; }
+void Dso::SetDemangle(bool demangle) {
+  demangle_ = demangle;
+}
 
-extern "C" char* __cxa_demangle(const char* mangled_name, char* buf, size_t* n,
-                                int* status);
+extern "C" char* __cxa_demangle(const char* mangled_name, char* buf, size_t* n, int* status);
 
 std::string Dso::Demangle(const std::string& name) {
   if (!demangle_) {
@@ -270,14 +270,14 @@ bool Dso::AddSymbolDir(const std::string& symbol_dir) {
   return debug_elf_file_finder_.AddSymbolDir(symbol_dir);
 }
 
-void Dso::SetVmlinux(const std::string& vmlinux) { vmlinux_ = vmlinux; }
+void Dso::SetVmlinux(const std::string& vmlinux) {
+  vmlinux_ = vmlinux;
+}
 
-void Dso::SetBuildIds(
-    const std::vector<std::pair<std::string, BuildId>>& build_ids) {
+void Dso::SetBuildIds(const std::vector<std::pair<std::string, BuildId>>& build_ids) {
   std::unordered_map<std::string, BuildId> map;
   for (auto& pair : build_ids) {
-    LOG(DEBUG) << "build_id_map: " << pair.first << ", "
-               << pair.second.ToString();
+    LOG(DEBUG) << "build_id_map: " << pair.first << ", " << pair.second.ToString();
     map.insert(pair);
   }
   build_id_map_ = std::move(map);
@@ -345,8 +345,7 @@ const Symbol* Dso::FindSymbol(uint64_t vaddr_in_dso) {
   if (!is_loaded_) {
     Load();
   }
-  auto it = std::upper_bound(symbols_.begin(), symbols_.end(),
-                             Symbol("", vaddr_in_dso, 0),
+  auto it = std::upper_bound(symbols_.begin(), symbols_.end(), Symbol("", vaddr_in_dso, 0),
                              Symbol::CompareValueByAddr);
   if (it != symbols_.begin()) {
     --it;
@@ -401,8 +400,8 @@ void Dso::Load() {
   }
 }
 
-static void ReportReadElfSymbolResult(ElfStatus result, const std::string& path,
-    const std::string& debug_file_path,
+static void ReportReadElfSymbolResult(
+    ElfStatus result, const std::string& path, const std::string& debug_file_path,
     android::base::LogSeverity warning_loglevel = android::base::WARNING) {
   if (result == ElfStatus::NO_ERROR) {
     LOG(VERBOSE) << "Read symbols from " << debug_file_path << " successfully";
@@ -435,17 +434,14 @@ class DexFileDso : public Dso {
       : Dso(DSO_DEX_FILE, path, debug_file_path) {}
 
   void AddDexFileOffset(uint64_t dex_file_offset) override {
-    auto it = std::lower_bound(dex_file_offsets_.begin(), dex_file_offsets_.end(),
-                               dex_file_offset);
+    auto it = std::lower_bound(dex_file_offsets_.begin(), dex_file_offsets_.end(), dex_file_offset);
     if (it != dex_file_offsets_.end() && *it == dex_file_offset) {
       return;
     }
     dex_file_offsets_.insert(it, dex_file_offset);
   }
 
-  const std::vector<uint64_t>* DexFileOffsets() override {
-    return &dex_file_offsets_;
-  }
+  const std::vector<uint64_t>* DexFileOffsets() override { return &dex_file_offsets_; }
 
   uint64_t IpToVaddrInFile(uint64_t ip, uint64_t map_start, uint64_t map_pgoff) override {
     return ip - map_start + map_pgoff;
@@ -460,8 +456,8 @@ class DexFileDso : public Dso {
       std::unique_ptr<ArchiveHelper> ahelper = ArchiveHelper::CreateInstance(std::get<1>(tuple));
       ZipEntry entry;
       std::vector<uint8_t> data;
-      if (ahelper &&
-          ahelper->FindEntry(std::get<2>(tuple), &entry) && ahelper->GetEntryData(entry, &data)) {
+      if (ahelper && ahelper->FindEntry(std::get<2>(tuple), &entry) &&
+          ahelper->GetEntryData(entry, &data)) {
         status = ReadSymbolsFromDexFileInMemory(data.data(), data.size(), dex_file_offsets_,
                                                 &dex_file_symbols);
       }
@@ -469,8 +465,8 @@ class DexFileDso : public Dso {
       status = ReadSymbolsFromDexFile(debug_file_path_, dex_file_offsets_, &dex_file_symbols);
     }
     if (!status) {
-      android::base::LogSeverity level = symbols_.empty() ? android::base::WARNING
-                                                          : android::base::DEBUG;
+      android::base::LogSeverity level =
+          symbols_.empty() ? android::base::WARNING : android::base::DEBUG;
       LOG(level) << "Failed to read symbols from " << debug_file_path_;
       return symbols;
     }
@@ -596,9 +592,7 @@ class KernelDso : public Dso {
   KernelDso(const std::string& path, const std::string& debug_file_path)
       : Dso(DSO_KERNEL, path, debug_file_path) {}
 
-  uint64_t IpToVaddrInFile(uint64_t ip, uint64_t, uint64_t) override {
-    return ip;
-  }
+  uint64_t IpToVaddrInFile(uint64_t ip, uint64_t, uint64_t) override { return ip; }
 
  protected:
   std::vector<Symbol> LoadSymbols() override {
@@ -707,14 +701,10 @@ class UnknownDso : public Dso {
  public:
   UnknownDso(const std::string& path) : Dso(DSO_UNKNOWN_FILE, path, path) {}
 
-  uint64_t IpToVaddrInFile(uint64_t ip, uint64_t, uint64_t) override {
-    return ip;
-  }
+  uint64_t IpToVaddrInFile(uint64_t ip, uint64_t, uint64_t) override { return ip; }
 
  protected:
-  std::vector<Symbol> LoadSymbols() override {
-    return std::vector<Symbol>();
-  }
+  std::vector<Symbol> LoadSymbols() override { return std::vector<Symbol>(); }
 };
 
 std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_path,
@@ -722,8 +712,8 @@ std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_pat
   switch (dso_type) {
     case DSO_ELF_FILE: {
       BuildId build_id = FindExpectedBuildIdForPath(dso_path);
-      return std::unique_ptr<Dso>(new ElfDso(dso_path,
-          debug_elf_file_finder_.FindDebugFile(dso_path, force_64bit, build_id)));
+      return std::unique_ptr<Dso>(new ElfDso(
+          dso_path, debug_elf_file_finder_.FindDebugFile(dso_path, force_64bit, build_id)));
     }
     case DSO_KERNEL:
       return std::unique_ptr<Dso>(new KernelDso(dso_path, dso_path));

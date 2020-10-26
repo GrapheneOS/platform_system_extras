@@ -52,12 +52,9 @@ static inline uint64_t Align(uint64_t value, uint64_t alignment) {
 class OneTimeFreeAllocator {
  public:
   explicit OneTimeFreeAllocator(size_t unit_size = 8192u)
-      : unit_size_(unit_size), cur_(nullptr), end_(nullptr) {
-  }
+      : unit_size_(unit_size), cur_(nullptr), end_(nullptr) {}
 
-  ~OneTimeFreeAllocator() {
-    Clear();
-  }
+  ~OneTimeFreeAllocator() { Clear(); }
 
   void Clear();
   const char* AllocateString(std::string_view s);
