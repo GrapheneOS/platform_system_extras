@@ -29,14 +29,14 @@ extern "C" {
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <sys/types.h>
 #include <errno.h>
+#include <setjmp.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <setjmp.h>
-#include <stdint.h>
+#include <sys/types.h>
 
 #if defined(__APPLE__) && defined(__MACH__)
 #define lseek64 lseek
@@ -57,8 +57,8 @@ extern int force;
 #endif
 #endif
 
-#define DIV_ROUND_UP(x, y) (((x) + (y) - 1)/(y))
-#define EXT4_ALIGN(x, y) ((y) * DIV_ROUND_UP((x), (y)))
+#define DIV_ROUND_UP(x, y) (((x) + (y)-1) / (y))
+#define EXT4_ALIGN(x, y) ((y)*DIV_ROUND_UP((x), (y)))
 
 /* XXX */
 #define cpu_to_le32(x) (x)
@@ -85,32 +85,32 @@ struct block_group_info;
 struct xattr_list_element;
 
 struct ext2_group_desc {
-	u64 bg_block_bitmap;
-	u64 bg_inode_bitmap;
-	u64 bg_inode_table;
-	u32 bg_free_blocks_count;
-	u32 bg_free_inodes_count;
-	u32 bg_used_dirs_count;
-	u16 bg_flags;
+    u64 bg_block_bitmap;
+    u64 bg_inode_bitmap;
+    u64 bg_inode_table;
+    u32 bg_free_blocks_count;
+    u32 bg_free_inodes_count;
+    u32 bg_used_dirs_count;
+    u16 bg_flags;
 };
 
 struct fs_aux_info {
-	struct ext4_super_block *sb;
-	struct ext4_super_block *sb_block;
-	struct ext4_super_block *sb_zero;
-	struct ext4_super_block **backup_sb;
-	struct ext2_group_desc *bg_desc;
-	struct block_group_info *bgs;
-	struct xattr_list_element *xattrs;
-	u32 first_data_block;
-	u64 len_blocks;
-	u32 inode_table_blocks;
-	u32 groups;
-	u32 bg_desc_blocks;
-	u32 default_i_flags;
-	u64 blocks_per_ind;
-	u64 blocks_per_dind;
-	u64 blocks_per_tind;
+    struct ext4_super_block* sb;
+    struct ext4_super_block* sb_block;
+    struct ext4_super_block* sb_zero;
+    struct ext4_super_block** backup_sb;
+    struct ext2_group_desc* bg_desc;
+    struct block_group_info* bgs;
+    struct xattr_list_element* xattrs;
+    u32 first_data_block;
+    u64 len_blocks;
+    u32 inode_table_blocks;
+    u32 groups;
+    u32 bg_desc_blocks;
+    u32 default_i_flags;
+    u64 blocks_per_ind;
+    u64 blocks_per_dind;
+    u64 blocks_per_tind;
 };
 
 extern struct fs_info info;
@@ -118,12 +118,12 @@ extern struct fs_aux_info aux_info;
 
 extern jmp_buf setjmp_env;
 
-int bitmap_get_bit(u8 *bitmap, u32 bit);	// vold
-u64 get_block_device_size(int fd);		// recovery
-int is_block_device_fd(int fd);			// wipe.c
-u64 get_file_size(int fd);			// fs_mgr
+int bitmap_get_bit(u8* bitmap, u32 bit);  // vold
+u64 get_block_device_size(int fd);        // recovery
+int is_block_device_fd(int fd);           // wipe.c
+u64 get_file_size(int fd);                // fs_mgr
 int ext4_bg_has_super_block(int bg);
-int read_ext(int fd, int verbose);		// vold
+int read_ext(int fd, int verbose);  // vold
 
 #ifdef __cplusplus
 }
