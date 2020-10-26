@@ -28,8 +28,8 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
-#include "environment.h"
 #include "ETMRecorder.h"
+#include "environment.h"
 #include "event_attr.h"
 #include "utils.h"
 
@@ -37,8 +37,7 @@ namespace simpleperf {
 
 struct EventFormat {
   EventFormat(const std::string& name, const std::string& attr, int shift)
-      : name(name), attr(attr), shift(shift) {
-  }
+      : name(name), attr(attr), shift(shift) {}
 
   std::string name;
   std::string attr;
@@ -46,7 +45,7 @@ struct EventFormat {
 };
 
 #define EVENT_TYPE_TABLE_ENTRY(name, type, config, description, limited_arch) \
-          {name, type, config, description, limited_arch},
+  {name, type, config, description, limited_arch},
 
 static const std::set<EventType> builtin_event_types = {
 #include "event_type_table.h"
@@ -148,9 +147,7 @@ class TracepointSystemFinder : public EventTypeFinder {
     return &*res.first;
   }
 
-  void RemoveType(const std::string& name) {
-    types_.erase(EventType(name, 0, 0, "", ""));
-  }
+  void RemoveType(const std::string& name) { types_.erase(EventType(name, 0, 0, "", "")); }
 
   std::string ToString() {
     std::string result;
@@ -397,7 +394,7 @@ bool EventTypeManager::WriteTracepointsToFile(const std::string& filepath) {
   return true;
 }
 
-bool EventTypeManager::ForEachType(const std::function<bool (const EventType&)>& callback) {
+bool EventTypeManager::ForEachType(const std::function<bool(const EventType&)>& callback) {
   if (scoped_finder_) {
     for (const auto& type : scoped_finder_->GetTypes()) {
       if (!callback(type)) {
@@ -452,8 +449,7 @@ void EventTypeManager::SetScopedFinder(std::unique_ptr<EventTypeFinder>&& finder
 
 std::vector<int> EventType::GetPmuCpumask() {
   std::vector<int> empty_result;
-  if (!IsPmuEvent())
-    return empty_result;
+  if (!IsPmuEvent()) return empty_result;
 
   std::string pmu = name.substr(0, name.find('/'));
   std::string cpumask_path = "/sys/bus/event_source/devices/" + pmu + "/cpumask";
@@ -474,8 +470,8 @@ std::string ScopedEventTypes::BuildString(const std::vector<const EventType*>& e
     if (!result.empty()) {
       result.push_back('\n');
     }
-    result += android::base::StringPrintf("%s,%u,%" PRIu64, type->name.c_str(), type->type,
-                                          type->config);
+    result +=
+        android::base::StringPrintf("%s,%u,%" PRIu64, type->name.c_str(), type->type, type->config);
   }
   return result;
 }

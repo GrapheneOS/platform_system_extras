@@ -52,8 +52,7 @@ struct ElfFileSymbol {
   bool is_in_text_section;
   std::string name;
 
-  ElfFileSymbol() : vaddr(0), len(0), is_func(false), is_label(false), is_in_text_section(false) {
-  }
+  ElfFileSymbol() : vaddr(0), len(0), is_func(false), is_label(false), is_in_text_section(false) {}
 };
 
 namespace llvm {

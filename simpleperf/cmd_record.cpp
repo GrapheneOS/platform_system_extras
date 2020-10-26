@@ -28,8 +28,8 @@
 #include <unordered_set>
 #include <vector>
 
-#include <android-base/logging.h>
 #include <android-base/file.h>
+#include <android-base/logging.h>
 #include <android-base/parseint.h>
 #include <android-base/scopeguard.h>
 #include <android-base/stringprintf.h>
@@ -40,16 +40,16 @@
 #endif
 
 #include "CallChainJoiner.h"
-#include "cmd_record_impl.h"
-#include "command.h"
-#include "environment.h"
 #include "ETMRecorder.h"
-#include "event_selection_set.h"
-#include "event_type.h"
 #include "IOEventLoop.h"
 #include "JITDebugReader.h"
 #include "OfflineUnwinder.h"
 #include "ProbeEvents.h"
+#include "cmd_record_impl.h"
+#include "command.h"
+#include "environment.h"
+#include "event_selection_set.h"
+#include "event_type.h"
 #include "read_apk.h"
 #include "read_elf.h"
 #include "read_symbol_map.h"
@@ -312,8 +312,7 @@ class RecordCommand : public Command {
   bool Run(const std::vector<std::string>& args);
 
  private:
-  bool ParseOptions(const std::vector<std::string>& args,
-                    std::vector<std::string>* non_option_args,
+  bool ParseOptions(const std::vector<std::string>& args, std::vector<std::string>* non_option_args,
                     ProbeEvents* probe_events);
   bool AdjustPerfEventLimit();
   bool PrepareRecording(Workload* workload);
@@ -322,8 +321,7 @@ class RecordCommand : public Command {
   bool TraceOffCpu();
   bool SetEventSelectionFlags();
   bool CreateAndInitRecordFile();
-  std::unique_ptr<RecordFileWriter> CreateRecordFile(
-      const std::string& filename);
+  std::unique_ptr<RecordFileWriter> CreateRecordFile(const std::string& filename);
   bool DumpKernelSymbol();
   bool DumpTracingData();
   bool DumpKernelMaps();
@@ -482,8 +480,7 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   }
   if (unwind_dwarf_callchain_ && allow_callchain_joiner_) {
     callchain_joiner_.reset(new CallChainJoiner(DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE,
-                                                callchain_joiner_min_matching_nodes_,
-                                                false));
+                                                callchain_joiner_min_matching_nodes_, false));
   }
 
   // 4. Add monitored targets.
@@ -501,8 +498,7 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
       event_selection_set_.AddMonitoredProcesses(pids);
       need_to_check_targets = true;
     } else {
-      LOG(ERROR)
-          << "No threads to monitor. Try `simpleperf help record` for help";
+      LOG(ERROR) << "No threads to monitor. Try `simpleperf help record` for help";
       return false;
     }
   } else {
@@ -528,15 +524,14 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   if (!event_selection_set_.OpenEventFiles(cpus_)) {
     return false;
   }
-  size_t record_buffer_size = system_wide_collection_ ? kSystemWideRecordBufferSize
-                                                      : kRecordBufferSize;
+  size_t record_buffer_size =
+      system_wide_collection_ ? kSystemWideRecordBufferSize : kRecordBufferSize;
   if (!event_selection_set_.MmapEventFiles(mmap_page_range_.first, mmap_page_range_.second,
                                            aux_buffer_size_, record_buffer_size,
                                            allow_cutting_samples_, exclude_perf_)) {
     return false;
   }
-  auto callback =
-      std::bind(&RecordCommand::ProcessRecord, this, std::placeholders::_1);
+  auto callback = std::bind(&RecordCommand::ProcessRecord, this, std::placeholders::_1);
   if (!event_selection_set_.PrepareToReadMmapEventData(callback)) {
     return false;
   }
@@ -551,9 +546,7 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     return false;
   }
   IOEventLoop* loop = event_selection_set_.GetIOEventLoop();
-  auto exit_loop_callback = [loop]() {
-    return loop->ExitLoop();
-  };
+  auto exit_loop_callback = [loop]() { return loop->ExitLoop(); };
   if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM}, exit_loop_callback)) {
     return false;
   }
@@ -650,7 +643,8 @@ bool RecordCommand::DoRecording(Workload* workload) {
   return true;
 }
 
-static bool WriteRecordDataToOutFd(const std::string& in_filename, android::base::unique_fd out_fd) {
+static bool WriteRecordDataToOutFd(const std::string& in_filename,
+                                   android::base::unique_fd out_fd) {
   android::base::unique_fd in_fd(FileHelper::OpenReadOnly(in_filename));
   if (in_fd == -1) {
     PLOG(ERROR) << "Failed to open " << in_filename;
@@ -734,13 +728,13 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
     }
   }
   LOG(DEBUG) << "Prepare recording time "
-      << (time_stat_.start_recording_time - time_stat_.prepare_recording_time) / 1e6
-      << " ms, recording time "
-      << (time_stat_.stop_recording_time - time_stat_.start_recording_time) / 1e6
-      << " ms, stop recording time "
-      << (time_stat_.finish_recording_time - time_stat_.stop_recording_time) / 1e6
-      << " ms, post process time "
-      << (time_stat_.post_process_time - time_stat_.finish_recording_time) / 1e6 << " ms.";
+             << (time_stat_.start_recording_time - time_stat_.prepare_recording_time) / 1e6
+             << " ms, recording time "
+             << (time_stat_.stop_recording_time - time_stat_.start_recording_time) / 1e6
+             << " ms, stop recording time "
+             << (time_stat_.finish_recording_time - time_stat_.stop_recording_time) / 1e6
+             << " ms, post process time "
+             << (time_stat_.post_process_time - time_stat_.finish_recording_time) / 1e6 << " ms.";
   return true;
 }
 
@@ -1141,8 +1135,7 @@ bool RecordCommand::SetEventSelectionFlags() {
   if (fp_callchain_sampling_) {
     event_selection_set_.EnableFpCallChainSampling();
   } else if (dwarf_callchain_sampling_) {
-    if (!event_selection_set_.EnableDwarfCallChainSampling(
-            dump_stack_size_in_dwarf_sampling_)) {
+    if (!event_selection_set_.EnableDwarfCallChainSampling(dump_stack_size_in_dwarf_sampling_)) {
       return false;
     }
   }
@@ -1164,10 +1157,8 @@ bool RecordCommand::CreateAndInitRecordFile() {
          DumpAuxTraceInfo();
 }
 
-std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(
-    const std::string& filename) {
-  std::unique_ptr<RecordFileWriter> writer =
-      RecordFileWriter::CreateInstance(filename);
+std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(const std::string& filename) {
+  std::unique_ptr<RecordFileWriter> writer = RecordFileWriter::CreateInstance(filename);
   if (writer == nullptr) {
     return nullptr;
   }
@@ -1181,8 +1172,7 @@ std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(
 bool RecordCommand::DumpKernelSymbol() {
   if (can_dump_kernel_symbols_) {
     std::string kallsyms;
-    if (event_selection_set_.NeedKernelSymbol() &&
-        CheckKernelSymbolAddresses()) {
+    if (event_selection_set_.NeedKernelSymbol() && CheckKernelSymbolAddresses()) {
       if (!android::base::ReadFileToString("/proc/kallsyms", &kallsyms)) {
         PLOG(ERROR) << "failed to read /proc/kallsyms";
         return false;
@@ -1197,8 +1187,7 @@ bool RecordCommand::DumpKernelSymbol() {
 }
 
 bool RecordCommand::DumpTracingData() {
-  std::vector<const EventType*> tracepoint_event_types =
-      event_selection_set_.GetTracepointEvents();
+  std::vector<const EventType*> tracepoint_event_types = event_selection_set_.GetTracepointEvents();
   if (tracepoint_event_types.empty() || !CanRecordRawData() || in_app_context_) {
     return true;  // No need to dump tracing data, or can't do it.
   }
@@ -1282,8 +1271,8 @@ bool RecordCommand::DumpProcessMaps(pid_t pid, const std::unordered_set<pid_t>& 
     if (!(map.prot & PROT_EXEC) && !event_selection_set_.RecordNotExecutableMaps()) {
       continue;
     }
-    Mmap2Record record(attr, false, pid, pid, map.start_addr, map.len,
-                      map.pgoff, map.prot, map.name, event_id, last_record_timestamp_);
+    Mmap2Record record(attr, false, pid, pid, map.start_addr, map.len, map.pgoff, map.prot,
+                       map.name, event_id, last_record_timestamp_);
     if (!ProcessRecord(&record)) {
       return false;
     }
@@ -1442,8 +1431,8 @@ bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_i
   EventAttrWithId attr_id = event_selection_set_.GetEventAttrWithId()[0];
   for (auto& info : debug_info) {
     if (info.type == JITDebugInfo::JIT_DEBUG_JIT_CODE) {
-      uint64_t timestamp = jit_debug_reader_->SyncWithRecords() ? info.timestamp
-                                                                : last_record_timestamp_;
+      uint64_t timestamp =
+          jit_debug_reader_->SyncWithRecords() ? info.timestamp : last_record_timestamp_;
       Mmap2Record record(*attr_id.attr, false, info.pid, info.pid, info.jit_code_addr,
                          info.jit_code_len, info.file_offset, map_flags::PROT_JIT_SYMFILE_MAP,
                          info.file_path, attr_id.ids[0], timestamp);
@@ -1453,8 +1442,8 @@ bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_i
     } else {
       if (info.extracted_dex_file_map) {
         ThreadMmap& map = *info.extracted_dex_file_map;
-        uint64_t timestamp = jit_debug_reader_->SyncWithRecords() ? info.timestamp
-                                                                  : last_record_timestamp_;
+        uint64_t timestamp =
+            jit_debug_reader_->SyncWithRecords() ? info.timestamp : last_record_timestamp_;
         Mmap2Record record(*attr_id.attr, false, info.pid, info.pid, map.start_addr, map.len,
                            map.pgoff, map.prot, map.name, attr_id.ids[0], timestamp);
         if (!ProcessRecord(&record)) {
@@ -1562,13 +1551,10 @@ void RecordCommand::UpdateRecord(Record* record) {
 }
 
 bool RecordCommand::UnwindRecord(SampleRecord& r) {
-  if ((r.sample_type & PERF_SAMPLE_CALLCHAIN) &&
-      (r.sample_type & PERF_SAMPLE_REGS_USER) &&
-      (r.regs_user_data.reg_mask != 0) &&
-      (r.sample_type & PERF_SAMPLE_STACK_USER) &&
+  if ((r.sample_type & PERF_SAMPLE_CALLCHAIN) && (r.sample_type & PERF_SAMPLE_REGS_USER) &&
+      (r.regs_user_data.reg_mask != 0) && (r.sample_type & PERF_SAMPLE_STACK_USER) &&
       (r.GetValidStackSize() > 0)) {
-    ThreadEntry* thread =
-        thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
+    ThreadEntry* thread = thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
     RegSet regs(r.regs_user_data.abi, r.regs_user_data.reg_mask, r.regs_user_data.regs);
     std::vector<uint64_t> ips;
     std::vector<uint64_t> sps;
@@ -1680,8 +1666,8 @@ void LoadSymbolMapFile(int pid, const std::string& package, ThreadTree* thread_t
   // For now, use /data/local/tmp/perf-<pid>.map, which works for standalone programs,
   // and /data/data/<package>/perf-<pid>.map, which works for apps.
   auto path = package.empty()
-      ? android::base::StringPrintf("/data/local/tmp/perf-%d.map", pid)
-      : android::base::StringPrintf("/data/data/%s/perf-%d.map", package.c_str(), pid);
+                  ? android::base::StringPrintf("/data/local/tmp/perf-%d.map", pid)
+                  : android::base::StringPrintf("/data/data/%s/perf-%d.map", package.c_str(), pid);
 
   auto symbols = ReadSymbolMapFromFile(path);
   if (!symbols.empty()) {
@@ -1691,8 +1677,7 @@ void LoadSymbolMapFile(int pid, const std::string& package, ThreadTree* thread_t
 
 }  // namespace
 
-bool RecordCommand::DumpAdditionalFeatures(
-    const std::vector<std::string>& args) {
+bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args) {
   // Read data section of perf.data to collect hit file information.
   thread_tree_.ClearThreadAndMap();
   bool kernel_symbols_available = false;
@@ -1741,12 +1726,10 @@ bool RecordCommand::DumpAdditionalFeatures(
     PLOG(ERROR) << "uname() failed";
     return false;
   }
-  if (!record_file_writer_->WriteFeatureString(PerfFileFormat::FEAT_OSRELEASE,
-                                               uname_buf.release)) {
+  if (!record_file_writer_->WriteFeatureString(PerfFileFormat::FEAT_OSRELEASE, uname_buf.release)) {
     return false;
   }
-  if (!record_file_writer_->WriteFeatureString(PerfFileFormat::FEAT_ARCH,
-                                               uname_buf.machine)) {
+  if (!record_file_writer_->WriteFeatureString(PerfFileFormat::FEAT_ARCH, uname_buf.machine)) {
     return false;
   }
 
@@ -1759,8 +1742,7 @@ bool RecordCommand::DumpAdditionalFeatures(
   if (!record_file_writer_->WriteCmdlineFeature(cmdline)) {
     return false;
   }
-  if (branch_sampling_ != 0 &&
-      !record_file_writer_->WriteBranchStackFeature()) {
+  if (branch_sampling_ != 0 && !record_file_writer_->WriteBranchStackFeature()) {
     return false;
   }
   if (!DumpMetaInfoFeature(kernel_symbols_available)) {
@@ -1790,8 +1772,7 @@ bool RecordCommand::DumpBuildIdFeature() {
       if (!GetKernelBuildId(&build_id)) {
         continue;
       }
-      build_id_records.push_back(
-          BuildIdRecord(true, UINT_MAX, build_id, dso->Path()));
+      build_id_records.push_back(BuildIdRecord(true, UINT_MAX, build_id, dso->Path()));
     } else if (dso->type() == DSO_KERNEL_MODULE) {
       std::string path = dso->Path();
       std::string module_name = basename(&path[0]);
@@ -1811,8 +1792,7 @@ bool RecordCommand::DumpBuildIdFeature() {
         LOG(DEBUG) << "Can't read build_id from file " << dso->Path();
         continue;
       }
-      build_id_records.push_back(
-          BuildIdRecord(false, UINT_MAX, build_id, dso->Path()));
+      build_id_records.push_back(BuildIdRecord(false, UINT_MAX, build_id, dso->Path()));
     }
   }
   if (!record_file_writer_->WriteBuildIdFeature(build_id_records)) {
@@ -1834,10 +1814,10 @@ bool RecordCommand::DumpMetaInfoFeature(bool kernel_symbols_available) {
   // understanding of event types, even if they are on another machine.
   info_map["event_type_info"] = ScopedEventTypes::BuildString(event_selection_set_.GetEvents());
 #if defined(__ANDROID__)
-  info_map["product_props"] = android::base::StringPrintf("%s:%s:%s",
-                                  android::base::GetProperty("ro.product.manufacturer", "").c_str(),
-                                  android::base::GetProperty("ro.product.model", "").c_str(),
-                                  android::base::GetProperty("ro.product.name", "").c_str());
+  info_map["product_props"] = android::base::StringPrintf(
+      "%s:%s:%s", android::base::GetProperty("ro.product.manufacturer", "").c_str(),
+      android::base::GetProperty("ro.product.model", "").c_str(),
+      android::base::GetProperty("ro.product.name", "").c_str());
   info_map["android_version"] = android::base::GetProperty("ro.build.version.release", "");
   if (!app_package_name_.empty()) {
     info_map["app_package_name"] = app_package_name_;
@@ -1853,10 +1833,8 @@ bool RecordCommand::DumpMetaInfoFeature(bool kernel_symbols_available) {
 }
 
 void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
-  const ThreadEntry* thread =
-      thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-  const MapEntry* map =
-      thread_tree_.FindMap(thread, r.ip_data.ip, r.InKernel());
+  const ThreadEntry* thread = thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
+  const MapEntry* map = thread_tree_.FindMap(thread, r.ip_data.ip, r.InKernel());
   Dso* dso = map->dso;
   const Symbol* symbol;
   if (dump_symbols_) {
@@ -1882,8 +1860,7 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
             in_kernel = false;
             break;
           default:
-            LOG(DEBUG) << "Unexpected perf_context in callchain: " << std::hex
-                       << ip;
+            LOG(DEBUG) << "Unexpected perf_context in callchain: " << std::hex << ip;
         }
       } else {
         if (first_ip) {
@@ -1979,8 +1956,7 @@ std::vector<AddrFilter> ParseAddrFilterOption(const std::string& s) {
 }
 
 void RegisterRecordCommand() {
-  RegisterCommand("record",
-                  [] { return std::unique_ptr<Command>(new RecordCommand()); });
+  RegisterCommand("record", [] { return std::unique_ptr<Command>(new RecordCommand()); });
 }
 
 }  // namespace simpleperf

@@ -35,9 +35,9 @@ namespace simpleperf {
 using OptionName = std::string;
 
 enum class OptionType {
-  SINGLE,  // this option has a single value (use the last one in the arg list)
+  SINGLE,    // this option has a single value (use the last one in the arg list)
   MULTIPLE,  // this option can have multiple values (keep all values appeared in the arg list)
-  ORDERED,  // keep the order of this option in the arg list
+  ORDERED,   // keep the order of this option in the arg list
 };
 
 enum class OptionValueType {
@@ -73,9 +73,7 @@ union OptionValue {
 struct OptionValueMap {
   std::multimap<OptionName, OptionValue> values;
 
-  bool PullBoolValue(const OptionName& name) {
-    return PullValue(name).has_value();
-  }
+  bool PullBoolValue(const OptionName& name) { return PullValue(name).has_value(); }
 
   template <typename T>
   bool PullUintValue(const OptionName& name, T* value, uint64_t min = 0,
@@ -149,23 +147,15 @@ class Command {
  public:
   Command(const std::string& name, const std::string& short_help_string,
           const std::string& long_help_string)
-      : name_(name), short_help_string_(short_help_string), long_help_string_(long_help_string) {
-  }
+      : name_(name), short_help_string_(short_help_string), long_help_string_(long_help_string) {}
 
-  virtual ~Command() {
-  }
+  virtual ~Command() {}
 
-  const std::string& Name() const {
-    return name_;
-  }
+  const std::string& Name() const { return name_; }
 
-  const std::string& ShortHelpString() const {
-    return short_help_string_;
-  }
+  const std::string& ShortHelpString() const { return short_help_string_; }
 
-  const std::string LongHelpString() const {
-    return long_help_string_;
-  }
+  const std::string LongHelpString() const { return long_help_string_; }
 
   virtual bool Run(const std::vector<std::string>& args) = 0;
 

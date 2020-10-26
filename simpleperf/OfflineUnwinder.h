@@ -61,9 +61,7 @@ class OfflineUnwinder {
                                size_t stack_size, std::vector<uint64_t>* ips,
                                std::vector<uint64_t>* sps) = 0;
 
-  const UnwindingResult& GetUnwindingResult() const {
-    return unwinding_result_;
-  }
+  const UnwindingResult& GetUnwindingResult() const { return unwinding_result_; }
 
   bool IsCallChainBrokenForIncompleteJITDebugInfo() {
     return is_callchain_broken_for_incomplete_jit_debug_info_;
@@ -79,6 +77,6 @@ class OfflineUnwinder {
   bool is_callchain_broken_for_incomplete_jit_debug_info_ = false;
 };
 
-} // namespace simpleperf
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_OFFLINE_UNWINDER_H_

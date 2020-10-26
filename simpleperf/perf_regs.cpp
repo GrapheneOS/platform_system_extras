@@ -18,10 +18,10 @@
 
 #include <string.h>
 
-#include <unordered_map>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <unordered_map>
 
 #include "perf_event.h"
 
@@ -83,7 +83,7 @@ uint64_t GetSupportedRegMask(ArchType arch) {
   switch (arch) {
     case ARCH_X86_32:
       return ((1ULL << PERF_REG_X86_32_MAX) - 1) & ~(1ULL << PERF_REG_X86_DS) &
-          ~(1ULL << PERF_REG_X86_ES) & ~(1ULL << PERF_REG_X86_FS) & ~(1ULL << PERF_REG_X86_GS);
+             ~(1ULL << PERF_REG_X86_ES) & ~(1ULL << PERF_REG_X86_FS) & ~(1ULL << PERF_REG_X86_GS);
     case ARCH_X86_64:
       return (((1ULL << PERF_REG_X86_64_MAX) - 1) & ~(1ULL << PERF_REG_X86_DS) &
               ~(1ULL << PERF_REG_X86_ES) & ~(1ULL << PERF_REG_X86_FS) & ~(1ULL << PERF_REG_X86_GS));
@@ -112,7 +112,9 @@ static std::unordered_map<size_t, std::string> arm_reg_map = {
 };
 
 static std::unordered_map<size_t, std::string> arm64_reg_map = {
-    {PERF_REG_ARM64_LR, "lr"}, {PERF_REG_ARM64_SP, "sp"}, {PERF_REG_ARM64_PC, "pc"},
+    {PERF_REG_ARM64_LR, "lr"},
+    {PERF_REG_ARM64_SP, "sp"},
+    {PERF_REG_ARM64_PC, "pc"},
 };
 
 std::string GetRegName(size_t regno, ArchType arch) {
@@ -151,8 +153,7 @@ std::string GetRegName(size_t regno, ArchType arch) {
   }
 }
 
-RegSet::RegSet(int abi, uint64_t valid_mask, const uint64_t* valid_regs)
-    : valid_mask(valid_mask) {
+RegSet::RegSet(int abi, uint64_t valid_mask, const uint64_t* valid_regs) : valid_mask(valid_mask) {
   arch = (abi == PERF_SAMPLE_REGS_ABI_32) ? ScopedCurrentArch::GetCurrentArch32()
                                           : ScopedCurrentArch::GetCurrentArch();
   memset(data, 0, sizeof(data));
