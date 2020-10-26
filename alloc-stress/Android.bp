@@ -26,8 +26,8 @@ cc_binary {
         "-Wall",
         "-Werror",
         "-Wno-missing-field-initializers",
-        "-Wno-sign-compare"
-    ]
+        "-Wno-sign-compare",
+    ],
 }
 
 cc_binary {
@@ -38,6 +38,6 @@ cc_binary {
         "-Wall",
         "-Werror",
         "-Wno-missing-field-initializers",
-        "-Wno-sign-compare"
-    ]
+        "-Wno-sign-compare",
+    ],
 }
