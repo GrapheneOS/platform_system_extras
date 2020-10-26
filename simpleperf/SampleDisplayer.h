@@ -28,8 +28,7 @@
 // The display functions below are used to show items in a sample.
 
 template <typename EntryT, typename InfoT>
-std::string DisplayAccumulatedOverhead(const EntryT* sample,
-                                       const InfoT* info) {
+std::string DisplayAccumulatedOverhead(const EntryT* sample, const InfoT* info) {
   uint64_t period = sample->period + sample->accumulated_period;
   uint64_t total_period = info->total_period;
   double percentage = (total_period != 0) ? 100.0 * period / total_period : 0.0;
@@ -105,8 +104,7 @@ class CallgraphDisplayer {
   static constexpr int SPACES_BETWEEN_CALLGRAPH_ENTRIES = 4;
 
  public:
-  CallgraphDisplayer(uint32_t max_stack = UINT32_MAX,
-                     double percent_limit = 0.0,
+  CallgraphDisplayer(uint32_t max_stack = UINT32_MAX, double percent_limit = 0.0,
                      bool brief_callgraph = false)
       : max_stack_(max_stack), percent_limit_(percent_limit), brief_callgraph_(brief_callgraph) {}
 
@@ -132,15 +130,14 @@ class CallgraphDisplayer {
   }
 
   void DisplayCallGraphEntry(FILE* fp, size_t depth, std::string prefix,
-                             const std::unique_ptr<CallChainNodeT>& node,
-                             uint64_t parent_period, bool last) {
+                             const std::unique_ptr<CallChainNodeT>& node, uint64_t parent_period,
+                             bool last) {
     if (depth > max_stack_) {
       return;
     }
     std::string percentage_s = "-- ";
     if (node->period + node->children_period != parent_period) {
-      double percentage =
-          100.0 * (node->period + node->children_period) / parent_period;
+      double percentage = 100.0 * (node->period + node->children_period) / parent_period;
       if (percentage < percent_limit_) {
         return;
       }
@@ -164,8 +161,7 @@ class CallgraphDisplayer {
     }
     for (size_t i = 0; i < node->children.size(); ++i) {
       DisplayCallGraphEntry(fp, depth + 1, prefix, node->children[i],
-                            node->children_period + node->period,
-                            (i + 1 == node->children.size()));
+                            node->children_period + node->period, (i + 1 == node->children.size()));
     }
   }
 
@@ -187,10 +183,8 @@ template <typename EntryT, typename InfoT>
 class SampleDisplayer {
  public:
   typedef std::string (*display_sample_func_t)(const EntryT*);
-  typedef std::string (*display_sample_with_info_func_t)(const EntryT*,
-                                                         const InfoT*);
-  using exclusive_display_sample_func_t =
-      std::function<void(FILE*, const EntryT*)>;
+  typedef std::string (*display_sample_with_info_func_t)(const EntryT*, const InfoT*);
+  using exclusive_display_sample_func_t = std::function<void(FILE*, const EntryT*)>;
 
  private:
   struct Item {
@@ -213,8 +207,7 @@ class SampleDisplayer {
     display_v_.push_back(item);
   }
 
-  void AddDisplayFunction(const std::string& name,
-                          display_sample_with_info_func_t func_with_info) {
+  void AddDisplayFunction(const std::string& name, display_sample_with_info_func_t func_with_info) {
     Item item;
     item.name = name;
     item.width = name.size();
@@ -232,9 +225,8 @@ class SampleDisplayer {
       return;
     }
     for (auto& item : display_v_) {
-      std::string data = (item.func != nullptr)
-                             ? item.func(sample)
-                             : item.func_with_info(sample, info_);
+      std::string data =
+          (item.func != nullptr) ? item.func(sample) : item.func_with_info(sample, info_);
       item.width = std::max(item.width, data.size());
     }
   }
@@ -257,9 +249,8 @@ class SampleDisplayer {
   void PrintSample(FILE* fp, const EntryT* sample) {
     for (size_t i = 0; i < display_v_.size(); ++i) {
       auto& item = display_v_[i];
-      std::string data = (item.func != nullptr)
-                             ? item.func(sample)
-                             : item.func_with_info(sample, info_);
+      std::string data =
+          (item.func != nullptr) ? item.func(sample) : item.func_with_info(sample, info_);
       if (report_csv_) {
         if (data.find(',') == std::string::npos) {
           fprintf(fp, "%s", data.c_str());

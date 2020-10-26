@@ -44,8 +44,8 @@ TEST(cmd_debug_unwind, smoke) {
   ASSERT_NE(capture.Finish().find("Unwinding sample count: 8"), std::string::npos);
 
   ASSERT_TRUE(capture.Start());
-  ASSERT_TRUE(DebugUnwindCmd()->Run({"-i", input_data, "-o", tmp_file.path, "--time",
-                                     "1516379654300997"}));
+  ASSERT_TRUE(
+      DebugUnwindCmd()->Run({"-i", input_data, "-o", tmp_file.path, "--time", "1516379654300997"}));
   ASSERT_NE(capture.Finish().find("Unwinding sample count: 1"), std::string::npos);
 }
 
@@ -54,8 +54,8 @@ TEST(cmd_debug_unwind, symfs_option) {
   CaptureStdout capture;
   TemporaryFile tmp_file;
   ASSERT_TRUE(capture.Start());
-  ASSERT_TRUE(DebugUnwindCmd()->Run({"-i", input_data, "-o", tmp_file.path, "--symfs",
-                                     GetTestDataDir()}));
+  ASSERT_TRUE(
+      DebugUnwindCmd()->Run({"-i", input_data, "-o", tmp_file.path, "--symfs", GetTestDataDir()}));
   ASSERT_NE(capture.Finish().find("Unwinding sample count: 55"), std::string::npos);
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmp_file.path);
   ASSERT_TRUE(reader);
@@ -70,8 +70,8 @@ TEST(cmd_debug_unwind, unwind_with_ip_zero_in_callchain) {
   TemporaryFile tmp_file;
   CaptureStdout capture;
   ASSERT_TRUE(capture.Start());
-  ASSERT_TRUE(DebugUnwindCmd()->Run({"-i", GetTestData(PERF_DATA_WITH_IP_ZERO_IN_CALLCHAIN),
-                                     "-o", tmp_file.path}));
+  ASSERT_TRUE(DebugUnwindCmd()->Run(
+      {"-i", GetTestData(PERF_DATA_WITH_IP_ZERO_IN_CALLCHAIN), "-o", tmp_file.path}));
   ASSERT_NE(capture.Finish().find("Unwinding sample count: 1"), std::string::npos);
 }
 
@@ -85,8 +85,8 @@ TEST(cmd_debug_unwind, unwind_embedded_lib_in_apk) {
                                      "--symfs", GetTestDataDir(), "-o", tmp_file.path}));
   CaptureStdout capture;
   ASSERT_TRUE(capture.Start());
-  ASSERT_TRUE(CreateCommandInstance("report-sample")->Run(
-      {"--show-callchain", "-i", tmp_file.path}));
+  ASSERT_TRUE(
+      CreateCommandInstance("report-sample")->Run({"--show-callchain", "-i", tmp_file.path}));
   std::string output = capture.Finish();
   ASSERT_NE(output.find("libnative-lib.so"), std::string::npos);
   ASSERT_NE(output.find("libc.so"), std::string::npos);

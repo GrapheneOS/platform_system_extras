@@ -92,7 +92,7 @@ void ReadSymbol(std::string_view content, std::vector<Symbol>* symbols) {
 std::vector<Symbol> ReadSymbolMapFromString(const std::string& content) {
   std::vector<Symbol> symbols;
 
-  for (size_t begin = 0; ; ) {
+  for (size_t begin = 0;;) {
     size_t end = content.find_first_of("\n\r", begin);
 
     if (end == content.npos) {

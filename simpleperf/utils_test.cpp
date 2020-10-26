@@ -29,10 +29,8 @@ static bool ModulesMatch(const char* p, const char* q) {
   return false;
 }
 
-static bool KernelSymbolsMatch(const KernelSymbol& sym1,
-                               const KernelSymbol& sym2) {
-  return sym1.addr == sym2.addr && sym1.type == sym2.type &&
-         strcmp(sym1.name, sym2.name) == 0 &&
+static bool KernelSymbolsMatch(const KernelSymbol& sym1, const KernelSymbol& sym2) {
+  return sym1.addr == sym2.addr && sym1.type == sym2.type && strcmp(sym1.name, sym2.name) == 0 &&
          ModulesMatch(sym1.module, sym2.module);
 }
 
@@ -47,21 +45,18 @@ TEST(utils, ProcessKernelSymbols) {
   expected_symbol.name = "__warned.41698";
   expected_symbol.module = "libsas";
   ASSERT_TRUE(ProcessKernelSymbols(
-      data,
-      std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
+      data, std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
 
   expected_symbol.addr = 0xaaaaaaaaaaaaaaaaULL;
   expected_symbol.type = 'T';
   expected_symbol.name = "_text";
   expected_symbol.module = nullptr;
   ASSERT_TRUE(ProcessKernelSymbols(
-      data,
-      std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
+      data, std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
 
   expected_symbol.name = "non_existent_symbol";
   ASSERT_FALSE(ProcessKernelSymbols(
-      data,
-      std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
+      data, std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
 }
 
 TEST(utils, ConvertBytesToValue) {

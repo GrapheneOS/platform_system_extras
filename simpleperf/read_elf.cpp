@@ -191,13 +191,12 @@ bool IsArmMappingSymbol(const char* name) {
   // Mapping symbols in arm, which are described in "ELF for ARM Architecture" and
   // "ELF for ARM 64-bit Architecture". The regular expression to match mapping symbol
   // is ^\$(a|d|t|x)(\..*)?$
-  return name[0] == '$' && strchr("adtx", name[1]) != nullptr && (name[2] == '\0' || name[2] == '.');
+  return name[0] == '$' && strchr("adtx", name[1]) != nullptr &&
+         (name[2] == '\0' || name[2] == '.');
 }
 
-void ReadSymbolTable(llvm::object::symbol_iterator sym_begin,
-                     llvm::object::symbol_iterator sym_end,
-                     const std::function<void(const ElfFileSymbol&)>& callback,
-                     bool is_arm,
+void ReadSymbolTable(llvm::object::symbol_iterator sym_begin, llvm::object::symbol_iterator sym_end,
+                     const std::function<void(const ElfFileSymbol&)>& callback, bool is_arm,
                      const llvm::object::section_iterator& section_end) {
   for (; sym_begin != sym_end; ++sym_begin) {
     ElfFileSymbol symbol;
@@ -288,8 +287,8 @@ void AddSymbolForPltSection(const llvm::object::ELFObjectFile<ELFT>* elf,
 }
 
 template <class ELFT>
-void CheckSymbolSections(const llvm::object::ELFObjectFile<ELFT>* elf,
-                         bool* has_symtab, bool* has_dynsym) {
+void CheckSymbolSections(const llvm::object::ELFObjectFile<ELFT>* elf, bool* has_symtab,
+                         bool* has_dynsym) {
   *has_symtab = false;
   *has_dynsym = false;
   for (auto it = elf->section_begin(); it != elf->section_end(); ++it) {
@@ -318,13 +317,9 @@ class ElfFileImpl<llvm::object::ELFObjectFile<ELFT>> : public ElfFile {
   ElfFileImpl(BinaryWrapper&& wrapper, const llvm::object::ELFObjectFile<ELFT>* elf_obj)
       : wrapper_(std::move(wrapper)), elf_obj_(elf_obj), elf_(elf_obj->getELFFile()) {}
 
-  bool Is64Bit() override {
-    return elf_->getHeader()->getFileClass() == llvm::ELF::ELFCLASS64;
-  }
+  bool Is64Bit() override { return elf_->getHeader()->getFileClass() == llvm::ELF::ELFCLASS64; }
 
-  llvm::MemoryBuffer* GetMemoryBuffer() override {
-    return wrapper_.buffer.get();
-  }
+  llvm::MemoryBuffer* GetMemoryBuffer() override { return wrapper_.buffer.get(); }
 
   std::vector<ElfSegment> GetProgramHeader() override {
     auto program_headers = elf_->program_headers();
@@ -539,21 +534,20 @@ std::unique_ptr<ElfFile> ElfFile::Open(const char* data, size_t size, ElfStatus*
 
 }  // namespace simpleperf
 
-
 // LLVM libraries uses ncurses library, but that isn't needed by simpleperf.
 // So support a naive implementation to avoid depending on ncurses.
-__attribute__((weak)) extern "C" int setupterm(char *, int, int *) {
+__attribute__((weak)) extern "C" int setupterm(char*, int, int*) {
   return -1;
 }
 
-__attribute__((weak)) extern "C" struct term *set_curterm(struct term *) {
+__attribute__((weak)) extern "C" struct term* set_curterm(struct term*) {
   return nullptr;
 }
 
-__attribute__((weak)) extern "C" int del_curterm(struct term *) {
+__attribute__((weak)) extern "C" int del_curterm(struct term*) {
   return -1;
 }
 
-__attribute__((weak)) extern "C" int tigetnum(char *) {
+__attribute__((weak)) extern "C" int tigetnum(char*) {
   return -1;
 }

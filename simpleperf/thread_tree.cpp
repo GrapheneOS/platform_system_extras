@@ -43,8 +43,7 @@ std::string GetSymbolMapDsoName(int pid) {
 void ThreadTree::SetThreadName(int pid, int tid, const std::string& comm) {
   ThreadEntry* thread = FindThreadOrNew(pid, tid);
   if (comm != thread->comm) {
-    thread_comm_storage_.push_back(
-        std::unique_ptr<std::string>(new std::string(comm)));
+    thread_comm_storage_.push_back(std::unique_ptr<std::string>(new std::string(comm)));
     thread->comm = thread_comm_storage_.back()->c_str();
   }
 }
@@ -97,9 +96,10 @@ ThreadEntry* ThreadTree::CreateThread(int pid, int tid) {
     maps = process->maps;
   }
   ThreadEntry* thread = new ThreadEntry{
-    pid, tid,
-    comm,
-    maps,
+      pid,
+      tid,
+      comm,
+      maps,
   };
   auto pair = thread_tree_.insert(std::make_pair(tid, std::unique_ptr<ThreadEntry>(thread)));
   CHECK(pair.second);
@@ -132,8 +132,7 @@ void ThreadTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
 }
 
 Dso* ThreadTree::FindKernelDsoOrNew(const std::string& filename) {
-  if (filename == DEFAULT_KERNEL_MMAP_NAME ||
-      filename == DEFAULT_KERNEL_MMAP_NAME_PERF) {
+  if (filename == DEFAULT_KERNEL_MMAP_NAME || filename == DEFAULT_KERNEL_MMAP_NAME_PERF) {
     return kernel_dso_.get();
   }
   auto it = module_dso_tree_.find(filename);
@@ -144,8 +143,8 @@ Dso* ThreadTree::FindKernelDsoOrNew(const std::string& filename) {
   return it->second.get();
 }
 
-void ThreadTree::AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t len,
-                              uint64_t pgoff, const std::string& filename, uint32_t flags) {
+void ThreadTree::AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t len, uint64_t pgoff,
+                              const std::string& filename, uint32_t flags) {
   ThreadEntry* thread = FindThreadOrNew(pid, tid);
   Dso* dso = FindUserDsoOrNew(filename, start_addr);
   InsertMap(*thread->maps, MapEntry(start_addr, len, pgoff, dso, false, flags));
@@ -284,8 +283,8 @@ const MapEntry* ThreadTree::FindMap(const ThreadEntry* thread, uint64_t ip) {
   return result != nullptr ? result : &unknown_map_;
 }
 
-const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip,
-                                     uint64_t* pvaddr_in_file, Dso** pdso) {
+const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip, uint64_t* pvaddr_in_file,
+                                     Dso** pdso) {
   uint64_t vaddr_in_file = 0;
   const Symbol* symbol = nullptr;
   Dso* dso = map->dso;
@@ -305,9 +304,9 @@ const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip,
 
   if (symbol == nullptr) {
     if (show_ip_for_unknown_symbol_) {
-      std::string name = android::base::StringPrintf(
-          "%s%s[+%" PRIx64 "]", (show_mark_for_unknown_symbol_ ? "*" : ""),
-          dso->FileName().c_str(), vaddr_in_file);
+      std::string name = android::base::StringPrintf("%s%s[+%" PRIx64 "]",
+                                                     (show_mark_for_unknown_symbol_ ? "*" : ""),
+                                                     dso->FileName().c_str(), vaddr_in_file);
       dso->AddUnknownSymbol(vaddr_in_file, name);
       symbol = dso->FindSymbol(vaddr_in_file);
       CHECK(symbol != nullptr);
@@ -336,9 +335,8 @@ void ThreadTree::ClearThreadAndMap() {
   map_storage_.clear();
 }
 
-void ThreadTree::AddDsoInfo(const std::string& file_path, uint32_t file_type,
-                            uint64_t min_vaddr, uint64_t file_offset_of_min_vaddr,
-                            std::vector<Symbol>* symbols,
+void ThreadTree::AddDsoInfo(const std::string& file_path, uint32_t file_type, uint64_t min_vaddr,
+                            uint64_t file_offset_of_min_vaddr, std::vector<Symbol>* symbols,
                             const std::vector<uint64_t>& dex_file_offsets) {
   DsoType dso_type = static_cast<DsoType>(file_type);
   Dso* dso = nullptr;
@@ -372,9 +370,8 @@ void ThreadTree::Update(const Record& record) {
     if (r.InKernel()) {
       AddKernelMap(r.data->addr, r.data->len, r.data->pgoff, r.filename);
     } else {
-      std::string filename = (r.filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP)
-                                 ? "[unknown]"
-                                 : r.filename;
+      std::string filename =
+          (r.filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) ? "[unknown]" : r.filename;
       AddThreadMap(r.data->pid, r.data->tid, r.data->addr, r.data->len, r.data->pgoff, filename,
                    r.data->prot);
     }
