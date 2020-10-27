@@ -19,36 +19,31 @@
 #include "scheduler.h"
 
 #include <fstream>
-#include <variant>
 #include <vector>
 
 #include <android-base/logging.h>
-#include <android-base/properties.h>
 
 #include "compress.h"
+#include "config_utils.h"
 #include "hwtrace_provider.h"
 #include "json/json.h"
 #include "json/writer.h"
 
 namespace fs = std::filesystem;
 
+namespace android {
+namespace profcollectd {
+
 // Default option values.
-using config_t = std::pair<const char*, std::variant<const int, const char*>>;
-static constexpr const config_t CONFIG_BUILD_FINGERPRINT = {"Fingerprint", "unknown"};
-static constexpr const config_t CONFIG_COLLECTION_INTERVAL_SEC = {"CollectionInterval", 600};
-static constexpr const config_t CONFIG_SAMPLING_PERIOD_MS = {"SamplingPeriod", 500};
-static constexpr const config_t CONFIG_BINARY_FILTER = {"BinaryFilter", ""};
+static constexpr config_t CONFIG_BUILD_FINGERPRINT = {"build_fingerprint", "unknown"};
+static constexpr config_t CONFIG_COLLECTION_INTERVAL_SEC = {"collection_interval", "600"};
+static constexpr config_t CONFIG_SAMPLING_PERIOD_SEC = {"sampling_period", "0.5"};
+static constexpr config_t CONFIG_BINARY_FILTER = {"binary_filter", ""};
 
 static const fs::path OUT_ROOT_DIR("/data/misc/profcollectd");
 static const fs::path TRACE_DIR(OUT_ROOT_DIR / "trace");
 static const fs::path OUTPUT_DIR(OUT_ROOT_DIR / "output");
 static const fs::path REPORT_FILE(OUT_ROOT_DIR / "report.zip");
-
-namespace android {
-namespace profcollectd {
-
-using ::android::base::GetIntProperty;
-using ::android::base::GetProperty;
 
 // Hwtrace provider registry
 extern std::unique_ptr<HwtraceProvider> REGISTER_SIMPLEPERF_ETM_PROVIDER();
@@ -114,16 +109,12 @@ OptError ProfcollectdScheduler::ReadConfig() {
 
   const std::lock_guard<std::mutex> lock(mu);
 
-  config.buildFingerprint = GetProperty("ro.build.fingerprint", "unknown");
-  config.collectionInterval = std::chrono::seconds(
-      GetIntProperty("persist.profcollectd.collection_interval",
-                     std::get<const int>(CONFIG_COLLECTION_INTERVAL_SEC.second)));
-  config.samplingPeriod = std::chrono::milliseconds(GetIntProperty(
-      "persist.profcollectd.sampling_period_ms",
-      std::get<const int>(CONFIG_SAMPLING_PERIOD_MS.second)));
-  config.binaryFilter =
-      GetProperty("persist.profcollectd.binary_filter",
-                  std::get<const char*>(CONFIG_BINARY_FILTER.second));
+  config.buildFingerprint = getBuildFingerprint();
+  config.collectionInterval =
+      std::chrono::seconds(getConfigFlagInt(CONFIG_COLLECTION_INTERVAL_SEC));
+  config.samplingPeriod =
+      std::chrono::duration<float>(getConfigFlagFloat(CONFIG_SAMPLING_PERIOD_SEC));
+  config.binaryFilter = getConfigFlag(CONFIG_BINARY_FILTER);
   ClearOnConfigChange(config);
 
   return std::nullopt;
@@ -155,7 +146,7 @@ OptError ProfcollectdScheduler::TerminateCollection() {
 }
 
 OptError ProfcollectdScheduler::TraceOnce(const std::string& tag) {
-  if(!hwtracer) {
+  if (!hwtracer) {
     return "No trace provider registered.";
   }
 
@@ -169,13 +160,12 @@ OptError ProfcollectdScheduler::TraceOnce(const std::string& tag) {
 }
 
 OptError ProfcollectdScheduler::ProcessProfile() {
-  if(!hwtracer) {
+  if (!hwtracer) {
     return "No trace provider registered.";
   }
 
   const std::lock_guard<std::mutex> lock(mu);
-  bool success =
-      hwtracer->Process(TRACE_DIR, OUTPUT_DIR, config.binaryFilter);
+  bool success = hwtracer->Process(TRACE_DIR, OUTPUT_DIR, config.binaryFilter);
   if (!success) {
     static std::string errmsg = "Process profiles failed";
     return errmsg;
@@ -191,8 +181,7 @@ OptError ProfcollectdScheduler::CreateProfileReport() {
 
   std::vector<fs::path> profiles;
   if (fs::exists(OUTPUT_DIR)) {
-    profiles.insert(profiles.begin(), fs::directory_iterator(OUTPUT_DIR),
-                    fs::directory_iterator());
+    profiles.insert(profiles.begin(), fs::directory_iterator(OUTPUT_DIR), fs::directory_iterator());
   }
   bool success = CompressFiles(REPORT_FILE, profiles);
   if (!success) {
@@ -210,10 +199,10 @@ OptError ProfcollectdScheduler::GetSupportedProvider(std::string& provider) {
 std::ostream& operator<<(std::ostream& os, const ProfcollectdScheduler::Config& config) {
   Json::Value root;
   const auto writer = std::make_unique<Json::StyledStreamWriter>();
-  root[CONFIG_BUILD_FINGERPRINT.first] = config.buildFingerprint;
-  root[CONFIG_COLLECTION_INTERVAL_SEC.first] = config.collectionInterval.count();
-  root[CONFIG_SAMPLING_PERIOD_MS.first] = config.samplingPeriod.count();
-  root[CONFIG_BINARY_FILTER.first] = config.binaryFilter.c_str();
+  root[CONFIG_BUILD_FINGERPRINT.name] = config.buildFingerprint;
+  root[CONFIG_COLLECTION_INTERVAL_SEC.name] = config.collectionInterval.count();
+  root[CONFIG_SAMPLING_PERIOD_SEC.name] = config.samplingPeriod.count();
+  root[CONFIG_BINARY_FILTER.name] = config.binaryFilter.c_str();
   writer->write(os, root);
   return os;
 }
@@ -226,12 +215,12 @@ std::istream& operator>>(std::istream& is, ProfcollectdScheduler::Config& config
     return is;
   }
 
-  config.buildFingerprint = root[CONFIG_BUILD_FINGERPRINT.first].asString();
+  config.buildFingerprint = root[CONFIG_BUILD_FINGERPRINT.name].asString();
   config.collectionInterval =
-      std::chrono::seconds(root[CONFIG_COLLECTION_INTERVAL_SEC.first].asInt64());
+      std::chrono::seconds(root[CONFIG_COLLECTION_INTERVAL_SEC.name].asInt64());
   config.samplingPeriod =
-      std::chrono::duration<float>(root[CONFIG_SAMPLING_PERIOD_MS.first].asFloat());
-  config.binaryFilter = root[CONFIG_BINARY_FILTER.first].asString();
+      std::chrono::duration<float>(root[CONFIG_SAMPLING_PERIOD_SEC.name].asFloat());
+  config.binaryFilter = root[CONFIG_BINARY_FILTER.name].asString();
 
   return is;
 }
