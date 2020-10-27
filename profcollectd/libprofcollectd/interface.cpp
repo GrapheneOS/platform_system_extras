@@ -24,8 +24,8 @@
 
 #include "binder_service.h"
 
-using com::android::server::profcollect::IProfCollectd;
 using android::profcollectd::ProfcollectdBinder;
+using com::android::server::profcollect::IProfCollectd;
 
 using namespace android;
 
