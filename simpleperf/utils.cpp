@@ -69,15 +69,14 @@ const char* OneTimeFreeAllocator::AllocateString(std::string_view s) {
   return result;
 }
 
-
 android::base::unique_fd FileHelper::OpenReadOnly(const std::string& filename) {
-    int fd = TEMP_FAILURE_RETRY(open(filename.c_str(), O_RDONLY | O_BINARY));
-    return android::base::unique_fd(fd);
+  int fd = TEMP_FAILURE_RETRY(open(filename.c_str(), O_RDONLY | O_BINARY));
+  return android::base::unique_fd(fd);
 }
 
 android::base::unique_fd FileHelper::OpenWriteOnly(const std::string& filename) {
-    int fd = TEMP_FAILURE_RETRY(open(filename.c_str(), O_WRONLY | O_BINARY | O_CREAT, 0644));
-    return android::base::unique_fd(fd);
+  int fd = TEMP_FAILURE_RETRY(open(filename.c_str(), O_WRONLY | O_BINARY | O_CREAT, 0644));
+  return android::base::unique_fd(fd);
 }
 
 std::unique_ptr<ArchiveHelper> ArchiveHelper::CreateInstance(const std::string& filename) {
@@ -89,7 +88,7 @@ std::unique_ptr<ArchiveHelper> ArchiveHelper::CreateInstance(const std::string& 
   // files than zip files in a process map. In order to detect invalid zip files fast, we add a
   // check of magic number here. Note that OpenArchiveFd() detects invalid zip files in a thorough
   // way, but it usually needs reading at least 64K file data.
-  static const char zip_preamble[] = {0x50, 0x4b, 0x03, 0x04 };
+  static const char zip_preamble[] = {0x50, 0x4b, 0x03, 0x04};
   char buf[4];
   if (!android::base::ReadFully(fd, buf, 4) || memcmp(buf, zip_preamble, 4) != 0) {
     return nullptr;
@@ -303,12 +302,9 @@ bool XzDecompress(const std::string& compressed_data, std::string* decompressed_
 }
 
 static std::map<std::string, android::base::LogSeverity> log_severity_map = {
-    {"verbose", android::base::VERBOSE},
-    {"debug", android::base::DEBUG},
-    {"info", android::base::INFO},
-    {"warning", android::base::WARNING},
-    {"error", android::base::ERROR},
-    {"fatal", android::base::FATAL},
+    {"verbose", android::base::VERBOSE}, {"debug", android::base::DEBUG},
+    {"info", android::base::INFO},       {"warning", android::base::WARNING},
+    {"error", android::base::ERROR},     {"fatal", android::base::FATAL},
 };
 bool GetLogSeverity(const std::string& name, android::base::LogSeverity* severity) {
   auto it = log_severity_map.find(name);

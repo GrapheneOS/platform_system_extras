@@ -140,8 +140,8 @@ void TestPeriodicEvents(int period_in_us, int iterations, bool precise) {
   ASSERT_TRUE(loop.RunLoop());
   auto end_time = std::chrono::steady_clock::now();
   ASSERT_EQ(iterations, count);
-  double time_used = std::chrono::duration_cast<std::chrono::duration<double>>(
-                         end_time - start_time).count();
+  double time_used =
+      std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time).count();
   double min_time_in_sec = period_in_us / 1e6 * iterations;
   double max_time_in_sec = min_time_in_sec + (precise ? 0.1 : 1);
   ASSERT_GE(time_used, min_time_in_sec);

@@ -25,7 +25,9 @@
 
 using namespace simpleperf;
 
-static std::unique_ptr<Command> InjectCmd() { return CreateCommandInstance("inject"); }
+static std::unique_ptr<Command> InjectCmd() {
+  return CreateCommandInstance("inject");
+}
 
 static bool RunInjectCmd(std::vector<std::string>&& args) {
   bool has_input = std::find(args.begin(), args.end(), "-i") != args.end();

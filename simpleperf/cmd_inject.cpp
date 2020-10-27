@@ -20,14 +20,13 @@
 #include <regex>
 #include <string>
 
+#include "ETMDecoder.h"
 #include "cmd_inject_impl.h"
 #include "command.h"
-#include "ETMDecoder.h"
 #include "record_file.h"
 #include "system/extras/simpleperf/etm_branch_list.pb.h"
 #include "thread_tree.h"
 #include "utils.h"
-
 
 using namespace simpleperf;
 
@@ -295,9 +294,7 @@ class InjectCommand : public Command {
     }
 
     // 2. Build branch map for each binary, convert them to instr ranges.
-    auto callback = [this](const ETMInstrRange& range) {
-      ProcessInstrRange(range);
-    };
+    auto callback = [this](const ETMInstrRange& range) { ProcessInstrRange(range); };
     auto check_build_id = [](Dso* dso, const BuildId& expected_build_id) {
       if (expected_build_id.IsEmpty()) {
         return true;

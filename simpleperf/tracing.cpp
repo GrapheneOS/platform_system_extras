@@ -49,8 +49,7 @@ void MoveFromBinaryFormat(std::string& data, const char*& p) {
 
 namespace simpleperf {
 
-const char TRACING_INFO_MAGIC[10] = {23,  8,   68,  't', 'r',
-                                     'a', 'c', 'i', 'n', 'g'};
+const char TRACING_INFO_MAGIC[10] = {23, 8, 68, 't', 'r', 'a', 'c', 'i', 'n', 'g'};
 
 template <class T>
 void AppendData(std::vector<char>& data, const T& s) {
@@ -79,8 +78,7 @@ static void AppendFile(std::vector<char>& data, const std::string& file,
   data.insert(data.end(), file.begin(), file.end());
 }
 
-static void DetachFile(const char*& p, std::string& file,
-                       uint32_t file_size_bytes = 8) {
+static void DetachFile(const char*& p, std::string& file, uint32_t file_size_bytes = 8) {
   uint64_t file_size = ConvertBytesToValue(p, file_size_bytes);
   p += file_size_bytes;
   file.clear();
@@ -88,7 +86,8 @@ static void DetachFile(const char*& p, std::string& file,
   p += file_size;
 }
 
-static bool ReadTraceFsFile(const std::string& path, std::string* content, bool report_error = true) {
+static bool ReadTraceFsFile(const std::string& path, std::string* content,
+                            bool report_error = true) {
   const char* tracefs_dir = GetTraceFsDir();
   if (tracefs_dir == nullptr) {
     if (report_error) {
@@ -147,7 +146,7 @@ TracingFile::TracingFile() {
   memcpy(magic, TRACING_INFO_MAGIC, sizeof(TRACING_INFO_MAGIC));
   version = "0.5";
   endian = 0;
-  size_of_long = static_cast<int>(sizeof(long)); // NOLINT(google-runtime-int)
+  size_of_long = static_cast<int>(sizeof(long));  // NOLINT(google-runtime-int)
   page_size = static_cast<uint32_t>(::GetPageSize());
 }
 
@@ -268,13 +267,11 @@ void TracingFile::Dump(size_t indent) const {
   }
   for (size_t i = 0; i < event_format_files.size(); ++i) {
     PrintIndented(indent + 1, "event format file %zu/%zu %s:\n%s\n\n", i + 1,
-                  event_format_files.size(),
-                  event_format_files[i].first.c_str(),
+                  event_format_files.size(), event_format_files[i].first.c_str(),
                   event_format_files[i].second.c_str());
   }
   PrintIndented(indent + 1, "kallsyms:\n%s\n\n", kallsyms_file.c_str());
-  PrintIndented(indent + 1, "printk_formats:\n%s\n\n",
-                printk_formats_file.c_str());
+  PrintIndented(indent + 1, "printk_formats:\n%s\n\n", printk_formats_file.c_str());
 }
 
 enum class FormatParsingState {
@@ -365,8 +362,7 @@ TracingFormat ParseTracingFormat(const std::string& data) {
   return format;
 }
 
-std::vector<TracingFormat> TracingFile::LoadTracingFormatsFromEventFiles()
-    const {
+std::vector<TracingFormat> TracingFile::LoadTracingFormatsFromEventFiles() const {
   std::vector<TracingFormat> formats;
   for (const auto& pair : event_format_files) {
     TracingFormat format = ParseTracingFormat(pair.second);
@@ -381,9 +377,13 @@ Tracing::Tracing(const std::vector<char>& data) {
   tracing_file_->LoadFromBinary(data);
 }
 
-Tracing::~Tracing() { delete tracing_file_; }
+Tracing::~Tracing() {
+  delete tracing_file_;
+}
 
-void Tracing::Dump(size_t indent) { tracing_file_->Dump(indent); }
+void Tracing::Dump(size_t indent) {
+  tracing_file_->Dump(indent);
+}
 
 TracingFormat Tracing::GetTracingFormatHavingId(uint64_t trace_event_id) {
   if (tracing_formats_.empty()) {
@@ -404,8 +404,7 @@ std::string Tracing::GetTracingEventNameHavingId(uint64_t trace_event_id) {
   }
   for (const auto& format : tracing_formats_) {
     if (format.id == trace_event_id) {
-      return android::base::StringPrintf("%s:%s", format.system_name.c_str(),
-                                         format.name.c_str());
+      return android::base::StringPrintf("%s:%s", format.system_name.c_str(), format.name.c_str());
     }
   }
   return "";
@@ -415,10 +414,11 @@ const std::string& Tracing::GetKallsyms() const {
   return tracing_file_->GetKallsymsFile();
 }
 
-uint32_t Tracing::GetPageSize() const { return tracing_file_->GetPageSize(); }
+uint32_t Tracing::GetPageSize() const {
+  return tracing_file_->GetPageSize();
+}
 
-bool GetTracingData(const std::vector<const EventType*>& event_types,
-                    std::vector<char>* data) {
+bool GetTracingData(const std::vector<const EventType*>& event_types, std::vector<char>* data) {
   data->clear();
   std::vector<TraceType> trace_types;
   for (const auto& type : event_types) {

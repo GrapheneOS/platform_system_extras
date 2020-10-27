@@ -89,7 +89,7 @@ perf_event_attr CreateDefaultPerfEventAttr(const EventType& event_type) {
   attr.read_format =
       PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING | PERF_FORMAT_ID;
   attr.sample_type |= PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_TIME | PERF_SAMPLE_PERIOD |
-      PERF_SAMPLE_CPU | PERF_SAMPLE_ID;
+                      PERF_SAMPLE_CPU | PERF_SAMPLE_ID;
 
   if (attr.type == PERF_TYPE_TRACEPOINT) {
     // Tracepoint information are stored in raw data in sample records.
@@ -144,8 +144,8 @@ void DumpPerfEventAttr(const perf_event_attr& attr, size_t indent) {
 }
 
 bool GetCommonEventIdPositionsForAttrs(std::vector<perf_event_attr>& attrs,
-                                           size_t* event_id_pos_in_sample_records,
-                                           size_t* event_id_reverse_pos_in_non_sample_records) {
+                                       size_t* event_id_pos_in_sample_records,
+                                       size_t* event_id_reverse_pos_in_non_sample_records) {
   // When there are more than one perf_event_attrs, we need to read event id
   // in each record to decide current record should use which attr. So
   // we need to determine the event id position in a record here.
@@ -160,7 +160,7 @@ bool GetCommonEventIdPositionsForAttrs(std::vector<perf_event_attr>& attrs,
   bool identifier_enabled = true;
   bool id_enabled = true;
   uint64_t flags_before_id_mask = PERF_SAMPLE_IDENTIFIER | PERF_SAMPLE_IP | PERF_SAMPLE_TID |
-      PERF_SAMPLE_TIME | PERF_SAMPLE_ADDR;
+                                  PERF_SAMPLE_TIME | PERF_SAMPLE_ADDR;
   uint64_t flags_before_id = sample_types[0] & flags_before_id_mask;
   bool flags_before_id_are_the_same = true;
   for (auto type : sample_types) {
@@ -216,7 +216,8 @@ bool GetCommonEventIdPositionsForAttrs(std::vector<perf_event_attr>& attrs,
     }
     *event_id_reverse_pos_in_non_sample_records = pos;
   } else {
-    LOG(ERROR) << "perf_event_attrs don't have a common event id reverse position in non sample records";
+    LOG(ERROR)
+        << "perf_event_attrs don't have a common event id reverse position in non sample records";
     return false;
   }
   return true;

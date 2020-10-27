@@ -16,8 +16,8 @@
 
 #include <include/simpleperf_profcollect.h>
 
-#include "command.h"
 #include "ETMRecorder.h"
+#include "command.h"
 #include "event_attr.h"
 #include "event_fd.h"
 #include "event_type.h"
@@ -36,8 +36,7 @@ bool HasSupport() {
   return IsEventAttrSupported(CreateDefaultPerfEventAttr(*type), type->name);
 }
 
-bool Record(const std::filesystem::path& output,
-            const std::chrono::duration<float>& duration) {
+bool Record(const std::filesystem::path& output, const std::chrono::duration<float>& duration) {
   auto recordCmd = CreateCommandInstance("record");
   std::vector<std::string> args;
   args.push_back("-a");
@@ -47,8 +46,7 @@ bool Record(const std::filesystem::path& output,
   return recordCmd->Run(args);
 }
 
-bool Inject(const std::filesystem::path& traceInput,
-            const std::filesystem::path& output,
+bool Inject(const std::filesystem::path& traceInput, const std::filesystem::path& output,
             const std::string& binaryFilter) {
   auto injectCmd = CreateCommandInstance("inject");
   std::vector<std::string> args;

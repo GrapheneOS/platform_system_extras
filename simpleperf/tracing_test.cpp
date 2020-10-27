@@ -59,7 +59,7 @@ TEST(tracing, adjust_tracepoint_filter) {
 }
 
 namespace simpleperf {
-std::ostream& operator<<(std::ostream& os, const TracingField& field){
+std::ostream& operator<<(std::ostream& os, const TracingField& field) {
   os << "field (" << field.name << ", off " << field.offset << ", elem size " << field.elem_size
      << ", elem_count " << field.elem_count << ", is_signed " << field.is_signed << ", is_dynamic "
      << field.is_dynamic << ")";
