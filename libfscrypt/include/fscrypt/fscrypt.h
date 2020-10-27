@@ -63,8 +63,8 @@ bool EnsurePolicy(const EncryptionPolicy& policy, const std::string& directory);
 
 inline bool operator==(const EncryptionOptions& lhs, const EncryptionOptions& rhs) {
     return (lhs.version == rhs.version) && (lhs.contents_mode == rhs.contents_mode) &&
-             (lhs.filenames_mode == rhs.filenames_mode) && (lhs.flags == rhs.flags) &&
-             (lhs.use_hw_wrapped_key == rhs.use_hw_wrapped_key);
+           (lhs.filenames_mode == rhs.filenames_mode) && (lhs.flags == rhs.flags) &&
+           (lhs.use_hw_wrapped_key == rhs.use_hw_wrapped_key);
 }
 
 inline bool operator!=(const EncryptionOptions& lhs, const EncryptionOptions& rhs) {
@@ -82,4 +82,4 @@ inline bool operator!=(const EncryptionPolicy& lhs, const EncryptionPolicy& rhs)
 }  // namespace fscrypt
 }  // namespace android
 
-#endif // _FSCRYPT_H_
+#endif  // _FSCRYPT_H_
