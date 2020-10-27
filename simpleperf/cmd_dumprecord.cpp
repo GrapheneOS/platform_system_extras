@@ -185,6 +185,7 @@ class DumpRecordCommand : public Command {
 "Usage: simpleperf dumprecord [options] [perf_record_file]\n"
 "    Dump different parts of a perf record file. Default file is perf.data.\n"
 "--dump-etm type1,type2,...   Dump etm data. A type is one of raw, packet and element.\n"
+"-i <record_file>             Record file to dump. Default is perf.data.\n"
 "--symdir <dir>               Look for binaries in a directory recursively.\n"
                 // clang-format on
         ) {}
@@ -232,30 +233,35 @@ bool DumpRecordCommand::Run(const std::vector<std::string>& args) {
 }
 
 bool DumpRecordCommand::ParseOptions(const std::vector<std::string>& args) {
-  size_t i;
-  for (i = 0; i < args.size() && !args[i].empty() && args[i][0] == '-'; ++i) {
-    if (args[i] == "--dump-etm") {
-      if (!NextArgumentOrError(args, &i) || !ParseEtmDumpOption(args[i], &etm_dump_option_)) {
-        return false;
-      }
-    } else if (args[i] == "--symdir") {
-      if (!NextArgumentOrError(args, &i)) {
-        return false;
-      }
-      if (!Dso::AddSymbolDir(args[i])) {
-        return false;
-      }
-    } else {
-      ReportUnknownOption(args, i);
+  const OptionFormatMap option_formats = {
+      {"--dump-etm", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"-i", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"--symdir", {OptionValueType::STRING, OptionType::MULTIPLE}},
+  };
+  OptionValueMap options;
+  std::vector<std::pair<OptionName, OptionValue>> ordered_options;
+  std::vector<std::string> non_option_args;
+  if (!PreprocessOptions(args, option_formats, &options, &ordered_options, &non_option_args)) {
+    return false;
+  }
+  if (auto value = options.PullValue("--dump-etm"); value) {
+    if (!ParseEtmDumpOption(*value->str_value, &etm_dump_option_)) {
       return false;
     }
   }
-  if (i + 1 < args.size()) {
+  options.PullStringValue("-i", &record_filename_);
+  for (const OptionValue& value : options.PullValues("--symdir")) {
+    if (!Dso::AddSymbolDir(*value.str_value)) {
+      return false;
+    }
+  }
+  CHECK(options.values.empty());
+  if (non_option_args.size() > 1) {
     LOG(ERROR) << "too many record files";
     return false;
   }
-  if (i + 1 == args.size()) {
-    record_filename_ = args[i];
+  if (non_option_args.size() == 1) {
+    record_filename_ = non_option_args[0];
   }
   return true;
 }
