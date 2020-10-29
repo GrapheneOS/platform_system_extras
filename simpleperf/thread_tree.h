@@ -83,6 +83,8 @@ struct ThreadEntry {
   std::shared_ptr<MapSet> maps;  // maps is shared by threads in the same process.
 };
 
+struct FileFeature;
+
 // ThreadTree contains thread information (in ThreadEntry) and mmap information
 // (in MapEntry) of the monitored threads. It also has interface to access
 // symbols in executable binaries mapped in the monitored threads.
@@ -131,10 +133,7 @@ class ThreadTree {
   // Clear thread and map information, but keep loaded dso information. It saves
   // the time to reload dso information.
   void ClearThreadAndMap();
-
-  void AddDsoInfo(const std::string& file_path, uint32_t file_type, uint64_t min_vaddr,
-                  uint64_t file_offset_of_min_vaddr, std::vector<Symbol>* symbols,
-                  const std::vector<uint64_t>& dex_file_offsets);
+  void AddDsoInfo(FileFeature& file);
   void AddDexFileOffset(const std::string& file_path, uint64_t dex_file_offset);
 
   // Update thread tree with information provided by record.
