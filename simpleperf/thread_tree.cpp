@@ -25,6 +25,7 @@
 
 #include "perf_event.h"
 #include "record.h"
+#include "record_file.h"
 #include "utils.h"
 
 namespace simpleperf {
@@ -335,19 +336,17 @@ void ThreadTree::ClearThreadAndMap() {
   map_storage_.clear();
 }
 
-void ThreadTree::AddDsoInfo(const std::string& file_path, uint32_t file_type, uint64_t min_vaddr,
-                            uint64_t file_offset_of_min_vaddr, std::vector<Symbol>* symbols,
-                            const std::vector<uint64_t>& dex_file_offsets) {
-  DsoType dso_type = static_cast<DsoType>(file_type);
+void ThreadTree::AddDsoInfo(FileFeature& file) {
+  DsoType dso_type = file.type;
   Dso* dso = nullptr;
   if (dso_type == DSO_KERNEL || dso_type == DSO_KERNEL_MODULE) {
-    dso = FindKernelDsoOrNew(file_path);
+    dso = FindKernelDsoOrNew(file.path);
   } else {
-    dso = FindUserDsoOrNew(file_path, 0, dso_type);
+    dso = FindUserDsoOrNew(file.path, 0, dso_type);
   }
-  dso->SetMinExecutableVaddr(min_vaddr, file_offset_of_min_vaddr);
-  dso->SetSymbols(symbols);
-  for (uint64_t offset : dex_file_offsets) {
+  dso->SetMinExecutableVaddr(file.min_vaddr, file.file_offset_of_min_vaddr);
+  dso->SetSymbols(&file.symbols);
+  for (uint64_t offset : file.dex_file_offsets) {
     dso->AddDexFileOffset(offset);
   }
 }

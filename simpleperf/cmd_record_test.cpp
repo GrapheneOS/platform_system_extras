@@ -456,17 +456,11 @@ static void ProcessSymbolsInPerfDataFile(
     const std::function<bool(const Symbol&, uint32_t)>& callback) {
   auto reader = RecordFileReader::CreateInstance(perf_data_file);
   ASSERT_TRUE(reader);
-  std::string file_path;
-  uint32_t file_type;
-  uint64_t min_vaddr;
-  uint64_t file_offset_of_min_vaddr;
-  std::vector<Symbol> symbols;
-  std::vector<uint64_t> dex_file_offsets;
+  FileFeature file;
   size_t read_pos = 0;
-  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr,
-                                 &file_offset_of_min_vaddr, &symbols, &dex_file_offsets)) {
-    for (const auto& symbol : symbols) {
-      if (callback(symbol, file_type)) {
+  while (reader->ReadFileFeature(read_pos, &file)) {
+    for (const auto& symbol : file.symbols) {
+      if (callback(symbol, file.type)) {
         return;
       }
     }
