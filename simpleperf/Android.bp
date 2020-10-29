@@ -490,6 +490,7 @@ cc_defaults {
         "record_test.cpp",
         "sample_tree_test.cpp",
         "thread_tree_test.cpp",
+        "test_util.cpp",
         "tracing_test.cpp",
         "utils_test.cpp",
     ],
