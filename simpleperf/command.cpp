@@ -177,6 +177,7 @@ extern void RegisterHelpCommand();
 extern void RegisterInjectCommand();
 extern void RegisterListCommand();
 extern void RegisterKmemCommand();
+extern void RegisterMergeCommand();
 extern void RegisterRecordCommand();
 extern void RegisterReportCommand();
 extern void RegisterReportSampleCommand();
@@ -192,6 +193,7 @@ class CommandRegister {
     RegisterHelpCommand();
     RegisterInjectCommand();
     RegisterKmemCommand();
+    RegisterMergeCommand();
     RegisterReportCommand();
     RegisterReportSampleCommand();
 #if defined(__linux__)

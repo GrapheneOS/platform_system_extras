@@ -18,8 +18,8 @@
 
 #include <fcntl.h>
 #include <string.h>
-#include <sys/mman.h>
 #include <unistd.h>
+
 #include <algorithm>
 #include <set>
 #include <string>
@@ -321,73 +321,72 @@ bool RecordFileWriter::WriteAuxTraceFeature(const std::vector<uint64_t>& auxtrac
          WriteFeatureEnd(FEAT_AUXTRACE);
 }
 
-bool RecordFileWriter::WriteFileFeatures(const std::vector<Dso*>& files) {
-  for (Dso* dso : files) {
+bool RecordFileWriter::WriteFileFeatures(const std::vector<Dso*>& dsos) {
+  for (Dso* dso : dsos) {
     // Always want to dump dex file offsets for DSO_DEX_FILE type.
     if (!dso->HasDumpId() && dso->type() != DSO_DEX_FILE) {
       continue;
     }
-    uint32_t dso_type = dso->type();
-    uint64_t min_vaddr;
-    uint64_t file_offset_of_min_vaddr;
-    dso->GetMinExecutableVaddr(&min_vaddr, &file_offset_of_min_vaddr);
+    FileFeature file;
+    file.path = dso->Path();
+    file.type = dso->type();
+    dso->GetMinExecutableVaddr(&file.min_vaddr, &file.file_offset_of_min_vaddr);
 
     // Dumping all symbols in hit files takes too much space, so only dump
     // needed symbols.
     const std::vector<Symbol>& symbols = dso->GetSymbols();
-    std::vector<const Symbol*> dump_symbols;
     for (const auto& sym : symbols) {
       if (sym.HasDumpId()) {
-        dump_symbols.push_back(&sym);
+        file.symbol_ptrs.emplace_back(&sym);
       }
     }
-    std::sort(dump_symbols.begin(), dump_symbols.end(), Symbol::CompareByAddr);
+    std::sort(file.symbol_ptrs.begin(), file.symbol_ptrs.end(), Symbol::CompareByAddr);
 
-    const std::vector<uint64_t>* dex_file_offsets = dso->DexFileOffsets();
-    if (!WriteFileFeature(dso->Path(), dso_type, min_vaddr, file_offset_of_min_vaddr, dump_symbols,
-                          dex_file_offsets)) {
+    if (const auto dex_file_offsets = dso->DexFileOffsets(); dex_file_offsets != nullptr) {
+      file.dex_file_offsets = *dex_file_offsets;
+    }
+    if (!WriteFileFeature(file)) {
       return false;
     }
   }
   return true;
 }
 
-bool RecordFileWriter::WriteFileFeature(const std::string& file_path, uint32_t file_type,
-                                        uint64_t min_vaddr, uint64_t file_offset_of_min_vaddr,
-                                        const std::vector<const Symbol*>& symbols,
-                                        const std::vector<uint64_t>* dex_file_offsets) {
-  uint32_t size = file_path.size() + 1 + sizeof(uint32_t) * 2 + sizeof(uint64_t) +
-                  symbols.size() * (sizeof(uint64_t) + sizeof(uint32_t));
-  for (const auto& symbol : symbols) {
+bool RecordFileWriter::WriteFileFeature(const FileFeature& file) {
+  // Symbols written to the file feature section are only accepted in the symbol_ptrs field.
+  CHECK(file.symbols.empty());
+  uint32_t symbol_count = file.symbol_ptrs.size();
+  uint32_t size = file.path.size() + 1 + sizeof(uint32_t) * 2 + sizeof(uint64_t) +
+                  symbol_count * (sizeof(uint64_t) + sizeof(uint32_t));
+  for (const auto& symbol : file.symbol_ptrs) {
     size += strlen(symbol->Name()) + 1;
   }
-  if (dex_file_offsets != nullptr) {
-    size += sizeof(uint32_t) + sizeof(uint64_t) * dex_file_offsets->size();
+  if (file.type == DSO_DEX_FILE) {
+    size += sizeof(uint32_t) + sizeof(uint64_t) * file.dex_file_offsets.size();
   }
-  if (file_type == DSO_ELF_FILE) {
+  if (file.type == DSO_ELF_FILE) {
     size += sizeof(uint64_t);
   }
   std::vector<char> buf(sizeof(uint32_t) + size);
   char* p = buf.data();
   MoveToBinaryFormat(size, p);
-  MoveToBinaryFormat(file_path.c_str(), file_path.size() + 1, p);
-  MoveToBinaryFormat(file_type, p);
-  MoveToBinaryFormat(min_vaddr, p);
-  uint32_t symbol_count = static_cast<uint32_t>(symbols.size());
+  MoveToBinaryFormat(file.path.c_str(), file.path.size() + 1, p);
+  MoveToBinaryFormat(static_cast<uint32_t>(file.type), p);
+  MoveToBinaryFormat(file.min_vaddr, p);
   MoveToBinaryFormat(symbol_count, p);
-  for (const auto& symbol : symbols) {
+  for (const auto& symbol : file.symbol_ptrs) {
     MoveToBinaryFormat(symbol->addr, p);
     uint32_t len = symbol->len;
     MoveToBinaryFormat(len, p);
     MoveToBinaryFormat(symbol->Name(), strlen(symbol->Name()) + 1, p);
   }
-  if (dex_file_offsets != nullptr) {
-    uint32_t offset_count = dex_file_offsets->size();
+  if (file.type == DSO_DEX_FILE) {
+    uint32_t offset_count = file.dex_file_offsets.size();
     MoveToBinaryFormat(offset_count, p);
-    MoveToBinaryFormat(dex_file_offsets->data(), offset_count, p);
+    MoveToBinaryFormat(file.dex_file_offsets.data(), offset_count, p);
   }
-  if (file_type == DSO_ELF_FILE) {
-    MoveToBinaryFormat(file_offset_of_min_vaddr, p);
+  if (file.type == DSO_ELF_FILE) {
+    MoveToBinaryFormat(file.file_offset_of_min_vaddr, p);
   }
   CHECK_EQ(buf.size(), static_cast<size_t>(p - buf.data()));
 
