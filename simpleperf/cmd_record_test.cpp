@@ -245,115 +245,6 @@ TEST(record_cmd, system_wide_fp_callchain_sampling) {
   TEST_IN_ROOT(ASSERT_TRUE(RunRecordCmd({"-a", "--call-graph", "fp"})));
 }
 
-bool IsInNativeAbi() {
-  static int in_native_abi = -1;
-  if (in_native_abi == -1) {
-    FILE* fp = popen("uname -m", "re");
-    char buf[40];
-    memset(buf, '\0', sizeof(buf));
-    CHECK_EQ(fgets(buf, sizeof(buf), fp), buf);
-    pclose(fp);
-    std::string s = buf;
-    in_native_abi = 1;
-    if (GetBuildArch() == ARCH_X86_32 || GetBuildArch() == ARCH_X86_64) {
-      if (s.find("86") == std::string::npos) {
-        in_native_abi = 0;
-      }
-    } else if (GetBuildArch() == ARCH_ARM || GetBuildArch() == ARCH_ARM64) {
-      if (s.find("arm") == std::string::npos && s.find("aarch64") == std::string::npos) {
-        in_native_abi = 0;
-      }
-    }
-  }
-  return in_native_abi == 1;
-}
-
-static bool InCloudAndroid() {
-#if defined(__i386__) || defined(__x86_64__)
-#if defined(__ANDROID__)
-  std::string prop_value = android::base::GetProperty("ro.build.flavor", "");
-  if (android::base::StartsWith(prop_value, "cf_x86_phone") ||
-      android::base::StartsWith(prop_value, "aosp_cf_x86_phone") ||
-      android::base::StartsWith(prop_value, "cf_x86_64_phone") ||
-      android::base::StartsWith(prop_value, "aosp_cf_x86_64_phone")) {
-    return true;
-  }
-  // aosp_x86* builds may also run on cloud Android. Detect it by checking
-  /// if cpu-cycles isn't supported.
-  if (android::base::StartsWith(prop_value, "aosp_x86")) {
-    const EventType* type = FindEventTypeByName("cpu-cycles", false);
-    CHECK(type != nullptr);
-    perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
-    return !IsEventAttrSupported(attr, "cpu-cycles");
-  }
-#endif
-#endif
-  return false;
-}
-
-bool HasTracepointEvents() {
-  static int has_tracepoint_events = -1;
-  if (has_tracepoint_events == -1) {
-    has_tracepoint_events = (GetTraceFsDir() != nullptr) ? 1 : 0;
-  }
-  return has_tracepoint_events == 1;
-}
-
-#if defined(__arm__)
-// Check if we can get a non-zero instruction event count by monitoring current thread.
-static bool HasNonZeroInstructionEventCount() {
-  const EventType* type = FindEventTypeByName("instructions", false);
-  if (type == nullptr) {
-    return false;
-  }
-  perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
-  std::unique_ptr<EventFd> event_fd =
-      EventFd::OpenEventFile(attr, gettid(), -1, nullptr, type->name, false);
-  if (!event_fd) {
-    return false;
-  }
-  // do some cpu work.
-  for (volatile int i = 0; i < 100000; ++i) {
-  }
-  PerfCounter counter;
-  if (event_fd->ReadCounter(&counter)) {
-    return counter.value != 0;
-  }
-  return false;
-}
-#endif  // defined(__arm__)
-
-bool HasHardwareCounter() {
-  static int has_hw_counter = -1;
-  if (has_hw_counter == -1) {
-    // Cloud Android doesn't have hardware counters.
-    has_hw_counter = InCloudAndroid() ? 0 : 1;
-#if defined(__arm__)
-    // For arm32 devices, external non-invasive debug signal controls PMU counters. Once it is
-    // disabled for security reason, we always get zero values for PMU counters. And we want to
-    // skip hardware counter tests once we detect it.
-    has_hw_counter &= HasNonZeroInstructionEventCount() ? 1 : 0;
-#endif
-  }
-  return has_hw_counter == 1;
-}
-
-bool HasPmuCounter() {
-  static int has_pmu_counter = -1;
-  if (has_pmu_counter == -1) {
-    has_pmu_counter = 0;
-    auto callback = [&](const EventType& event_type) {
-      if (event_type.IsPmuEvent()) {
-        has_pmu_counter = 1;
-        return false;
-      }
-      return true;
-    };
-    EventTypeManager::Instance().ForEachType(callback);
-  }
-  return has_pmu_counter == 1;
-}
-
 TEST(record_cmd, dwarf_callchain_sampling) {
   OMIT_TEST_ON_NON_NATIVE_ABIS();
   ASSERT_TRUE(IsDwarfCallChainSamplingSupported());
@@ -456,17 +347,11 @@ static void ProcessSymbolsInPerfDataFile(
     const std::function<bool(const Symbol&, uint32_t)>& callback) {
   auto reader = RecordFileReader::CreateInstance(perf_data_file);
   ASSERT_TRUE(reader);
-  std::string file_path;
-  uint32_t file_type;
-  uint64_t min_vaddr;
-  uint64_t file_offset_of_min_vaddr;
-  std::vector<Symbol> symbols;
-  std::vector<uint64_t> dex_file_offsets;
+  FileFeature file;
   size_t read_pos = 0;
-  while (reader->ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr,
-                                 &file_offset_of_min_vaddr, &symbols, &dex_file_offsets)) {
-    for (const auto& symbol : symbols) {
-      if (callback(symbol, file_type)) {
+  while (reader->ReadFileFeature(read_pos, &file)) {
+    for (const auto& symbol : file.symbols) {
+      if (callback(symbol, file.type)) {
         return;
       }
     }

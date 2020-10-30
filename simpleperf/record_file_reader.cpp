@@ -218,7 +218,9 @@ void RecordFileReader::UseRecordingEnvironment() {
   }
   auto& meta_info = GetMetaInfoFeature();
   if (auto it = meta_info.find("event_type_info"); it != meta_info.end()) {
-    scoped_event_types_.reset(new ScopedEventTypes(it->second));
+    if (EventTypeManager::Instance().GetScopedFinder() == nullptr) {
+      scoped_event_types_.reset(new ScopedEventTypes(it->second));
+    }
   }
 }
 
@@ -464,11 +466,7 @@ std::vector<uint64_t> RecordFileReader::ReadAuxTraceFeature() {
   return auxtrace_offset;
 }
 
-bool RecordFileReader::ReadFileFeature(size_t& read_pos, std::string* file_path,
-                                       uint32_t* file_type, uint64_t* min_vaddr,
-                                       uint64_t* file_offset_of_min_vaddr,
-                                       std::vector<Symbol>* symbols,
-                                       std::vector<uint64_t>* dex_file_offsets) {
+bool RecordFileReader::ReadFileFeature(size_t& read_pos, FileFeature* file) {
   auto it = feature_section_descriptors_.find(FEAT_FILE);
   if (it == feature_section_descriptors_.end()) {
     return false;
@@ -492,14 +490,21 @@ bool RecordFileReader::ReadFileFeature(size_t& read_pos, std::string* file_path,
   }
   read_pos += 4 + size;
   const char* p = buf.data();
-  *file_path = p;
-  p += file_path->size() + 1;
-  MoveFromBinaryFormat(*file_type, p);
-  MoveFromBinaryFormat(*min_vaddr, p);
+  file->path = p;
+  p += file->path.size() + 1;
+  uint32_t file_type;
+  MoveFromBinaryFormat(file_type, p);
+  if (file_type > DSO_UNKNOWN_FILE) {
+    LOG(ERROR) << "unknown file type for " << file->path
+               << " in file feature section: " << file_type;
+    return false;
+  }
+  file->type = static_cast<DsoType>(file_type);
+  MoveFromBinaryFormat(file->min_vaddr, p);
   uint32_t symbol_count;
   MoveFromBinaryFormat(symbol_count, p);
-  symbols->clear();
-  symbols->reserve(symbol_count);
+  file->symbols.clear();
+  file->symbols.reserve(symbol_count);
   for (uint32_t i = 0; i < symbol_count; ++i) {
     uint64_t start_vaddr;
     uint32_t len;
@@ -507,20 +512,21 @@ bool RecordFileReader::ReadFileFeature(size_t& read_pos, std::string* file_path,
     MoveFromBinaryFormat(len, p);
     std::string name = p;
     p += name.size() + 1;
-    symbols->emplace_back(name, start_vaddr, len);
+    file->symbols.emplace_back(name, start_vaddr, len);
   }
-  dex_file_offsets->clear();
-  if (*file_type == static_cast<uint32_t>(DSO_DEX_FILE)) {
+  file->dex_file_offsets.clear();
+  if (file->type == DSO_DEX_FILE) {
     uint32_t offset_count;
     MoveFromBinaryFormat(offset_count, p);
-    dex_file_offsets->resize(offset_count);
-    MoveFromBinaryFormat(dex_file_offsets->data(), offset_count, p);
+    file->dex_file_offsets.resize(offset_count);
+    MoveFromBinaryFormat(file->dex_file_offsets.data(), offset_count, p);
   }
-  *file_offset_of_min_vaddr = std::numeric_limits<uint64_t>::max();
-  if (*file_type == DSO_ELF_FILE && static_cast<size_t>(p - buf.data()) < size) {
-    MoveFromBinaryFormat(*file_offset_of_min_vaddr, p);
+  file->file_offset_of_min_vaddr = std::numeric_limits<uint64_t>::max();
+  if (file->type == DSO_ELF_FILE && static_cast<size_t>(p - buf.data()) < size) {
+    MoveFromBinaryFormat(file->file_offset_of_min_vaddr, p);
   }
-  CHECK_EQ(size, static_cast<size_t>(p - buf.data()));
+  CHECK_EQ(size, static_cast<size_t>(p - buf.data()))
+      << "file " << file->path << ", type " << file->type;
   return true;
 }
 
@@ -552,17 +558,10 @@ void RecordFileReader::LoadBuildIdAndFileFeatures(ThreadTree& thread_tree) {
   Dso::SetBuildIds(build_ids);
 
   if (HasFeature(PerfFileFormat::FEAT_FILE)) {
-    std::string file_path;
-    uint32_t file_type;
-    uint64_t min_vaddr;
-    uint64_t file_offset_of_min_vaddr;
-    std::vector<Symbol> symbols;
-    std::vector<uint64_t> dex_file_offsets;
+    FileFeature file_feature;
     size_t read_pos = 0;
-    while (ReadFileFeature(read_pos, &file_path, &file_type, &min_vaddr, &file_offset_of_min_vaddr,
-                           &symbols, &dex_file_offsets)) {
-      thread_tree.AddDsoInfo(file_path, file_type, min_vaddr, file_offset_of_min_vaddr, &symbols,
-                             dex_file_offsets);
+    while (ReadFileFeature(read_pos, &file_feature)) {
+      thread_tree.AddDsoInfo(file_feature);
     }
   }
 }
