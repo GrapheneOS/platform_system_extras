@@ -17,6 +17,7 @@ cc_library_static {
         enabled: true,
     },
     ramdisk_available: true,
+    vendor_ramdisk_available: true,
     recovery_available: true,
 
     stl: "none",
@@ -54,6 +55,7 @@ cc_library_static {
         enabled: true,
     },
     ramdisk_available: true,
+    vendor_ramdisk_available: true,
     recovery_available: true,
 
     stl: "none",
