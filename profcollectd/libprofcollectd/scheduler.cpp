@@ -97,7 +97,7 @@ ProfcollectdScheduler::ProfcollectdScheduler() {
   if ((hwtracer = REGISTER_SIMPLEPERF_ETM_PROVIDER())) {
     LOG(INFO) << "ETM provider registered.";
   } else {
-    LOG(ERROR) << "No hardware trace provider found for this architecture.";
+    LOG(ERROR) << "No hardware trace provider available.";
   }
 }
 
