@@ -33,6 +33,7 @@ std::string getBuildFingerprint();
 std::string getConfigFlag(const config_t& config);
 int getConfigFlagInt(const config_t& config);
 float getConfigFlagFloat(const config_t& config);
+bool getConfigFlagBool(const config_t& config);
 
 }  // namespace profcollectd
 }  // namespace android
