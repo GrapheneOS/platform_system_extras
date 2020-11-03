@@ -42,6 +42,9 @@ class ProfcollectdBinder : public BinderService<ProfcollectdBinder>,
 
  protected:
   inline static std::unique_ptr<ProfcollectdScheduler> Scheduler;
+
+ private:
+  binder::Status ForwardScheduler(const std::function<OptError()>& action);
 };
 
 }  // namespace profcollectd
