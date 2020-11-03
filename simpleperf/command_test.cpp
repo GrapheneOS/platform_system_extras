@@ -135,6 +135,9 @@ TEST(command, PreprocessOptions) {
   ASSERT_TRUE(cmd.PreprocessOptions({"--", "--bool-option"}, option_formats, &options,
                                     &ordered_options, &non_option_args));
   ASSERT_EQ(non_option_args, std::vector<std::string>({"--bool-option"}));
+  // Pass nullptr to not accept non option args.
+  ASSERT_FALSE(cmd.PreprocessOptions({"non_option_arg"}, option_formats, &options, &ordered_options,
+                                     nullptr));
 
   // Check different errors.
   // unknown option
