@@ -101,10 +101,11 @@ class ThreadTree {
     // We can't dump comm for pid 0 from /proc, so add it's name here.
     SetThreadName(0, 0, "swapper");
   }
+  virtual ~ThreadTree() {}
 
   void SetThreadName(int pid, int tid, const std::string& comm);
   void ForkThread(int pid, int tid, int ppid, int ptid);
-  ThreadEntry* FindThread(int tid);
+  virtual ThreadEntry* FindThread(int tid);
   ThreadEntry* FindThreadOrNew(int pid, int tid);
   void ExitThread(int pid, int tid);
   void AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff, const std::string& filename);
