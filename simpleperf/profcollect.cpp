@@ -53,6 +53,7 @@ bool Inject(const std::filesystem::path& traceInput, const std::filesystem::path
   args.insert(args.end(), {"-i", traceInput});
   args.insert(args.end(), {"-o", output});
   args.insert(args.end(), {"--output", "branch-list"});
+  args.emplace_back("--exclude-perf");
   if (!binaryFilter.empty()) {
     args.insert(args.end(), {"--binary", binaryFilter});
   }
