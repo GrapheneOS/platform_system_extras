@@ -22,6 +22,7 @@
 #include <sys/utsname.h>
 #include <time.h>
 #include <unistd.h>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -43,6 +44,7 @@
 #include "ETMRecorder.h"
 #include "IOEventLoop.h"
 #include "JITDebugReader.h"
+#include "MapRecordReader.h"
 #include "OfflineUnwinder.h"
 #include "ProbeEvents.h"
 #include "cmd_record_impl.h"
@@ -63,6 +65,8 @@
 using android::base::ParseUint;
 using android::base::Realpath;
 using namespace simpleperf;
+
+namespace {
 
 static std::string default_measured_event_type = "cpu-cycles";
 
@@ -318,16 +322,17 @@ class RecordCommand : public Command {
   bool PrepareRecording(Workload* workload);
   bool DoRecording(Workload* workload);
   bool PostProcessRecording(const std::vector<std::string>& args);
+  // pre recording functions
   bool TraceOffCpu();
   bool SetEventSelectionFlags();
   bool CreateAndInitRecordFile();
   std::unique_ptr<RecordFileWriter> CreateRecordFile(const std::string& filename);
   bool DumpKernelSymbol();
   bool DumpTracingData();
-  bool DumpKernelMaps();
-  bool DumpUserSpaceMaps();
-  bool DumpProcessMaps(pid_t pid, const std::unordered_set<pid_t>& tids);
+  bool DumpMaps();
   bool DumpAuxTraceInfo();
+
+  // recording functions
   bool ProcessRecord(Record* record);
   bool ShouldOmitRecord(Record* record);
   bool DumpMapsForRecord(Record* record);
@@ -336,9 +341,12 @@ class RecordCommand : public Command {
   bool SaveRecordWithoutUnwinding(Record* record);
   bool ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_info, bool sync_kernel_records);
   bool ProcessControlCmd(IOEventLoop* loop);
-
   void UpdateRecord(Record* record);
   bool UnwindRecord(SampleRecord& r);
+
+  // post recording functions
+  std::unique_ptr<RecordFileReader> MoveRecordFile(const std::string& old_filename);
+  bool MergeMapRecords();
   bool PostUnwindRecords();
   bool JoinCallChains();
   bool DumpAdditionalFeatures(const std::vector<std::string>& args);
@@ -399,6 +407,9 @@ class RecordCommand : public Command {
   // In system wide recording, record if we have dumped map info for a process.
   std::unordered_set<pid_t> dumped_processes_;
   bool exclude_perf_ = false;
+
+  std::optional<MapRecordReader> map_record_reader_;
+  std::optional<MapRecordThread> map_record_thread_;
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
@@ -670,19 +681,26 @@ static bool WriteRecordDataToOutFd(const std::string& in_filename,
 }
 
 bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
-  // 1. Post unwind dwarf callchain.
+  // 1. Merge map records dumped while recording by map record thread.
+  if (map_record_thread_) {
+    if (!map_record_thread_->Join() || !MergeMapRecords()) {
+      return false;
+    }
+  }
+
+  // 2. Post unwind dwarf callchain.
   if (unwind_dwarf_callchain_ && post_unwind_) {
     if (!PostUnwindRecords()) {
       return false;
     }
   }
 
-  // 2. Optionally join Callchains.
+  // 3. Optionally join Callchains.
   if (callchain_joiner_) {
     JoinCallChains();
   }
 
-  // 3. Dump additional features, and close record file.
+  // 4. Dump additional features, and close record file.
   if (!DumpAdditionalFeatures(args)) {
     return false;
   }
@@ -1152,9 +1170,12 @@ bool RecordCommand::CreateAndInitRecordFile() {
     return false;
   }
   // Use first perf_event_attr and first event id to dump mmap and comm records.
-  dumping_attr_id_ = event_selection_set_.GetEventAttrWithId()[0];
-  return DumpKernelSymbol() && DumpTracingData() && DumpKernelMaps() && DumpUserSpaceMaps() &&
-         DumpAuxTraceInfo();
+  EventAttrWithId dumping_attr_id = event_selection_set_.GetEventAttrWithId()[0];
+  map_record_reader_.emplace(*dumping_attr_id.attr, dumping_attr_id.ids[0],
+                             event_selection_set_.RecordNotExecutableMaps());
+  map_record_reader_->SetCallback([this](Record* r) { return ProcessRecord(r); });
+
+  return DumpKernelSymbol() && DumpTracingData() && DumpMaps() && DumpAuxTraceInfo();
 }
 
 std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(const std::string& filename) {
@@ -1202,102 +1223,39 @@ bool RecordCommand::DumpTracingData() {
   return true;
 }
 
-bool RecordCommand::DumpKernelMaps() {
-  KernelMmap kernel_mmap;
-  std::vector<KernelMmap> module_mmaps;
-  GetKernelAndModuleMmaps(&kernel_mmap, &module_mmaps);
-
-  MmapRecord mmap_record(*dumping_attr_id_.attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
-                         kernel_mmap.len, 0, kernel_mmap.filepath, dumping_attr_id_.ids[0]);
-  if (!ProcessRecord(&mmap_record)) {
-    return false;
-  }
-  for (auto& module_mmap : module_mmaps) {
-    MmapRecord mmap_record(*dumping_attr_id_.attr, true, UINT_MAX, 0, module_mmap.start_addr,
-                           module_mmap.len, 0, module_mmap.filepath, dumping_attr_id_.ids[0]);
-    if (!ProcessRecord(&mmap_record)) {
-      return false;
+bool RecordCommand::DumpMaps() {
+  if (system_wide_collection_) {
+    // For system wide recording:
+    //   If not aux tracing, only dump kernel maps. Maps of a process is dumped when needed (the
+    //   first time a sample hits that process).
+    //   If aux tracing, we don't know which maps will be needed, so dump all process maps. To
+    //   reduce pre recording time, we dump process maps in map record thread while recording.
+    if (event_selection_set_.HasAuxTrace()) {
+      map_record_thread_.emplace(*map_record_reader_);
+      return true;
     }
+    return map_record_reader_->ReadKernelMaps();
   }
-  return true;
-}
-
-bool RecordCommand::DumpUserSpaceMaps() {
-  // For system_wide profiling:
-  //   If no aux tracing, maps of a process is dumped when needed (first time a sample hits
-  //     that process).
-  //   If aux tracing, we don't know which maps will be needed, so dump all process maps.
-  if (system_wide_collection_ && !event_selection_set_.HasAuxTrace()) {
-    return true;
+  if (!map_record_reader_->ReadKernelMaps()) {
+    return false;
   }
   // Map from process id to a set of thread ids in that process.
   std::unordered_map<pid_t, std::unordered_set<pid_t>> process_map;
-  if (system_wide_collection_) {
-    for (auto pid : GetAllProcesses()) {
-      process_map[pid] = std::unordered_set<pid_t>();
-    }
-  } else {
-    for (pid_t pid : event_selection_set_.GetMonitoredProcesses()) {
-      std::vector<pid_t> tids = GetThreadsInProcess(pid);
-      process_map[pid].insert(tids.begin(), tids.end());
-    }
-    for (pid_t tid : event_selection_set_.GetMonitoredThreads()) {
-      pid_t pid;
-      if (GetProcessForThread(tid, &pid)) {
-        process_map[pid].insert(tid);
-      }
+  for (pid_t pid : event_selection_set_.GetMonitoredProcesses()) {
+    std::vector<pid_t> tids = GetThreadsInProcess(pid);
+    process_map[pid].insert(tids.begin(), tids.end());
+  }
+  for (pid_t tid : event_selection_set_.GetMonitoredThreads()) {
+    pid_t pid;
+    if (GetProcessForThread(tid, &pid)) {
+      process_map[pid].insert(tid);
     }
   }
 
   // Dump each process.
-  for (auto& pair : process_map) {
-    if (!DumpProcessMaps(pair.first, pair.second)) {
+  for (const auto& [pid, tids] : process_map) {
+    if (!map_record_reader_->ReadProcessMaps(pid, tids, 0)) {
       return false;
-    }
-  }
-  return true;
-}
-
-bool RecordCommand::DumpProcessMaps(pid_t pid, const std::unordered_set<pid_t>& tids) {
-  // Dump mmap records.
-  std::vector<ThreadMmap> thread_mmaps;
-  if (!GetThreadMmapsInProcess(pid, &thread_mmaps)) {
-    // The process may exit before we get its info.
-    return true;
-  }
-  const perf_event_attr& attr = *dumping_attr_id_.attr;
-  uint64_t event_id = dumping_attr_id_.ids[0];
-  for (const auto& map : thread_mmaps) {
-    if (!(map.prot & PROT_EXEC) && !event_selection_set_.RecordNotExecutableMaps()) {
-      continue;
-    }
-    Mmap2Record record(attr, false, pid, pid, map.start_addr, map.len, map.pgoff, map.prot,
-                       map.name, event_id, last_record_timestamp_);
-    if (!ProcessRecord(&record)) {
-      return false;
-    }
-  }
-  // Dump process name.
-  std::string process_name = GetCompleteProcessName(pid);
-  if (!process_name.empty()) {
-    CommRecord record(attr, pid, pid, process_name, event_id, last_record_timestamp_);
-    if (!ProcessRecord(&record)) {
-      return false;
-    }
-  }
-  // Dump thread info.
-  for (const auto& tid : tids) {
-    std::string name;
-    if (tid != pid && GetThreadName(tid, &name)) {
-      // If a thread name matches the suffix of its process name, probably the thread name
-      // is stripped by TASK_COMM_LEN.
-      if (android::base::EndsWith(process_name, name)) {
-        name = process_name;
-      }
-      CommRecord comm_record(attr, pid, tid, name, event_id, last_record_timestamp_);
-      if (!ProcessRecord(&comm_record)) {
-        return false;
-      }
     }
   }
   return true;
@@ -1365,9 +1323,7 @@ bool RecordCommand::DumpMapsForRecord(Record* record) {
     pid_t pid = static_cast<SampleRecord*>(record)->tid_data.pid;
     if (dumped_processes_.find(pid) == dumped_processes_.end()) {
       // Dump map info and all thread names for that process.
-      std::vector<pid_t> tids = GetThreadsInProcess(pid);
-      if (!tids.empty() &&
-          !DumpProcessMaps(pid, std::unordered_set<pid_t>(tids.begin(), tids.end()))) {
+      if (!map_record_reader_->ReadProcessMaps(pid, last_record_timestamp_)) {
         return false;
       }
       dumped_processes_.insert(pid);
@@ -1582,24 +1538,61 @@ bool RecordCommand::UnwindRecord(SampleRecord& r) {
   return true;
 }
 
-bool RecordCommand::PostUnwindRecords() {
-  // 1. Move records from record_filename_ to a temporary file.
+std::unique_ptr<RecordFileReader> RecordCommand::MoveRecordFile(const std::string& old_filename) {
   if (!record_file_writer_->Close()) {
-    return false;
+    return nullptr;
   }
   record_file_writer_.reset();
-  std::unique_ptr<TemporaryFile> tmp_file = ScopedTempFiles::CreateTempFile();
-  if (!Workload::RunCmd({"mv", record_filename_, tmp_file->path})) {
-    return false;
+  if (!Workload::RunCmd({"mv", record_filename_, old_filename})) {
+    return nullptr;
   }
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmp_file->path);
+  record_file_writer_ = CreateRecordFile(record_filename_);
+  if (!record_file_writer_) {
+    return nullptr;
+  }
+  return RecordFileReader::CreateInstance(old_filename);
+}
+
+bool RecordCommand::MergeMapRecords() {
+  // 1. Move records from record_filename_ to a temporary file.
+  auto tmp_file = ScopedTempFiles::CreateTempFile();
+  auto reader = MoveRecordFile(tmp_file->path);
   if (!reader) {
     return false;
   }
 
-  // 2. Read records from the temporary file, and write unwound records back to record_filename_.
-  record_file_writer_ = CreateRecordFile(record_filename_);
-  if (!record_file_writer_) {
+  // 2. Copy map records from map record thread.
+  auto callback = [this](Record* r) {
+    UpdateRecord(r);
+    if (ShouldOmitRecord(r)) {
+      return true;
+    }
+    return record_file_writer_->WriteRecord(*r);
+  };
+  if (!map_record_thread_->ReadMapRecords(callback)) {
+    return false;
+  }
+
+  // 3. Copy data section from the old recording file.
+  std::vector<char> buf(64 * 1024);
+  uint64_t offset = reader->FileHeader().data.offset;
+  uint64_t left_size = reader->FileHeader().data.size;
+  while (left_size > 0) {
+    size_t nread = std::min<size_t>(left_size, buf.size());
+    if (!reader->ReadAtOffset(offset, buf.data(), nread) ||
+        !record_file_writer_->WriteData(buf.data(), nread)) {
+      return false;
+    }
+    offset += nread;
+    left_size -= nread;
+  }
+  return true;
+}
+
+bool RecordCommand::PostUnwindRecords() {
+  auto tmp_file = ScopedTempFiles::CreateTempFile();
+  auto reader = MoveRecordFile(tmp_file->path);
+  if (!reader) {
     return false;
   }
   sample_record_count_ = 0;
@@ -1616,23 +1609,14 @@ bool RecordCommand::JoinCallChains() {
     return false;
   }
   // 2. Move records from record_filename_ to a temporary file.
-  if (!record_file_writer_->Close()) {
-    return false;
-  }
-  record_file_writer_.reset();
-  std::unique_ptr<TemporaryFile> tmp_file = ScopedTempFiles::CreateTempFile();
-  if (!Workload::RunCmd({"mv", record_filename_, tmp_file->path})) {
+  auto tmp_file = ScopedTempFiles::CreateTempFile();
+  auto reader = MoveRecordFile(tmp_file->path);
+  if (!reader) {
     return false;
   }
 
   // 3. Read records from the temporary file, and write record with joined call chains back
   // to record_filename_.
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmp_file->path);
-  record_file_writer_ = CreateRecordFile(record_filename_);
-  if (!reader || !record_file_writer_) {
-    return false;
-  }
-
   auto record_callback = [&](std::unique_ptr<Record> r) {
     if (r->type() != PERF_RECORD_SAMPLE) {
       return record_file_writer_->WriteRecord(*r);
@@ -1885,6 +1869,8 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
     }
   }
 }
+
+}  // namespace
 
 namespace simpleperf {
 

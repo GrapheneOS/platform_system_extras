@@ -17,8 +17,8 @@
 
 #include <stdio.h>
 
-#include <android-base/properties.h>
 #include <android-base/logging.h>
+#include <android-base/properties.h>
 
 #include "event_attr.h"
 #include "event_fd.h"
@@ -133,4 +133,3 @@ bool HasTracepointEvents() {
   }
   return has_tracepoint_events == 1;
 }
-

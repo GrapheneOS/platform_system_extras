@@ -63,6 +63,7 @@ class RecordFileWriter {
 
   bool WriteAttrSection(const std::vector<EventAttrWithId>& attr_ids);
   bool WriteRecord(const Record& record);
+  bool WriteData(const void* buf, size_t len);
 
   uint64_t GetDataSectionSize() const { return data_section_size_; }
   bool ReadDataSection(const std::function<void(const Record*)>& callback);
@@ -87,7 +88,6 @@ class RecordFileWriter {
                              std::vector<std::string>* hit_kernel_modules,
                              std::vector<std::string>* hit_user_files);
   bool WriteFileHeader();
-  bool WriteData(const void* buf, size_t len);
   bool Write(const void* buf, size_t len);
   bool Read(void* buf, size_t len);
   bool GetFilePos(uint64_t* file_pos);
@@ -145,6 +145,7 @@ class RecordFileReader {
 
   // If sorted is true, sort records before passing them to callback function.
   bool ReadDataSection(const std::function<bool(std::unique_ptr<Record>)>& callback);
+  bool ReadAtOffset(uint64_t offset, void* buf, size_t len);
 
   // Read next record. If read successfully, set [record] and return true.
   // If there is no more records, set [record] to nullptr and return true.
@@ -186,7 +187,6 @@ class RecordFileReader {
   void UseRecordingEnvironment();
   std::unique_ptr<Record> ReadRecord();
   bool Read(void* buf, size_t len);
-  bool ReadAtOffset(uint64_t offset, void* buf, size_t len);
   void ProcessEventIdRecord(const EventIdRecord& r);
   bool BuildAuxDataLocation();
 
