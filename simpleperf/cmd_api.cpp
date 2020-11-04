@@ -104,10 +104,8 @@ bool CollectCommand::Run(const std::vector<std::string>& args) {
 bool CollectCommand::ParseOptions(const std::vector<std::string>& args) {
   OptionValueMap options;
   std::vector<std::pair<OptionName, OptionValue>> ordered_options;
-  std::vector<std::string> non_option_args;
-
   if (!PreprocessOptions(args, GetApiCollectCmdOptionFormats(), &options, &ordered_options,
-                         &non_option_args)) {
+                         nullptr)) {
     return false;
   }
 
@@ -128,11 +126,6 @@ bool CollectCommand::ParseOptions(const std::vector<std::string>& args) {
 
   CHECK(options.values.empty());
   CHECK(ordered_options.empty());
-  if (!non_option_args.empty()) {
-    LOG(ERROR) << "unexpected non_option_args: " << non_option_args[0];
-    return false;
-  }
-
   if (!in_app_context_) {
     if (app_name_.empty()) {
       LOG(ERROR) << "--app is missing";

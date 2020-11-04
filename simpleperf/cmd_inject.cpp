@@ -143,47 +143,47 @@ class InjectCommand : public Command {
 
  private:
   bool ParseOptions(const std::vector<std::string>& args) {
-    for (size_t i = 0; i < args.size(); i++) {
-      if (args[i] == "--binary") {
-        if (!NextArgumentOrError(args, &i)) {
-          return false;
-        }
-        binary_name_regex_ = args[i];
-      } else if (args[i] == "-i") {
-        if (!NextArgumentOrError(args, &i)) {
-          return false;
-        }
-        input_filename_ = args[i];
-      } else if (args[i] == "-o") {
-        if (!NextArgumentOrError(args, &i)) {
-          return false;
-        }
-        output_filename_ = args[i];
-      } else if (args[i] == "--output") {
-        if (!NextArgumentOrError(args, &i)) {
-          return false;
-        }
-        if (args[i] == "autofdo") {
-          output_format_ = OutputFormat::AutoFDO;
-        } else if (args[i] == "branch-list") {
-          output_format_ = OutputFormat::BranchList;
-        } else {
-          LOG(ERROR) << "unknown format in --output option: " << args[i];
-          return false;
-        }
-      } else if (args[i] == "--dump-etm") {
-        if (!NextArgumentOrError(args, &i) || !ParseEtmDumpOption(args[i], &etm_dump_option_)) {
-          return false;
-        }
-      } else if (args[i] == "--symdir") {
-        if (!NextArgumentOrError(args, &i) || !Dso::AddSymbolDir(args[i])) {
-          return false;
-        }
-      } else {
-        ReportUnknownOption(args, i);
+    const OptionFormatMap option_formats = {
+        {"--binary", {OptionValueType::STRING, OptionType::SINGLE}},
+        {"--dump-etm", {OptionValueType::STRING, OptionType::SINGLE}},
+        {"-i", {OptionValueType::STRING, OptionType::SINGLE}},
+        {"-o", {OptionValueType::STRING, OptionType::SINGLE}},
+        {"--output", {OptionValueType::STRING, OptionType::SINGLE}},
+        {"--symdir", {OptionValueType::STRING, OptionType::MULTIPLE}},
+    };
+    OptionValueMap options;
+    std::vector<std::pair<OptionName, OptionValue>> ordered_options;
+    if (!PreprocessOptions(args, option_formats, &options, &ordered_options, nullptr)) {
+      return false;
+    }
+
+    if (auto value = options.PullValue("--binary"); value) {
+      binary_name_regex_ = *value->str_value;
+    }
+    if (auto value = options.PullValue("--dump-etm"); value) {
+      if (!ParseEtmDumpOption(*value->str_value, &etm_dump_option_)) {
         return false;
       }
     }
+    options.PullStringValue("-i", &input_filename_);
+    options.PullStringValue("-o", &output_filename_);
+    if (auto value = options.PullValue("--output"); value) {
+      const std::string& output = *value->str_value;
+      if (output == "autofdo") {
+        output_format_ = OutputFormat::AutoFDO;
+      } else if (output == "branch-list") {
+        output_format_ = OutputFormat::BranchList;
+      } else {
+        LOG(ERROR) << "unknown format in --output option: " << output;
+        return false;
+      }
+    }
+    if (auto value = options.PullValue("--symdir"); value) {
+      if (!Dso::AddSymbolDir(*value->str_value)) {
+        return false;
+      }
+    }
+    CHECK(options.values.empty());
     return true;
   }
 
