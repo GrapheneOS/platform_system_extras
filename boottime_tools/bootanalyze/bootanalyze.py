@@ -84,7 +84,7 @@ def main():
       value = float(kv[1])
       components_to_monitor[key] = value
 
-  cfg = yaml.load(args.config)
+  cfg = yaml.load(args.config, Loader=yaml.FullLoader)
 
   if args.stressfs:
     if run_adb_cmd('install -r -g ' + args.stressfs) != 0:
@@ -818,7 +818,7 @@ def stddev(data):
   return math.sqrt(variance)
 
 def grab_bootchart(boot_chart_file_name):
-  subprocess.call("./system/core/init/grab-bootchart.sh", shell=True)
+  subprocess.call("$ANDROID_BUILD_TOP/system/core/init/grab-bootchart.sh", shell=True)
   print "Saving boot chart as " + boot_chart_file_name + ".tgz"
   subprocess.call('cp /tmp/android-bootchart/bootchart.tgz ./' + boot_chart_file_name + '.tgz',\
                   shell=True)
@@ -830,7 +830,7 @@ def grab_systrace(systrace_file_name):
     f.write("TRACE:\n")
   run_adb_shell_cmd_as_root("cat /d/tracing/trace >> " + trace_file)
   html_file = systrace_file_name + ".html"
-  subprocess.call("./external/chromium-trace/systrace.py --from-file=" + trace_file + " -o " +\
+  subprocess.call("$ANDROID_BUILD_TOP/external/chromium-trace/systrace.py --from-file=" + trace_file + " -o " +\
                   html_file, shell=True)
 
 if __name__ == '__main__':
