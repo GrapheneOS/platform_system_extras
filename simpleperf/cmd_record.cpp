@@ -1806,6 +1806,10 @@ bool RecordCommand::DumpMetaInfoFeature(bool kernel_symbols_available) {
   if (!app_package_name_.empty()) {
     info_map["app_package_name"] = app_package_name_;
   }
+  if (event_selection_set_.HasAuxTrace()) {
+    // used by --exclude-perf in cmd_inject.cpp
+    info_map["recording_process"] = std::to_string(getpid());
+  }
 #endif
   info_map["clockid"] = clockid_;
   info_map["timestamp"] = std::to_string(time(nullptr));
