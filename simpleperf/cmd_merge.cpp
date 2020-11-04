@@ -153,8 +153,7 @@ class MergeCommand : public Command {
     };
     OptionValueMap options;
     std::vector<std::pair<OptionName, OptionValue>> ordered_options;
-    std::vector<std::string> non_option_args;
-    if (!PreprocessOptions(args, option_formats, &options, &ordered_options, &non_option_args)) {
+    if (!PreprocessOptions(args, option_formats, &options, &ordered_options, nullptr)) {
       return false;
     }
     for (const OptionValue& value : options.PullValues("-i")) {
