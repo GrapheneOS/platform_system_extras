@@ -44,7 +44,10 @@ static bool RunInjectCmd(std::vector<std::string>&& args, std::string* output) {
   if (!RunInjectCmd(std::move(args))) {
     return false;
   }
-  return android::base::ReadFileToString(tmpfile.path, output);
+  if (output != nullptr) {
+    return android::base::ReadFileToString(tmpfile.path, output);
+  }
+  return true;
 }
 
 static void CheckMatchingExpectedData(std::string& data) {
@@ -80,6 +83,13 @@ TEST(cmd_inject, binary_option) {
   // Test that data for etm_test_loop isn't generated when not selected by regex.
   ASSERT_TRUE(RunInjectCmd({"--binary", "no_etm_test_.*"}, &data));
   ASSERT_EQ(data.find("etm_test_loop"), std::string::npos);
+}
+
+TEST(cmd_inject, exclude_perf_option) {
+  ASSERT_FALSE(RunInjectCmd({"--exclude-perf"}, nullptr));
+  std::string perf_with_recording_process =
+      GetTestData(std::string("etm") + OS_PATH_SEPARATOR + "perf_with_recording_process.data");
+  ASSERT_TRUE(RunInjectCmd({"--exclude-perf", "-i", perf_with_recording_process}, nullptr));
 }
 
 TEST(cmd_inject, output_option) {
