@@ -22,6 +22,7 @@
 #include <sys/utsname.h>
 #include <time.h>
 #include <unistd.h>
+#include <filesystem>
 #include <optional>
 #include <set>
 #include <string>
@@ -1543,8 +1544,13 @@ std::unique_ptr<RecordFileReader> RecordCommand::MoveRecordFile(const std::strin
     return nullptr;
   }
   record_file_writer_.reset();
-  if (!Workload::RunCmd({"mv", record_filename_, old_filename})) {
-    return nullptr;
+  {
+    std::error_code ec;
+    std::filesystem::rename(record_filename_, old_filename, ec);
+    if (ec) {
+      LOG(ERROR) << "Failed to rename: " << ec.message();
+      return nullptr;
+    }
   }
   record_file_writer_ = CreateRecordFile(record_filename_);
   if (!record_file_writer_) {
