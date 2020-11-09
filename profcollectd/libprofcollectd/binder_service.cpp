@@ -22,12 +22,14 @@
 
 #include "config_utils.h"
 #include "hwtrace_provider.h"
+#include "libprofcollectd.hpp"
 #include "scheduler.h"
 
 namespace android {
 namespace profcollectd {
 
 using ::android::binder::Status;
+using ::android::profcollectd::ProfcollectdBinder;
 using ::com::android::server::profcollect::IProfCollectd;
 
 namespace {
@@ -37,6 +39,23 @@ static constexpr const char* NOT_ENABLED_ERRMSG =
 static constexpr config_t CONFIG_ENABLED = {"enabled", "0"};  // Disabled by default.
 
 }  // namespace
+
+void InitService(bool start) {
+  if (defaultServiceManager()->checkService(String16(ProfcollectdBinder::getServiceName()))) {
+    ALOGE("Another instance of profcollectd is already running");
+    exit(EXIT_FAILURE);
+  }
+
+  sp<ProcessState> proc(ProcessState::self());
+  sp<IServiceManager> sm(defaultServiceManager());
+  auto svc = sp<ProfcollectdBinder>(new ProfcollectdBinder());
+  sm->addService(String16(ProfcollectdBinder::getServiceName()), svc);
+  if (start) {
+    svc->ScheduleCollection();
+  }
+  ProcessState::self()->startThreadPool();
+  IPCThreadState::self()->joinThreadPool();
+}
 
 Status ProfcollectdBinder::ForwardScheduler(const std::function<OptError()>& action) {
   if (Scheduler == nullptr) {
