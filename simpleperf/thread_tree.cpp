@@ -22,6 +22,7 @@
 
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 
 #include "perf_event.h"
 #include "record.h"
@@ -133,7 +134,7 @@ void ThreadTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
 }
 
 Dso* ThreadTree::FindKernelDsoOrNew(const std::string& filename) {
-  if (filename == DEFAULT_KERNEL_MMAP_NAME || filename == DEFAULT_KERNEL_MMAP_NAME_PERF) {
+  if (android::base::StartsWith(filename, DEFAULT_KERNEL_MMAP_NAME)) {
     return kernel_dso_.get();
   }
   auto it = module_dso_tree_.find(filename);
