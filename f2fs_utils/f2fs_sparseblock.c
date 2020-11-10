@@ -18,14 +18,14 @@
 
 #define D_DISP_u32(ptr, member)                                                 \
     do {                                                                        \
-        SLOGD("%-30s"                                                           \
+        SLOGV("%-30s"                                                           \
               "\t\t[0x%#08x : %u]\n",                                           \
               #member, le32_to_cpu((ptr)->member), le32_to_cpu((ptr)->member)); \
     } while (0);
 
 #define D_DISP_u64(ptr, member)                                                 \
     do {                                                                        \
-        SLOGD("%-30s"                                                           \
+        SLOGV("%-30s"                                                           \
               "\t\t[0x%#016llx : %llu]\n",                                      \
               #member, le64_to_cpu((ptr)->member), le64_to_cpu((ptr)->member)); \
     } while (0);
@@ -35,10 +35,10 @@
 #define sit_in_journal(jnl, i) ((jnl)->sit_j.entries[i].se)
 
 static void dbg_print_raw_sb_info(struct f2fs_super_block* sb) {
-    SLOGD("\n");
-    SLOGD("+--------------------------------------------------------+\n");
-    SLOGD("| Super block                                            |\n");
-    SLOGD("+--------------------------------------------------------+\n");
+    SLOGV("\n");
+    SLOGV("+--------------------------------------------------------+\n");
+    SLOGV("| Super block                                            |\n");
+    SLOGV("+--------------------------------------------------------+\n");
 
     D_DISP_u32(sb, magic);
     D_DISP_u32(sb, major_ver);
@@ -73,13 +73,13 @@ static void dbg_print_raw_sb_info(struct f2fs_super_block* sb) {
     D_DISP_u32(sb, node_ino);
     D_DISP_u32(sb, meta_ino);
     D_DISP_u32(sb, cp_payload);
-    SLOGD("\n");
+    SLOGV("\n");
 }
 static void dbg_print_raw_ckpt_struct(struct f2fs_checkpoint* cp) {
-    SLOGD("\n");
-    SLOGD("+--------------------------------------------------------+\n");
-    SLOGD("| Checkpoint                                             |\n");
-    SLOGD("+--------------------------------------------------------+\n");
+    SLOGV("\n");
+    SLOGV("+--------------------------------------------------------+\n");
+    SLOGV("| Checkpoint                                             |\n");
+    SLOGV("+--------------------------------------------------------+\n");
 
     D_DISP_u64(cp, checkpoint_ver);
     D_DISP_u64(cp, user_block_count);
@@ -122,37 +122,37 @@ static void dbg_print_raw_ckpt_struct(struct f2fs_checkpoint* cp) {
     D_DISP_u64(cp, elapsed_time);
 
     D_DISP_u32(cp, sit_nat_version_bitmap[0]);
-    SLOGD("\n\n");
+    SLOGV("\n\n");
 }
 
 static void dbg_print_info_struct(struct f2fs_info* info) {
-    SLOGD("\n");
-    SLOGD("+--------------------------------------------------------+\n");
-    SLOGD("| F2FS_INFO                                              |\n");
-    SLOGD("+--------------------------------------------------------+\n");
-    SLOGD("blocks_per_segment: %" PRIu64, info->blocks_per_segment);
-    SLOGD("block_size: %d", info->block_size);
-    SLOGD("sit_bmp loc: %p", info->sit_bmp);
-    SLOGD("sit_bmp_size: %d", info->sit_bmp_size);
-    SLOGD("blocks_per_sit: %" PRIu64, info->blocks_per_sit);
-    SLOGD("sit_blocks loc: %p", info->sit_blocks);
-    SLOGD("sit_sums loc: %p", info->sit_sums);
-    SLOGD("sit_sums num: %d", le16_to_cpu(info->sit_sums->journal.n_sits));
+    SLOGV("\n");
+    SLOGV("+--------------------------------------------------------+\n");
+    SLOGV("| F2FS_INFO                                              |\n");
+    SLOGV("+--------------------------------------------------------+\n");
+    SLOGV("blocks_per_segment: %" PRIu64, info->blocks_per_segment);
+    SLOGV("block_size: %d", info->block_size);
+    SLOGV("sit_bmp loc: %p", info->sit_bmp);
+    SLOGV("sit_bmp_size: %d", info->sit_bmp_size);
+    SLOGV("blocks_per_sit: %" PRIu64, info->blocks_per_sit);
+    SLOGV("sit_blocks loc: %p", info->sit_blocks);
+    SLOGV("sit_sums loc: %p", info->sit_sums);
+    SLOGV("sit_sums num: %d", le16_to_cpu(info->sit_sums->journal.n_sits));
     unsigned int i;
     for (i = 0; i < (le16_to_cpu(info->sit_sums->journal.n_sits)); i++) {
-        SLOGD("entry %d in journal entries is for segment %d", i,
+        SLOGV("entry %d in journal entries is for segment %d", i,
               le32_to_cpu(segno_in_journal(&info->sit_sums->journal, i)));
     }
 
-    SLOGD("cp_blkaddr: %" PRIu64, info->cp_blkaddr);
-    SLOGD("cp_valid_cp_blkaddr: %" PRIu64, info->cp_valid_cp_blkaddr);
-    SLOGD("sit_blkaddr: %" PRIu64, info->sit_blkaddr);
-    SLOGD("nat_blkaddr: %" PRIu64, info->nat_blkaddr);
-    SLOGD("ssa_blkaddr: %" PRIu64, info->ssa_blkaddr);
-    SLOGD("main_blkaddr: %" PRIu64, info->main_blkaddr);
-    SLOGD("total_user_used: %" PRIu64, info->total_user_used);
-    SLOGD("total_blocks: %" PRIu64, info->total_blocks);
-    SLOGD("\n\n");
+    SLOGV("cp_blkaddr: %" PRIu64, info->cp_blkaddr);
+    SLOGV("cp_valid_cp_blkaddr: %" PRIu64, info->cp_valid_cp_blkaddr);
+    SLOGV("sit_blkaddr: %" PRIu64, info->sit_blkaddr);
+    SLOGV("nat_blkaddr: %" PRIu64, info->nat_blkaddr);
+    SLOGV("ssa_blkaddr: %" PRIu64, info->ssa_blkaddr);
+    SLOGV("main_blkaddr: %" PRIu64, info->main_blkaddr);
+    SLOGV("total_user_used: %" PRIu64, info->total_user_used);
+    SLOGV("total_blocks: %" PRIu64, info->total_blocks);
+    SLOGV("\n\n");
 }
 
 /* read blocks */
@@ -312,7 +312,7 @@ static int gather_sit_info(int fd, struct f2fs_info* info) {
 
         if (f2fs_test_bit(sit_block, info->sit_bmp)) address += info->blocks_per_sit;
 
-        SLOGD("Reading cache block starting at block %" PRIu64, address);
+        SLOGV("Reading cache block starting at block %" PRIu64, address);
         if (read_structure(fd, address * F2FS_BLKSIZE, &info->sit_blocks[sit_block],
                            sizeof(struct f2fs_sit_block))) {
             SLOGE("Could not read sit block at block %" PRIu64, address);
