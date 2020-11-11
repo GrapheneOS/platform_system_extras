@@ -325,7 +325,7 @@ class ElfFileImpl<llvm::object::ELFObjectFile<ELFT>> : public ElfFile {
     auto program_headers = elf_->program_headers();
     std::vector<ElfSegment> segments(program_headers.size());
     for (size_t i = 0; i < program_headers.size(); i++) {
-      auto& phdr = program_headers[i];
+      const auto& phdr = program_headers[i];
       segments[i].vaddr = phdr.p_vaddr;
       segments[i].file_offset = phdr.p_offset;
       segments[i].file_size = phdr.p_filesz;
@@ -333,6 +333,24 @@ class ElfFileImpl<llvm::object::ELFObjectFile<ELFT>> : public ElfFile {
           (phdr.p_type == llvm::ELF::PT_LOAD) && (phdr.p_flags & llvm::ELF::PF_X);
     }
     return segments;
+  }
+
+  std::vector<ElfSection> GetSectionHeader() override {
+    auto section_headers_or_err = elf_->sections();
+    if (!section_headers_or_err) {
+      return {};
+    }
+    const auto& section_headers = section_headers_or_err.get();
+    std::vector<ElfSection> sections(section_headers.size());
+    for (size_t i = 0; i < section_headers.size(); i++) {
+      const auto& shdr = section_headers[i];
+      if (auto name = elf_->getSectionName(&shdr); name) {
+        sections[i].name = name.get();
+      }
+      sections[i].vaddr = shdr.sh_addr;
+      sections[i].file_offset = shdr.sh_offset;
+    }
+    return sections;
   }
 
   ElfStatus GetBuildId(BuildId* build_id) override {

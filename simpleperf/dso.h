@@ -18,6 +18,7 @@
 #define SIMPLE_PERF_DSO_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -168,6 +169,8 @@ class Dso {
   virtual const std::vector<uint64_t>* DexFileOffsets() { return nullptr; }
 
   virtual uint64_t IpToVaddrInFile(uint64_t ip, uint64_t map_start, uint64_t map_pgoff) = 0;
+  virtual std::optional<uint64_t> IpToFileOffset(uint64_t ip, uint64_t map_start,
+                                                 uint64_t map_pgoff);
 
   const Symbol* FindSymbol(uint64_t vaddr_in_dso);
 
