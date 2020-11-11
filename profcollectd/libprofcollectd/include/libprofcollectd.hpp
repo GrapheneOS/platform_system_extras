@@ -16,15 +16,8 @@
 
 #pragma once
 
-extern "C" {
-  // Daemon side operations.
+namespace android {
+namespace profcollectd {
   void InitService(bool start);
-
-  // Client side operations.
-  void ScheduleCollection();
-  void TerminateCollection();
-  void TraceOnce();
-  void Process();
-  void CreateProfileReport();
-  void ReadConfig();
-}
+}  // namespace profcollectd
+}  // namespace android
