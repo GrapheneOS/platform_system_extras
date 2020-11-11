@@ -114,6 +114,7 @@ class EventSelectionSet {
   bool ExcludeKernel() const;
   bool HasAuxTrace() const { return has_aux_trace_; }
   std::vector<EventAttrWithId> GetEventAttrWithId() const;
+  std::unordered_map<uint64_t, std::string> GetEventNamesById() const;
 
   void SetEnableOnExec(bool enable);
   bool GetEnableOnExec();
