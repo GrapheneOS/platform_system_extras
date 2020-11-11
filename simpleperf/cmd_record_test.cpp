@@ -156,8 +156,7 @@ TEST(record_cmd, dump_kernel_mmap) {
   for (auto& record : records) {
     if (record->type() == PERF_RECORD_MMAP) {
       const MmapRecord* mmap_record = static_cast<const MmapRecord*>(record.get());
-      if (strcmp(mmap_record->filename, DEFAULT_KERNEL_MMAP_NAME) == 0 ||
-          strcmp(mmap_record->filename, DEFAULT_KERNEL_MMAP_NAME_PERF) == 0) {
+      if (android::base::StartsWith(mmap_record->filename, DEFAULT_KERNEL_MMAP_NAME)) {
         have_kernel_mmap = true;
         break;
       }
