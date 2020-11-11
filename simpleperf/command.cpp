@@ -185,6 +185,7 @@ extern void RegisterStatCommand();
 extern void RegisterDebugUnwindCommand();
 extern void RegisterTraceSchedCommand();
 extern void RegisterAPICommands();
+extern void RegisterMonitorCommand();
 
 class CommandRegister {
  public:
@@ -202,6 +203,7 @@ class CommandRegister {
     RegisterStatCommand();
     RegisterDebugUnwindCommand();
     RegisterTraceSchedCommand();
+    RegisterMonitorCommand();
 #if defined(__ANDROID__)
     RegisterAPICommands();
 #endif
