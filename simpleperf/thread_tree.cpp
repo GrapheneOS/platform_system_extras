@@ -135,6 +135,9 @@ void ThreadTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
 
 Dso* ThreadTree::FindKernelDsoOrNew(const std::string& filename) {
   if (android::base::StartsWith(filename, DEFAULT_KERNEL_MMAP_NAME)) {
+    if (!kernel_dso_) {
+      kernel_dso_ = Dso::CreateDso(DSO_KERNEL, DEFAULT_KERNEL_MMAP_NAME);
+    }
     return kernel_dso_.get();
   }
   auto it = module_dso_tree_.find(filename);
@@ -300,7 +303,7 @@ const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip, uint64_t*
     // If the ip address hits the vmlinux, or hits a kernel module, but we can't find its symbol
     // in the kernel module file, then find its symbol in /proc/kallsyms or vmlinux.
     vaddr_in_file = ip;
-    dso = kernel_dso_.get();
+    dso = FindKernelDsoOrNew(DEFAULT_KERNEL_MMAP_NAME);
     symbol = dso->FindSymbol(vaddr_in_file);
   }
 
@@ -392,7 +395,9 @@ void ThreadTree::Update(const Record& record) {
 
 std::vector<Dso*> ThreadTree::GetAllDsos() const {
   std::vector<Dso*> result;
-  result.push_back(kernel_dso_.get());
+  if (kernel_dso_) {
+    result.push_back(kernel_dso_.get());
+  }
   for (auto& p : module_dso_tree_) {
     result.push_back(p.second.get());
   }
