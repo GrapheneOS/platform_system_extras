@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <atomic>
 #include <thread>
+#include <unordered_map>
 
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
@@ -316,6 +317,18 @@ std::vector<EventAttrWithId> EventSelectionSet::GetEventAttrWithId() const {
         attr_id.ids.push_back(fd->Id());
       }
       result.push_back(attr_id);
+    }
+  }
+  return result;
+}
+
+std::unordered_map<uint64_t, std::string> EventSelectionSet::GetEventNamesById() const {
+  std::unordered_map<uint64_t, std::string> result;
+  for (const auto& group : groups_) {
+    for (const auto& selection : group) {
+      for (const auto& fd : selection.event_fds) {
+        result[fd->Id()] = selection.event_type_modifier.name;
+      }
     }
   }
   return result;
