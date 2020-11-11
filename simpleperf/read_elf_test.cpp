@@ -246,3 +246,13 @@ TEST(read_elf, VaddrToOff) {
   ASSERT_FALSE(elf->VaddrToOff(0x300200, &off));
   ASSERT_FALSE(elf->VaddrToOff(0x420000, &off));
 }
+
+TEST(read_elf, GetSectionHeader) {
+  auto elf = ElfFile::Open(GetTestData(ELF_FILE));
+  ASSERT_TRUE(elf != nullptr);
+  std::vector<ElfSection> sections = elf->GetSectionHeader();
+  ASSERT_EQ(sections.size(), 30);
+  ASSERT_EQ(sections[13].name, ".text");
+  ASSERT_EQ(sections[13].vaddr, 0x400400);
+  ASSERT_EQ(sections[13].file_offset, 0x400);
+}

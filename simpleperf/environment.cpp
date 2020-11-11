@@ -175,10 +175,33 @@ static std::vector<KernelMmap> GetModulesInUse() {
   return module_mmaps;
 }
 
+static uint64_t GetKernelStartAddress() {
+  FILE* fp = fopen("/proc/kallsyms", "re");
+  if (fp == nullptr) {
+    return 0;
+  }
+  LineReader reader(fp);
+  char* line;
+  while ((line = reader.ReadLine()) != nullptr) {
+    if (strstr(line, "_stext") != nullptr) {
+      uint64_t addr;
+      if (sscanf(line, "%" PRIx64, &addr) == 1) {
+        return addr;
+      }
+    }
+  }
+  return 0;
+}
+
 void GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<KernelMmap>* module_mmaps) {
   kernel_mmap->name = DEFAULT_KERNEL_MMAP_NAME;
   kernel_mmap->start_addr = 0;
   kernel_mmap->len = std::numeric_limits<uint64_t>::max();
+  if (uint64_t kstart_addr = GetKernelStartAddress(); kstart_addr != 0) {
+    kernel_mmap->name = std::string(DEFAULT_KERNEL_MMAP_NAME) + "_stext";
+    kernel_mmap->start_addr = kstart_addr;
+    kernel_mmap->len = std::numeric_limits<uint64_t>::max() - kstart_addr;
+  }
   kernel_mmap->filepath = kernel_mmap->name;
   *module_mmaps = GetModulesInUse();
   for (auto& map : *module_mmaps) {
