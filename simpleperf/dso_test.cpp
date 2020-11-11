@@ -24,6 +24,7 @@
 
 #include "get_test_data.h"
 #include "read_apk.h"
+#include "thread_tree.h"
 #include "utils.h"
 
 using namespace simpleperf_dso_impl;
@@ -208,6 +209,46 @@ TEST(dso, IpToVaddrInFile) {
   std::unique_ptr<Dso> dso = Dso::CreateDso(DSO_ELF_FILE, GetTestData("libc.so"));
   ASSERT_TRUE(dso);
   ASSERT_EQ(0xa5140, dso->IpToVaddrInFile(0xe9201140, 0xe9201000, 0xa5000));
+}
+
+TEST(dso, kernel_address_randomization) {
+  // Use ELF_FILE as a fake kernel vmlinux.
+  const std::string vmlinux_path = GetTestData(ELF_FILE);
+  Dso::SetVmlinux(vmlinux_path);
+  std::unique_ptr<Dso> dso = Dso::CreateDso(DSO_KERNEL, DEFAULT_KERNEL_MMAP_NAME);
+  ASSERT_TRUE(dso);
+  ASSERT_EQ(dso->GetDebugFilePath(), vmlinux_path);
+  // When map_start = 0, can't fix kernel address randomization. So vmlinux isn't used.
+  ASSERT_EQ(dso->IpToVaddrInFile(0x800500, 0, 0), 0x800500);
+  ASSERT_FALSE(dso->IpToFileOffset(0x800500, 0, 0));
+  ASSERT_TRUE(dso->FindSymbol(0x400510) == nullptr);
+
+  dso = Dso::CreateDso(DSO_KERNEL, DEFAULT_KERNEL_MMAP_NAME);
+  ASSERT_TRUE(dso);
+  ASSERT_EQ(dso->GetDebugFilePath(), vmlinux_path);
+  // When map_start != 0, can fix kernel address randomization. So vmlinux is used.
+  ASSERT_EQ(dso->IpToVaddrInFile(0x800500, 0x800400, 0), 0x400500);
+  ASSERT_EQ(dso->IpToFileOffset(0x800500, 0x800400, 0).value(), 0x500);
+  const Symbol* symbol = dso->FindSymbol(0x400510);
+  ASSERT_TRUE(symbol != nullptr);
+  ASSERT_STREQ(symbol->Name(), "GlobalFunc");
+}
+
+TEST(dso, find_vmlinux_in_symdirs) {
+  // Create a symdir.
+  TemporaryDir tmpdir;
+  std::string vmlinux_path = std::string(tmpdir.path) + OS_PATH_SEPARATOR + "elf";
+  std::string data;
+  ASSERT_TRUE(android::base::ReadFileToString(GetTestData(ELF_FILE), &data));
+  ASSERT_TRUE(android::base::WriteStringToFile(data, vmlinux_path));
+
+  // Find vmlinux in symbol dirs.
+  Dso::SetVmlinux("");
+  Dso::AddSymbolDir(tmpdir.path);
+  Dso::SetBuildIds({std::make_pair(DEFAULT_KERNEL_MMAP_NAME, BuildId(ELF_FILE_BUILD_ID))});
+  std::unique_ptr<Dso> dso = Dso::CreateDso(DSO_KERNEL, DEFAULT_KERNEL_MMAP_NAME);
+  ASSERT_TRUE(dso);
+  ASSERT_EQ(dso->GetDebugFilePath(), vmlinux_path);
 }
 
 TEST(dso, kernel_module) {
