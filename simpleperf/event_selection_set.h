@@ -128,6 +128,7 @@ class EventSelectionSet {
   bool NeedKernelSymbol() const;
   void SetRecordNotExecutableMaps(bool record);
   bool RecordNotExecutableMaps() const;
+  void WakeupPerSample();
   void SetAddrFilters(std::vector<AddrFilter>&& filters) { addr_filters_ = std::move(filters); }
   bool SetTracepointFilter(const std::string& filter);
 
