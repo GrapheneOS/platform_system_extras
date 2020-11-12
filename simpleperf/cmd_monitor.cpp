@@ -462,6 +462,7 @@ bool MonitorCommand::AdjustPerfEventLimit() {
 
 bool MonitorCommand::SetEventSelectionFlags() {
   event_selection_set_.SampleIdAll();
+  event_selection_set_.WakeupPerSample();
   if (fp_callchain_sampling_) {
     event_selection_set_.EnableFpCallChainSampling();
   } else if (dwarf_callchain_sampling_) {
@@ -512,6 +513,7 @@ void MonitorCommand::DumpSampleRecord(const SampleRecord& sr) {
   StringAppendF(&output, " pid=%u tid=%u", sr.tid_data.pid, sr.tid_data.tid);
   StringAppendF(&output, " cpu=%u", sr.cpu_data.cpu);
   printf("%s\n", output.c_str());
+  fflush(stdout);
 }
 
 void MonitorCommand::DumpSampleCallchain(const SampleRecord& sr) {
@@ -531,6 +533,7 @@ void MonitorCommand::DumpSampleCallchain(const SampleRecord& sr) {
                     s.dso->Path().c_str(), s.vaddr_in_file);
       printf("%s\n", output.c_str());
     }
+    fflush(stdout);
   }
 }
 
