@@ -256,18 +256,25 @@ class MemAccess : public ITargetMemAccess {
     if (map != nullptr) {
       llvm::MemoryBuffer* memory = GetMemoryBuffer(map->dso);
       if (memory != nullptr) {
-        uint64_t offset = address - map->start_addr + map->pgoff;
-        size_t file_size = memory->getBufferSize();
-        copy_size = file_size > offset ? std::min<size_t>(file_size - offset, *num_bytes) : 0;
-        if (copy_size > 0) {
-          memcpy(p_buffer, memory->getBufferStart() + offset, copy_size);
+        if (auto opt_offset = map->dso->IpToFileOffset(address, map->start_addr, map->pgoff);
+            opt_offset) {
+          uint64_t offset = opt_offset.value();
+          size_t file_size = memory->getBufferSize();
+          copy_size = file_size > offset ? std::min<size_t>(file_size - offset, *num_bytes) : 0;
+          if (copy_size > 0) {
+            memcpy(p_buffer, memory->getBufferStart() + offset, copy_size);
+          }
         }
       }
       // Update the last buffer cache.
-      data.buffer_map = map;
-      data.buffer = memory == nullptr ? nullptr : (memory->getBufferStart() + map->pgoff);
-      data.buffer_start = map->start_addr;
-      data.buffer_end = map->get_end_addr();
+      // Don't cache for the kernel map. Because simpleperf doesn't record an accurate kernel end
+      // addr.
+      if (!map->in_kernel) {
+        data.buffer_map = map;
+        data.buffer = memory == nullptr ? nullptr : (memory->getBufferStart() + map->pgoff);
+        data.buffer_start = map->start_addr;
+        data.buffer_end = map->get_end_addr();
+      }
     }
     *num_bytes = copy_size;
     return OCSD_OK;

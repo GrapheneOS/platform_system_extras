@@ -23,6 +23,8 @@
 #include "dso.h"
 #include "environment.h"
 #include "get_test_data.h"
+#include "test_util.h"
+#include "thread_tree.h"
 
 namespace fs = std::filesystem;
 
@@ -110,4 +112,14 @@ TEST(environment, GetModuleBuildId) {
                             fs::copy_options::overwrite_existing));
   ASSERT_TRUE(GetModuleBuildId("fake_kernel_module", &build_id, GetTestData("sysfs")));
   ASSERT_EQ(build_id, BuildId("3e0ba155286f3454"));
+}
+
+TEST(environment, GetKernelAndModuleMmaps) {
+  TEST_REQUIRE_ROOT();
+  KernelMmap kernel_mmap;
+  std::vector<KernelMmap> module_mmaps;
+  GetKernelAndModuleMmaps(&kernel_mmap, &module_mmaps);
+  // The kernel map should contain the kernel start address.
+  ASSERT_EQ(kernel_mmap.name, std::string(DEFAULT_KERNEL_MMAP_NAME) + "_stext");
+  ASSERT_GT(kernel_mmap.start_addr, 0);
 }

@@ -14,56 +14,55 @@
 // limitations under the License.
 //
 
-//! Safe Rust interface over the libprofcollectd_bindgen FFI functions.
-//! The methods are safe to call since they do not touch or modify Rust side's
-//! memory or threads.
+//! ProfCollect Binder client interface.
+
+use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProfCollectd;
 
 /// Initialise profcollectd service.
 /// * `start` - Immediately schedule collection after service is initialised.
 pub fn init_service(start: bool) {
     unsafe {
-        profcollectd_bindgen::InitService(start);
+        profcollectd_bindgen::android_profcollectd_InitService(start);
     }
+}
+
+fn get_profcollectd_service() -> Box<dyn IProfCollectd::IProfCollectd> {
+    let service_name = "profcollectd";
+    binder::get_interface(&service_name).expect("could not get profcollectd binder service")
 }
 
 /// Schedule periodic profile collection.
 pub fn schedule_collection() {
-    unsafe {
-        profcollectd_bindgen::ScheduleCollection();
-    }
+    let service = get_profcollectd_service();
+    service.ScheduleCollection().unwrap();
 }
 
 /// Terminate periodic profile collection.
 pub fn terminate_collection() {
-    unsafe {
-        profcollectd_bindgen::TerminateCollection();
-    }
+    let service = get_profcollectd_service();
+    service.TerminateCollection().unwrap();
 }
 
 /// Immediately schedule a one-off trace.
 pub fn trace_once() {
-    unsafe {
-        profcollectd_bindgen::TraceOnce();
-    }
+    let service = get_profcollectd_service();
+    service.TraceOnce("manual").unwrap();
 }
 
 /// Process the profiles.
 pub fn process() {
-    unsafe {
-        profcollectd_bindgen::Process();
-    }
+    let service = get_profcollectd_service();
+    service.ProcessProfile().unwrap();
 }
 
 /// Create profile report.
 pub fn create_profile_report() {
-    unsafe {
-        profcollectd_bindgen::CreateProfileReport();
-    }
+    let service = get_profcollectd_service();
+    service.CreateProfileReport().unwrap();
 }
 
 /// Read configs from environment variables.
 pub fn read_config() {
-    unsafe {
-        profcollectd_bindgen::ReadConfig();
-    }
+    let service = get_profcollectd_service();
+    service.ReadConfig().unwrap();
 }
