@@ -488,6 +488,15 @@ bool EventSelectionSet::RecordNotExecutableMaps() const {
   return groups_[0][0].event_attr.mmap_data == 1;
 }
 
+void EventSelectionSet::WakeupPerSample() {
+  for (auto& group : groups_) {
+    for (auto& selection : group) {
+      selection.event_attr.watermark = 0;
+      selection.event_attr.wakeup_events = 1;
+    }
+  }
+}
+
 bool EventSelectionSet::SetTracepointFilter(const std::string& filter) {
   // 1. Find the tracepoint event to set filter.
   EventSelection* selection = nullptr;
