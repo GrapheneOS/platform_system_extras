@@ -112,7 +112,7 @@ TEST(monitor_cmd, frequency) {
 TEST(monitor_cmd, count) {
   TEST_REQUIRE_ROOT();
   std::string output;
-  ASSERT_TRUE(RunMonitorCmd({"-a", "-c", "1000"}, output));
+  ASSERT_TRUE(RunMonitorCmd({"-a", "-c", "10000000"}, output));
 }
 
 TEST(monitor_cmd, cpu_percent) {
