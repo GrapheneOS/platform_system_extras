@@ -1,8 +1,15 @@
 service profcollectd /system/bin/profcollectd boot
     class late_start
+    disabled
     user root
     group root wakelock
     writepid /dev/cpuset/system-background/tasks
+
+on property:persist.device_config.profcollect_native_boot.enabled=true
+    start profcollectd
+
+on property:persist.device_config.profcollect_native_boot.enabled=false
+    stop profcollectd
 
 on post-fs-data
     # Create directory for profcollectd.
