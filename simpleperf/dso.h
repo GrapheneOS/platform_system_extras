@@ -134,6 +134,9 @@ class Dso {
                                         bool force_64bit = false);
   static std::unique_ptr<Dso> CreateElfDsoWithBuildId(const std::string& dso_path,
                                                       BuildId& build_id);
+  static std::unique_ptr<Dso> CreateKernelModuleDso(const std::string& dso_path,
+                                                    uint64_t memory_start, uint64_t memory_end,
+                                                    Dso* kernel_dso);
   virtual ~Dso();
 
   DsoType type() const { return type_; }
@@ -173,7 +176,7 @@ class Dso {
                                                  uint64_t map_pgoff);
 
   const Symbol* FindSymbol(uint64_t vaddr_in_dso);
-
+  void LoadSymbols();
   const std::vector<Symbol>& GetSymbols() { return symbols_; }
   void SetSymbols(std::vector<Symbol>* symbols);
 
@@ -195,8 +198,7 @@ class Dso {
   Dso(DsoType type, const std::string& path, const std::string& debug_file_path);
   BuildId GetExpectedBuildId();
 
-  void Load();
-  virtual std::vector<Symbol> LoadSymbols() = 0;
+  virtual std::vector<Symbol> LoadSymbolsImpl() = 0;
 
   DsoType type_;
   // path of the shared library used by the profiled program

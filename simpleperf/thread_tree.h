@@ -141,7 +141,9 @@ class ThreadTree {
 
  private:
   ThreadEntry* CreateThread(int pid, int tid);
-  Dso* FindKernelDsoOrNew(const std::string& filename);
+  Dso* FindKernelDsoOrNew();
+  Dso* FindKernelModuleDsoOrNew(const std::string& filename, uint64_t memory_start,
+                                uint64_t memory_end);
   Dso* FindUserDsoOrNew(const std::string& filename, uint64_t start_addr = 0,
                         DsoType dso_type = DSO_ELF_FILE);
   const MapEntry* AllocateMap(const MapEntry& entry);
