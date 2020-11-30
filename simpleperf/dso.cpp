@@ -223,6 +223,14 @@ const char* Symbol::DemangledName() const {
   return demangled_name_;
 }
 
+static bool CompareSymbolToAddr(const Symbol& s, uint64_t addr) {
+  return s.addr < addr;
+}
+
+static bool CompareAddrToSymbol(uint64_t addr, const Symbol& s) {
+  return addr < s.addr;
+}
+
 bool Dso::demangle_ = true;
 std::string Dso::vmlinux_;
 std::string Dso::kallsyms_;
@@ -348,10 +356,9 @@ std::optional<uint64_t> Dso::IpToFileOffset(uint64_t ip, uint64_t map_start, uin
 
 const Symbol* Dso::FindSymbol(uint64_t vaddr_in_dso) {
   if (!is_loaded_) {
-    Load();
+    LoadSymbols();
   }
-  auto it = std::upper_bound(symbols_.begin(), symbols_.end(), Symbol("", vaddr_in_dso, 0),
-                             Symbol::CompareValueByAddr);
+  auto it = std::upper_bound(symbols_.begin(), symbols_.end(), vaddr_in_dso, CompareAddrToSymbol);
   if (it != symbols_.begin()) {
     --it;
     if (it->addr <= vaddr_in_dso && (it->addr + it->len > vaddr_in_dso)) {
@@ -392,16 +399,18 @@ bool Dso::IsForJavaMethod() {
   return false;
 }
 
-void Dso::Load() {
-  is_loaded_ = true;
-  std::vector<Symbol> symbols = LoadSymbols();
-  if (symbols_.empty()) {
-    symbols_ = std::move(symbols);
-  } else {
-    std::vector<Symbol> merged_symbols;
-    std::set_union(symbols_.begin(), symbols_.end(), symbols.begin(), symbols.end(),
-                   std::back_inserter(merged_symbols), Symbol::CompareValueByAddr);
-    symbols_ = std::move(merged_symbols);
+void Dso::LoadSymbols() {
+  if (!is_loaded_) {
+    is_loaded_ = true;
+    std::vector<Symbol> symbols = LoadSymbolsImpl();
+    if (symbols_.empty()) {
+      symbols_ = std::move(symbols);
+    } else {
+      std::vector<Symbol> merged_symbols;
+      std::set_union(symbols_.begin(), symbols_.end(), symbols.begin(), symbols.end(),
+                     std::back_inserter(merged_symbols), Symbol::CompareValueByAddr);
+      symbols_ = std::move(merged_symbols);
+    }
   }
 }
 
@@ -452,7 +461,7 @@ class DexFileDso : public Dso {
     return ip - map_start + map_pgoff;
   }
 
-  std::vector<Symbol> LoadSymbols() override {
+  std::vector<Symbol> LoadSymbolsImpl() override {
     std::vector<Symbol> symbols;
     std::vector<DexFileSymbol> dex_file_symbols;
     auto tuple = SplitUrlInApk(debug_file_path_);
@@ -562,9 +571,9 @@ class ElfDso : public Dso {
   }
 
  protected:
-  std::vector<Symbol> LoadSymbols() override {
+  std::vector<Symbol> LoadSymbolsImpl() override {
     if (dex_file_dso_) {
-      return dex_file_dso_->LoadSymbols();
+      return dex_file_dso_->LoadSymbolsImpl();
     }
     std::vector<Symbol> symbols;
     BuildId build_id = GetExpectedBuildId();
@@ -628,7 +637,7 @@ class KernelDso : public Dso {
   }
 
  protected:
-  std::vector<Symbol> LoadSymbols() override {
+  std::vector<Symbol> LoadSymbolsImpl() override {
     std::vector<Symbol> symbols;
     if (has_debug_file_) {
       ReadSymbolsFromDebugFile(&symbols);
@@ -674,7 +683,12 @@ class KernelDso : public Dso {
   void ReadSymbolsFromKallsyms(std::string& kallsyms, std::vector<Symbol>* symbols) {
     auto symbol_callback = [&](const KernelSymbol& symbol) {
       if (strchr("TtWw", symbol.type) && symbol.addr != 0u) {
-        symbols->emplace_back(symbol.name, symbol.addr, 0);
+        if (symbol.module == nullptr) {
+          symbols->emplace_back(symbol.name, symbol.addr, 0);
+        } else {
+          std::string name = std::string(symbol.name) + " [" + symbol.module + "]";
+          symbols->emplace_back(name, symbol.addr, 0);
+        }
       }
       return false;
     };
@@ -748,19 +762,40 @@ class KernelDso : public Dso {
 
 class KernelModuleDso : public Dso {
  public:
-  KernelModuleDso(const std::string& path, const std::string& debug_file_path)
-      : Dso(DSO_KERNEL_MODULE, path, debug_file_path) {}
+  KernelModuleDso(const std::string& path, const std::string& debug_file_path,
+                  uint64_t memory_start, uint64_t memory_end, Dso* kernel_dso)
+      : Dso(DSO_KERNEL_MODULE, path, debug_file_path),
+        memory_start_(memory_start),
+        memory_end_(memory_end),
+        kernel_dso_(kernel_dso) {}
+
+  void SetMinExecutableVaddr(uint64_t min_vaddr, uint64_t memory_offset) override {
+    min_vaddr_ = min_vaddr;
+    memory_offset_of_min_vaddr_ = memory_offset;
+  }
+
+  void GetMinExecutableVaddr(uint64_t* min_vaddr, uint64_t* memory_offset) override {
+    if (!min_vaddr_) {
+      CalculateMinVaddr();
+    }
+    *min_vaddr = min_vaddr_.value();
+    *memory_offset = memory_offset_of_min_vaddr_.value();
+  }
 
   uint64_t IpToVaddrInFile(uint64_t ip, uint64_t map_start, uint64_t) override {
-    return ip - map_start;
+    uint64_t min_vaddr;
+    uint64_t memory_offset;
+    GetMinExecutableVaddr(&min_vaddr, &memory_offset);
+    return ip - map_start - memory_offset + min_vaddr;
   }
 
  protected:
-  std::vector<Symbol> LoadSymbols() override {
+  std::vector<Symbol> LoadSymbolsImpl() override {
     std::vector<Symbol> symbols;
     BuildId build_id = GetExpectedBuildId();
     auto symbol_callback = [&](const ElfFileSymbol& symbol) {
-      if (symbol.is_func || symbol.is_in_text_section) {
+      // We only know how to map ip addrs to symbols in text section.
+      if (symbol.is_in_text_section && (symbol.is_label || symbol.is_func)) {
         symbols.emplace_back(symbol.name, symbol.vaddr, symbol.len);
       }
     };
@@ -774,6 +809,61 @@ class KernelModuleDso : public Dso {
     SortAndFixSymbols(symbols);
     return symbols;
   }
+
+ private:
+  void CalculateMinVaddr() {
+    min_vaddr_ = 0;
+    memory_offset_of_min_vaddr_ = 0;
+
+    // min_vaddr and memory_offset are used to convert an ip addr of a kernel module to its
+    // vaddr_in_file, as shown in IpToVaddrInFile(). When the kernel loads a kernel module, it
+    // puts ALLOC sections (like .plt, .text.ftrace_trampoline, .text) in memory in order. The
+    // text section may not be at the start of the module memory. To do address conversion, we
+    // need to know its relative position in the module memory. There are two ways:
+    // 1. Read the kernel module file to calculate the relative position of .text section. It
+    // is relatively complex and depends on both PLT entries and the kernel version.
+    // 2. Find a module symbol in .text section, get its address in memory from /proc/kallsyms, and
+    // its vaddr_in_file from the kernel module file. Then other symbols in .text section can be
+    // mapped in the same way.
+    // Below we use the second method.
+
+    // 1. Select a module symbol in /proc/kallsyms.
+    kernel_dso_->LoadSymbols();
+    const auto& kernel_symbols = kernel_dso_->GetSymbols();
+    auto it = std::lower_bound(kernel_symbols.begin(), kernel_symbols.end(), memory_start_,
+                               CompareSymbolToAddr);
+    const Symbol* kernel_symbol = nullptr;
+    while (it != kernel_symbols.end() && it->addr < memory_end_) {
+      if (strlen(it->Name()) > 0 && it->Name()[0] != '$') {
+        kernel_symbol = &*it;
+        break;
+      }
+      ++it;
+    }
+    if (kernel_symbol == nullptr) {
+      return;
+    }
+
+    // 2. Find the symbol in .ko file.
+    std::string symbol_name = kernel_symbol->Name();
+    if (auto pos = symbol_name.rfind(' '); pos != std::string::npos) {
+      symbol_name.resize(pos);
+    }
+    LoadSymbols();
+    for (const auto& symbol : symbols_) {
+      if (symbol_name == symbol.Name()) {
+        min_vaddr_ = symbol.addr;
+        memory_offset_of_min_vaddr_ = kernel_symbol->addr - memory_start_;
+        return;
+      }
+    }
+  }
+
+  uint64_t memory_start_;
+  uint64_t memory_end_;
+  Dso* kernel_dso_;
+  std::optional<uint64_t> min_vaddr_;
+  std::optional<uint64_t> memory_offset_of_min_vaddr_;
 };
 
 class SymbolMapFileDso : public Dso {
@@ -783,7 +873,7 @@ class SymbolMapFileDso : public Dso {
   uint64_t IpToVaddrInFile(uint64_t ip, uint64_t, uint64_t) override { return ip; }
 
  protected:
-  std::vector<Symbol> LoadSymbols() override { return {}; }
+  std::vector<Symbol> LoadSymbolsImpl() override { return {}; }
 };
 
 class UnknownDso : public Dso {
@@ -793,7 +883,7 @@ class UnknownDso : public Dso {
   uint64_t IpToVaddrInFile(uint64_t ip, uint64_t, uint64_t) override { return ip; }
 
  protected:
-  std::vector<Symbol> LoadSymbols() override { return std::vector<Symbol>(); }
+  std::vector<Symbol> LoadSymbolsImpl() override { return std::vector<Symbol>(); }
 };
 
 std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_path,
@@ -805,8 +895,6 @@ std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_pat
       return std::unique_ptr<Dso>(new ElfDso(dso_path, debug_path));
     case DSO_KERNEL:
       return std::unique_ptr<Dso>(new KernelDso(dso_path, debug_path));
-    case DSO_KERNEL_MODULE:
-      return std::unique_ptr<Dso>(new KernelModuleDso(dso_path, debug_path));
     case DSO_DEX_FILE:
       return std::unique_ptr<Dso>(new DexFileDso(dso_path, dso_path));
     case DSO_SYMBOL_MAP_FILE:
@@ -822,6 +910,14 @@ std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_pat
 std::unique_ptr<Dso> Dso::CreateElfDsoWithBuildId(const std::string& dso_path, BuildId& build_id) {
   return std::unique_ptr<Dso>(
       new ElfDso(dso_path, debug_elf_file_finder_.FindDebugFile(dso_path, false, build_id)));
+}
+
+std::unique_ptr<Dso> Dso::CreateKernelModuleDso(const std::string& dso_path, uint64_t memory_start,
+                                                uint64_t memory_end, Dso* kernel_dso) {
+  BuildId build_id = FindExpectedBuildIdForPath(dso_path);
+  std::string debug_path = debug_elf_file_finder_.FindDebugFile(dso_path, false, build_id);
+  return std::unique_ptr<Dso>(
+      new KernelModuleDso(dso_path, debug_path, memory_start, memory_end, kernel_dso));
 }
 
 const char* DsoTypeToString(DsoType dso_type) {

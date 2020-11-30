@@ -257,8 +257,40 @@ TEST(dso, kernel_module) {
   std::vector<std::pair<std::string, BuildId>> build_ids;
   build_ids.emplace_back(ELF_FILE, BuildId(ELF_FILE_BUILD_ID));
   Dso::SetBuildIds(build_ids);
-  std::unique_ptr<Dso> dso = Dso::CreateDso(DSO_KERNEL_MODULE, ELF_FILE, false);
+  std::unique_ptr<Dso> kernel_dso = Dso::CreateDso(DSO_KERNEL, DEFAULT_KERNEL_MMAP_NAME);
+  ASSERT_TRUE(kernel_dso);
+  std::unique_ptr<Dso> dso = Dso::CreateKernelModuleDso(ELF_FILE, 0, 0, kernel_dso.get());
   ASSERT_EQ(dso->GetDebugFilePath(), GetTestData(ELF_FILE));
+}
+
+TEST(dso, kernel_module_CalculateMinVaddr) {
+  // Create fake Dso objects.
+  auto kernel_dso = Dso::CreateDso(DSO_KERNEL, DEFAULT_KERNEL_MMAP_NAME);
+  ASSERT_TRUE(kernel_dso);
+  const uint64_t module_memory_start = 0xffffffa9bc790000ULL;
+  const uint64_t module_memory_size = 0x8d7000ULL;
+  auto module_dso =
+      Dso::CreateKernelModuleDso("fake_module.ko", module_memory_start,
+                                 module_memory_start + module_memory_size, kernel_dso.get());
+  ASSERT_TRUE(module_dso);
+
+  // Provide symbol info for calculating min vaddr.
+  std::vector<Symbol> kernel_symbols;
+  kernel_symbols.emplace_back("fake_module_function [fake_module]", 0xffffffa9bc7a64e8ULL, 0x60c);
+  kernel_dso->SetSymbols(&kernel_symbols);
+  std::vector<Symbol> module_symbols;
+  module_symbols.emplace_back("fake_module_function", 0x144e8, 0x60c);
+  module_dso->SetSymbols(&module_symbols);
+
+  // Calculate min vaddr.
+  uint64_t min_vaddr;
+  uint64_t memory_offset;
+  module_dso->GetMinExecutableVaddr(&min_vaddr, &memory_offset);
+  ASSERT_EQ(min_vaddr, 0x144e8);
+  ASSERT_EQ(memory_offset, 0x164e8);
+
+  // Use min vaddr in IpToVaddrInFile().
+  ASSERT_EQ(module_dso->IpToVaddrInFile(0xffffffa9bc7a64e8ULL, module_memory_start, 0), 0x144e8);
 }
 
 TEST(dso, symbol_map_file) {
