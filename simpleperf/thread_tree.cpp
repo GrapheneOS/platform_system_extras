@@ -129,20 +129,28 @@ void ThreadTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
   if (len == 0) {
     return;
   }
-  Dso* dso = FindKernelDsoOrNew(filename);
+  Dso* dso;
+  if (android::base::StartsWith(filename, DEFAULT_KERNEL_MMAP_NAME)) {
+    dso = FindKernelDsoOrNew();
+  } else {
+    dso = FindKernelModuleDsoOrNew(filename, start_addr, start_addr + len);
+  }
   InsertMap(kernel_maps_, MapEntry(start_addr, len, pgoff, dso, true));
 }
 
-Dso* ThreadTree::FindKernelDsoOrNew(const std::string& filename) {
-  if (android::base::StartsWith(filename, DEFAULT_KERNEL_MMAP_NAME)) {
-    if (!kernel_dso_) {
-      kernel_dso_ = Dso::CreateDso(DSO_KERNEL, DEFAULT_KERNEL_MMAP_NAME);
-    }
-    return kernel_dso_.get();
+Dso* ThreadTree::FindKernelDsoOrNew() {
+  if (!kernel_dso_) {
+    kernel_dso_ = Dso::CreateDso(DSO_KERNEL, DEFAULT_KERNEL_MMAP_NAME);
   }
+  return kernel_dso_.get();
+}
+
+Dso* ThreadTree::FindKernelModuleDsoOrNew(const std::string& filename, uint64_t memory_start,
+                                          uint64_t memory_end) {
   auto it = module_dso_tree_.find(filename);
   if (it == module_dso_tree_.end()) {
-    module_dso_tree_[filename] = Dso::CreateDso(DSO_KERNEL_MODULE, filename);
+    module_dso_tree_[filename] =
+        Dso::CreateKernelModuleDso(filename, memory_start, memory_end, FindKernelDsoOrNew());
     it = module_dso_tree_.find(filename);
   }
   return it->second.get();
@@ -303,7 +311,7 @@ const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip, uint64_t*
     // If the ip address hits the vmlinux, or hits a kernel module, but we can't find its symbol
     // in the kernel module file, then find its symbol in /proc/kallsyms or vmlinux.
     vaddr_in_file = ip;
-    dso = FindKernelDsoOrNew(DEFAULT_KERNEL_MMAP_NAME);
+    dso = FindKernelDsoOrNew();
     symbol = dso->FindSymbol(vaddr_in_file);
   }
 
@@ -343,8 +351,10 @@ void ThreadTree::ClearThreadAndMap() {
 void ThreadTree::AddDsoInfo(FileFeature& file) {
   DsoType dso_type = file.type;
   Dso* dso = nullptr;
-  if (dso_type == DSO_KERNEL || dso_type == DSO_KERNEL_MODULE) {
-    dso = FindKernelDsoOrNew(file.path);
+  if (dso_type == DSO_KERNEL) {
+    dso = FindKernelDsoOrNew();
+  } else if (dso_type == DSO_KERNEL_MODULE) {
+    dso = FindKernelModuleDsoOrNew(file.path, 0, 0);
   } else {
     dso = FindUserDsoOrNew(file.path, 0, dso_type);
   }
