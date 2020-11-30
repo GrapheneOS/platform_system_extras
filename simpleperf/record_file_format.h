@@ -53,6 +53,7 @@ file feature section:
     uint32_t dex_file_offset_count;  // Only when file_type = DSO_DEX_FILE
     uint64_t dex_file_offsets[dex_file_offset_count];  // Only when file_type = DSO_DEX_FILE
     uint64_t file_offset_of_min_vaddr;  // Only when file_type = DSO_ELF_FILE
+    uint64_t memory_offset_of_min_vaddr;  // Only when file_type = DSO_KERNEL_MODULE
   };
 
 meta_info feature section:
