@@ -95,6 +95,9 @@ std::vector<int> GetOnlineCpus() {
 }
 
 static std::vector<KernelMmap> GetLoadedModules() {
+  if (IsRoot() && !CheckKernelSymbolAddresses()) {
+    return {};
+  }
   std::vector<KernelMmap> result;
   FILE* fp = fopen("/proc/modules", "re");
   if (fp == nullptr) {

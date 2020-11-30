@@ -522,7 +522,8 @@ bool RecordFileReader::ReadFileFeature(size_t& read_pos, FileFeature* file) {
     MoveFromBinaryFormat(file->dex_file_offsets.data(), offset_count, p);
   }
   file->file_offset_of_min_vaddr = std::numeric_limits<uint64_t>::max();
-  if (file->type == DSO_ELF_FILE && static_cast<size_t>(p - buf.data()) < size) {
+  if ((file->type == DSO_ELF_FILE || file->type == DSO_KERNEL_MODULE) &&
+      static_cast<size_t>(p - buf.data()) < size) {
     MoveFromBinaryFormat(file->file_offset_of_min_vaddr, p);
   }
   CHECK_EQ(size, static_cast<size_t>(p - buf.data()))
