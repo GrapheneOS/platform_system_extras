@@ -364,7 +364,7 @@ bool RecordFileWriter::WriteFileFeature(const FileFeature& file) {
   if (file.type == DSO_DEX_FILE) {
     size += sizeof(uint32_t) + sizeof(uint64_t) * file.dex_file_offsets.size();
   }
-  if (file.type == DSO_ELF_FILE) {
+  if (file.type == DSO_ELF_FILE || file.type == DSO_KERNEL_MODULE) {
     size += sizeof(uint64_t);
   }
   std::vector<char> buf(sizeof(uint32_t) + size);
@@ -385,7 +385,7 @@ bool RecordFileWriter::WriteFileFeature(const FileFeature& file) {
     MoveToBinaryFormat(offset_count, p);
     MoveToBinaryFormat(file.dex_file_offsets.data(), offset_count, p);
   }
-  if (file.type == DSO_ELF_FILE) {
+  if (file.type == DSO_ELF_FILE || file.type == DSO_KERNEL_MODULE) {
     MoveToBinaryFormat(file.file_offset_of_min_vaddr, p);
   }
   CHECK_EQ(buf.size(), static_cast<size_t>(p - buf.data()));
