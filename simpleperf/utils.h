@@ -18,6 +18,7 @@
 #define SIMPLE_PERF_UTILS_H_
 
 #include <stddef.h>
+#include <stdio.h>
 #include <time.h>
 
 #include <functional>
@@ -64,6 +65,24 @@ class OneTimeFreeAllocator {
   std::vector<char*> v_;
   char* cur_;
   char* end_;
+};
+
+class LineReader {
+ public:
+  explicit LineReader(FILE* fp) : fp_(fp), buf_(nullptr), bufsize_(0) {}
+
+  ~LineReader() {
+    free(buf_);
+    fclose(fp_);
+  }
+
+  char* ReadLine();
+  size_t MaxLineSize() { return bufsize_; }
+
+ private:
+  FILE* fp_;
+  char* buf_;
+  size_t bufsize_;
 };
 
 class FileHelper {
@@ -147,16 +166,6 @@ bool GetLogSeverity(const std::string& name, android::base::LogSeverity* severit
 std::string GetLogSeverityName();
 
 bool IsRoot();
-
-struct KernelSymbol {
-  uint64_t addr;
-  char type;
-  const char* name;
-  const char* module;  // If nullptr, the symbol is not in a kernel module.
-};
-
-bool ProcessKernelSymbols(std::string& symbol_data,
-                          const std::function<bool(const KernelSymbol&)>& callback);
 
 size_t GetPageSize();
 
