@@ -44,36 +44,13 @@
 #include "IOEventLoop.h"
 #include "command.h"
 #include "event_type.h"
+#include "kallsyms.h"
 #include "read_elf.h"
 #include "thread_tree.h"
 #include "utils.h"
 #include "workload.h"
 
 using namespace simpleperf;
-
-class LineReader {
- public:
-  explicit LineReader(FILE* fp) : fp_(fp), buf_(nullptr), bufsize_(0) {}
-
-  ~LineReader() {
-    free(buf_);
-    fclose(fp_);
-  }
-
-  char* ReadLine() {
-    if (getline(&buf_, &bufsize_, fp_) != -1) {
-      return buf_;
-    }
-    return nullptr;
-  }
-
-  size_t MaxLineSize() { return bufsize_; }
-
- private:
-  FILE* fp_;
-  char* buf_;
-  size_t bufsize_;
-};
 
 std::vector<int> GetOnlineCpus() {
   std::vector<int> result;
@@ -91,45 +68,6 @@ std::vector<int> GetOnlineCpus() {
     }
   }
   CHECK(!result.empty()) << "can't get online cpu information";
-  return result;
-}
-
-static std::vector<KernelMmap> GetLoadedModules() {
-  if (IsRoot() && !CheckKernelSymbolAddresses()) {
-    return {};
-  }
-  std::vector<KernelMmap> result;
-  FILE* fp = fopen("/proc/modules", "re");
-  if (fp == nullptr) {
-    // There is no /proc/modules on Android devices, so we don't print error if failed to open it.
-    PLOG(DEBUG) << "failed to open file /proc/modules";
-    return result;
-  }
-  LineReader reader(fp);
-  char* line;
-  while ((line = reader.ReadLine()) != nullptr) {
-    // Parse line like: nf_defrag_ipv6 34768 1 nf_conntrack_ipv6, Live 0xffffffffa0fe5000
-    char name[reader.MaxLineSize()];
-    uint64_t addr;
-    uint64_t len;
-    if (sscanf(line, "%s%" PRIu64 "%*u%*s%*s 0x%" PRIx64, name, &len, &addr) == 3) {
-      KernelMmap map;
-      map.name = name;
-      map.start_addr = addr;
-      map.len = len;
-      result.push_back(map);
-    }
-  }
-  bool all_zero = true;
-  for (const auto& map : result) {
-    if (map.start_addr != 0) {
-      all_zero = false;
-    }
-  }
-  if (all_zero) {
-    LOG(DEBUG) << "addresses in /proc/modules are all zero, so ignore kernel modules";
-    return std::vector<KernelMmap>();
-  }
   return result;
 }
 
@@ -176,24 +114,6 @@ static std::vector<KernelMmap> GetModulesInUse() {
     }
   }
   return module_mmaps;
-}
-
-static uint64_t GetKernelStartAddress() {
-  FILE* fp = fopen("/proc/kallsyms", "re");
-  if (fp == nullptr) {
-    return 0;
-  }
-  LineReader reader(fp);
-  char* line;
-  while ((line = reader.ReadLine()) != nullptr) {
-    if (strstr(line, "_stext") != nullptr) {
-      uint64_t addr;
-      if (sscanf(line, "%" PRIx64, &addr) == 1) {
-        return addr;
-      }
-    }
-  }
-  return 0;
 }
 
 void GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<KernelMmap>* module_mmaps) {
@@ -482,37 +402,6 @@ bool GetPerfEventMlockKb(uint64_t* mlock_kb) {
 
 bool SetPerfEventMlockKb(uint64_t mlock_kb) {
   return WriteUintToProcFile("/proc/sys/kernel/perf_event_mlock_kb", mlock_kb);
-}
-
-bool CheckKernelSymbolAddresses() {
-  const std::string kptr_restrict_file = "/proc/sys/kernel/kptr_restrict";
-  std::string s;
-  if (!android::base::ReadFileToString(kptr_restrict_file, &s)) {
-    PLOG(DEBUG) << "failed to read " << kptr_restrict_file;
-    return false;
-  }
-  s = android::base::Trim(s);
-  int value;
-  if (!android::base::ParseInt(s.c_str(), &value)) {
-    LOG(ERROR) << "failed to parse " << kptr_restrict_file << ": " << s;
-    return false;
-  }
-  // Accessible to everyone?
-  if (value == 0) {
-    return true;
-  }
-  // Accessible to root?
-  if (value == 1 && IsRoot()) {
-    return true;
-  }
-  // Can we make it accessible to us?
-  if (IsRoot() && android::base::WriteStringToFile("1", kptr_restrict_file)) {
-    return true;
-  }
-  LOG(WARNING) << "Access to kernel symbol addresses is restricted. If "
-               << "possible, please do `echo 0 >/proc/sys/kernel/kptr_restrict` "
-               << "to fix this.";
-  return false;
 }
 
 ArchType GetMachineArch() {
