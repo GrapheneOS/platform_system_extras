@@ -79,7 +79,6 @@ bool GetCpuTimeMaxPercent(size_t* percent);
 bool SetCpuTimeMaxPercent(size_t percent);
 bool GetPerfEventMlockKb(uint64_t* mlock_kb);
 bool SetPerfEventMlockKb(uint64_t mlock_kb);
-bool CheckKernelSymbolAddresses();
 bool CanRecordRawData();
 
 #if defined(__linux__)
