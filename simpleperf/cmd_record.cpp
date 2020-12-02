@@ -53,6 +53,7 @@
 #include "environment.h"
 #include "event_selection_set.h"
 #include "event_type.h"
+#include "kallsyms.h"
 #include "read_apk.h"
 #include "read_elf.h"
 #include "read_symbol_map.h"
@@ -1193,11 +1194,12 @@ std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(const std::str
 
 bool RecordCommand::DumpKernelSymbol() {
   if (can_dump_kernel_symbols_) {
-    std::string kallsyms;
-    if (event_selection_set_.NeedKernelSymbol() && CheckKernelSymbolAddresses()) {
-      if (!android::base::ReadFileToString("/proc/kallsyms", &kallsyms)) {
-        PLOG(ERROR) << "failed to read /proc/kallsyms";
-        return false;
+    if (event_selection_set_.NeedKernelSymbol()) {
+      std::string kallsyms;
+      if (!LoadKernelSymbols(&kallsyms)) {
+        // Symbol loading may have failed due to the lack of permissions. This
+        // is not fatal, the symbols will appear as "unknown".
+        return true;
       }
       KernelSymbolRecord r(kallsyms);
       if (!ProcessRecord(&r)) {
@@ -1671,8 +1673,9 @@ bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args)
   // Read data section of perf.data to collect hit file information.
   thread_tree_.ClearThreadAndMap();
   bool kernel_symbols_available = false;
-  if (CheckKernelSymbolAddresses()) {
-    Dso::ReadKernelSymbolsFromProc();
+  std::string kallsyms;
+  if (LoadKernelSymbols(&kallsyms)) {
+    Dso::SetKallsyms(kallsyms);
     kernel_symbols_available = true;
   }
   std::unordered_set<int> loaded_symbol_maps;
