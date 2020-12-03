@@ -32,6 +32,7 @@
 
 #include "JITDebugReader.h"
 #include "environment.h"
+#include "kallsyms.h"
 #include "read_apk.h"
 #include "read_dex_file.h"
 #include "read_elf.h"
@@ -234,7 +235,6 @@ static bool CompareAddrToSymbol(uint64_t addr, const Symbol& s) {
 bool Dso::demangle_ = true;
 std::string Dso::vmlinux_;
 std::string Dso::kallsyms_;
-bool Dso::read_kernel_symbols_from_proc_;
 std::unordered_map<std::string, BuildId> Dso::build_id_map_;
 size_t Dso::dso_count_;
 uint32_t Dso::g_dump_id_;
@@ -332,7 +332,6 @@ Dso::~Dso() {
     demangle_ = true;
     vmlinux_.clear();
     kallsyms_.clear();
-    read_kernel_symbols_from_proc_ = false;
     build_id_map_.clear();
     g_dump_id_ = 0;
     debug_elf_file_finder_.Reset();
@@ -642,12 +641,15 @@ class KernelDso : public Dso {
     if (has_debug_file_) {
       ReadSymbolsFromDebugFile(&symbols);
     }
+
+#if defined(__linux__)
     if (symbols.empty() && !kallsyms_.empty()) {
       ReadSymbolsFromKallsyms(kallsyms_, &symbols);
     }
     if (symbols.empty()) {
       ReadSymbolsFromProc(&symbols);
     }
+#endif  // defined(__linux__)
     SortAndFixSymbols(symbols);
     if (!symbols.empty()) {
       symbols.back().len = std::numeric_limits<uint64_t>::max() - symbols.back().addr;
@@ -680,6 +682,7 @@ class KernelDso : public Dso {
     ReportReadElfSymbolResult(status, path_, debug_file_path_);
   }
 
+#if defined(__linux__)
   void ReadSymbolsFromKallsyms(std::string& kallsyms, std::vector<Symbol>* symbols) {
     auto symbol_callback = [&](const KernelSymbol& symbol) {
       if (strchr("TtWw", symbol.type) && symbol.addr != 0u) {
@@ -701,7 +704,7 @@ class KernelDso : public Dso {
 
   void ReadSymbolsFromProc(std::vector<Symbol>* symbols) {
     BuildId build_id = GetExpectedBuildId();
-    if (read_kernel_symbols_from_proc_ || !build_id.IsEmpty()) {
+    if (!build_id.IsEmpty()) {
       // Try /proc/kallsyms only when asked to do so, or when build id matches.
       // Otherwise, it is likely to use /proc/kallsyms on host for perf.data recorded on device.
       bool can_read_kallsyms = true;
@@ -714,14 +717,13 @@ class KernelDso : public Dso {
       }
       if (can_read_kallsyms) {
         std::string kallsyms;
-        if (!android::base::ReadFileToString("/proc/kallsyms", &kallsyms)) {
-          LOG(DEBUG) << "failed to read /proc/kallsyms";
-        } else {
+        if (LoadKernelSymbols(&kallsyms)) {
           ReadSymbolsFromKallsyms(kallsyms, symbols);
         }
       }
     }
   }
+#endif  // defined(__linux__)
 
   uint64_t GetKernelStartAddr() {
     if (!kernel_start_addr_) {

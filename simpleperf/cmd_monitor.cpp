@@ -250,8 +250,11 @@ bool MonitorCommand::PrepareMonitoring() {
                              event_selection_set_.RecordNotExecutableMaps());
   map_record_reader_->SetCallback([this](Record* r) { return ProcessRecord(r); });
 
-  // 4. Load kallsyms
-  Dso::ReadKernelSymbolsFromProc();
+  // 4. Load kallsyms, if possible.
+  std::string kallsyms;
+  if (LoadKernelSymbols(&kallsyms)) {
+    Dso::SetKallsyms(std::move(kallsyms));
+  }
   map_record_reader_->ReadKernelMaps();
 
   // 5. Add read/signal/periodic Events.

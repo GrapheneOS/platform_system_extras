@@ -41,6 +41,7 @@
 #include "environment.h"
 #include "event_selection_set.h"
 #include "get_test_data.h"
+#include "kallsyms.h"
 #include "record.h"
 #include "record_file.h"
 #include "test_util.h"
@@ -325,7 +326,8 @@ static void CheckKernelSymbol(const std::string& path, bool need_kallsyms, bool*
       has_kernel_symbol_records = true;
     }
   }
-  bool require_kallsyms = need_kallsyms && CheckKernelSymbolAddresses();
+  std::string kallsyms;
+  bool require_kallsyms = need_kallsyms && LoadKernelSymbols(&kallsyms);
   ASSERT_EQ(require_kallsyms, has_kernel_symbol_records);
   *success = true;
 }
