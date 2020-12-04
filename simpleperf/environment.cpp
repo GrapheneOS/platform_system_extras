@@ -702,7 +702,13 @@ class SimpleperfAppRunner : public InAppRunner {
 
  protected:
   std::vector<std::string> GetPrefixArgs(const std::string& cmd) {
-    return {"simpleperf_app_runner", package_name_, "--user", user_id_, cmd};
+    std::vector<std::string> args = {"simpleperf_app_runner", package_name_};
+    if (user_id_ != "0") {
+      args.emplace_back("--user");
+      args.emplace_back(user_id_);
+    }
+    args.emplace_back(cmd);
+    return args;
   }
 };
 
