@@ -17,7 +17,7 @@
 #include <optional>
 #include <sstream>
 
-#include <android/hardware/boot/1.1/IBootControl.h>
+#include <android/hardware/boot/1.2/IBootControl.h>
 #include <sysexits.h>
 
 using android::sp;
@@ -33,8 +33,9 @@ using android::hardware::boot::V1_1::MergeStatus;
 
 namespace V1_0 = android::hardware::boot::V1_0;
 namespace V1_1 = android::hardware::boot::V1_1;
+namespace V1_2 = android::hardware::boot::V1_2;
 
-enum BootCtlVersion { BOOTCTL_V1_0, BOOTCTL_V1_1 };
+enum BootCtlVersion { BOOTCTL_V1_0, BOOTCTL_V1_1, BOOTCTL_V1_2 };
 
 static void usage(FILE* where, BootCtlVersion bootVersion, int /* argc */, char* argv[]) {
     fprintf(where,
@@ -48,6 +49,7 @@ static void usage(FILE* where, BootCtlVersion bootVersion, int /* argc */, char*
             "  get-number-slots               - Prints number of slots.\n"
             "  get-current-slot               - Prints currently running SLOT.\n"
             "  mark-boot-successful           - Mark current slot as GOOD.\n"
+            "  get-active-boot-slot           - Prints the SLOT to load on next boot.\n"
             "  set-active-boot-slot SLOT      - On next boot, load and execute SLOT.\n"
             "  set-slot-as-unbootable SLOT    - Mark SLOT as invalid.\n"
             "  is-slot-bootable SLOT          - Returns 0 only if SLOT is bootable.\n"
@@ -105,6 +107,12 @@ static int do_mark_boot_successful(sp<V1_0::IBootControl> module) {
     CommandResult cr;
     Return<void> ret = module->markBootSuccessful(generate_callback(&cr));
     return handle_return(ret, cr, "Error marking as having booted successfully: %s\n");
+}
+
+static int do_get_active_boot_slot(sp<V1_2::IBootControl> module) {
+    uint32_t slot = module->getActiveBootSlot();
+    fprintf(stdout, "%u\n", slot);
+    return EX_OK;
 }
 
 static int do_set_active_boot_slot(sp<V1_0::IBootControl> module, Slot slot_number) {
@@ -228,6 +236,7 @@ static uint32_t parse_slot(BootCtlVersion bootVersion, int pos, int argc, char* 
 int main(int argc, char* argv[]) {
     sp<V1_0::IBootControl> v1_0_module;
     sp<V1_1::IBootControl> v1_1_module;
+    sp<V1_2::IBootControl> v1_2_module;
     BootCtlVersion bootVersion = BOOTCTL_V1_0;
 
     v1_0_module = V1_0::IBootControl::getService();
@@ -238,6 +247,11 @@ int main(int argc, char* argv[]) {
     v1_1_module = V1_1::IBootControl::castFrom(v1_0_module);
     if (v1_1_module != nullptr) {
         bootVersion = BOOTCTL_V1_1;
+    }
+
+    v1_2_module = V1_2::IBootControl::castFrom(v1_0_module);
+    if (v1_2_module != nullptr) {
+        bootVersion = BOOTCTL_V1_2;
     }
 
     if (argc < 2) {
@@ -278,6 +292,15 @@ int main(int argc, char* argv[]) {
         } else if (strcmp(argv[1], "get-snapshot-merge-status") == 0) {
             return do_get_snapshot_merge_status(v1_1_module);
         }
+    }
+
+    if (strcmp(argv[1], "get-active-boot-slot") == 0) {
+        if (v1_2_module == nullptr) {
+            fprintf(stderr, "Error getting bootctrl v1.2 module.\n");
+            return EX_SOFTWARE;
+        }
+
+        return do_get_active_boot_slot(v1_2_module);
     }
 
     // Parameter not matched, print usage
