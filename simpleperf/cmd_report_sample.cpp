@@ -30,6 +30,7 @@
 #include "event_attr.h"
 #include "event_type.h"
 #include "record_file.h"
+#include "report_utils.h"
 #include "thread_tree.h"
 #include "utils.h"
 
@@ -61,12 +62,6 @@ class ProtobufFileReader : public google::protobuf::io::CopyingInputStream {
 
  private:
   FILE* in_fp_;
-};
-
-struct CallEntry {
-  Dso* dso;
-  const Symbol* symbol;
-  uint64_t vaddr_in_file;
 };
 
 class ReportSampleCommand : public Command {
@@ -101,7 +96,7 @@ class ReportSampleCommand : public Command {
         trace_offcpu_(false),
         remove_unknown_kernel_symbols_(false),
         kernel_symbols_available_(false),
-        show_art_frames_(false) {}
+        callchain_report_builder_(thread_tree_) {}
 
   bool Run(const std::vector<std::string>& args) override;
 
@@ -114,14 +109,13 @@ class ReportSampleCommand : public Command {
   void UpdateThreadName(uint32_t pid, uint32_t tid);
   bool ProcessSampleRecord(const SampleRecord& r);
   bool PrintSampleRecordInProtobuf(const SampleRecord& record,
-                                   const std::vector<CallEntry>& entries);
-  bool GetCallEntry(const ThreadEntry* thread, bool in_kernel, uint64_t ip, bool omit_unknown_dso,
-                    CallEntry* entry);
+                                   const std::vector<CallChainReportEntry>& entries);
   bool WriteRecordInProtobuf(proto::Record& proto_record);
   bool PrintLostSituationInProtobuf();
   bool PrintFileInfoInProtobuf();
   bool PrintThreadInfoInProtobuf();
-  bool PrintSampleRecord(const SampleRecord& record, const std::vector<CallEntry>& entries);
+  bool PrintSampleRecord(const SampleRecord& record,
+                         const std::vector<CallChainReportEntry>& entries);
   void PrintLostSituation();
 
   std::string record_filename_;
@@ -139,7 +133,7 @@ class ReportSampleCommand : public Command {
   std::vector<std::string> event_types_;
   bool remove_unknown_kernel_symbols_;
   bool kernel_symbols_available_;
-  bool show_art_frames_;
+  CallChainReportBuilder callchain_report_builder_;
   // map from <pid, tid> to thread name
   std::map<uint64_t, const char*> thread_names_;
 };
@@ -254,7 +248,7 @@ bool ReportSampleCommand::ParseOptions(const std::vector<std::string>& args) {
     } else if (args[i] == "--remove-unknown-kernel-symbols") {
       remove_unknown_kernel_symbols_ = true;
     } else if (args[i] == "--show-art-frames") {
-      show_art_frames_ = true;
+      callchain_report_builder_.SetRemoveArtFrame(false);
     } else if (args[i] == "--symdir") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -477,34 +471,15 @@ bool ReportSampleCommand::ProcessSampleRecord(const SampleRecord& r) {
     kernel_ip_count = std::min(kernel_ip_count, static_cast<size_t>(1u));
   }
   sample_count_++;
-  std::vector<CallEntry> entries;
-  bool near_java_method = false;
-  auto is_entry_for_interpreter = [](const CallEntry& entry) {
-    return android::base::EndsWith(entry.dso->Path(), "/libart.so");
-  };
   const ThreadEntry* thread = thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-  for (size_t i = 0; i < ips.size(); ++i) {
-    bool omit_unknown_dso = i > 0u;
-    CallEntry entry;
-    if (!GetCallEntry(thread, i < kernel_ip_count, ips[i], omit_unknown_dso, &entry)) {
+  std::vector<CallChainReportEntry> entries =
+      callchain_report_builder_.Build(thread, ips, kernel_ip_count);
+
+  for (size_t i = 1; i < entries.size(); i++) {
+    if (thread_tree_.IsUnknownDso(entries[i].dso)) {
+      entries.resize(i);
       break;
     }
-    if (!show_art_frames_) {
-      // Remove interpreter frames both before and after the Java frame.
-      if (entry.dso->IsForJavaMethod()) {
-        near_java_method = true;
-        while (!entries.empty() && is_entry_for_interpreter(entries.back())) {
-          entries.pop_back();
-        }
-      } else if (is_entry_for_interpreter(entry)) {
-        if (near_java_method) {
-          continue;
-        }
-      } else {
-        near_java_method = false;
-      }
-    }
-    entries.push_back(entry);
   }
   if (use_protobuf_) {
     uint64_t key = (static_cast<uint64_t>(r.tid_data.pid) << 32) | r.tid_data.tid;
@@ -514,8 +489,8 @@ bool ReportSampleCommand::ProcessSampleRecord(const SampleRecord& r) {
   return PrintSampleRecord(r, entries);
 }
 
-bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r,
-                                                      const std::vector<CallEntry>& entries) {
+bool ReportSampleCommand::PrintSampleRecordInProtobuf(
+    const SampleRecord& r, const std::vector<CallChainReportEntry>& entries) {
   proto::Record proto_record;
   proto::Sample* sample = proto_record.mutable_sample();
   sample->set_time(r.time_data.time);
@@ -523,7 +498,7 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(const SampleRecord& r,
   sample->set_thread_id(r.tid_data.tid);
   sample->set_event_type_id(record_file_reader_->GetAttrIndexOfRecord(&r));
 
-  for (const CallEntry& node : entries) {
+  for (const auto& node : entries) {
     proto::Sample_CallChainEntry* callchain = sample->add_callchain();
     uint32_t file_id;
     if (!node.dso->GetDumpId(&file_id)) {
@@ -557,20 +532,6 @@ bool ReportSampleCommand::WriteRecordInProtobuf(proto::Record& proto_record) {
   if (!proto_record.SerializeToCodedStream(coded_os_)) {
     LOG(ERROR) << "failed to write record to protobuf";
     return false;
-  }
-  return true;
-}
-
-bool ReportSampleCommand::GetCallEntry(const ThreadEntry* thread, bool in_kernel, uint64_t ip,
-                                       bool omit_unknown_dso, CallEntry* entry) {
-  const MapEntry* map = thread_tree_.FindMap(thread, ip, in_kernel);
-  if (omit_unknown_dso && thread_tree_.IsUnknownDso(map->dso)) {
-    return false;
-  }
-  entry->symbol = thread_tree_.FindSymbol(map, ip, &(entry->vaddr_in_file), &(entry->dso));
-  // If we can't find symbol, use the dso shown in the map.
-  if (entry->symbol == thread_tree_.UnknownSymbol()) {
-    entry->dso = map->dso;
   }
   return true;
 }
@@ -642,7 +603,7 @@ bool ReportSampleCommand::PrintThreadInfoInProtobuf() {
 }
 
 bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r,
-                                            const std::vector<CallEntry>& entries) {
+                                            const std::vector<CallChainReportEntry>& entries) {
   FprintIndented(report_fp_, 0, "sample:\n");
   FprintIndented(report_fp_, 1, "event_type: %s\n",
                  event_types_[record_file_reader_->GetAttrIndexOfRecord(&r)].data());
