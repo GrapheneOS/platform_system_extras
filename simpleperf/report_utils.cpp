@@ -69,7 +69,7 @@ std::vector<CallChainReportEntry> CallChainReportBuilder::Build(const ThreadEntr
 
 void CallChainReportBuilder::ConvertJITFrame(std::vector<CallChainReportEntry>& callchain) {
   CollectJavaMethods();
-  for (size_t i = 0; i < callchain.size(); i++) {
+  for (size_t i = 0; i < callchain.size();) {
     auto& entry = callchain[i];
     if (entry.dso->IsForJavaMethod() && entry.dso->type() == DSO_ELF_FILE) {
       // This is a JIT java method, merge it with the interpreted java method having the same
@@ -81,11 +81,21 @@ void CallChainReportBuilder::ConvertJITFrame(std::vector<CallChainReportEntry>& 
         // Not enough info to map an offset in a JIT method to an offset in a dex file. So just
         // use the symbol_addr.
         entry.vaddr_in_file = entry.symbol->addr;
+
+        // ART may call from an interpreted Java method into its corresponding JIT method. To avoid
+        // showing the method calling itself, remove the JIT frame.
+        if (i + 1 < callchain.size() && callchain[i + 1].dso == entry.dso &&
+            callchain[i + 1].symbol == entry.symbol) {
+          callchain.erase(callchain.begin() + i);
+          continue;
+        }
+
       } else if (!JITDebugReader::IsPathInJITSymFile(entry.dso->Path())) {
         // Old JITSymFiles use names like "TemporaryFile-XXXXXX". So give them a better name.
         entry.dso_name = "[JIT cache]";
       }
     }
+    i++;
   }
 }
 

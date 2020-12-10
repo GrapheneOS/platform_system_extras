@@ -155,3 +155,22 @@ TEST_F(CallChainReportBuilderTest, not_remove_art_frame) {
   ASSERT_EQ(entries[5].dso->Path(), fake_dex_file_path);
   ASSERT_EQ(entries[5].vaddr_in_file, 0x100);
 }
+
+TEST_F(CallChainReportBuilderTest, remove_jit_frame_called_by_dex_frame) {
+  // Test option: remove_art_frame = true, convert_jit_frame = true.
+  // The callchain should remove the JIT frame called by a dex frame having the same symbol name.
+  std::vector<uint64_t> fake_ips = {
+      0x3000,  // java_method2 in jit cache
+      0x1000,  // art_func1
+      0x1100,  // art_func2
+      0x2100,  // java_method2 in dex file
+      0x1000,  // art_func1
+  };
+  CallChainReportBuilder builder(thread_tree);
+  std::vector<CallChainReportEntry> entries = builder.Build(thread, fake_ips, 0);
+  ASSERT_EQ(entries.size(), 1);
+  ASSERT_EQ(entries[0].ip, 0x2100);
+  ASSERT_STREQ(entries[0].symbol->Name(), "java_method2");
+  ASSERT_EQ(entries[0].dso->Path(), fake_dex_file_path);
+  ASSERT_EQ(entries[0].vaddr_in_file, 0x100);
+}
