@@ -41,6 +41,7 @@ cc_defaults {
     name: "libprofile-clang-defaults",
     srcs: [
         "profile-clang-extras.cpp",
+        "profile-clang-openat.cpp",
     ],
     native_coverage: false,
 }
@@ -84,5 +85,20 @@ cc_test {
         "libprofile-extras",
     ],
     ldflags: ["-uinit_profile_extras"],
+    native_coverage: false,
+}
+
+cc_test {
+    name: "libprofile-clang-extras-test",
+    srcs: [
+        "profile-clang-extras-test.cpp",
+    ],
+    static_libs: [
+        "libprofile-clang-extras",
+    ],
+    ldflags: [
+        "-uinit_profile_extras",
+        "-Wl,--wrap,open",
+    ],
     native_coverage: false,
 }
