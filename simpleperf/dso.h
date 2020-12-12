@@ -174,13 +174,13 @@ class Dso {
 
   const Symbol* FindSymbol(uint64_t vaddr_in_dso);
   void LoadSymbols();
-  const std::vector<Symbol>& GetSymbols() { return symbols_; }
+  const std::vector<Symbol>& GetSymbols() const { return symbols_; }
   void SetSymbols(std::vector<Symbol>* symbols);
 
   // Create a symbol for a virtual address which can't find a corresponding
   // symbol in symbol table.
   void AddUnknownSymbol(uint64_t vaddr_in_dso, const std::string& name);
-  bool IsForJavaMethod();
+  bool IsForJavaMethod() const;
 
  protected:
   static bool demangle_;
