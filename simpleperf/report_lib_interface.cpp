@@ -26,6 +26,7 @@
 #include "event_attr.h"
 #include "event_type.h"
 #include "record_file.h"
+#include "report_utils.h"
 #include "thread_tree.h"
 #include "tracing.h"
 #include "utils.h"
@@ -142,7 +143,7 @@ class ReportLib {
         record_filename_("perf.data"),
         current_thread_(nullptr),
         trace_offcpu_(false),
-        show_art_frames_(false) {}
+        callchain_report_builder_(thread_tree_) {}
 
   bool SetLogSeverity(const char* log_level);
 
@@ -156,8 +157,11 @@ class ReportLib {
   bool SetKallsymsFile(const char* kallsyms_file);
 
   void ShowIpForUnknownSymbol() { thread_tree_.ShowIpForUnknownSymbol(); }
-  void ShowArtFrames(bool show) { show_art_frames_ = show; }
-  void MergeJavaMethods(bool merge) { merge_java_methods_ = merge; }
+  void ShowArtFrames(bool show) {
+    bool remove_art_frame = !show;
+    callchain_report_builder_.SetRemoveArtFrame(remove_art_frame);
+  }
+  void MergeJavaMethods(bool merge) { callchain_report_builder_.SetConvertJITFrame(merge); }
 
   Sample* GetNextSample();
   Event* GetEventOfCurrentSample() { return &current_event_; }
@@ -195,10 +199,7 @@ class ReportLib {
   std::unordered_map<pid_t, std::unique_ptr<SampleRecord>> next_sample_cache_;
   FeatureSection feature_section_;
   std::vector<char> feature_section_data_;
-  bool show_art_frames_;
-  bool merge_java_methods_ = true;
-  // Map from a java method name to it's dex file, start_addr and len.
-  std::unordered_map<std::string, std::tuple<Dso*, uint64_t, uint64_t>> java_methods_;
+  CallChainReportBuilder callchain_report_builder_;
   std::unique_ptr<Tracing> tracing_;
 };
 
@@ -233,15 +234,6 @@ bool ReportLib::OpenRecordFileIfNecessary() {
     auto& meta_info = record_file_reader_->GetMetaInfoFeature();
     if (auto it = meta_info.find("trace_offcpu"); it != meta_info.end()) {
       trace_offcpu_ = it->second == "true";
-    }
-    if (merge_java_methods_) {
-      for (Dso* dso : thread_tree_.GetAllDsos()) {
-        if (dso->type() == DSO_DEX_FILE) {
-          for (auto& symbol : dso->GetSymbols()) {
-            java_methods_[symbol.Name()] = std::make_tuple(dso, symbol.addr, symbol.len);
-          }
-        }
-      }
     }
   }
   return true;
@@ -306,63 +298,23 @@ void ReportLib::SetCurrentSample() {
 
   size_t kernel_ip_count;
   std::vector<uint64_t> ips = r.GetCallChain(&kernel_ip_count);
-  std::vector<std::pair<uint64_t, const MapEntry*>> ip_maps;
-  bool near_java_method = false;
-  auto is_map_for_interpreter = [](const MapEntry* map) {
-    return android::base::EndsWith(map->dso->Path(), "/libart.so") ||
-           android::base::EndsWith(map->dso->Path(), "/libartd.so");
-  };
-  for (size_t i = 0; i < ips.size(); ++i) {
-    const MapEntry* map = thread_tree_.FindMap(current_thread_, ips[i], i < kernel_ip_count);
-    if (!show_art_frames_) {
-      // Remove interpreter frames both before and after the Java frame.
-      if (map->dso->IsForJavaMethod()) {
-        near_java_method = true;
-        while (!ip_maps.empty() && is_map_for_interpreter(ip_maps.back().second)) {
-          ip_maps.pop_back();
-        }
-      } else if (is_map_for_interpreter(map)) {
-        if (near_java_method) {
-          continue;
-        }
-      } else {
-        near_java_method = false;
-      }
-    }
-    ip_maps.push_back(std::make_pair(ips[i], map));
-  }
-  for (auto& pair : ip_maps) {
-    uint64_t ip = pair.first;
-    const MapEntry* map = pair.second;
-    uint64_t vaddr_in_file;
-    const Symbol* symbol = thread_tree_.FindSymbol(map, ip, &vaddr_in_file);
-    CallChainEntry entry;
-    entry.ip = ip;
-    entry.symbol.dso_name = map->dso->GetReportPath().data();
-    entry.symbol.vaddr_in_file = vaddr_in_file;
-    entry.symbol.symbol_name = symbol->DemangledName();
-    entry.symbol.symbol_addr = symbol->addr;
-    entry.symbol.symbol_len = symbol->len;
-    entry.symbol.mapping = AddMapping(*map);
+  std::vector<CallChainReportEntry> report_entries =
+      callchain_report_builder_.Build(current_thread_, ips, kernel_ip_count);
 
-    if (merge_java_methods_ && map->dso->type() == DSO_ELF_FILE && map->dso->IsForJavaMethod()) {
-      // This is a jitted java method, merge it with the interpreted java method having the same
-      // name if possible. Otherwise, merge it with other jitted java methods having the same name
-      // by assigning a common dso_name.
-      if (auto it = java_methods_.find(entry.symbol.symbol_name); it != java_methods_.end()) {
-        entry.symbol.dso_name = std::get<0>(it->second)->Path().c_str();
-        entry.symbol.symbol_addr = std::get<1>(it->second);
-        entry.symbol.symbol_len = std::get<2>(it->second);
-        // Not enough info to map an offset in a jitted method to an offset in a dex file. So just
-        // use the symbol_addr.
-        entry.symbol.vaddr_in_file = entry.symbol.symbol_addr;
-      } else if (!JITDebugReader::IsPathInJITSymFile(map->dso->Path())) {
-        // Old JITSymFiles use names like "TemporaryFile-XXXXXX". So give them a better name.
-        entry.symbol.dso_name = "[JIT cache]";
-      }
+  for (const auto& report_entry : report_entries) {
+    callchain_entries_.resize(callchain_entries_.size() + 1);
+    CallChainEntry& entry = callchain_entries_.back();
+    entry.ip = report_entry.ip;
+    if (report_entry.dso_name != nullptr) {
+      entry.symbol.dso_name = report_entry.dso_name;
+    } else {
+      entry.symbol.dso_name = report_entry.dso->GetReportPath().data();
     }
-
-    callchain_entries_.push_back(entry);
+    entry.symbol.vaddr_in_file = report_entry.vaddr_in_file;
+    entry.symbol.symbol_name = report_entry.symbol->DemangledName();
+    entry.symbol.symbol_addr = report_entry.symbol->addr;
+    entry.symbol.symbol_len = report_entry.symbol->len;
+    entry.symbol.mapping = AddMapping(*report_entry.map);
   }
   current_sample_.ip = callchain_entries_[0].ip;
   current_symbol_ = &(callchain_entries_[0].symbol);
