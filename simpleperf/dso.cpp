@@ -382,7 +382,7 @@ void Dso::AddUnknownSymbol(uint64_t vaddr_in_dso, const std::string& name) {
   unknown_symbols_.insert(std::make_pair(vaddr_in_dso, Symbol(name, vaddr_in_dso, 1)));
 }
 
-bool Dso::IsForJavaMethod() {
+bool Dso::IsForJavaMethod() const {
   if (type_ == DSO_DEX_FILE) {
     return true;
   }
