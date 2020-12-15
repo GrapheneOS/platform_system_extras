@@ -331,6 +331,7 @@ class ElfFileImpl<llvm::object::ELFObjectFile<ELFT>> : public ElfFile {
       segments[i].file_size = phdr.p_filesz;
       segments[i].is_executable =
           (phdr.p_type == llvm::ELF::PT_LOAD) && (phdr.p_flags & llvm::ELF::PF_X);
+      segments[i].is_load = (phdr.p_type == llvm::ELF::PT_LOAD);
     }
     return segments;
   }

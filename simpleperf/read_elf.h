@@ -66,6 +66,7 @@ struct ElfSegment {
   uint64_t file_offset = 0;
   uint64_t file_size = 0;
   bool is_executable = false;
+  bool is_load = false;
 };
 
 struct ElfSection {
