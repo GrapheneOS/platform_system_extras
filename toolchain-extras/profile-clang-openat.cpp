@@ -49,7 +49,7 @@ __attribute__((weak)) int __wrap_open(const char* pathname, int flags, ...) {
   va_end(args);
 
   int ret = __real_open(pathname, flags, mode);
-  if (is_coverage_trace(pathname)) fchmod(ret, mode);
+  if (ret != -1 && is_coverage_trace(pathname)) fchmod(ret, mode);
   return ret;
 }
 }
