@@ -393,8 +393,23 @@ class InjectCommand : public Command {
       dso_v.emplace_back(p.first);
     }
     std::sort(dso_v.begin(), dso_v.end(), [](Dso* d1, Dso* d2) { return d1->Path() < d2->Path(); });
+    if (dso_v.size() > 1) {
+      fprintf(output_fp_.get(),
+              "// Please split this file. AutoFDO only accepts profile for one binary.\n");
+    }
     for (auto dso : dso_v) {
       const AutoFDOBinaryInfo& binary = autofdo_binary_map_[dso];
+      // AutoFDO text format needs file_offsets instead of virtual addrs in a binary. And it uses
+      // below formula: vaddr = file_offset + GetFirstLoadSegmentVaddr().
+      uint64_t first_load_segment_addr = GetFirstLoadSegmentVaddr(dso);
+
+      auto to_offset = [&](uint64_t vaddr) -> uint64_t {
+        if (vaddr == 0) {
+          return 0;
+        }
+        CHECK_GE(vaddr, first_load_segment_addr);
+        return vaddr - first_load_segment_addr;
+      };
 
       // Write range_count_map.
       std::map<AddrPair, uint64_t> range_count_map(binary.range_count_map.begin(),
@@ -404,8 +419,8 @@ class InjectCommand : public Command {
         const AddrPair& addr_range = pair2.first;
         uint64_t count = pair2.second;
 
-        fprintf(output_fp_.get(), "%" PRIx64 "-%" PRIx64 ":%" PRIu64 "\n", addr_range.first,
-                addr_range.second, count);
+        fprintf(output_fp_.get(), "%" PRIx64 "-%" PRIx64 ":%" PRIu64 "\n",
+                to_offset(addr_range.first), to_offset(addr_range.second), count);
       }
 
       // Write addr_count_map.
@@ -419,13 +434,25 @@ class InjectCommand : public Command {
         const AddrPair& branch = pair2.first;
         uint64_t count = pair2.second;
 
-        fprintf(output_fp_.get(), "%" PRIx64 "->%" PRIx64 ":%" PRIu64 "\n", branch.first,
-                branch.second, count);
+        fprintf(output_fp_.get(), "%" PRIx64 "->%" PRIx64 ":%" PRIu64 "\n", to_offset(branch.first),
+                to_offset(branch.second), count);
       }
 
       // Write the binary path in comment.
       fprintf(output_fp_.get(), "// %s\n\n", dso->Path().c_str());
     }
+  }
+
+  uint64_t GetFirstLoadSegmentVaddr(Dso* dso) {
+    ElfStatus status;
+    if (auto elf = ElfFile::Open(dso->GetDebugFilePath(), &status); elf) {
+      for (const auto& segment : elf->GetProgramHeader()) {
+        if (segment.is_load) {
+          return segment.vaddr;
+        }
+      }
+    }
+    return 0;
   }
 
   bool PostProcessBranchList() {
