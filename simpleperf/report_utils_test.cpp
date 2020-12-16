@@ -29,13 +29,22 @@ class CallChainReportBuilderTest : public testing::Test {
  protected:
   virtual void SetUp() {
     // To test different options for CallChainReportBuilder, we create a fake thread, add fake
-    // libraries used by the thread, and provide fake symbols in each library. We need three
-    // types of libraries: interpreter, jit cache and dex file.
+    // libraries used by the thread, and provide fake symbols in each library. We need four
+    // types of libraries: native, interpreter, jit cache and dex file.
     thread_tree.SetThreadName(1, 1, "thread1");
     thread = thread_tree.FindThread(1);
 
-    // Add symbol info for the interpreter library.
+    // Add symbol info for the native library.
     FileFeature file;
+    file.path = fake_native_lib_path;
+    file.type = DSO_ELF_FILE;
+    file.min_vaddr = file.file_offset_of_min_vaddr = 0;
+    file.symbols = {
+        Symbol("native_func1", 0x0, 0x100),
+    };
+    thread_tree.AddDsoInfo(file);
+
+    // Add symbol info for the interpreter library.
     file.path = fake_interpreter_path;
     file.type = DSO_ELF_FILE;
     file.min_vaddr = file.file_offset_of_min_vaddr = 0;
@@ -66,9 +75,11 @@ class CallChainReportBuilderTest : public testing::Test {
     thread_tree.AddDsoInfo(file);
 
     // Add map layout for libraries used in the thread:
+    // 0x0000 - 0x1000 is mapped to the native library.
     // 0x1000 - 0x2000 is mapped to the interpreter library.
     // 0x2000 - 0x3000 is mapped to the dex file.
     // 0x3000 - 0x4000 is mapped to the jit cache.
+    thread_tree.AddThreadMap(1, 1, 0x0, 0x1000, 0x0, fake_native_lib_path);
     thread_tree.AddThreadMap(1, 1, 0x1000, 0x1000, 0x0, fake_interpreter_path);
     thread_tree.AddThreadMap(1, 1, 0x2000, 0x1000, 0x0, fake_dex_file_path);
     thread_tree.AddThreadMap(1, 1, 0x3000, 0x1000, 0x0, fake_jit_cache_path,
@@ -77,6 +88,7 @@ class CallChainReportBuilderTest : public testing::Test {
 
   ThreadTree thread_tree;
   const ThreadEntry* thread;
+  const std::string fake_native_lib_path = "fake_dir/fake_native_lib.so";
   const std::string fake_interpreter_path = "fake_dir/libart.so";
   const std::string fake_dex_file_path = "fake_dir/framework.jar";
   const std::string fake_jit_cache_path = "fake_jit_app_cache:0";
@@ -104,10 +116,12 @@ TEST_F(CallChainReportBuilderTest, default_option) {
   ASSERT_STREQ(entries[0].symbol->Name(), "java_method1");
   ASSERT_EQ(entries[0].dso->Path(), fake_dex_file_path);
   ASSERT_EQ(entries[0].vaddr_in_file, 0);
+  ASSERT_EQ(entries[0].execution_type, CallChainExecutionType::INTERPRETED_JVM_METHOD);
   ASSERT_EQ(entries[1].ip, 0x3000);
   ASSERT_STREQ(entries[1].symbol->Name(), "java_method2");
   ASSERT_EQ(entries[1].dso->Path(), fake_dex_file_path);
   ASSERT_EQ(entries[1].vaddr_in_file, 0x100);
+  ASSERT_EQ(entries[1].execution_type, CallChainExecutionType::JIT_JVM_METHOD);
 }
 
 TEST_F(CallChainReportBuilderTest, not_convert_jit_frame) {
@@ -122,10 +136,12 @@ TEST_F(CallChainReportBuilderTest, not_convert_jit_frame) {
   ASSERT_STREQ(entries[0].symbol->Name(), "java_method1");
   ASSERT_EQ(entries[0].dso->Path(), fake_dex_file_path);
   ASSERT_EQ(entries[0].vaddr_in_file, 0);
+  ASSERT_EQ(entries[0].execution_type, CallChainExecutionType::INTERPRETED_JVM_METHOD);
   ASSERT_EQ(entries[1].ip, 0x3000);
   ASSERT_STREQ(entries[1].symbol->Name(), "java_method2");
   ASSERT_EQ(entries[1].dso->Path(), fake_jit_cache_path);
   ASSERT_EQ(entries[1].vaddr_in_file, 0x3000);
+  ASSERT_EQ(entries[1].execution_type, CallChainExecutionType::JIT_JVM_METHOD);
 }
 
 TEST_F(CallChainReportBuilderTest, not_remove_art_frame) {
@@ -141,19 +157,23 @@ TEST_F(CallChainReportBuilderTest, not_remove_art_frame) {
     ASSERT_STREQ(entries[i].symbol->Name(), "art_func1");
     ASSERT_EQ(entries[i].dso->Path(), fake_interpreter_path);
     ASSERT_EQ(entries[i].vaddr_in_file, 0);
+    ASSERT_EQ(entries[i].execution_type, CallChainExecutionType::ART_METHOD);
     ASSERT_EQ(entries[i + 1].ip, 0x1100);
     ASSERT_STREQ(entries[i + 1].symbol->Name(), "art_func2");
     ASSERT_EQ(entries[i + 1].dso->Path(), fake_interpreter_path);
     ASSERT_EQ(entries[i + 1].vaddr_in_file, 0x100);
+    ASSERT_EQ(entries[i + 1].execution_type, CallChainExecutionType::ART_METHOD);
   }
   ASSERT_EQ(entries[2].ip, 0x2000);
   ASSERT_STREQ(entries[2].symbol->Name(), "java_method1");
   ASSERT_EQ(entries[2].dso->Path(), fake_dex_file_path);
   ASSERT_EQ(entries[2].vaddr_in_file, 0);
+  ASSERT_EQ(entries[2].execution_type, CallChainExecutionType::INTERPRETED_JVM_METHOD);
   ASSERT_EQ(entries[5].ip, 0x3000);
   ASSERT_STREQ(entries[5].symbol->Name(), "java_method2");
   ASSERT_EQ(entries[5].dso->Path(), fake_dex_file_path);
   ASSERT_EQ(entries[5].vaddr_in_file, 0x100);
+  ASSERT_EQ(entries[5].execution_type, CallChainExecutionType::JIT_JVM_METHOD);
 }
 
 TEST_F(CallChainReportBuilderTest, remove_jit_frame_called_by_dex_frame) {
@@ -173,4 +193,40 @@ TEST_F(CallChainReportBuilderTest, remove_jit_frame_called_by_dex_frame) {
   ASSERT_STREQ(entries[0].symbol->Name(), "java_method2");
   ASSERT_EQ(entries[0].dso->Path(), fake_dex_file_path);
   ASSERT_EQ(entries[0].vaddr_in_file, 0x100);
+  ASSERT_EQ(entries[0].execution_type, CallChainExecutionType::INTERPRETED_JVM_METHOD);
+}
+
+TEST_F(CallChainReportBuilderTest, remove_art_frame_only_near_jvm_method) {
+  // Test option: remove_art_frame = true, convert_jit_frame = true.
+  // The callchain should not remove ART symbols not near a JVM method.
+  std::vector<uint64_t> fake_ips = {
+      0x1000,  // art_func1
+      0x0,     // native_func1
+      0x2000,  // java_method1 in dex file
+      0x0,     // native_func1
+      0x1000,  // art_func1
+  };
+  CallChainReportBuilder builder(thread_tree);
+  std::vector<CallChainReportEntry> entries = builder.Build(thread, fake_ips, 0);
+  ASSERT_EQ(entries.size(), 5);
+  for (size_t i : {0, 4}) {
+    ASSERT_EQ(entries[i].ip, 0x1000);
+    ASSERT_STREQ(entries[i].symbol->Name(), "art_func1");
+    ASSERT_EQ(entries[i].dso->Path(), fake_interpreter_path);
+    ASSERT_EQ(entries[i].vaddr_in_file, 0);
+    ASSERT_EQ(entries[i].execution_type, CallChainExecutionType::NATIVE_METHOD);
+  }
+  for (size_t i : {1, 3}) {
+    ASSERT_EQ(entries[i].ip, 0x0);
+    ASSERT_STREQ(entries[i].symbol->Name(), "native_func1");
+    ASSERT_EQ(entries[i].dso->Path(), fake_native_lib_path);
+    ASSERT_EQ(entries[i].vaddr_in_file, 0);
+    ASSERT_EQ(entries[i].execution_type, CallChainExecutionType::NATIVE_METHOD);
+  }
+
+  ASSERT_EQ(entries[2].ip, 0x2000);
+  ASSERT_STREQ(entries[2].symbol->Name(), "java_method1");
+  ASSERT_EQ(entries[2].dso->Path(), fake_dex_file_path);
+  ASSERT_EQ(entries[2].vaddr_in_file, 0x0);
+  ASSERT_EQ(entries[2].execution_type, CallChainExecutionType::INTERPRETED_JVM_METHOD);
 }
