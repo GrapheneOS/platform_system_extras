@@ -352,9 +352,16 @@ class AppProfiler(ProfilerBase):
 class NativeProgramProfiler(ProfilerBase):
     """Profile a native program."""
     def start(self):
-        pid = int(self.adb.check_run_and_return_output(['shell', 'pidof',
-                                                        self.args.native_program]))
-        self.start_profiling(['-p', str(pid)])
+      log_info('Waiting for native process %s' % self.args.native_program)
+      while True:
+        (result, pid) = self.adb.run_and_return_output(['shell', 'pidof',
+                                                      self.args.native_program])
+        if not result:
+          # Wait for 1 millisecond.
+          time.sleep(0.001)
+        else:
+          self.start_profiling(['-p', str(int(pid))])
+          break
 
 
 class NativeCommandProfiler(ProfilerBase):
