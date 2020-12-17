@@ -33,6 +33,17 @@ message Sample {
     // If the function name is found, it is a valid index in the symbol table
     // of File with 'id' field being file_id, otherwise it is -1.
     optional int32 symbol_id = 3;
+
+    enum ExecutionType {
+      // methods belong to native libraries, AOT compiled JVM code and ART methods not used near
+      // JVM methods
+      NATIVE_METHOD = 0;
+      INTERPRETED_JVM_METHOD = 1;
+      JIT_JVM_METHOD = 2;
+      // ART methods used near JVM methods. It's shown only when --show-art-frames is used.
+      ART_METHOD = 3;
+    }
+    optional ExecutionType execution_type = 4 [default = NATIVE_METHOD];
   }
 
   repeated CallChainEntry callchain = 3;

@@ -143,6 +143,23 @@ TEST(cmd_report_sample, show_art_frames_option) {
   ASSERT_NE(data.find("artMterpAsmInstructionStart"), std::string::npos);
 }
 
+TEST(cmd_report_sample, show_execution_type_option) {
+  std::string data;
+  GetProtobufReport("perf_display_bitmaps.data", &data,
+                    {"--show-callchain", "--show-execution-type"});
+  ASSERT_NE(data.find("execution_type: interpreted_jvm_method"), std::string::npos);
+  // We convert JIT frames to map to dex files. So there is no file named jit_app_cache in the
+  // report. But the execution type of a JIT frame isn't changed.
+  ASSERT_EQ(data.find("jit_app_cache"), std::string::npos);
+  ASSERT_NE(data.find("execution_type: jit_jvm_method"), std::string::npos);
+  // art_method is shown only when --show-art-frames is used.
+  ASSERT_EQ(data.find("execution_type: art_method"), std::string::npos);
+
+  GetProtobufReport("perf_display_bitmaps.data", &data,
+                    {"--show-callchain", "--show-execution-type", "--show-art-frames"});
+  ASSERT_NE(data.find("execution_type: art_method"), std::string::npos);
+}
+
 TEST(cmd_report_sample, show_symbols_before_and_after_demangle) {
   std::string data;
   GetProtobufReport(PERF_DATA_WITH_INTERPRETER_FRAMES, &data, {"--show-callchain"});
