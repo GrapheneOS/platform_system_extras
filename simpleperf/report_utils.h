@@ -25,6 +25,14 @@
 
 namespace simpleperf {
 
+enum class CallChainExecutionType {
+  NATIVE_METHOD,
+  INTERPRETED_JVM_METHOD,
+  JIT_JVM_METHOD,
+  // ART methods near interpreted/JIT JVM methods. They're shown only when RemoveArtFrame = false.
+  ART_METHOD,
+};
+
 struct CallChainReportEntry {
   uint64_t ip = 0;
   const Symbol* symbol = nullptr;
@@ -32,6 +40,7 @@ struct CallChainReportEntry {
   const char* dso_name = nullptr;
   uint64_t vaddr_in_file = 0;
   const MapEntry* map = nullptr;
+  CallChainExecutionType execution_type = CallChainExecutionType::NATIVE_METHOD;
 };
 
 class CallChainReportBuilder {
@@ -53,6 +62,7 @@ class CallChainReportBuilder {
     JavaMethod(Dso* dso, const Symbol* symbol) : dso(dso), symbol(symbol) {}
   };
 
+  void MarkArtFrame(std::vector<CallChainReportEntry>& callchain);
   void ConvertJITFrame(std::vector<CallChainReportEntry>& callchain);
   void CollectJavaMethods();
 
