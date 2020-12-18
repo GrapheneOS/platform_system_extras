@@ -44,6 +44,7 @@ static void KmemReportRawFile(const std::string& perf_data,
                               ReportResult* result) {
   result->success = false;
   TemporaryFile tmp_file;
+  close(tmp_file.release());
   std::vector<std::string> args = {"report", "-i", perf_data, "-o", tmp_file.path};
   args.insert(args.end(), additional_args.begin(), additional_args.end());
   ASSERT_TRUE(KmemCmd()->Run(args));
@@ -76,6 +77,7 @@ static bool RunKmemRecordCmd(std::vector<std::string> v, const char* output_file
     out_file = output_file;
   } else {
     tmpfile.reset(new TemporaryFile);
+    close(tmpfile->release());
     out_file = tmpfile->path;
   }
   v.insert(v.begin(), "record");
