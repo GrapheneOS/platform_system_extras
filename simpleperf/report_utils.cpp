@@ -22,7 +22,7 @@
 
 namespace simpleperf {
 
-static bool IsInterpreterDso(const Dso* dso) {
+static bool IsArtDso(const Dso* dso) {
   return android::base::EndsWith(dso->Path(), "/libart.so") ||
          android::base::EndsWith(dso->Path(), "/libartd.so");
 };
@@ -32,23 +32,15 @@ std::vector<CallChainReportEntry> CallChainReportBuilder::Build(const ThreadEntr
                                                                 size_t kernel_ip_count) {
   std::vector<CallChainReportEntry> result;
   result.reserve(ips.size());
-  bool near_java_method = false;
   for (size_t i = 0; i < ips.size(); i++) {
     const MapEntry* map = thread_tree_.FindMap(thread, ips[i], i < kernel_ip_count);
     Dso* dso = map->dso;
-    if (remove_art_frame_) {
-      // Remove interpreter frames both before and after a Java frame.
-      if (dso->IsForJavaMethod()) {
-        near_java_method = true;
-        while (!result.empty() && IsInterpreterDso(result.back().dso)) {
-          result.pop_back();
-        }
-      } else if (IsInterpreterDso(dso)) {
-        if (near_java_method) {
-          continue;
-        }
+    CallChainExecutionType execution_type = CallChainExecutionType::NATIVE_METHOD;
+    if (dso->IsForJavaMethod()) {
+      if (dso->type() == DSO_DEX_FILE) {
+        execution_type = CallChainExecutionType::INTERPRETED_JVM_METHOD;
       } else {
-        near_java_method = false;
+        execution_type = CallChainExecutionType::JIT_JVM_METHOD;
       }
     }
     uint64_t vaddr_in_file;
@@ -60,11 +52,43 @@ std::vector<CallChainReportEntry> CallChainReportBuilder::Build(const ThreadEntr
     entry.dso = dso;
     entry.vaddr_in_file = vaddr_in_file;
     entry.map = map;
+    entry.execution_type = execution_type;
+  }
+  MarkArtFrame(result);
+  if (remove_art_frame_) {
+    auto it = std::remove_if(result.begin(), result.end(), [](const CallChainReportEntry& entry) {
+      return entry.execution_type == CallChainExecutionType::ART_METHOD;
+    });
+    result.erase(it, result.end());
   }
   if (convert_jit_frame_) {
     ConvertJITFrame(result);
   }
   return result;
+}
+
+void CallChainReportBuilder::MarkArtFrame(std::vector<CallChainReportEntry>& callchain) {
+  // Mark art methods before or after a JVM method.
+  bool near_java_method = false;
+  for (size_t i = 0; i < callchain.size(); ++i) {
+    auto& entry = callchain[i];
+    if (entry.execution_type == CallChainExecutionType::INTERPRETED_JVM_METHOD ||
+        entry.execution_type == CallChainExecutionType::JIT_JVM_METHOD) {
+      near_java_method = true;
+
+      // Mark art frames before this entry.
+      for (int j = static_cast<int>(i) - 1; j >= 0; j--) {
+        if (!IsArtDso(callchain[j].dso)) {
+          break;
+        }
+        callchain[j].execution_type = CallChainExecutionType::ART_METHOD;
+      }
+    } else if (near_java_method && IsArtDso(entry.dso)) {
+      entry.execution_type = CallChainExecutionType::ART_METHOD;
+    } else {
+      near_java_method = false;
+    }
+  }
 }
 
 void CallChainReportBuilder::ConvertJITFrame(std::vector<CallChainReportEntry>& callchain) {

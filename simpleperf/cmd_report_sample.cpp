@@ -64,6 +64,37 @@ class ProtobufFileReader : public google::protobuf::io::CopyingInputStream {
   FILE* in_fp_;
 };
 
+static proto::Sample_CallChainEntry_ExecutionType ToProtoExecutionType(
+    CallChainExecutionType type) {
+  switch (type) {
+    case CallChainExecutionType::NATIVE_METHOD:
+      return proto::Sample_CallChainEntry_ExecutionType_NATIVE_METHOD;
+    case CallChainExecutionType::INTERPRETED_JVM_METHOD:
+      return proto::Sample_CallChainEntry_ExecutionType_INTERPRETED_JVM_METHOD;
+    case CallChainExecutionType::JIT_JVM_METHOD:
+      return proto::Sample_CallChainEntry_ExecutionType_JIT_JVM_METHOD;
+    case CallChainExecutionType::ART_METHOD:
+      return proto::Sample_CallChainEntry_ExecutionType_ART_METHOD;
+  }
+  CHECK(false) << "unexpected execution type";
+  return proto::Sample_CallChainEntry_ExecutionType_NATIVE_METHOD;
+}
+
+static const char* ProtoExecutionTypeToString(proto::Sample_CallChainEntry_ExecutionType type) {
+  switch (type) {
+    case proto::Sample_CallChainEntry_ExecutionType_NATIVE_METHOD:
+      return "native_method";
+    case proto::Sample_CallChainEntry_ExecutionType_INTERPRETED_JVM_METHOD:
+      return "interpreted_jvm_method";
+    case proto::Sample_CallChainEntry_ExecutionType_JIT_JVM_METHOD:
+      return "jit_jvm_method";
+    case proto::Sample_CallChainEntry_ExecutionType_ART_METHOD:
+      return "art_method";
+  }
+  CHECK(false) << "unexpected execution type: " << type;
+  return "";
+}
+
 class ReportSampleCommand : public Command {
  public:
   ReportSampleCommand()
@@ -83,6 +114,7 @@ class ReportSampleCommand : public Command {
 "--remove-unknown-kernel-symbols  Remove kernel callchains when kernel symbols\n"
 "                                 are not available in perf.data.\n"
 "--show-art-frames  Show frames of internal methods in the ART Java interpreter.\n"
+"--show-execution-type  Show execution type of a method\n"
 "--symdir <dir>     Look for files with symbols in a directory recursively.\n"
                 // clang-format on
                 ),
@@ -133,6 +165,7 @@ class ReportSampleCommand : public Command {
   std::vector<std::string> event_types_;
   bool remove_unknown_kernel_symbols_;
   bool kernel_symbols_available_;
+  bool show_execution_type_ = false;
   CallChainReportBuilder callchain_report_builder_;
   // map from <pid, tid> to thread name
   std::map<uint64_t, const char*> thread_names_;
@@ -249,6 +282,8 @@ bool ReportSampleCommand::ParseOptions(const std::vector<std::string>& args) {
       remove_unknown_kernel_symbols_ = true;
     } else if (args[i] == "--show-art-frames") {
       callchain_report_builder_.SetRemoveArtFrame(false);
+    } else if (args[i] == "--show-execution-type") {
+      show_execution_type_ = true;
     } else if (args[i] == "--symdir") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -341,6 +376,10 @@ bool ReportSampleCommand::DumpProtobufReport(const std::string& filename) {
         if (symbol_id != -1) {
           max_symbol_id_map[callchain.file_id()] =
               std::max(max_symbol_id_map[callchain.file_id()], symbol_id);
+        }
+        if (callchain.has_execution_type()) {
+          FprintIndented(report_fp_, 2, "execution_type: %s\n",
+                         ProtoExecutionTypeToString(callchain.execution_type()));
         }
       }
     } else if (proto_record.has_lost()) {
@@ -513,6 +552,9 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(
     callchain->set_vaddr_in_file(node.vaddr_in_file);
     callchain->set_file_id(file_id);
     callchain->set_symbol_id(symbol_id);
+    if (show_execution_type_) {
+      callchain->set_execution_type(ToProtoExecutionType(node.execution_type));
+    }
 
     // Android studio wants a clear call chain end to notify whether a call chain is complete.
     // For the main thread, the call chain ends at __libc_init in libc.so. For other threads,
@@ -616,6 +658,10 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r,
   FprintIndented(report_fp_, 1, "vaddr_in_file: %" PRIx64 "\n", entries[0].vaddr_in_file);
   FprintIndented(report_fp_, 1, "file: %s\n", entries[0].dso->GetReportPath().data());
   FprintIndented(report_fp_, 1, "symbol: %s\n", entries[0].symbol->DemangledName());
+  if (show_execution_type_) {
+    FprintIndented(report_fp_, 1, "execution_type: %s\n",
+                   ProtoExecutionTypeToString(ToProtoExecutionType(entries[0].execution_type)));
+  }
 
   if (entries.size() > 1u) {
     FprintIndented(report_fp_, 1, "callchain:\n");
@@ -623,6 +669,10 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r,
       FprintIndented(report_fp_, 2, "vaddr_in_file: %" PRIx64 "\n", entries[i].vaddr_in_file);
       FprintIndented(report_fp_, 2, "file: %s\n", entries[i].dso->GetReportPath().data());
       FprintIndented(report_fp_, 2, "symbol: %s\n", entries[i].symbol->DemangledName());
+      if (show_execution_type_) {
+        FprintIndented(report_fp_, 1, "execution_type: %s\n",
+                       ProtoExecutionTypeToString(ToProtoExecutionType(entries[i].execution_type)));
+      }
     }
   }
   return true;
