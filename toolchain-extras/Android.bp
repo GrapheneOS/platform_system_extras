@@ -13,6 +13,7 @@ cc_library_static {
 
     native_bridge_supported: true,
     vendor_available: true,
+    product_available: true,
     vndk: {
         enabled: true,
     },
@@ -30,6 +31,7 @@ cc_library_static {
     defaults: ["libprofile-defaults"],
     native_bridge_supported: true,
     vendor_available: true,
+    product_available: true,
     vndk: {
         enabled: true,
     },
@@ -52,6 +54,7 @@ cc_library_static {
 
     native_bridge_supported: true,
     vendor_available: true,
+    product_available: true,
     vndk: {
         enabled: true,
     },
@@ -69,6 +72,7 @@ cc_library_static {
     defaults: ["libprofile-clang-defaults"],
     native_bridge_supported: true,
     vendor_available: true,
+    product_available: true,
     vndk: {
         enabled: true,
     },
