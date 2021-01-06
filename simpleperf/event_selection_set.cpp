@@ -64,6 +64,11 @@ bool IsDwarfCallChainSamplingSupported() {
 }
 
 bool IsDumpingRegsForTracepointEventsSupported() {
+  if (auto version = GetKernelVersion(); version && version.value() >= std::make_pair(4, 2)) {
+    // Kernel >= 4.2 has patch "5b09a094f2 arm64: perf: Fix callchain parse error with kernel
+    // tracepoint events". So no need to test.
+    return true;
+  }
   const EventType* event_type = FindEventTypeByName("sched:sched_switch", false);
   if (event_type == nullptr) {
     return false;
@@ -93,16 +98,20 @@ bool IsDumpingRegsForTracepointEventsSupported() {
   done = true;
   thread.join();
 
-  std::vector<char> buffer = event_fd->GetAvailableMmapData();
-  std::vector<std::unique_ptr<Record>> records =
-      ReadRecordsFromBuffer(attr, buffer.data(), buffer.size());
-  for (auto& r : records) {
-    if (r->type() == PERF_RECORD_SAMPLE) {
-      auto& record = *static_cast<SampleRecord*>(r.get());
-      if (record.ip_data.ip != 0) {
-        return true;
+  // There are small chances that we don't see samples immediately after joining the thread on
+  // cuttlefish, probably due to data synchronization between cpus. To avoid flaky tests, use a
+  // loop to wait for samples.
+  for (int timeout = 0; timeout < 1000; timeout++) {
+    std::vector<char> buffer = event_fd->GetAvailableMmapData();
+    std::vector<std::unique_ptr<Record>> records =
+        ReadRecordsFromBuffer(attr, buffer.data(), buffer.size());
+    for (auto& r : records) {
+      if (r->type() == PERF_RECORD_SAMPLE) {
+        auto& record = *static_cast<SampleRecord*>(r.get());
+        return record.ip_data.ip != 0;
       }
     }
+    usleep(1);
   }
   return false;
 }
@@ -514,15 +523,11 @@ bool EventSelectionSet::SetTracepointFilter(const std::string& filter) {
   }
 
   // 2. Check the format of the filter.
-  int kernel_major;
-  int kernel_minor;
   bool use_quote = false;
   // Quotes are needed for string operands in kernel >= 4.19, probably after patch "tracing: Rewrite
   // filter logic to be simpler and faster".
-  if (GetKernelVersion(&kernel_major, &kernel_minor)) {
-    if (kernel_major >= 5 || (kernel_major == 4 && kernel_minor >= 19)) {
-      use_quote = true;
-    }
+  if (auto version = GetKernelVersion(); version && version.value() >= std::make_pair(4, 19)) {
+    use_quote = true;
   }
 
   FieldNameSet used_fields;
