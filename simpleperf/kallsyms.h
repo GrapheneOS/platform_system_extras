@@ -35,6 +35,8 @@ struct KernelSymbol {
 bool ProcessKernelSymbols(std::string& symbol_data,
                           const std::function<bool(const KernelSymbol&)>& callback);
 
+#if defined(__linux__)
+
 // Returns the list of currently loaded kernel modules.
 std::vector<KernelMmap> GetLoadedModules();
 
@@ -50,6 +52,8 @@ uint64_t GetKernelStartAddress();
 // security.lower_kptr_restrict. For this scenario, the use_property
 // argument should be set to true.
 bool LoadKernelSymbols(std::string* kallsyms, bool use_property = false);
+
+#endif  // defined(__linux__)
 
 }  // namespace simpleperf
 
