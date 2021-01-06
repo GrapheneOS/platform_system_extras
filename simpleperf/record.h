@@ -437,7 +437,7 @@ struct BuildIdRecord : public Record {
 
   explicit BuildIdRecord(char* p);
 
-  BuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id, const std::string& filename);
+  BuildIdRecord(bool in_kernel, uint32_t pid, const BuildId& build_id, const std::string& filename);
 
  protected:
   void DumpData(size_t indent) const override;

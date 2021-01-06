@@ -642,10 +642,10 @@ class KernelDso : public Dso {
       ReadSymbolsFromDebugFile(&symbols);
     }
 
-#if defined(__linux__)
     if (symbols.empty() && !kallsyms_.empty()) {
       ReadSymbolsFromKallsyms(kallsyms_, &symbols);
     }
+#if defined(__linux__)
     if (symbols.empty()) {
       ReadSymbolsFromProc(&symbols);
     }
@@ -682,7 +682,6 @@ class KernelDso : public Dso {
     ReportReadElfSymbolResult(status, path_, debug_file_path_);
   }
 
-#if defined(__linux__)
   void ReadSymbolsFromKallsyms(std::string& kallsyms, std::vector<Symbol>* symbols) {
     auto symbol_callback = [&](const KernelSymbol& symbol) {
       if (strchr("TtWw", symbol.type) && symbol.addr != 0u) {
@@ -702,6 +701,7 @@ class KernelDso : public Dso {
     }
   }
 
+#if defined(__linux__)
   void ReadSymbolsFromProc(std::vector<Symbol>* symbols) {
     BuildId build_id = GetExpectedBuildId();
     if (!build_id.IsEmpty()) {
