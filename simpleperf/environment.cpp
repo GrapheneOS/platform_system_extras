@@ -893,10 +893,13 @@ const char* GetTraceFsDir() {
   return tracefs_dir;
 }
 
-bool GetKernelVersion(int* major, int* minor) {
+std::optional<std::pair<int, int>> GetKernelVersion() {
   utsname uname_buf;
-  if (TEMP_FAILURE_RETRY(uname(&uname_buf)) != 0) {
-    return false;
+  int major;
+  int minor;
+  if (TEMP_FAILURE_RETRY(uname(&uname_buf)) != 0 ||
+      sscanf(uname_buf.release, "%d.%d", &major, &minor) != 2) {
+    return std::nullopt;
   }
-  return sscanf(uname_buf.release, "%d.%d", major, minor) == 2;
+  return std::make_pair(major, minor);
 }
