@@ -27,6 +27,7 @@
 #include "event_type.h"
 #include "record.h"
 #include "record_file.h"
+#include "utils.h"
 
 #include "record_equal_test.h"
 
@@ -35,6 +36,8 @@ using namespace simpleperf::PerfFileFormat;
 
 class RecordFileTest : public ::testing::Test {
  protected:
+  void SetUp() override { close(tmpfile_.release()); }
+
   void AddEventType(const std::string& event_type_str) {
     std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType(event_type_str);
     ASSERT_TRUE(event_type_modifier != nullptr);

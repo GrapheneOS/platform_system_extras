@@ -35,6 +35,7 @@ static std::unique_ptr<Command> MergeCmd() {
 
 static std::string GetReport(const std::string& record_file) {
   TemporaryFile tmpfile;
+  close(tmpfile.release());
   if (!CreateCommandInstance("report")->Run({"-i", record_file, "-g", "-o", tmpfile.path})) {
     return "";
   }
@@ -53,6 +54,7 @@ TEST(merge_cmd, input_output_options) {
   ASSERT_FALSE(MergeCmd()->Run({"-i", input_file}));
   // missing output file
   TemporaryFile tmpfile;
+  close(tmpfile.release());
   ASSERT_FALSE(MergeCmd()->Run({"-o", tmpfile.path}));
   ASSERT_TRUE(MergeCmd()->Run({"-i", input_file, "-o", tmpfile.path}));
   // input files separated by comma
@@ -78,6 +80,7 @@ TEST(merge_cmd, merge_two_files) {
   ASSERT_NE(report.find("toybox_main"), std::string::npos);
 
   TemporaryFile tmpfile;
+  close(tmpfile.release());
   ASSERT_TRUE(MergeCmd()->Run({"-i", input_file1 + "," + input_file2, "-o", tmpfile.path}));
   report = GetReport(tmpfile.path);
   // sum of sample counts in input files
