@@ -900,16 +900,17 @@ void BuildIdRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "filename %s\n", filename);
 }
 
-BuildIdRecord::BuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id,
+BuildIdRecord::BuildIdRecord(bool in_kernel, uint32_t pid, const BuildId& build_id,
                              const std::string& filename) {
   SetTypeAndMisc(PERF_RECORD_BUILD_ID, in_kernel ? PERF_RECORD_MISC_KERNEL : PERF_RECORD_MISC_USER);
   this->pid = pid;
   this->build_id = build_id;
-  SetSize(header_size() + sizeof(pid) + Align(build_id.Size(), 8) + Align(filename.size() + 1, 64));
+  SetSize(header_size() + sizeof(this->pid) + Align(build_id.Size(), 8) +
+          Align(filename.size() + 1, 64));
   char* new_binary = new char[size()];
   char* p = new_binary;
   MoveToBinaryFormat(header, p);
-  MoveToBinaryFormat(pid, p);
+  MoveToBinaryFormat(this->pid, p);
   memcpy(p, build_id.Data(), build_id.Size());
   p += Align(build_id.Size(), 8);
   this->filename = p;
