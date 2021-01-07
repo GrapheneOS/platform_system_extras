@@ -100,9 +100,7 @@ TEST(environment, SetPerfEventLimits) {
 }
 
 TEST(environment, GetKernelVersion) {
-  int major;
-  int minor;
-  ASSERT_TRUE(GetKernelVersion(&major, &minor));
+  ASSERT_TRUE(GetKernelVersion());
 }
 
 TEST(environment, GetModuleBuildId) {

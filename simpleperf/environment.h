@@ -26,8 +26,10 @@
 #endif
 
 #include <functional>
+#include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <android-base/file.h>
@@ -124,7 +126,7 @@ class ScopedTempFiles {
 bool SignalIsIgnored(int signo);
 // Return 0 if no android version.
 int GetAndroidVersion();
-bool GetKernelVersion(int* major, int* minor);
+std::optional<std::pair<int, int>> GetKernelVersion();
 
 constexpr int kAndroidVersionP = 9;
 
