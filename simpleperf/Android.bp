@@ -488,6 +488,7 @@ cc_defaults {
         "dso_test.cpp",
         "gtest_main.cpp",
         "kallsyms_test.cpp",
+        "perf_regs_test.cpp",
         "read_apk_test.cpp",
         "read_elf_test.cpp",
         "read_symbol_map_test.cpp",
