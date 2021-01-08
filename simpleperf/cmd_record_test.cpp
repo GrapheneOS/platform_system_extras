@@ -29,6 +29,7 @@
 #include <android-base/properties.h>
 #endif
 
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <regex>
@@ -51,6 +52,7 @@ using android::base::Realpath;
 using android::base::StringPrintf;
 using namespace simpleperf;
 using namespace PerfFileFormat;
+namespace fs = std::filesystem;
 
 static std::unique_ptr<Command> RecordCmd() {
   return CreateCommandInstance("record");
@@ -969,6 +971,7 @@ TEST(record_cmd, exclude_perf_option) {
 }
 
 TEST(record_cmd, tp_filter_option) {
+  TEST_REQUIRE_HOST_ROOT();
   TEST_REQUIRE_TRACEPOINT_EVENTS();
   // Test string operands both with quotes and without quotes.
   for (const auto& filter :
@@ -1007,6 +1010,12 @@ TEST(record_cmd, ParseAddrFilterOption) {
   ASSERT_EQ(option_to_str("filter 0x400502-0x400527@" + path), "filter 0x502/0x25@" + path);
   ASSERT_EQ(option_to_str("start 0x400502@" + path + ",stop 0x400527@" + path),
             "start 0x502@" + path + ",stop 0x527@" + path);
+
+  // Test '-' in file path. Create a temporary file with '-' in name.
+  TemporaryDir tmpdir;
+  fs::path tmpfile = fs::path(tmpdir.path) / "elf-with-hyphen";
+  ASSERT_TRUE(fs::copy_file(path, tmpfile));
+  ASSERT_EQ(option_to_str("filter " + tmpfile.string()), "filter 0x0/0x73c@" + tmpfile.string());
 
   // Test kernel filters.
   ASSERT_EQ(option_to_str("filter 0x12345678-0x1234567a"), "filter 0x12345678/0x2");
