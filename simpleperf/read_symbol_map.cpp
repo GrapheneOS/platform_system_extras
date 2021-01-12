@@ -28,7 +28,6 @@
 #include "dso.h"
 
 namespace simpleperf {
-
 namespace {
 
 std::optional<std::string_view> ConsumeWord(std::string_view& content_ref) {

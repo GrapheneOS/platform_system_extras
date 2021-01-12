@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+namespace simpleperf {
+
 static void CheckMmapRecordDataEqual(const MmapRecord& r1, const MmapRecord& r2) {
   ASSERT_EQ(0, memcmp(r1.data, r2.data, sizeof(*r1.data)));
   ASSERT_STREQ(r1.filename, r2.filename);
@@ -96,3 +98,5 @@ static void CheckRecordEqual(const Record& r1, const Record& r2) {
                                 static_cast<const BuildIdRecord&>(r2));
   }
 }
+
+}  // namespace simpleperf

@@ -21,6 +21,8 @@
 
 #include <android-base/logging.h>
 
+namespace simpleperf {
+
 struct IOEvent {
   IOEventLoop* loop;
   event* e;
@@ -221,3 +223,5 @@ bool IOEventLoop::DelEvent(IOEventRef ref) {
   }
   return true;
 }
+
+}  // namespace simpleperf

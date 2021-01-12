@@ -50,7 +50,7 @@
 #include "utils.h"
 #include "workload.h"
 
-using namespace simpleperf;
+namespace simpleperf {
 
 std::vector<int> GetOnlineCpus() {
   std::vector<int> result;
@@ -915,3 +915,5 @@ std::optional<std::pair<int, int>> GetKernelVersion() {
   }
   return std::make_pair(major, minor);
 }
+
+}  // namespace simpleperf

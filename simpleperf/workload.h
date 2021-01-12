@@ -25,6 +25,8 @@
 
 #include <android-base/macros.h>
 
+namespace simpleperf {
+
 class Workload {
  private:
   enum WorkState {
@@ -70,5 +72,7 @@ class Workload {
 
   DISALLOW_COPY_AND_ASSIGN(Workload);
 };
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_WORKLOAD_H_

@@ -21,6 +21,8 @@
 
 #include "build_id.h"
 
+using BuildId = simpleperf::BuildId;
+
 std::string GetTestData(const std::string& filename);
 const std::string& GetTestDataDir();
 

@@ -53,12 +53,12 @@
 #include "tracing.h"
 #include "utils.h"
 
+namespace simpleperf {
+namespace {
+
 using android::base::ParseUint;
 using android::base::Realpath;
 using android::base::StringAppendF;
-using namespace simpleperf;
-
-namespace {
 
 struct SymbolInfo {
   Dso* dso;
@@ -591,8 +591,6 @@ bool MonitorCommand::UnwindRecord(SampleRecord& r) {
   return true;
 }
 }  // namespace
-
-namespace simpleperf {
 
 void RegisterMonitorCommand() {
   RegisterCommand("monitor", [] { return std::unique_ptr<Command>(new MonitorCommand()); });

@@ -20,6 +20,8 @@
 #include "get_test_data.h"
 #include "test_util.h"
 
+using namespace simpleperf;
+
 TEST(read_apk, FindElfInApkByOffset) {
   ApkInspector inspector;
   ASSERT_TRUE(inspector.FindElfInApkByOffset("/dev/null", 0) == nullptr);
