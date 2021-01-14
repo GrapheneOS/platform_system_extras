@@ -26,12 +26,12 @@
 
 #include "dso.h"
 
+namespace simpleperf {
+
 struct Record;
 
 constexpr char DEFAULT_KERNEL_MMAP_NAME[] = "[kernel.kallsyms]";
 constexpr char DEFAULT_EXECNAME_FOR_THREAD_MMAP[] = "//anon";
-
-namespace simpleperf {
 
 namespace map_flags {
 constexpr uint32_t PROT_JIT_SYMFILE_MAP = 0x4000;
@@ -169,9 +169,5 @@ class ThreadTree {
 };
 
 }  // namespace simpleperf
-
-using MapEntry = simpleperf::MapEntry;
-using ThreadEntry = simpleperf::ThreadEntry;
-using ThreadTree = simpleperf::ThreadTree;
 
 #endif  // SIMPLE_PERF_THREAD_TREE_H_

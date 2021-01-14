@@ -37,6 +37,8 @@
 #include "build_id.h"
 #include "perf_regs.h"
 
+namespace simpleperf {
+
 std::vector<int> GetOnlineCpus();
 
 struct KernelMmap {
@@ -137,5 +139,7 @@ bool MappedFileOnlyExistInMemory(const char* filename);
 std::string GetCompleteProcessName(pid_t pid);
 
 const char* GetTraceFsDir();
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_

@@ -26,6 +26,8 @@
 
 #include "read_elf.h"
 
+namespace simpleperf {
+
 // Container for info an on ELF file embedded into an APK file
 class EmbeddedElf {
  public:
@@ -86,5 +88,7 @@ std::tuple<bool, std::string, std::string> SplitUrlInApk(const std::string& path
 // or "/dev/ashmem/dalvik-classes.dex extracted in memory from /..base.apk (deleted)" on Android P.
 bool ParseExtractedInMemoryPath(const std::string& path, std::string* zip_path,
                                 std::string* entry_name);
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_READ_APK_H_

@@ -27,7 +27,7 @@
 #include "record.h"
 #include "thread_tree.h"
 
-using namespace simpleperf;
+namespace simpleperf {
 
 // A SampleTree is a collection of samples. A profiling report is mainly about
 // constructing a SampleTree and display it. There are three steps involved:
@@ -345,5 +345,7 @@ class SampleTreeDisplayer {
  private:
   SampleDisplayer<EntryT, InfoT> displayer_;
 };
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_SAMPLE_TREE_H_

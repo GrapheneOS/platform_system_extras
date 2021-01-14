@@ -36,7 +36,8 @@
 #include "utils.h"
 #include "workload.h"
 
-using namespace simpleperf;
+namespace simpleperf {
+namespace {
 
 // Cache size used by CallChainJoiner to cache call chains in memory.
 constexpr size_t DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE = 8 * 1024 * 1024;
@@ -404,7 +405,7 @@ void DebugUnwindCommand::PrintStat() {
   printf("Please use debug_unwind_reporter.py to get a report in details.\n");
 }
 
-namespace simpleperf {
+}  // namespace
 
 void RegisterDebugUnwindCommand() {
   RegisterCommand("debug-unwind",

@@ -18,6 +18,8 @@
 
 #include <gtest/gtest.h>
 
+using namespace simpleperf;
+
 TEST(RegSet, arch) {
   ArchType arch_pairs[2][2] = {
       {ARCH_X86_32, ARCH_X86_64},

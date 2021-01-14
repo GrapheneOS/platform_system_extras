@@ -36,10 +36,10 @@
 #include "tracing.h"
 #include "utils.h"
 
-using namespace simpleperf;
-using namespace simpleperf::PerfFileFormat;
-
+namespace simpleperf {
 namespace {
+
+using namespace PerfFileFormat;
 
 struct SymbolInfo {
   Dso* dso;
@@ -508,8 +508,6 @@ bool DumpRecordCommand::DumpFeatureSection() {
 }
 
 }  // namespace
-
-namespace simpleperf {
 
 void RegisterDumpRecordCommand() {
   RegisterCommand("dump", [] { return std::unique_ptr<Command>(new DumpRecordCommand); });

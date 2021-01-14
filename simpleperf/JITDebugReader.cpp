@@ -39,10 +39,10 @@
 #include "read_elf.h"
 #include "utils.h"
 
+namespace simpleperf {
+
 using android::base::StartsWith;
 using android::base::StringPrintf;
-
-namespace simpleperf {
 
 // If the size of a symfile is larger than EXPECTED_MAX_SYMFILE_SIZE, we don't want to read it
 // remotely.

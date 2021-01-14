@@ -40,6 +40,8 @@
 #include <Xz.h>
 #include <XzCrc64.h>
 
+namespace simpleperf {
+
 using android::base::ParseInt;
 using android::base::Split;
 using android::base::StringPrintf;
@@ -430,3 +432,5 @@ std::optional<std::set<pid_t>> GetTidsFromString(const std::string& s, bool chec
   }
   return tids;
 }
+
+}  // namespace simpleperf
