@@ -18,6 +18,7 @@
 
 #include <inttypes.h>
 
+#include <string_view>
 #include <vector>
 
 #include "dso.h"
@@ -31,11 +32,14 @@ enum class CallChainExecutionType {
   JIT_JVM_METHOD,
   // ART methods near interpreted/JIT JVM methods. They're shown only when RemoveArtFrame = false.
   ART_METHOD,
+  // JNI native methods implemented in libart.so
+  ART_JNI_METHOD,
 };
 
 struct CallChainReportEntry {
   uint64_t ip = 0;
   const Symbol* symbol = nullptr;
+  const char* symbol_name = nullptr;
   Dso* dso = nullptr;
   const char* dso_name = nullptr;
   uint64_t vaddr_in_file = 0;
@@ -45,13 +49,17 @@ struct CallChainReportEntry {
 
 class CallChainReportBuilder {
  public:
-  CallChainReportBuilder(ThreadTree& thread_tree) : thread_tree_(thread_tree) {}
+  CallChainReportBuilder(ThreadTree& thread_tree);
   // If true, remove interpreter frames both before and after a Java frame.
   // Default is true.
   void SetRemoveArtFrame(bool enable) { remove_art_frame_ = enable; }
   // If true, convert a JIT method into its corresponding interpreted Java method. So they can be
   // merged in reports like flamegraph. Default is true.
   void SetConvertJITFrame(bool enable) { convert_jit_frame_ = enable; }
+  // If true, convert ART JNI methods to their corresponding Java method names.
+  // For example, art::Method_invoke is converted to java.lang.reflect.Method.invoke.
+  // Default is false.
+  void SetConvertArtJniMethod(bool enable) { convert_art_jni_method_ = enable; }
   std::vector<CallChainReportEntry> Build(const ThreadEntry* thread,
                                           const std::vector<uint64_t>& ips, size_t kernel_ip_count);
 
@@ -69,8 +77,10 @@ class CallChainReportBuilder {
   ThreadTree& thread_tree_;
   bool remove_art_frame_ = true;
   bool convert_jit_frame_ = true;
+  bool convert_art_jni_method_ = false;
   bool java_method_initialized_ = false;
   std::unordered_map<std::string, JavaMethod> java_method_map_;
+  std::unordered_map<std::string_view, const char*> art_jni_method_map_;
 };
 
 }  // namespace simpleperf
