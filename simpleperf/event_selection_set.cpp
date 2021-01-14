@@ -35,9 +35,9 @@
 #include "tracing.h"
 #include "utils.h"
 
-using android::base::StringPrintf;
-
 namespace simpleperf {
+
+using android::base::StringPrintf;
 
 bool IsBranchSamplingSupported() {
   const EventType* type = FindEventTypeByName("cpu-cycles");

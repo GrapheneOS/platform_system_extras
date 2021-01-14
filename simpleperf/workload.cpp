@@ -25,6 +25,8 @@
 #include <android-base/logging.h>
 #include <android-base/strings.h>
 
+namespace simpleperf {
+
 std::unique_ptr<Workload> Workload::CreateWorkload(const std::vector<std::string>& args) {
   std::unique_ptr<Workload> workload(new Workload(args, std::function<void()>()));
   if (workload != nullptr && workload->CreateNewProcess()) {
@@ -202,3 +204,5 @@ bool Workload::WaitChildProcess(bool wait_forever, bool is_child_killed, int* ex
   }
   return finished;
 }
+
+}  // namespace simpleperf

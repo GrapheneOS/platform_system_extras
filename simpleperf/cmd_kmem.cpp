@@ -29,6 +29,7 @@
 #include "tracing.h"
 #include "utils.h"
 
+namespace simpleperf {
 namespace {
 
 struct SlabSample {
@@ -677,8 +678,6 @@ void KmemCommand::PrintSlabReportContext(FILE* fp) {
 }
 
 }  // namespace
-
-namespace simpleperf {
 
 void RegisterKmemCommand() {
   RegisterCommand("kmem", [] { return std::unique_ptr<Command>(new KmemCommand()); });

@@ -38,6 +38,8 @@
 using android::base::Split;
 using android::base::StartsWith;
 
+namespace simpleperf {
+
 template <>
 void MoveFromBinaryFormat(std::string& data, const char*& p) {
   data.clear();
@@ -46,8 +48,6 @@ void MoveFromBinaryFormat(std::string& data, const char*& p) {
   }
   p++;
 }
-
-namespace simpleperf {
 
 const char TRACING_INFO_MAGIC[10] = {23, 8, 68, 't', 'r', 'a', 'c', 'i', 'n', 'g'};
 
@@ -147,7 +147,7 @@ TracingFile::TracingFile() {
   version = "0.5";
   endian = 0;
   size_of_long = static_cast<int>(sizeof(long));  // NOLINT(google-runtime-int)
-  page_size = static_cast<uint32_t>(::GetPageSize());
+  page_size = static_cast<uint32_t>(simpleperf::GetPageSize());
 }
 
 bool TracingFile::RecordHeaderFiles() {

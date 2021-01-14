@@ -31,6 +31,7 @@
 #include "kallsyms.h"
 #include "read_elf.h"
 
+namespace simpleperf {
 namespace simpleperf_dso_impl {
 
 // Find elf files with symbol table and debug information.
@@ -217,5 +218,7 @@ class Dso {
 
 const char* DsoTypeToString(DsoType dso_type);
 bool GetBuildIdFromDsoPath(const std::string& dso_path, BuildId* build_id);
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_DSO_H_

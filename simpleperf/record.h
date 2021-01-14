@@ -32,6 +32,8 @@
 #include "build_id.h"
 #include "perf_event.h"
 
+namespace simpleperf {
+
 enum user_record_type {
   PERF_RECORD_USER_DEFINED_TYPE_START = 64,
   PERF_RECORD_ATTR = 64,
@@ -631,5 +633,7 @@ std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(const perf_event_attr
 // Read one record from the buffer pointed by [p]. But the record doesn't
 // own the buffer.
 std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr, char* p);
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_RECORD_H_

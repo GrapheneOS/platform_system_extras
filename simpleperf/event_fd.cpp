@@ -38,6 +38,8 @@
 #include "perf_event.h"
 #include "utils.h"
 
+namespace simpleperf {
+
 static int perf_event_open(const perf_event_attr& attr, pid_t pid, int cpu, int group_fd,
                            unsigned long flags) {  // NOLINT
   return syscall(__NR_perf_event_open, &attr, pid, cpu, group_fd, flags);
@@ -322,3 +324,5 @@ bool EventFd::StopPolling() {
 bool IsEventAttrSupported(const perf_event_attr& attr, const std::string& event_name) {
   return EventFd::OpenEventFile(attr, getpid(), -1, nullptr, event_name, false) != nullptr;
 }
+
+}  // namespace simpleperf

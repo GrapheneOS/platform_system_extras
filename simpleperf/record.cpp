@@ -29,7 +29,7 @@
 #include "tracing.h"
 #include "utils.h"
 
-using namespace simpleperf;
+namespace simpleperf {
 
 static std::string RecordTypeToString(int record_type) {
   static std::unordered_map<int, std::string> record_type_names = {
@@ -1362,3 +1362,5 @@ std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr, char* 
   auto header = reinterpret_cast<const perf_event_header*>(p);
   return ReadRecordFromBuffer(attr, header->type, p);
 }
+
+}  // namespace simpleperf
