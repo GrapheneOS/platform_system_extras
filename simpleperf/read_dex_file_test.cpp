@@ -24,6 +24,8 @@
 #include "test_util.h"
 #include "utils.h"
 
+using namespace simpleperf;
+
 TEST(read_dex_file, smoke) {
   std::vector<DexFileSymbol> symbols;
   ASSERT_TRUE(ReadSymbolsFromDexFile(GetTestData("base.vdex"), {0x28}, &symbols));

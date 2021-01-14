@@ -44,10 +44,9 @@
 #include "utils.h"
 #include "workload.h"
 
-using android::base::Split;
-using namespace simpleperf;
-
 namespace simpleperf {
+
+using android::base::Split;
 
 static std::vector<std::string> default_measured_event_types{
     "cpu-cycles",   "stalled-cycles-frontend", "stalled-cycles-backend",
@@ -292,8 +291,6 @@ std::string CounterSummaries::GetRateComment(const CounterSummary& s, char sep) 
   }
   return "";
 }
-
-}  // namespace simpleperf
 
 namespace {
 
@@ -883,8 +880,6 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters, double
 }
 
 }  // namespace
-
-namespace simpleperf {
 
 void RegisterStatCommand() {
   RegisterCommand("stat", [] { return std::unique_ptr<Command>(new StatCommand); });

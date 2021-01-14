@@ -28,6 +28,8 @@
 #include <android-base/unique_fd.h>
 #include <art_api/dex_file_support.h>
 
+namespace simpleperf {
+
 static bool ReadSymbols(
     const std::vector<uint64_t>& dex_file_offsets, std::vector<DexFileSymbol>* symbols,
     const std::function<std::unique_ptr<art_api::dex::DexFile>(uint64_t offset)>& open_file_cb) {
@@ -96,3 +98,5 @@ bool ReadSymbolsFromDexFile(const std::string& file_path,
                        return dex_file;
                      });
 }
+
+}  // namespace simpleperf

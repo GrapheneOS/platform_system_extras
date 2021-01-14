@@ -34,10 +34,10 @@
 #include "thread_tree.h"
 #include "utils.h"
 
-using namespace simpleperf;
-namespace proto = simpleperf_report_proto;
-
+namespace simpleperf {
 namespace {
+
+namespace proto = simpleperf_report_proto;
 
 static const char PROT_FILE_MAGIC[] = "SIMPLEPERF";
 static const uint16_t PROT_FILE_VERSION = 1u;
@@ -685,8 +685,6 @@ void ReportSampleCommand::PrintLostSituation() {
 }
 
 }  // namespace
-
-namespace simpleperf {
 
 void RegisterReportSampleCommand() {
   RegisterCommand("report-sample",
