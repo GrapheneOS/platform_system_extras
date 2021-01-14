@@ -32,6 +32,8 @@
 #include <android-base/unique_fd.h>
 #include <ziparchive/zip_archive.h>
 
+namespace simpleperf {
+
 static inline uint64_t AlignDown(uint64_t value, uint64_t alignment) {
   return value & ~(alignment - 1);
 }
@@ -178,14 +180,12 @@ std::string GetSimpleperfVersion();
 std::optional<std::set<int>> GetCpusFromString(const std::string& s);
 std::optional<std::set<pid_t>> GetTidsFromString(const std::string& s, bool check_if_exists);
 
-namespace {
-
 // from boost::hash_combine
 template <typename T>
-void HashCombine(size_t& seed, const T& val) {
+static inline void HashCombine(size_t& seed, const T& val) {
   seed ^= std::hash<T>()(val) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
-}  // namespace
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_UTILS_H_

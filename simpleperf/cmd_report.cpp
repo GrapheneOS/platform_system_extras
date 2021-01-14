@@ -41,9 +41,10 @@
 #include "tracing.h"
 #include "utils.h"
 
-using android::base::Split;
-
+namespace simpleperf {
 namespace {
+
+using android::base::Split;
 
 static std::set<std::string> branch_sort_keys = {
     "dso_from",
@@ -961,8 +962,6 @@ void ReportCommand::PrintReportContext(FILE* report_fp) {
 }
 
 }  // namespace
-
-namespace simpleperf {
 
 void RegisterReportCommand() {
   RegisterCommand("report", [] { return std::unique_ptr<Command>(new ReportCommand()); });

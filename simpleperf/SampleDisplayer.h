@@ -25,6 +25,8 @@
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 
+namespace simpleperf {
+
 // The display functions below are used to show items in a sample.
 
 template <typename EntryT, typename InfoT>
@@ -277,5 +279,7 @@ class SampleDisplayer {
   std::vector<exclusive_display_sample_func_t> exclusive_display_v_;
   bool report_csv_ = false;
 };
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_SAMPLE_DISPLAYER_H_

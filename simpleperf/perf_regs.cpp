@@ -25,6 +25,8 @@
 
 #include "perf_event.h"
 
+namespace simpleperf {
+
 ArchType ScopedCurrentArch::current_arch = ARCH_UNSUPPORTED;
 
 ArchType GetArchType(const std::string& arch) {
@@ -221,3 +223,5 @@ bool RegSet::GetIpRegValue(uint64_t* value) const {
   }
   return GetRegValue(regno, value);
 }
+
+}  // namespace simpleperf

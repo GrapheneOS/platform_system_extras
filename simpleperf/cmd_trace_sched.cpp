@@ -32,10 +32,10 @@
 #include "tracing.h"
 #include "utils.h"
 
-using android::base::StringPrintf;
-using namespace simpleperf;
-
+namespace simpleperf {
 namespace {
+
+using android::base::StringPrintf;
 
 struct SampleInfo {
   uint64_t timestamp;      // the time when the kernel generates the sample
@@ -413,8 +413,6 @@ void TraceSchedCommand::ReportProcessInfo(const std::vector<ProcessInfo>& proces
 }
 
 }  // namespace
-
-namespace simpleperf {
 
 void RegisterTraceSchedCommand() {
   RegisterCommand("trace-sched", [] { return std::unique_ptr<Command>(new TraceSchedCommand()); });

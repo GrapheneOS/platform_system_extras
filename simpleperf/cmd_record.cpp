@@ -64,11 +64,11 @@
 #include "utils.h"
 #include "workload.h"
 
+namespace simpleperf {
+namespace {
+
 using android::base::ParseUint;
 using android::base::Realpath;
-using namespace simpleperf;
-
-namespace {
 
 static std::string default_measured_event_type = "cpu-cycles";
 
@@ -1884,8 +1884,6 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
 }
 
 }  // namespace
-
-namespace simpleperf {
 
 static bool ConsumeStr(const char*& p, const char* s) {
   if (strncmp(p, s, strlen(s)) == 0) {

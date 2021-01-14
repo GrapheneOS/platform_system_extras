@@ -38,9 +38,10 @@
 #include "read_elf.h"
 #include "utils.h"
 
+namespace simpleperf {
+
 using android::base::EndsWith;
 using android::base::StartsWith;
-using namespace simpleperf;
 
 namespace simpleperf_dso_impl {
 
@@ -947,3 +948,5 @@ bool GetBuildIdFromDsoPath(const std::string& dso_path, BuildId* build_id) {
   }
   return false;
 }
+
+}  // namespace simpleperf

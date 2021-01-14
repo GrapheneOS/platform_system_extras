@@ -41,10 +41,10 @@
 #include "JITDebugReader.h"
 #include "utils.h"
 
-#define ELF_NOTE_GNU "GNU"
-#define NT_GNU_BUILD_ID 3
+namespace simpleperf {
 
-using namespace simpleperf;
+const static char* ELF_NOTE_GNU = "GNU";
+const static int NT_GNU_BUILD_ID = 3;
 
 std::ostream& operator<<(std::ostream& os, const ElfStatus& status) {
   switch (status) {
@@ -130,6 +130,16 @@ ElfStatus GetBuildIdFromNoteFile(const std::string& filename, BuildId* build_id)
   return ElfStatus::NO_ERROR;
 }
 
+bool IsArmMappingSymbol(const char* name) {
+  // Mapping symbols in arm, which are described in "ELF for ARM Architecture" and
+  // "ELF for ARM 64-bit Architecture". The regular expression to match mapping symbol
+  // is ^\$(a|d|t|x)(\..*)?$
+  return name[0] == '$' && strchr("adtx", name[1]) != nullptr &&
+         (name[2] == '\0' || name[2] == '.');
+}
+
+namespace {
+
 struct BinaryWrapper {
   std::unique_ptr<llvm::MemoryBuffer> buffer;
   std::unique_ptr<llvm::object::Binary> binary;
@@ -185,14 +195,6 @@ static ElfStatus OpenObjectFileInMemory(const char* data, size_t size, BinaryWra
     return ElfStatus::FILE_MALFORMED;
   }
   return ElfStatus::NO_ERROR;
-}
-
-bool IsArmMappingSymbol(const char* name) {
-  // Mapping symbols in arm, which are described in "ELF for ARM Architecture" and
-  // "ELF for ARM 64-bit Architecture". The regular expression to match mapping symbol
-  // is ^\$(a|d|t|x)(\..*)?$
-  return name[0] == '$' && strchr("adtx", name[1]) != nullptr &&
-         (name[2] == '\0' || name[2] == '.');
 }
 
 void ReadSymbolTable(llvm::object::symbol_iterator sym_begin, llvm::object::symbol_iterator sym_end,
@@ -305,8 +307,6 @@ void CheckSymbolSections(const llvm::object::ELFObjectFile<ELFT>* elf, bool* has
     }
   }
 }
-
-namespace {
 
 template <typename T>
 class ElfFileImpl {};
@@ -486,8 +486,6 @@ std::unique_ptr<ElfFile> CreateElfFileImpl(BinaryWrapper&& wrapper, ElfStatus* s
 }
 
 }  // namespace
-
-namespace simpleperf {
 
 std::unique_ptr<ElfFile> ElfFile::Open(const std::string& filename) {
   ElfStatus status;

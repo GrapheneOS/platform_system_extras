@@ -27,6 +27,8 @@
 
 #include <android-base/logging.h>
 
+namespace simpleperf {
+
 template <typename EntryT>
 struct CallChainNode {
   uint64_t period;
@@ -149,5 +151,7 @@ struct CallChainRoot {
     return period1 > period2;
   }
 };
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_CALLCHAIN_H_

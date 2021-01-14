@@ -16,12 +16,12 @@
 
 #pragma once
 
-#include "dso.h"
-
 #include <string>
 #include <vector>
 
 #include <android-base/file.h>
+
+#include "dso.h"
 
 namespace simpleperf {
 
