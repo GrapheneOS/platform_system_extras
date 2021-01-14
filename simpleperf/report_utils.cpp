@@ -22,10 +22,38 @@
 
 namespace simpleperf {
 
-static bool IsArtDso(const Dso* dso) {
-  return android::base::EndsWith(dso->Path(), "/libart.so") ||
-         android::base::EndsWith(dso->Path(), "/libartd.so");
+static bool IsArtEntry(const CallChainReportEntry& entry) {
+  return entry.execution_type == CallChainExecutionType::NATIVE_METHOD &&
+         (android::base::EndsWith(entry.dso->Path(), "/libart.so") ||
+          android::base::EndsWith(entry.dso->Path(), "/libartd.so") ||
+          strcmp(entry.symbol->Name(), "art_jni_trampoline") == 0);
 };
+
+#define ART_JNI_METHOD(java_name, native_name) java_name, native_name,
+
+static const char* art_jni_method_array[] = {
+#include "art_jni_method_table.h"
+};
+
+CallChainReportBuilder::CallChainReportBuilder(ThreadTree& thread_tree)
+    : thread_tree_(thread_tree) {
+  size_t n = sizeof(art_jni_method_array) / sizeof(art_jni_method_array[0]);
+  for (size_t i = 0; i + 1 < n; i += 2) {
+    art_jni_method_map_[art_jni_method_array[i + 1]] = art_jni_method_array[i];
+  }
+}
+
+static std::string_view GetFunctionName(std::string_view symbol_name) {
+  // Remove parameters.
+  if (auto pos = symbol_name.find('('); pos != symbol_name.npos) {
+    symbol_name = symbol_name.substr(0, pos);
+  }
+  // Remove return type.
+  if (auto pos = symbol_name.rfind(' '); pos != symbol_name.npos) {
+    symbol_name = symbol_name.substr(pos + 1);
+  }
+  return symbol_name;
+}
 
 std::vector<CallChainReportEntry> CallChainReportBuilder::Build(const ThreadEntry* thread,
                                                                 const std::vector<uint64_t>& ips,
@@ -35,6 +63,9 @@ std::vector<CallChainReportEntry> CallChainReportBuilder::Build(const ThreadEntr
   for (size_t i = 0; i < ips.size(); i++) {
     const MapEntry* map = thread_tree_.FindMap(thread, ips[i], i < kernel_ip_count);
     Dso* dso = map->dso;
+    uint64_t vaddr_in_file;
+    const Symbol* symbol = thread_tree_.FindSymbol(map, ips[i], &vaddr_in_file, &dso);
+    const char* symbol_name = nullptr;
     CallChainExecutionType execution_type = CallChainExecutionType::NATIVE_METHOD;
     if (dso->IsForJavaMethod()) {
       if (dso->type() == DSO_DEX_FILE) {
@@ -42,13 +73,18 @@ std::vector<CallChainReportEntry> CallChainReportBuilder::Build(const ThreadEntr
       } else {
         execution_type = CallChainExecutionType::JIT_JVM_METHOD;
       }
+    } else if (auto it = art_jni_method_map_.find(GetFunctionName(symbol->DemangledName()));
+               it != art_jni_method_map_.end()) {
+      execution_type = CallChainExecutionType::ART_JNI_METHOD;
+      if (convert_art_jni_method_) {
+        symbol_name = it->second;
+      }
     }
-    uint64_t vaddr_in_file;
-    const Symbol* symbol = thread_tree_.FindSymbol(map, ips[i], &vaddr_in_file, &dso);
     result.resize(result.size() + 1);
     auto& entry = result.back();
     entry.ip = ips[i];
     entry.symbol = symbol;
+    entry.symbol_name = symbol_name;
     entry.dso = dso;
     entry.vaddr_in_file = vaddr_in_file;
     entry.map = map;
@@ -73,17 +109,18 @@ void CallChainReportBuilder::MarkArtFrame(std::vector<CallChainReportEntry>& cal
   for (size_t i = 0; i < callchain.size(); ++i) {
     auto& entry = callchain[i];
     if (entry.execution_type == CallChainExecutionType::INTERPRETED_JVM_METHOD ||
-        entry.execution_type == CallChainExecutionType::JIT_JVM_METHOD) {
+        entry.execution_type == CallChainExecutionType::JIT_JVM_METHOD ||
+        entry.execution_type == CallChainExecutionType::ART_JNI_METHOD) {
       near_java_method = true;
 
       // Mark art frames before this entry.
       for (int j = static_cast<int>(i) - 1; j >= 0; j--) {
-        if (!IsArtDso(callchain[j].dso)) {
+        if (!IsArtEntry(callchain[j])) {
           break;
         }
         callchain[j].execution_type = CallChainExecutionType::ART_METHOD;
       }
-    } else if (near_java_method && IsArtDso(entry.dso)) {
+    } else if (near_java_method && IsArtEntry(entry)) {
       entry.execution_type = CallChainExecutionType::ART_METHOD;
     } else {
       near_java_method = false;
