@@ -27,6 +27,7 @@
 #include "thread_tree.h"
 #include "utils.h"
 
+using namespace simpleperf;
 using namespace simpleperf_dso_impl;
 
 TEST(DebugElfFileFinder, use_build_id_list) {

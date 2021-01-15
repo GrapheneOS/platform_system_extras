@@ -33,6 +33,8 @@
 #include "read_elf.h"
 #include "utils.h"
 
+namespace simpleperf {
+
 std::unordered_map<std::string, ApkInspector::ApkNode> ApkInspector::embedded_elf_cache_;
 
 EmbeddedElf* ApkInspector::FindElfInApkByOffset(const std::string& apk_path, uint64_t file_offset) {
@@ -165,3 +167,5 @@ bool ParseExtractedInMemoryPath(const std::string& path, std::string* zip_path,
   }
   return false;
 }
+
+}  // namespace simpleperf

@@ -34,10 +34,10 @@
 #include "thread_tree.h"
 #include "utils.h"
 
-using namespace simpleperf;
-namespace proto = simpleperf_report_proto;
-
+namespace simpleperf {
 namespace {
+
+namespace proto = simpleperf_report_proto;
 
 static const char PROT_FILE_MAGIC[] = "SIMPLEPERF";
 static const uint16_t PROT_FILE_VERSION = 1u;
@@ -75,6 +75,8 @@ static proto::Sample_CallChainEntry_ExecutionType ToProtoExecutionType(
       return proto::Sample_CallChainEntry_ExecutionType_JIT_JVM_METHOD;
     case CallChainExecutionType::ART_METHOD:
       return proto::Sample_CallChainEntry_ExecutionType_ART_METHOD;
+    case CallChainExecutionType::ART_JNI_METHOD:
+      return proto::Sample_CallChainEntry_ExecutionType_NATIVE_METHOD;
   }
   CHECK(false) << "unexpected execution type";
   return proto::Sample_CallChainEntry_ExecutionType_NATIVE_METHOD;
@@ -115,6 +117,7 @@ class ReportSampleCommand : public Command {
 "                                 are not available in perf.data.\n"
 "--show-art-frames  Show frames of internal methods in the ART Java interpreter.\n"
 "--show-execution-type  Show execution type of a method\n"
+"--convert-art-jni-method   Convert ART JNI methods to the corresponding Java method names\n"
 "--symdir <dir>     Look for files with symbols in a directory recursively.\n"
                 // clang-format on
                 ),
@@ -169,6 +172,7 @@ class ReportSampleCommand : public Command {
   CallChainReportBuilder callchain_report_builder_;
   // map from <pid, tid> to thread name
   std::map<uint64_t, const char*> thread_names_;
+  std::unordered_map<const Symbol*, const char*> override_symbol_names_;
 };
 
 bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
@@ -284,6 +288,8 @@ bool ReportSampleCommand::ParseOptions(const std::vector<std::string>& args) {
       callchain_report_builder_.SetRemoveArtFrame(false);
     } else if (args[i] == "--show-execution-type") {
       show_execution_type_ = true;
+    } else if (args[i] == "--convert-art-jni-method") {
+      callchain_report_builder_.SetConvertArtJniMethod(true);
     } else if (args[i] == "--symdir") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -555,6 +561,9 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(
     if (show_execution_type_) {
       callchain->set_execution_type(ToProtoExecutionType(node.execution_type));
     }
+    if (node.symbol_name != nullptr) {
+      override_symbol_names_[node.symbol] = node.symbol_name;
+    }
 
     // Android studio wants a clear call chain end to notify whether a call chain is complete.
     // For the main thread, the call chain ends at __libc_init in libc.so. For other threads,
@@ -617,9 +626,14 @@ bool ReportSampleCommand::PrintFileInfoInProtobuf() {
 
     for (const auto& sym : dump_symbols) {
       std::string* symbol = file->add_symbol();
-      *symbol = sym->DemangledName();
       std::string* mangled_symbol = file->add_mangled_symbol();
-      *mangled_symbol = sym->Name();
+      if (auto it = override_symbol_names_.find(sym); it != override_symbol_names_.end()) {
+        *symbol = it->second;
+        *mangled_symbol = it->second;
+      } else {
+        *symbol = sym->DemangledName();
+        *mangled_symbol = sym->Name();
+      }
     }
     if (!WriteRecordInProtobuf(proto_record)) {
       return false;
@@ -657,7 +671,9 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r,
   CHECK(!entries.empty());
   FprintIndented(report_fp_, 1, "vaddr_in_file: %" PRIx64 "\n", entries[0].vaddr_in_file);
   FprintIndented(report_fp_, 1, "file: %s\n", entries[0].dso->GetReportPath().data());
-  FprintIndented(report_fp_, 1, "symbol: %s\n", entries[0].symbol->DemangledName());
+  const char* symbol_name =
+      (entries[0].symbol_name ? entries[0].symbol_name : entries[0].symbol->DemangledName());
+  FprintIndented(report_fp_, 1, "symbol: %s\n", symbol_name);
   if (show_execution_type_) {
     FprintIndented(report_fp_, 1, "execution_type: %s\n",
                    ProtoExecutionTypeToString(ToProtoExecutionType(entries[0].execution_type)));
@@ -668,7 +684,9 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r,
     for (size_t i = 1u; i < entries.size(); ++i) {
       FprintIndented(report_fp_, 2, "vaddr_in_file: %" PRIx64 "\n", entries[i].vaddr_in_file);
       FprintIndented(report_fp_, 2, "file: %s\n", entries[i].dso->GetReportPath().data());
-      FprintIndented(report_fp_, 2, "symbol: %s\n", entries[i].symbol->DemangledName());
+      const char* symbol_name =
+          (entries[i].symbol_name ? entries[i].symbol_name : entries[i].symbol->DemangledName());
+      FprintIndented(report_fp_, 2, "symbol: %s\n", symbol_name);
       if (show_execution_type_) {
         FprintIndented(report_fp_, 1, "execution_type: %s\n",
                        ProtoExecutionTypeToString(ToProtoExecutionType(entries[i].execution_type)));
@@ -685,8 +703,6 @@ void ReportSampleCommand::PrintLostSituation() {
 }
 
 }  // namespace
-
-namespace simpleperf {
 
 void RegisterReportSampleCommand() {
   RegisterCommand("report-sample",

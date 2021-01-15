@@ -22,7 +22,8 @@
 
 #include "command.h"
 
-using namespace simpleperf;
+namespace simpleperf {
+namespace {
 
 class HelpCommand : public Command {
  public:
@@ -86,7 +87,7 @@ void HelpCommand::PrintLongHelpForOneCommand(const Command& command) {
   printf("%s\n", command.LongHelpString().c_str());
 }
 
-namespace simpleperf {
+}  // namespace
 
 void RegisterHelpCommand() {
   RegisterCommand("help", [] { return std::unique_ptr<Command>(new HelpCommand); });

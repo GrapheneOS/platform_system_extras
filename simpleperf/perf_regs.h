@@ -35,6 +35,8 @@
 
 #include "perf_event.h"
 
+namespace simpleperf {
+
 enum ArchType {
   ARCH_X86_32,
   ARCH_X86_64,
@@ -91,5 +93,7 @@ struct RegSet {
   bool GetSpRegValue(uint64_t* value) const;
   bool GetIpRegValue(uint64_t* value) const;
 };
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_PERF_REGS_H_

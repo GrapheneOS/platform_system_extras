@@ -41,6 +41,7 @@ class CallChainReportBuilderTest : public testing::Test {
     file.min_vaddr = file.file_offset_of_min_vaddr = 0;
     file.symbols = {
         Symbol("native_func1", 0x0, 0x100),
+        Symbol("art_jni_trampoline", 0x100, 0x100),
     };
     thread_tree.AddDsoInfo(file);
 
@@ -51,6 +52,7 @@ class CallChainReportBuilderTest : public testing::Test {
     file.symbols = {
         Symbol("art_func1", 0x0, 0x100),
         Symbol("art_func2", 0x100, 0x100),
+        Symbol("_ZN3artL13Method_invokeEP7_JNIEnvP8_jobjectS3_P13_jobjectArray", 0x200, 0x100),
     };
     thread_tree.AddDsoInfo(file);
 
@@ -229,4 +231,75 @@ TEST_F(CallChainReportBuilderTest, remove_art_frame_only_near_jvm_method) {
   ASSERT_EQ(entries[2].dso->Path(), fake_dex_file_path);
   ASSERT_EQ(entries[2].vaddr_in_file, 0x0);
   ASSERT_EQ(entries[2].execution_type, CallChainExecutionType::INTERPRETED_JVM_METHOD);
+}
+
+TEST_F(CallChainReportBuilderTest, remove_art_jni_trampoline) {
+  // Test option: remove_art_frame = true.
+  // The callchain should remove art_jni_trampolines.
+  std::vector<uint64_t> fake_ips = {
+      0x100,   // art_jni_trampoline
+      0x2000,  // java_method1 in dex file
+      0x100,   // art_jni_trampoline
+  };
+  CallChainReportBuilder builder(thread_tree);
+  std::vector<CallChainReportEntry> entries = builder.Build(thread, fake_ips, 0);
+  ASSERT_EQ(entries.size(), 1);
+  ASSERT_EQ(entries[0].ip, 0x2000);
+  ASSERT_STREQ(entries[0].symbol->Name(), "java_method1");
+  ASSERT_EQ(entries[0].dso->Path(), fake_dex_file_path);
+  ASSERT_EQ(entries[0].vaddr_in_file, 0x0);
+  ASSERT_EQ(entries[0].execution_type, CallChainExecutionType::INTERPRETED_JVM_METHOD);
+}
+
+TEST_F(CallChainReportBuilderTest, not_convert_art_jni_method) {
+  // Test option: remove_art_frame = true, convert_art_jni_method = false.
+  // The callchain should not remove art_jni_methods or change their names.
+  std::vector<uint64_t> fake_ips = {
+      0x1200,  // art::Method_invoke(_JNIEnv*, _jobject*, _jobject*, _jobjectArray*)
+      0x2000,  // java_method1 in dex file
+      0x1200,  // art::Method_invoke(_JNIEnv*, _jobject*, _jobject*, _jobjectArray*)
+  };
+  CallChainReportBuilder builder(thread_tree);
+  std::vector<CallChainReportEntry> entries = builder.Build(thread, fake_ips, 0);
+  ASSERT_EQ(entries.size(), 3);
+  for (size_t i : {0, 2}) {
+    ASSERT_EQ(entries[i].ip, 0x1200);
+    ASSERT_STREQ(entries[i].symbol->DemangledName(),
+                 "art::Method_invoke(_JNIEnv*, _jobject*, _jobject*, _jobjectArray*)");
+    ASSERT_TRUE(entries[i].symbol_name == nullptr);
+    ASSERT_EQ(entries[i].dso->Path(), fake_interpreter_path);
+    ASSERT_EQ(entries[i].vaddr_in_file, 0x200);
+    ASSERT_EQ(entries[i].execution_type, CallChainExecutionType::ART_JNI_METHOD);
+  }
+  ASSERT_EQ(entries[1].ip, 0x2000);
+  ASSERT_STREQ(entries[1].symbol->Name(), "java_method1");
+  ASSERT_EQ(entries[1].dso->Path(), fake_dex_file_path);
+  ASSERT_EQ(entries[1].vaddr_in_file, 0x0);
+  ASSERT_EQ(entries[1].execution_type, CallChainExecutionType::INTERPRETED_JVM_METHOD);
+}
+
+TEST_F(CallChainReportBuilderTest, convert_art_jni_method) {
+  // Test option: remove_art_frame = true, convert_art_jni_method = true.
+  // The callchain should not remove art_jni_methods, but should convert their names.
+  std::vector<uint64_t> fake_ips = {
+      0x1200,  // art::Method_invoke(_JNIEnv*, _jobject*, _jobject*, _jobjectArray*)
+      0x2000,  // java_method1 in dex file
+      0x1200,  // art::Method_invoke(_JNIEnv*, _jobject*, _jobject*, _jobjectArray*)
+  };
+  CallChainReportBuilder builder(thread_tree);
+  builder.SetConvertArtJniMethod(true);
+  std::vector<CallChainReportEntry> entries = builder.Build(thread, fake_ips, 0);
+  ASSERT_EQ(entries.size(), 3);
+  for (size_t i : {0, 2}) {
+    ASSERT_EQ(entries[i].ip, 0x1200);
+    ASSERT_STREQ(entries[i].symbol_name, "java.lang.reflect.Method.invoke");
+    ASSERT_EQ(entries[i].dso->Path(), fake_interpreter_path);
+    ASSERT_EQ(entries[i].vaddr_in_file, 0x200);
+    ASSERT_EQ(entries[i].execution_type, CallChainExecutionType::ART_JNI_METHOD);
+  }
+  ASSERT_EQ(entries[1].ip, 0x2000);
+  ASSERT_STREQ(entries[1].symbol->Name(), "java_method1");
+  ASSERT_EQ(entries[1].dso->Path(), fake_dex_file_path);
+  ASSERT_EQ(entries[1].vaddr_in_file, 0x0);
+  ASSERT_EQ(entries[1].execution_type, CallChainExecutionType::INTERPRETED_JVM_METHOD);
 }

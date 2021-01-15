@@ -28,6 +28,8 @@
 #include "IOEventLoop.h"
 #include "perf_event.h"
 
+namespace simpleperf {
+
 struct PerfCounter {
   uint64_t value;         // The value of the event specified by the perf_event_file.
   uint64_t time_enabled;  // The enabled time.
@@ -152,5 +154,7 @@ class EventFd {
 };
 
 bool IsEventAttrSupported(const perf_event_attr& attr, const std::string& event_name);
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_EVENT_FD_H_

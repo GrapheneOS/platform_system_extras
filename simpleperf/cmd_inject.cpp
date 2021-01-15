@@ -31,8 +31,6 @@
 #include "thread_tree.h"
 #include "utils.h"
 
-using namespace simpleperf;
-
 namespace simpleperf {
 
 std::string BranchToProtoString(const std::vector<bool>& branch) {
@@ -55,8 +53,6 @@ std::vector<bool> ProtoStringToBranch(const std::string& s, size_t bit_size) {
   }
   return branch;
 }
-
-}  // namespace simpleperf
 
 namespace {
 
@@ -511,8 +507,6 @@ class InjectCommand : public Command {
 };
 
 }  // namespace
-
-namespace simpleperf {
 
 void RegisterInjectCommand() {
   return RegisterCommand("inject", [] { return std::unique_ptr<Command>(new InjectCommand); });

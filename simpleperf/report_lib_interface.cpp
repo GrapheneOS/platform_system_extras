@@ -31,13 +31,7 @@
 #include "tracing.h"
 #include "utils.h"
 
-using namespace simpleperf;
-
-class ReportLib;
-
 extern "C" {
-
-#define EXPORT __attribute__((visibility("default")))
 
 struct Sample {
   uint64_t ip;
@@ -100,30 +94,9 @@ struct FeatureSection {
   uint32_t data_size;
 };
 
-// Create a new instance,
-// pass the instance to the other functions below.
-ReportLib* CreateReportLib() EXPORT;
-void DestroyReportLib(ReportLib* report_lib) EXPORT;
+}  // extern "C"
 
-// Set log severity, different levels are:
-// verbose, debug, info, warning, error, fatal.
-bool SetLogSeverity(ReportLib* report_lib, const char* log_level) EXPORT;
-bool SetSymfs(ReportLib* report_lib, const char* symfs_dir) EXPORT;
-bool SetRecordFile(ReportLib* report_lib, const char* record_file) EXPORT;
-bool SetKallsymsFile(ReportLib* report_lib, const char* kallsyms_file) EXPORT;
-void ShowIpForUnknownSymbol(ReportLib* report_lib) EXPORT;
-void ShowArtFrames(ReportLib* report_lib, bool show) EXPORT;
-void MergeJavaMethods(ReportLib* report_lib, bool merge) EXPORT;
-
-Sample* GetNextSample(ReportLib* report_lib) EXPORT;
-Event* GetEventOfCurrentSample(ReportLib* report_lib) EXPORT;
-SymbolEntry* GetSymbolOfCurrentSample(ReportLib* report_lib) EXPORT;
-CallChain* GetCallChainOfCurrentSample(ReportLib* report_lib) EXPORT;
-const char* GetTracingDataOfCurrentSample(ReportLib* report_lib) EXPORT;
-
-const char* GetBuildIdForPath(ReportLib* report_lib, const char* path) EXPORT;
-FeatureSection* GetFeatureSection(ReportLib* report_lib, const char* feature_name) EXPORT;
-}
+namespace simpleperf {
 
 struct EventInfo {
   perf_event_attr attr;
@@ -416,6 +389,39 @@ FeatureSection* ReportLib::GetFeatureSection(const char* feature_name) {
   feature_section_.data = feature_section_data_.data();
   feature_section_.data_size = feature_section_data_.size();
   return &feature_section_;
+}
+
+}  // namespace simpleperf
+
+using ReportLib = simpleperf::ReportLib;
+
+extern "C" {
+
+#define EXPORT __attribute__((visibility("default")))
+
+// Create a new instance,
+// pass the instance to the other functions below.
+ReportLib* CreateReportLib() EXPORT;
+void DestroyReportLib(ReportLib* report_lib) EXPORT;
+
+// Set log severity, different levels are:
+// verbose, debug, info, warning, error, fatal.
+bool SetLogSeverity(ReportLib* report_lib, const char* log_level) EXPORT;
+bool SetSymfs(ReportLib* report_lib, const char* symfs_dir) EXPORT;
+bool SetRecordFile(ReportLib* report_lib, const char* record_file) EXPORT;
+bool SetKallsymsFile(ReportLib* report_lib, const char* kallsyms_file) EXPORT;
+void ShowIpForUnknownSymbol(ReportLib* report_lib) EXPORT;
+void ShowArtFrames(ReportLib* report_lib, bool show) EXPORT;
+void MergeJavaMethods(ReportLib* report_lib, bool merge) EXPORT;
+
+Sample* GetNextSample(ReportLib* report_lib) EXPORT;
+Event* GetEventOfCurrentSample(ReportLib* report_lib) EXPORT;
+SymbolEntry* GetSymbolOfCurrentSample(ReportLib* report_lib) EXPORT;
+CallChain* GetCallChainOfCurrentSample(ReportLib* report_lib) EXPORT;
+const char* GetTracingDataOfCurrentSample(ReportLib* report_lib) EXPORT;
+
+const char* GetBuildIdForPath(ReportLib* report_lib, const char* path) EXPORT;
+FeatureSection* GetFeatureSection(ReportLib* report_lib, const char* feature_name) EXPORT;
 }
 
 // Exported methods working with a client created instance

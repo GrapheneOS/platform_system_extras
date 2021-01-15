@@ -23,9 +23,7 @@
 
 #include "dso.h"
 
-namespace simpleperf {
-
-namespace {
+using namespace simpleperf;
 
 TEST(read_symbol_map, smoke) {
   std::string content(
@@ -56,7 +54,3 @@ TEST(read_symbol_map, smoke) {
   ASSERT_EQ(0x30, symbols[2].len);
   ASSERT_STREQ("three", symbols[2].Name());
 }
-
-}  // namespace
-
-}  // namespace simpleperf

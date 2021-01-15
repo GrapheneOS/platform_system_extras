@@ -21,6 +21,8 @@
 #include <string.h>
 #include <algorithm>
 
+namespace simpleperf {
+
 constexpr size_t BUILD_ID_SIZE = 20;
 
 // Shared libraries can have a section called .note.gnu.build-id, containing
@@ -85,5 +87,7 @@ inline std::ostream& operator<<(std::ostream& os, const BuildId& build_id) {
   os << build_id.ToString();
   return os;
 }
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_BUILD_ID_H_
