@@ -29,8 +29,7 @@
 #include "thread_tree.h"
 #include "utils.h"
 
-using namespace simpleperf;
-
+namespace simpleperf {
 namespace {
 
 class MergedFileFeature {
@@ -418,8 +417,6 @@ class MergeCommand : public Command {
 };
 
 }  // namespace
-
-namespace simpleperf {
 
 void RegisterMergeCommand() {
   return RegisterCommand("merge", [] { return std::unique_ptr<Command>(new MergeCommand); });

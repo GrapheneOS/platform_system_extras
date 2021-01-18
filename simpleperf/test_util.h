@@ -24,7 +24,10 @@
 
 #include "environment.h"
 #include "read_elf.h"
+#include "utils.h"
 #include "workload.h"
+
+using namespace simpleperf;
 
 static const std::string SLEEP_SEC = "0.001";
 
@@ -33,8 +36,6 @@ void CreateProcesses(size_t count, std::vector<std::unique_ptr<Workload>>* workl
 
 void ParseSymbol(const ElfFileSymbol& symbol, std::map<std::string, ElfFileSymbol>* symbols);
 void CheckElfFileSymbols(const std::map<std::string, ElfFileSymbol>& symbols);
-
-bool IsRoot();
 
 #define TEST_IN_ROOT(TestStatement)                                                            \
   do {                                                                                         \

@@ -30,8 +30,7 @@
 #include "event_selection_set.h"
 #include "event_type.h"
 
-using namespace simpleperf;
-
+namespace simpleperf {
 namespace {
 
 enum EventTypeStatus {
@@ -213,8 +212,6 @@ void ListCommand::ShowFeatures() {
 }
 
 }  // namespace
-
-namespace simpleperf {
 
 void RegisterListCommand() {
   RegisterCommand("list", [] { return std::unique_ptr<Command>(new ListCommand); });

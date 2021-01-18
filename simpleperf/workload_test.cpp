@@ -22,6 +22,8 @@
 #include "utils.h"
 #include "workload.h"
 
+using namespace simpleperf;
+
 TEST(workload, success) {
   IOEventLoop loop;
   ASSERT_TRUE(loop.AddSignalEvent(SIGCHLD, [&]() { return loop.ExitLoop(); }));

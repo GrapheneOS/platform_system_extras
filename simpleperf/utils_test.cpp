@@ -19,6 +19,8 @@
 #include "get_test_data.h"
 #include "utils.h"
 
+using namespace simpleperf;
+
 TEST(utils, ConvertBytesToValue) {
   char buf[8];
   for (int i = 0; i < 8; ++i) {

@@ -24,6 +24,8 @@
 
 #include <android-base/logging.h>
 
+using namespace simpleperf;
+
 TEST(IOEventLoop, read) {
   int fd[2];
   ASSERT_EQ(0, pipe(fd));
