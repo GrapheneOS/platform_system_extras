@@ -1,6 +1,15 @@
 cc_binary_host {
     name: "fec",
 
+    compile_multilib: "both",
+    multilib: {
+        lib32: {
+            suffix: "32",
+        },
+        lib64: {
+            suffix: "",
+        },
+    },
     target: {
         linux_glibc: {
             sanitize: {

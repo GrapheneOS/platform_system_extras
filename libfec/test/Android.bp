@@ -47,10 +47,13 @@ cc_test_host {
     srcs: ["fec_unittest.cpp"],
 
     gtest: true,
-    required: [
-        "avbtool",
-        "fec",
+    data: [
+        ":avbtool",
+        ":fec",
     ],
+    test_options: {
+        unit_test: true,
+    },
     static_libs: [
         "libverity_tree",
         "libfec",
