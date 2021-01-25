@@ -21,8 +21,7 @@
 #include <llvm/Support/MemoryBuffer.h>
 #include <opencsd.h>
 
-using namespace simpleperf;
-
+namespace simpleperf {
 namespace {
 
 class DecoderLogStr : public ocsdMsgLogStrOutI {
@@ -756,8 +755,6 @@ class ETMDecoderImpl : public ETMDecoder {
 };
 
 }  // namespace
-
-namespace simpleperf {
 
 bool ParseEtmDumpOption(const std::string& s, ETMDumpOption* option) {
   for (auto& value : android::base::Split(s, ",")) {

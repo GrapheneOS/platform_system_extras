@@ -33,15 +33,14 @@
 #include "event_type.h"
 #include "utils.h"
 
+namespace simpleperf {
+
 using android::base::ParseInt;
 using android::base::ParseUint;
 using android::base::Split;
 using android::base::StringPrintf;
 using android::base::unique_fd;
 using android::base::WriteStringToFd;
-using namespace simpleperf;
-
-namespace simpleperf {
 
 static const std::string kKprobeEventPrefix = "kprobes:";
 

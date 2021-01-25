@@ -19,6 +19,8 @@
 #include "sample_tree.h"
 #include "thread_tree.h"
 
+using namespace simpleperf;
+
 namespace {
 
 struct SampleEntry {

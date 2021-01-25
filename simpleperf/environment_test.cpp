@@ -27,6 +27,7 @@
 #include "thread_tree.h"
 
 namespace fs = std::filesystem;
+using namespace simpleperf;
 
 TEST(environment, PrepareVdsoFile) {
   std::string content;

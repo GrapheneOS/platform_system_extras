@@ -30,7 +30,6 @@
 #include "utils.h"
 
 namespace simpleperf {
-
 namespace {
 
 // Real map file path depends on where the process can create files.

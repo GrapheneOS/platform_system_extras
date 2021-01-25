@@ -21,6 +21,8 @@
 
 #include <vector>
 
+namespace simpleperf {
+
 // The compare functions below are used to compare two samples by their item
 // content.
 
@@ -120,5 +122,7 @@ class SampleComparator {
  private:
   std::vector<compare_sample_func_t> compare_v_;
 };
+
+}  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_SAMPLE_COMPARATOR_H_
