@@ -177,3 +177,11 @@ TEST(cmd_report_sample, symdir_option) {
                     {"--symdir", GetTestDataDir() + CORRECT_SYMFS_FOR_BUILD_ID_CHECK});
   ASSERT_NE(data.find("symbol: main"), std::string::npos);
 }
+
+TEST(cmd_report_sample, show_art_jni_methods) {
+  std::string data;
+  GetProtobufReport("perf_display_bitmaps.data", &data, {"--show-callchain"});
+  ASSERT_NE(data.find("art::Method_invoke"), std::string::npos);
+  // Don't show art_jni_trampoline.
+  ASSERT_EQ(data.find("art_jni_trampoline"), std::string::npos);
+}
