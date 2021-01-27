@@ -1,6 +1,7 @@
 service profcollectd /system/bin/profcollectd boot
     class late_start
     disabled
+    oneshot
     user root
     group root wakelock
     writepid /dev/cpuset/system-background/tasks
