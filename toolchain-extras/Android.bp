@@ -46,6 +46,9 @@ cc_defaults {
         "profile-clang-openat.cpp",
     ],
     native_coverage: false,
+    sanitize: {
+        blocklist: "libprofile_clang_extras_blocklist.txt",
+    },
 }
 
 cc_library_static {
