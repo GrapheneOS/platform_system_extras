@@ -616,10 +616,8 @@ bool ReportSampleCommand::PrintFileInfoInProtobuf() {
     std::sort(dump_symbols.begin(), dump_symbols.end(), Symbol::CompareByDumpId);
 
     for (const auto& sym : dump_symbols) {
-      std::string* symbol = file->add_symbol();
-      *symbol = sym->DemangledName();
-      std::string* mangled_symbol = file->add_mangled_symbol();
-      *mangled_symbol = sym->Name();
+      file->add_symbol(sym->DemangledName());
+      file->add_mangled_symbol(sym->Name());
     }
     if (!WriteRecordInProtobuf(proto_record)) {
       return false;
