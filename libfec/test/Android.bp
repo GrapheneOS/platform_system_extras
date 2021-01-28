@@ -51,6 +51,7 @@ cc_test_host {
         ":avbtool",
         ":fec",
     ],
+    compile_multilib: "first",
     test_options: {
         unit_test: true,
     },
