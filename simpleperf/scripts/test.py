@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 #
 # Copyright (C) 2017 The Android Open Source Project
 #
@@ -43,7 +43,6 @@ import inspect
 import json
 import logging
 import os
-from pathlib import Path
 import re
 import shutil
 import signal
@@ -1799,17 +1798,6 @@ class TestRecordingRealApps(TestBase):
                        'android.intent.action.MAIN -c android.intent.category.LAUNCHER')
         self.record_data('com.google.sample.tunnel', '-e cpu-clock -g --duration 10')
         self.check_symbol_in_record_file('PlayScene::DoFrame')
-
-
-class TestArtJniMethods(unittest.TestCase):
-    def test_generate_art_jni_methods(self):
-        generate_script_path = Path(__file__).absolute(
-        ).parents[1] / 'generate_art_jni_method_table.py'
-        if not generate_script_path.exists():
-            print('skip this test because %s is missing' % generate_script_path)
-            return
-        proc = subprocess.run([generate_script_path, '--check-only'])
-        self.assertEqual(proc.returncode, 0)
 
 
 def get_all_tests():
