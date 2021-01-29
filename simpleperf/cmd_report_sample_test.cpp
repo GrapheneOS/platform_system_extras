@@ -178,22 +178,10 @@ TEST(cmd_report_sample, symdir_option) {
   ASSERT_NE(data.find("symbol: main"), std::string::npos);
 }
 
-TEST(cmd_report_sample, no_art_jni_trampoline) {
+TEST(cmd_report_sample, show_art_jni_methods) {
   std::string data;
-  GetProtobufReport("perf_display_bitmaps.data", &data, {"--show-callchain"});
-  ASSERT_EQ(data.find("art_jni_trampoline"), std::string::npos);
-}
-
-TEST(cmd_report_sample, convert_art_jni_method) {
-  std::string data;
-  // When --convert-art-jni-method isn't used, art::Method_invoke isn't converted to Java method.
   GetProtobufReport("perf_display_bitmaps.data", &data, {"--show-callchain"});
   ASSERT_NE(data.find("art::Method_invoke"), std::string::npos);
-  ASSERT_EQ(data.find("java.lang.reflect.Method.invoke"), std::string::npos);
-
-  // When --convert-art-jni-method is used, art::Method_invoke is converted to Java method.
-  GetProtobufReport("perf_display_bitmaps.data", &data,
-                    {"--show-callchain", "--convert-art-jni-method"});
-  ASSERT_EQ(data.find("art::Method_invoke"), std::string::npos);
-  ASSERT_NE(data.find("java.lang.reflect.Method.invoke"), std::string::npos);
+  // Don't show art_jni_trampoline.
+  ASSERT_EQ(data.find("art_jni_trampoline"), std::string::npos);
 }
