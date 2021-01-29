@@ -22,9 +22,21 @@
 
 namespace simpleperf {
 
-static bool IsArtDso(const Dso* dso) {
-  return android::base::EndsWith(dso->Path(), "/libart.so") ||
-         android::base::EndsWith(dso->Path(), "/libartd.so");
+static bool IsArtEntry(const CallChainReportEntry& entry, bool* is_jni_trampoline) {
+  if (entry.execution_type == CallChainExecutionType::NATIVE_METHOD) {
+    if (android::base::EndsWith(entry.dso->Path(), "/libart.so") ||
+        android::base::EndsWith(entry.dso->Path(), "/libartd.so")) {
+      *is_jni_trampoline = false;
+      return true;
+    }
+    if (strcmp(entry.symbol->Name(), "art_jni_trampoline") == 0) {
+      // art_jni_trampoline is a trampoline used to call jni methods in art runtime.
+      // We want to hide it when hiding art frames.
+      *is_jni_trampoline = true;
+      return true;
+    }
+  }
+  return false;
 };
 
 std::vector<CallChainReportEntry> CallChainReportBuilder::Build(const ThreadEntry* thread,
@@ -35,6 +47,8 @@ std::vector<CallChainReportEntry> CallChainReportBuilder::Build(const ThreadEntr
   for (size_t i = 0; i < ips.size(); i++) {
     const MapEntry* map = thread_tree_.FindMap(thread, ips[i], i < kernel_ip_count);
     Dso* dso = map->dso;
+    uint64_t vaddr_in_file;
+    const Symbol* symbol = thread_tree_.FindSymbol(map, ips[i], &vaddr_in_file, &dso);
     CallChainExecutionType execution_type = CallChainExecutionType::NATIVE_METHOD;
     if (dso->IsForJavaMethod()) {
       if (dso->type() == DSO_DEX_FILE) {
@@ -43,8 +57,6 @@ std::vector<CallChainReportEntry> CallChainReportBuilder::Build(const ThreadEntr
         execution_type = CallChainExecutionType::JIT_JVM_METHOD;
       }
     }
-    uint64_t vaddr_in_file;
-    const Symbol* symbol = thread_tree_.FindSymbol(map, ips[i], &vaddr_in_file, &dso);
     result.resize(result.size() + 1);
     auto& entry = result.back();
     entry.ip = ips[i];
@@ -70,6 +82,8 @@ std::vector<CallChainReportEntry> CallChainReportBuilder::Build(const ThreadEntr
 void CallChainReportBuilder::MarkArtFrame(std::vector<CallChainReportEntry>& callchain) {
   // Mark art methods before or after a JVM method.
   bool near_java_method = false;
+  bool is_jni_trampoline = false;
+  std::vector<size_t> jni_trampoline_positions;
   for (size_t i = 0; i < callchain.size(); ++i) {
     auto& entry = callchain[i];
     if (entry.execution_type == CallChainExecutionType::INTERPRETED_JVM_METHOD ||
@@ -78,15 +92,27 @@ void CallChainReportBuilder::MarkArtFrame(std::vector<CallChainReportEntry>& cal
 
       // Mark art frames before this entry.
       for (int j = static_cast<int>(i) - 1; j >= 0; j--) {
-        if (!IsArtDso(callchain[j].dso)) {
+        if (!IsArtEntry(callchain[j], &is_jni_trampoline)) {
           break;
         }
         callchain[j].execution_type = CallChainExecutionType::ART_METHOD;
+        if (is_jni_trampoline) {
+          jni_trampoline_positions.push_back(j);
+        }
       }
-    } else if (near_java_method && IsArtDso(entry.dso)) {
+    } else if (near_java_method && IsArtEntry(entry, &is_jni_trampoline)) {
       entry.execution_type = CallChainExecutionType::ART_METHOD;
+      if (is_jni_trampoline) {
+        jni_trampoline_positions.push_back(i);
+      }
     } else {
       near_java_method = false;
+    }
+  }
+  // Functions called by art_jni_trampoline are jni methods. And we don't want to hide them.
+  for (auto i : jni_trampoline_positions) {
+    if (i > 0 && callchain[i - 1].execution_type == CallChainExecutionType::ART_METHOD) {
+      callchain[i - 1].execution_type = CallChainExecutionType::NATIVE_METHOD;
     }
   }
 }
