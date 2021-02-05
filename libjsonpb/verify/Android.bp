@@ -64,7 +64,4 @@ cc_test_host {
         "-Werror",
         "-Wno-unused-parameter",
     ],
-    test_suites: [
-        "general-tests",
-    ],
 }
