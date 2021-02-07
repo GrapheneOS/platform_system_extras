@@ -31,8 +31,6 @@
 
 __BEGIN_DECLS
 
-#if __ANDROID_API__ >= __ANDROID_API_S__
-
 /**
  * Returns a new java.io.FileDescriptor.
  *
@@ -80,8 +78,6 @@ int AFileDescriptor_getFD(JNIEnv* env, jobject fileDescriptor) __INTRODUCED_IN(3
  * \param fd a Unix file descriptor that \a fileDescriptor will subsequently represent.
  */
 void AFileDescriptor_setFD(JNIEnv* env, jobject fileDescriptor, int fd) __INTRODUCED_IN(31);
-
-#endif  // __ANDROID_API__ >= __ANDROID_API_S__
 
 __END_DECLS
 
