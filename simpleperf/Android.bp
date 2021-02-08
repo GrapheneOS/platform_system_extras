@@ -551,6 +551,9 @@ cc_test {
     defaults: [
         "simpleperf_libs_for_tests",
     ],
+    test_options: {
+        unit_test: true,
+    },
     srcs: [
         "cpu_hotplug_test.cpp",
     ],
