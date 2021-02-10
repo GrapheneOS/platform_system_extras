@@ -114,3 +114,13 @@ TEST(cmd_inject, branch_to_proto_string) {
     ASSERT_EQ(branch, branch2);
   }
 }
+
+TEST(cmd_inject, skip_empty_output_file) {
+  TemporaryFile tmpfile;
+  close(tmpfile.release());
+  ASSERT_TRUE(RunInjectCmd(
+      {"--binary", "not_exist_binary", "--output", "branch-list", "-o", tmpfile.path}));
+  // The empty output file should not be produced.
+  ASSERT_FALSE(IsRegularFile(tmpfile.path));
+  tmpfile.DoNotRemove();
+}
