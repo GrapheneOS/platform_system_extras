@@ -17,6 +17,7 @@
 //! ProfCollect Binder client interface.
 
 use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProfCollectd;
+use profcollectd_aidl_interface::binder;
 
 /// Initialise profcollectd service.
 /// * `start` - Immediately schedule collection after service is initialised.
@@ -26,7 +27,7 @@ pub fn init_service(start: bool) {
     }
 }
 
-fn get_profcollectd_service() -> Box<dyn IProfCollectd::IProfCollectd> {
+fn get_profcollectd_service() -> binder::Strong<dyn IProfCollectd::IProfCollectd> {
     let service_name = "profcollectd";
     binder::get_interface(&service_name).expect("could not get profcollectd binder service")
 }
