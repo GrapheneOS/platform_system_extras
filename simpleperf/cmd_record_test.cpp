@@ -772,7 +772,7 @@ static void RecordJavaApp(RecordingAppHelper& helper) {
   // 3. Record perf.data.
   SetRunInAppToolForTesting(true, true);
   ASSERT_TRUE(helper.RecordData(
-      "-e cpu-clock --app com.example.android.displayingbitmaps -g --duration 10"));
+      "-e cpu-clock --app com.example.android.displayingbitmaps -g --duration 15"));
 }
 #endif  // defined(__ANDROID__)
 
