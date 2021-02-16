@@ -123,3 +123,16 @@ TEST(monitor_cmd, cpu_percent) {
   ASSERT_FALSE(RunMonitorCmd({"-a", "--cpu-percent", "-1"}, output));
   ASSERT_FALSE(RunMonitorCmd({"-a", "--cpu-percent", "101"}, output));
 }
+
+TEST(monitor_cmd, record_filter_options) {
+  TEST_REQUIRE_ROOT();
+  std::string output;
+  ASSERT_TRUE(
+      RunMonitorCmd({"-a", "--exclude-pid", "1,2", "--exclude-tid", "3,4", "--exclude-process-name",
+                     "processA", "--exclude-thread-name", "threadA", "--exclude-uid", "5,6"},
+                    output));
+  ASSERT_TRUE(
+      RunMonitorCmd({"-a", "--include-pid", "1,2", "--include-tid", "3,4", "--include-process-name",
+                     "processB", "--include-thread-name", "threadB", "--include-uid", "5,6"},
+                    output));
+}
