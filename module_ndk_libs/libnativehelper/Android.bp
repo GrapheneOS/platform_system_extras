@@ -16,6 +16,25 @@
 // platform/libnativehelper project in the ART branch. Any changes here should
 // be synced here and vice versa.
 
+package {
+    default_applicable_licenses: [
+        "system_extras_module_ndk_libs_libnativehelper_license",
+    ],
+}
+
+// Added automatically by a large-scale-change
+// See: http://go/android-license-faq
+license {
+    name: "system_extras_module_ndk_libs_libnativehelper_license",
+    visibility: [":__subpackages__"],
+    license_kinds: [
+        "SPDX-license-identifier-Apache-2.0",
+    ],
+    license_text: [
+        "NOTICE",
+    ],
+}
+
 ndk_headers {
     name: "ndk_jni.h",
     from: "include_jni",
