@@ -122,3 +122,9 @@ TEST(environment, GetKernelAndModuleMmaps) {
   ASSERT_EQ(kernel_mmap.name, std::string(DEFAULT_KERNEL_MMAP_NAME) + "_stext");
   ASSERT_GT(kernel_mmap.start_addr, 0);
 }
+
+TEST(environment, GetProcessUid) {
+  std::optional<uid_t> uid = GetProcessUid(getpid());
+  ASSERT_TRUE(uid.has_value());
+  ASSERT_EQ(uid.value(), getuid());
+}
