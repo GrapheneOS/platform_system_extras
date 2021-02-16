@@ -41,6 +41,7 @@
 #include "IOEventLoop.h"
 #include "MapRecordReader.h"
 #include "OfflineUnwinder.h"
+#include "RecordFilter.h"
 #include "command.h"
 #include "dso.h"
 #include "environment.h"
@@ -95,7 +96,6 @@ class MonitorCommand : public Command {
 "Select monitored threads:\n"
 "-a               System-wide collection. Use with --exclude-perf to exclude\n"
 "                 samples for simpleperf process.\n"
-"--exclude-perf   Exclude samples for simpleperf process.\n"
 "\n"
 "Select monitored event types:\n"
 "-e event1[:modifier1],event2[:modifier2],...\n"
@@ -128,6 +128,10 @@ class MonitorCommand : public Command {
 "--cpu-percent <percent>  Set the max percent of cpu time used for recording.\n"
 "                         percent is in range [1-100], default is 25.\n"
 "\n"
+"Sample filter options:\n"
+"--exclude-perf                Exclude samples for simpleperf process.\n"
+RECORD_FILTER_OPTION_HELP_MSG
+"\n"
                 // clang-format on
                 ),
         system_wide_collection_(false),
@@ -139,7 +143,8 @@ class MonitorCommand : public Command {
         event_selection_set_(false),
         mmap_page_range_(std::make_pair(1, DESIRED_PAGES_IN_MAPPED_BUFFER)),
         sample_record_count_(0),
-        last_record_timestamp_(0u) {
+        last_record_timestamp_(0u),
+        record_filter_(thread_tree_) {
     // If we run `adb shell simpleperf record xxx` and stop profiling by ctrl-c,
     // adb closes sockets connecting simpleperf. After that, simpleperf will
     // receive SIGPIPE when writing to stdout/stderr, which is a problem when we
@@ -183,6 +188,7 @@ class MonitorCommand : public Command {
   // In system wide recording, record if we have dumped map info for a process.
   std::unordered_set<pid_t> dumped_processes_;
   bool exclude_perf_ = false;
+  RecordFilter record_filter_;
   std::unordered_map<uint64_t, std::string> event_names_;
 
   std::optional<MapRecordReader> map_record_reader_;
@@ -293,18 +299,23 @@ bool MonitorCommand::DoMonitoring() {
 }
 
 inline const OptionFormatMap& GetMonitorCmdOptionFormats() {
-  static const OptionFormatMap option_formats = {
-      {"-a", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
-      {"-c", {OptionValueType::UINT, OptionType::ORDERED, AppRunnerType::ALLOWED}},
-      {"--call-graph", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
-      {"--cpu-percent", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--duration", {OptionValueType::DOUBLE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"-e", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
-      {"--exclude-perf", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"-f", {OptionValueType::UINT, OptionType::ORDERED, AppRunnerType::ALLOWED}},
-      {"-g", {OptionValueType::NONE, OptionType::ORDERED, AppRunnerType::ALLOWED}},
-      {"-t", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
-  };
+  static OptionFormatMap option_formats;
+  if (option_formats.empty()) {
+    option_formats = {
+        {"-a", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
+        {"-c", {OptionValueType::UINT, OptionType::ORDERED, AppRunnerType::ALLOWED}},
+        {"--call-graph", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
+        {"--cpu-percent", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--duration", {OptionValueType::DOUBLE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"-e", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
+        {"--exclude-perf", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"-f", {OptionValueType::UINT, OptionType::ORDERED, AppRunnerType::ALLOWED}},
+        {"-g", {OptionValueType::NONE, OptionType::ORDERED, AppRunnerType::ALLOWED}},
+        {"-t", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
+    };
+    const OptionFormatMap& record_filter_options = GetRecordFilterOptionFormats();
+    option_formats.insert(record_filter_options.begin(), record_filter_options.end());
+  }
   return option_formats;
 }
 
@@ -328,6 +339,9 @@ bool MonitorCommand::ParseOptions(const std::vector<std::string>& args) {
   }
 
   exclude_perf_ = options.PullBoolValue("--exclude-perf");
+  if (!record_filter_.ParseOptions(options)) {
+    return false;
+  }
 
   CHECK(options.values.empty());
 
@@ -485,6 +499,13 @@ bool MonitorCommand::ProcessRecord(Record* record) {
   }
   if (record->type() == PERF_RECORD_SAMPLE) {
     auto& r = *static_cast<SampleRecord*>(record);
+
+    // Record filter check should go after DumpMapsForRecord(). Otherwise, process/thread name
+    // filters don't work in system wide collection.
+    if (!record_filter_.Check(&r)) {
+      return true;
+    }
+
     // AdjustCallChainGeneratedByKernel() should go before UnwindRecord().
     // Because we don't want to adjust callchains generated by dwarf unwinder.
     if (fp_callchain_sampling_ || dwarf_callchain_sampling_) {
