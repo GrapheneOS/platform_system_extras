@@ -917,4 +917,24 @@ std::optional<std::pair<int, int>> GetKernelVersion() {
   return std::make_pair(major, minor);
 }
 
+std::optional<uid_t> GetProcessUid(pid_t pid) {
+  std::string status_file = "/proc/" + std::to_string(pid) + "/status";
+  FILE* fp = fopen(status_file.c_str(), "re");
+  if (fp == nullptr) {
+    return std::nullopt;
+  }
+
+  LineReader reader(fp);
+  char* line;
+  while ((line = reader.ReadLine()) != nullptr) {
+    if (android::base::StartsWith(line, "Uid:")) {
+      uid_t uid;
+      if (sscanf(line + strlen("Uid:"), "%u", &uid) == 1) {
+        return uid;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 }  // namespace simpleperf
