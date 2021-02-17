@@ -85,7 +85,7 @@ class ThreadTreeWithFilter : public ThreadTree {
  public:
   void ExcludePid(pid_t pid) { exclude_pid_ = pid; }
 
-  ThreadEntry* FindThread(int tid) override {
+  ThreadEntry* FindThread(int tid) const override {
     ThreadEntry* thread = ThreadTree::FindThread(tid);
     if (thread != nullptr && exclude_pid_ && thread->pid == exclude_pid_) {
       return nullptr;

@@ -29,6 +29,8 @@
 
 #include <android-base/logging.h>
 #include <android-base/macros.h>
+#include <android-base/parseint.h>
+#include <android-base/strings.h>
 #include <android-base/unique_fd.h>
 #include <ziparchive/zip_archive.h>
 
@@ -179,6 +181,20 @@ std::string GetSimpleperfVersion();
 
 std::optional<std::set<int>> GetCpusFromString(const std::string& s);
 std::optional<std::set<pid_t>> GetTidsFromString(const std::string& s, bool check_if_exists);
+
+template <typename T>
+std::optional<std::set<T>> ParseUintVector(const std::string& s) {
+  std::set<T> result;
+  T value;
+  for (const auto& p : android::base::Split(s, ",")) {
+    if (!android::base::ParseUint(p.c_str(), &value, std::numeric_limits<T>::max())) {
+      LOG(ERROR) << "Invalid Uint '" << p << "' in " << s;
+      return std::nullopt;
+    }
+    result.insert(value);
+  }
+  return result;
+}
 
 // from boost::hash_combine
 template <typename T>

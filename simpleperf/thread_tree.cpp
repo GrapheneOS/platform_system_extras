@@ -66,7 +66,7 @@ void ThreadTree::ForkThread(int pid, int tid, int ppid, int ptid) {
   }
 }
 
-ThreadEntry* ThreadTree::FindThread(int tid) {
+ThreadEntry* ThreadTree::FindThread(int tid) const {
   if (auto it = thread_tree_.find(tid); it != thread_tree_.end()) {
     return it->second.get();
   }

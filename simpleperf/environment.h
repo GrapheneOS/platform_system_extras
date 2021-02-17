@@ -85,21 +85,6 @@ bool GetPerfEventMlockKb(uint64_t* mlock_kb);
 bool SetPerfEventMlockKb(uint64_t mlock_kb);
 bool CanRecordRawData();
 
-#if defined(__linux__)
-static inline uint64_t GetSystemClock() {
-  timespec ts;
-  // Assume clock_gettime() doesn't fail.
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return ts.tv_sec * 1000000000ULL + ts.tv_nsec;
-}
-
-#if !defined(__ANDROID__)
-static inline int gettid() {
-  return syscall(__NR_gettid);
-}
-#endif
-#endif
-
 ArchType GetMachineArch();
 void PrepareVdsoFile();
 
@@ -137,8 +122,24 @@ std::string GetHardwareFromCpuInfo(const std::string& cpu_info);
 bool MappedFileOnlyExistInMemory(const char* filename);
 
 std::string GetCompleteProcessName(pid_t pid);
-
 const char* GetTraceFsDir();
+
+#if defined(__linux__)
+static inline uint64_t GetSystemClock() {
+  timespec ts;
+  // Assume clock_gettime() doesn't fail.
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+}
+
+#if !defined(__ANDROID__)
+static inline int gettid() {
+  return syscall(__NR_gettid);
+}
+#endif
+
+std::optional<uid_t> GetProcessUid(pid_t pid);
+#endif  // defined(__linux__)
 
 }  // namespace simpleperf
 

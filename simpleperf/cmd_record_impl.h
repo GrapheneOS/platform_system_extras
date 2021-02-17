@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "RecordFilter.h"
 #include "command.h"
 
 namespace simpleperf {
@@ -28,57 +29,62 @@ struct AddrFilter;
 std::vector<AddrFilter> ParseAddrFilterOption(const std::string& s);
 
 inline const OptionFormatMap& GetRecordCmdOptionFormats() {
-  static const OptionFormatMap option_formats = {
-      {"-a", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
-      {"--addr-filter", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--app", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
-      {"--aux-buffer-size", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"-b", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"-c", {OptionValueType::UINT, OptionType::ORDERED, AppRunnerType::ALLOWED}},
-      {"--call-graph", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
-      {"--callchain-joiner-min-matching-nodes",
-       {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--clockid", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--cpu", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--cpu-percent", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--duration", {OptionValueType::DOUBLE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"-e", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
-      {"--exclude-perf", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--exit-with-parent", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"-f", {OptionValueType::UINT, OptionType::ORDERED, AppRunnerType::ALLOWED}},
-      {"-g", {OptionValueType::NONE, OptionType::ORDERED, AppRunnerType::ALLOWED}},
-      {"--group", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
-      {"--in-app", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"-j", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
-      {"--kprobe", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::NOT_ALLOWED}},
-      {"-m", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--no-callchain-joiner",
-       {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--no-cut-samples", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--no-dump-kernel-symbols",
-       {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--no-dump-symbols", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--no-inherit", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--no-unwind", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
-      {"-o", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
-      {"--out-fd", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::CHECK_FD}},
-      {"-p", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
-      {"--post-unwind", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--post-unwind=no", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--post-unwind=yes", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--size-limit", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--start_profiling_fd",
-       {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::CHECK_FD}},
-      {"--stdio-controls-profiling",
-       {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--stop-signal-fd", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::CHECK_FD}},
-      {"--symfs", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::CHECK_PATH}},
-      {"-t", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
-      {"--tp-filter", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
-      {"--trace-offcpu", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-      {"--tracepoint-events",
-       {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::CHECK_PATH}},
-  };
+  static OptionFormatMap option_formats;
+  if (option_formats.empty()) {
+    option_formats = {
+        {"-a", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
+        {"--addr-filter", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--app", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
+        {"--aux-buffer-size", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"-b", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"-c", {OptionValueType::UINT, OptionType::ORDERED, AppRunnerType::ALLOWED}},
+        {"--call-graph", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
+        {"--callchain-joiner-min-matching-nodes",
+         {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--clockid", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--cpu", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--cpu-percent", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--duration", {OptionValueType::DOUBLE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"-e", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
+        {"--exclude-perf", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--exit-with-parent", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"-f", {OptionValueType::UINT, OptionType::ORDERED, AppRunnerType::ALLOWED}},
+        {"-g", {OptionValueType::NONE, OptionType::ORDERED, AppRunnerType::ALLOWED}},
+        {"--group", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
+        {"--in-app", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"-j", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
+        {"--kprobe", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::NOT_ALLOWED}},
+        {"-m", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--no-callchain-joiner",
+         {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--no-cut-samples", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--no-dump-kernel-symbols",
+         {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--no-dump-symbols", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--no-inherit", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--no-unwind", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
+        {"-o", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
+        {"--out-fd", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::CHECK_FD}},
+        {"-p", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
+        {"--post-unwind", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--post-unwind=no", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--post-unwind=yes", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--size-limit", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--start_profiling_fd",
+         {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::CHECK_FD}},
+        {"--stdio-controls-profiling",
+         {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--stop-signal-fd", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::CHECK_FD}},
+        {"--symfs", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::CHECK_PATH}},
+        {"-t", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
+        {"--tp-filter", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
+        {"--trace-offcpu", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--tracepoint-events",
+         {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::CHECK_PATH}},
+    };
+    const OptionFormatMap& record_filter_options = GetRecordFilterOptionFormats();
+    option_formats.insert(record_filter_options.begin(), record_filter_options.end());
+  }
   return option_formats;
 }
 
