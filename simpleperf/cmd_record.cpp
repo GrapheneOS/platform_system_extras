@@ -48,6 +48,7 @@
 #include "MapRecordReader.h"
 #include "OfflineUnwinder.h"
 #include "ProbeEvents.h"
+#include "RecordFilter.h"
 #include "cmd_record_impl.h"
 #include "command.h"
 #include "environment.h"
@@ -141,7 +142,6 @@ class RecordCommand : public Command {
 "-p pid1,pid2,...       Record events on existing processes. Mutually exclusive\n"
 "                       with -a.\n"
 "-t tid1,tid2,... Record events on existing threads. Mutually exclusive with -a.\n"
-"--exclude-perf   Exclude samples for simpleperf process.\n"
 "\n"
 "Select monitored event types:\n"
 "-e event1[:modifier1],event2[:modifier2],...\n"
@@ -256,6 +256,10 @@ class RecordCommand : public Command {
 "                   it drops all samples. This option makes simpleperf not cut samples when the\n"
 "                   available space reaches low level.\n"
 "\n"
+"Sample filter options:\n"
+"--exclude-perf                Exclude samples for simpleperf process.\n"
+RECORD_FILTER_OPTION_HELP_MSG
+"\n"
 "Recording file options:\n"
 "--no-dump-kernel-symbols  Don't dump kernel symbols in perf.data. By default\n"
 "                          kernel symbols will be dumped when needed.\n"
@@ -307,7 +311,8 @@ class RecordCommand : public Command {
         exclude_kernel_callchain_(false),
         allow_callchain_joiner_(true),
         callchain_joiner_min_matching_nodes_(1u),
-        last_record_timestamp_(0u) {
+        last_record_timestamp_(0u),
+        record_filter_(thread_tree_) {
     // If we run `adb shell simpleperf record xxx` and stop profiling by ctrl-c, adb closes
     // sockets connecting simpleperf. After that, simpleperf will receive SIGPIPE when writing
     // to stdout/stderr, which is a problem when we use '--app' option. So ignore SIGPIPE to
@@ -409,6 +414,7 @@ class RecordCommand : public Command {
   // In system wide recording, record if we have dumped map info for a process.
   std::unordered_set<pid_t> dumped_processes_;
   bool exclude_perf_ = false;
+  RecordFilter record_filter_;
 
   std::optional<MapRecordReader> map_record_reader_;
   std::optional<MapRecordThread> map_record_thread_;
@@ -833,6 +839,9 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   }
 
   exclude_perf_ = options.PullBoolValue("--exclude-perf");
+  if (!record_filter_.ParseOptions(options)) {
+    return false;
+  }
 
   if (options.PullValue("--exit-with-parent")) {
     prctl(PR_SET_PDEATHSIG, SIGHUP, 0, 0, 0);
@@ -1281,6 +1290,13 @@ bool RecordCommand::ProcessRecord(Record* record) {
   // In system wide recording, maps are dumped when they are needed by records.
   if (system_wide_collection_ && !DumpMapsForRecord(record)) {
     return false;
+  }
+  // Record filter check should go after DumpMapsForRecord(). Otherwise, process/thread name
+  // filters don't work in system wide collection.
+  if (record->type() == PERF_RECORD_SAMPLE) {
+    if (!record_filter_.Check(static_cast<SampleRecord*>(record))) {
+      return true;
+    }
   }
   if (unwind_dwarf_callchain_) {
     if (post_unwind_) {
