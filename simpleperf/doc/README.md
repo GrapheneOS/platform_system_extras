@@ -89,7 +89,7 @@ bin/${host}/${arch}/simpleperf: simpleperf executables used on the host, only su
 
 bin/${host}/${arch}/libsimpleperf_report.${so/dylib/dll}: report shared libraries used on the host.
 
-*.py, inferno: Python scripts used for recording and reporting.
+*.py, inferno, purgatorio: Python scripts used for recording and reporting. Details are in [scripts_reference.md](scripts_reference.md).
 
 
 ## Android application profiling
