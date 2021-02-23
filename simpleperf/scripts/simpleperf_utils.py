@@ -612,11 +612,11 @@ class Addr2Nearestline(object):
                     break
 
     def _build_symbolizer_args(self, binary_path):
-        args = [self.symbolizer_path, '-print-address', '-inlining', '-obj=%s' % binary_path]
+        args = [self.symbolizer_path, '--print-address', '--inlining', '--obj=%s' % binary_path]
         if self.with_function_name:
-            args += ['-functions=linkage', '-demangle']
+            args += ['--functions=linkage', '--demangle']
         else:
-            args.append('-functions=none')
+            args.append('--functions=none')
         return args
 
     def _parse_source_location(self, line):
