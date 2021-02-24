@@ -245,13 +245,8 @@ bool DebugUnwindCommand::ProcessRecord(Record* record) {
       stat_.total_unwinding_time_in_ns += unwinding_result.used_time;
       stat_.max_unwinding_time_in_ns =
           std::max(stat_.max_unwinding_time_in_ns, unwinding_result.used_time);
-      if (!writer_->WriteRecord(UnwindingResultRecord(r.time_data.time, unwinding_result))) {
-        return false;
-      }
-      // We want to keep both reg/stack data and callchain of a sample. However, storing both
-      // can exceed the size limit of a SampleRecord. So instead we store one sample with reg/stack
-      // data and one sample with callchain.
-      if (!writer_->WriteRecord(r)) {
+      if (!writer_->WriteRecord(UnwindingResultRecord(r.time_data.time, unwinding_result,
+                                                      r.regs_user_data, r.stack_user_data))) {
         return false;
       }
       r.ReplaceRegAndStackWithCallChain(ips);
