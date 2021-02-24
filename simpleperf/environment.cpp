@@ -264,7 +264,14 @@ bool CheckPerfEventLimit() {
   // enough permission to create inherited tracepoint events, write -1 to perf_event_allow_path.
   // See http://b/62230699.
   if (IsRoot()) {
-    return android::base::WriteStringToFile("-1", perf_event_allow_path);
+    if (android::base::WriteStringToFile("-1", perf_event_allow_path)) {
+      return true;
+    }
+    // On host, we may not be able to write to perf_event_allow_path (like when running in docker).
+#if defined(__ANDROID__)
+    PLOG(ERROR) << "failed to write -1 to " << perf_event_allow_path;
+    return false;
+#endif
   }
   int limit_level;
   bool can_read_allow_file = ReadPerfEventAllowStatus(&limit_level);
