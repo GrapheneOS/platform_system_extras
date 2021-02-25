@@ -40,6 +40,7 @@
 #if defined(__ANDROID__)
 #include <android-base/properties.h>
 #endif
+#include <unwindstack/Error.h>
 
 #include "CallChainJoiner.h"
 #include "ETMRecorder.h"
@@ -255,6 +256,8 @@ class RecordCommand : public Command {
 "                   the stack data in samples. When the available space reaches critical level,\n"
 "                   it drops all samples. This option makes simpleperf not cut samples when the\n"
 "                   available space reaches low level.\n"
+"--keep-failed-unwinding-result  Keep reasons for failed-to-unwind samples for debugging\n"
+"--keep-failed-unwinding-stack   Keep stack data for failed-to-unwind samples for debugging\n"
 "\n"
 "Sample filter options:\n"
 "--exclude-perf                Exclude samples for simpleperf process.\n"
@@ -350,6 +353,7 @@ RECORD_FILTER_OPTION_HELP_MSG
   bool ProcessControlCmd(IOEventLoop* loop);
   void UpdateRecord(Record* record);
   bool UnwindRecord(SampleRecord& r);
+  bool KeepFailedUnwindingResult(const SampleRecord& r);
 
   // post recording functions
   std::unique_ptr<RecordFileReader> MoveRecordFile(const std::string& old_filename);
@@ -370,6 +374,8 @@ RECORD_FILTER_OPTION_HELP_MSG
   uint32_t dump_stack_size_in_dwarf_sampling_;
   bool unwind_dwarf_callchain_;
   bool post_unwind_;
+  bool keep_failed_unwinding_result_ = false;
+  bool keep_failed_unwinding_stack_ = false;
   std::unique_ptr<OfflineUnwinder> offline_unwinder_;
   bool child_inherit_;
   double duration_in_sec_;
@@ -495,7 +501,8 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     return false;
   }
   if (unwind_dwarf_callchain_) {
-    offline_unwinder_ = OfflineUnwinder::Create(false);
+    bool collect_stat = keep_failed_unwinding_result_;
+    offline_unwinder_ = OfflineUnwinder::Create(collect_stat);
   }
   if (unwind_dwarf_callchain_ && allow_callchain_joiner_) {
     callchain_joiner_.reset(new CallChainJoiner(DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE,
@@ -860,6 +867,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       branch_sampling_ |= it->second;
     }
   }
+  keep_failed_unwinding_result_ = options.PullBoolValue("--keep-failed-unwinding-result");
+  keep_failed_unwinding_stack_ = options.PullBoolValue("--keep-failed-unwinding-stack");
 
   for (const OptionValue& value : options.PullValues("--kprobe")) {
     std::vector<std::string> cmds = android::base::Split(*value.str_value, ",");
@@ -1548,10 +1557,31 @@ bool RecordCommand::UnwindRecord(SampleRecord& r) {
         return false;
       }
     }
+    if (keep_failed_unwinding_result_ && !KeepFailedUnwindingResult(r)) {
+      return false;
+    }
     r.ReplaceRegAndStackWithCallChain(ips);
-    if (callchain_joiner_) {
-      return callchain_joiner_->AddCallChain(r.tid_data.pid, r.tid_data.tid,
-                                             CallChainJoiner::ORIGINAL_OFFLINE, ips, sps);
+    if (callchain_joiner_ &&
+        !callchain_joiner_->AddCallChain(r.tid_data.pid, r.tid_data.tid,
+                                         CallChainJoiner::ORIGINAL_OFFLINE, ips, sps)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool RecordCommand::KeepFailedUnwindingResult(const SampleRecord& r) {
+  auto& result = offline_unwinder_->GetUnwindingResult();
+  if (result.error_code != unwindstack::ERROR_NONE) {
+    PerfSampleRegsUserType regs_user_data = {};
+    PerfSampleStackUserType stack_user_data = {};
+    if (keep_failed_unwinding_stack_) {
+      regs_user_data = r.regs_user_data;
+      stack_user_data = r.stack_user_data;
+    }
+    if (!record_file_writer_->WriteRecord(
+            UnwindingResultRecord(r.time_data.time, result, regs_user_data, stack_user_data))) {
+      return false;
     }
   }
   return true;
