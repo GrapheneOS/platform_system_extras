@@ -1104,3 +1104,12 @@ TEST(record_cmd, record_filter_options) {
       RunRecordCmd({"--include-pid", "1,2", "--include-tid", "3,4", "--include-process-name",
                     "processB", "--include-thread-name", "threadB", "--include-uid", "5,6"}));
 }
+
+TEST(record_cmd, keep_failed_unwinding_result_option) {
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
+  std::vector<std::unique_ptr<Workload>> workloads;
+  CreateProcesses(1, &workloads);
+  std::string pid = std::to_string(workloads[0]->GetPid());
+  ASSERT_TRUE(RunRecordCmd(
+      {"-p", pid, "-g", "--keep-failed-unwinding-result", "--keep-failed-unwinding-stack"}));
+}

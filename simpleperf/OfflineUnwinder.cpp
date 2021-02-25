@@ -293,29 +293,8 @@ bool OfflineUnwinderImpl::UnwindCallChain(const ThreadEntry& thread, const RegSe
   }
   if (collect_stat_) {
     unwinding_result_.used_time = GetSystemClock() - start_time;
-    switch (unwinder.LastErrorCode()) {
-      case unwindstack::ERROR_MAX_FRAMES_EXCEEDED:
-        unwinding_result_.stop_reason = UnwindingResult::EXCEED_MAX_FRAMES_LIMIT;
-        break;
-      case unwindstack::ERROR_MEMORY_INVALID: {
-        uint64_t addr = unwinder.LastErrorAddress();
-        // Because we don't have precise stack range here, just guess an addr is in stack
-        // if sp - 128K <= addr <= sp.
-        if (addr <= stack_addr && addr >= stack_addr - 128 * 1024) {
-          unwinding_result_.stop_reason = UnwindingResult::ACCESS_STACK_FAILED;
-        } else {
-          unwinding_result_.stop_reason = UnwindingResult::ACCESS_MEM_FAILED;
-        }
-        unwinding_result_.stop_info.addr = addr;
-        break;
-      }
-      case unwindstack::ERROR_INVALID_MAP:
-        unwinding_result_.stop_reason = UnwindingResult::MAP_MISSING;
-        break;
-      default:
-        unwinding_result_.stop_reason = UnwindingResult::UNKNOWN_REASON;
-        break;
-    }
+    unwinding_result_.error_code = unwinder.LastErrorCode();
+    unwinding_result_.error_addr = unwinder.LastErrorAddress();
     unwinding_result_.stack_start = stack_addr;
     unwinding_result_.stack_end = stack_addr + stack_size;
   }
