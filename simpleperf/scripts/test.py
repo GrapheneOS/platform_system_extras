@@ -56,8 +56,8 @@ from app_profiler import NativeLibDownloader
 from binary_cache_builder import BinaryCacheBuilder
 from simpleperf_report_lib import ReportLib
 from simpleperf_utils import (
-    AdbHelper, Addr2Nearestline, bytes_to_str, find_tool_path, get_script_dir, is_elf_file,
-    is_python3, is_windows, log_exit, log_info, log_fatal, Objdump, ReadElf, remove,
+    AdbHelper, Addr2Nearestline, bytes_to_str, extant_dir, find_tool_path, get_script_dir,
+    is_elf_file, is_python3, is_windows, log_exit, log_info, log_fatal, Objdump, ReadElf, remove,
     SourceFileSearcher, str_to_bytes)
 
 try:
@@ -110,6 +110,7 @@ class TestHelper:
         self.device_features = None
         self.browser_option = []
         self.progress_fh = None
+        self.ndk_path = None
 
     def testdata_path(self, testdata_name):
         """ Return the path of a test data. """
@@ -215,6 +216,10 @@ class TestBase(unittest.TestCase):
     def run_cmd(self, args, return_output=False, drop_output=True):
         if args[0] == 'report_html.py' or args[0] == INFERNO_SCRIPT:
             args += TEST_HELPER.browser_option
+        if TEST_HELPER.ndk_path:
+            if args[0] in ['app_profiler.py', 'binary_cache_builder.py', 'pprof_proto_generator.py',
+                           'report_html.py']:
+                args += ['--ndk_path', TEST_HELPER.ndk_path]
         if args[0].endswith('.py'):
             args = [sys.executable, TEST_HELPER.script_path(args[0])] + args[1:]
         use_shell = args[0].endswith('.bat')
@@ -1225,7 +1230,7 @@ class TestTools(TestBase):
                 }
             ],
         }
-        addr2line = Addr2Nearestline(None, binary_cache_path, with_function_name)
+        addr2line = Addr2Nearestline(TEST_HELPER.ndk_path, binary_cache_path, with_function_name)
         for dso_path in test_map:
             test_addrs = test_map[dso_path]
             for test_addr in test_addrs:
@@ -1274,7 +1279,7 @@ class TestTools(TestBase):
                 'expected_items': [
                     ('main():', 0),
                     ('system/extras/simpleperf/runtest/two_functions.cpp:20', 0),
-                    (' 694:	add	x20, x20, #0x6de', 0x694),
+                    ('694:      	add	x20, x20, #1758', 0x694),
                 ],
             },
             '/simpleperf_runtest_two_functions_arm': {
@@ -1283,7 +1288,7 @@ class TestTools(TestBase):
                 'expected_items': [
                     ('main():', 0),
                     ('system/extras/simpleperf/runtest/two_functions.cpp:20', 0),
-                    ('     7ae:	bne.n	7a6 <main+0x22>', 0x7ae),
+                    ('7ae:	bne.n	7a6 <main+0x22>', 0x7ae),
                 ],
             },
             '/simpleperf_runtest_two_functions_x86_64': {
@@ -1292,7 +1297,7 @@ class TestTools(TestBase):
                 'expected_items': [
                     ('main():', 0),
                     ('system/extras/simpleperf/runtest/two_functions.cpp:20', 0),
-                    (' 96e:	mov    %edx,(%rbx,%rax,4)', 0x96e),
+                    ('96e:      	movl	%edx, (%rbx,%rax,4)', 0x96e),
                 ],
             },
             '/simpleperf_runtest_two_functions_x86': {
@@ -1301,21 +1306,31 @@ class TestTools(TestBase):
                 'expected_items': [
                     ('main():', 0),
                     ('system/extras/simpleperf/runtest/two_functions.cpp:20', 0),
-                    (' 748:	cmp    $0x5f5e100,%ebp', 0x748),
+                    ('748:      	cmpl	$100000000, %ebp', 0x748),
                 ],
             },
         }
-        objdump = Objdump(None, binary_cache_path)
+        objdump = Objdump(TEST_HELPER.ndk_path, binary_cache_path)
         for dso_path in test_map:
             dso = test_map[dso_path]
             dso_info = objdump.get_dso_info(dso_path)
             self.assertIsNotNone(dso_info, dso_path)
             disassemble_code = objdump.disassemble_code(dso_info, dso['start_addr'], dso['len'])
             self.assertTrue(disassemble_code, dso_path)
-            for item in dso['expected_items']:
-                self.assertIn(
-                    item, disassemble_code, 'for %s: %s not found %s' %
-                    (dso_path, item, disassemble_code))
+            i = 0
+            for expected_line, expected_addr in dso['expected_items']:
+                found = False
+                while i < len(disassemble_code):
+                    line, addr = disassemble_code[i]
+                    if addr == expected_addr and expected_line in line:
+                        found = True
+                        i += 1
+                        break
+                    i += 1
+                if not found:
+                    s = '\n'.join('%s:0x%x' % item for item in disassemble_code)
+                    self.fail('for %s, %s:0x%x not found in disassemble code:\n%s' %
+                              (dso_path, expected_line, expected_addr, s))
 
     def test_readelf(self):
         test_map = {
@@ -1342,7 +1357,7 @@ class TestTools(TestBase):
                 'arch': 'x86',
             }
         }
-        readelf = ReadElf(None)
+        readelf = ReadElf(TEST_HELPER.ndk_path)
         for dso_path in test_map:
             dso_info = test_map[dso_path]
             path = os.path.join(TEST_HELPER.testdata_dir, dso_path)
@@ -1396,6 +1411,7 @@ class TestNativeLibDownloader(TestBase):
         super(TestNativeLibDownloader, self).setUp()
         self.adb = TEST_HELPER.adb
         self.adb.check_run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
+        self.ndk_path = TEST_HELPER.ndk_path
 
     def tearDown(self):
         self.adb.check_run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
@@ -1408,7 +1424,7 @@ class TestNativeLibDownloader(TestBase):
 
     def test_smoke(self):
         # Sync all native libs on device.
-        downloader = NativeLibDownloader(None, 'arm64', self.adb)
+        downloader = NativeLibDownloader(self.ndk_path, 'arm64', self.adb)
         downloader.collect_native_libs_on_host(TEST_HELPER.testdata_path(
             'SimpleperfExampleWithNative/app/build/intermediates/cmake/profiling'))
         self.assertEqual(len(downloader.host_build_id_map), 2)
@@ -1450,12 +1466,12 @@ class TestNativeLibDownloader(TestBase):
         self.adb.check_run(['shell', 'mkdir', '-p', '/data/local/tmp/native_libs'])
         self.adb.check_run(['push', 'build_id_list', '/data/local/tmp/native_libs'])
         remove('build_id_list')
-        downloader = NativeLibDownloader(None, 'arm64', self.adb)
+        downloader = NativeLibDownloader(self.ndk_path, 'arm64', self.adb)
         downloader.collect_native_libs_on_device()
         self.assertEqual(len(downloader.device_build_id_map), 0)
 
     def test_download_file_without_build_id(self):
-        downloader = NativeLibDownloader(None, 'x86_64', self.adb)
+        downloader = NativeLibDownloader(self.ndk_path, 'x86_64', self.adb)
         name = 'elf.so'
         shutil.copyfile(TEST_HELPER.testdata_path('data/symfs_without_build_id/elf'), name)
         downloader.collect_native_libs_on_host('.')
@@ -1546,7 +1562,7 @@ class TestReportHtml(TestBase):
 
 class TestBinaryCacheBuilder(TestBase):
     def test_copy_binaries_from_symfs_dirs(self):
-        readelf = ReadElf(None)
+        readelf = ReadElf(TEST_HELPER.ndk_path)
         strip = find_tool_path('strip', arch='arm')
         self.assertIsNotNone(strip)
         symfs_dir = os.path.join(self.test_dir, 'symfs_dir')
@@ -1557,7 +1573,7 @@ class TestBinaryCacheBuilder(TestBase):
         source_file = os.path.join(symfs_dir, filename)
         target_file = os.path.join('binary_cache', filename)
         expected_build_id = readelf.get_build_id(origin_file)
-        binary_cache_builder = BinaryCacheBuilder(None, False)
+        binary_cache_builder = BinaryCacheBuilder(TEST_HELPER.ndk_path, False)
         binary_cache_builder.binaries['simpleperf_runtest_two_functions_arm'] = expected_build_id
 
         # Copy binary if target file doesn't exist.
@@ -1577,7 +1593,7 @@ class TestBinaryCacheBuilder(TestBase):
         self.assertTrue(filecmp.cmp(target_file, source_file))
 
     def test_copy_elf_without_build_id_from_symfs_dir(self):
-        binary_cache_builder = BinaryCacheBuilder(None, False)
+        binary_cache_builder = BinaryCacheBuilder(TEST_HELPER.ndk_path, False)
         binary_cache_builder.binaries['elf'] = ''
         symfs_dir = TEST_HELPER.testdata_path('data/symfs_without_build_id')
         source_file = os.path.join(symfs_dir, 'elf')
@@ -1827,6 +1843,7 @@ def main():
     parser.add_argument('--test-from', nargs=1, help='Run left tests from the selected test.')
     parser.add_argument('--browser', action='store_true', help='pop report html file in browser.')
     parser.add_argument('--progress-file', help='write test progress file')
+    parser.add_argument('--ndk-path', type=extant_dir, help='Set the path of a ndk release')
     parser.add_argument('pattern', nargs='*', help='Run tests matching the selected pattern.')
     args = parser.parse_args()
     tests = get_all_tests()
@@ -1849,6 +1866,8 @@ def main():
     if TEST_HELPER.android_version < 7:
         print("Skip tests on Android version < N.", file=TEST_LOGGER)
         return False
+
+    TEST_HELPER.ndk_path = args.ndk_path
 
     remove(TEST_HELPER.test_base_dir)
 
