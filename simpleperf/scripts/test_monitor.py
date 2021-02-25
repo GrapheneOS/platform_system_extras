@@ -33,12 +33,13 @@ import subprocess
 import sys
 import time
 
-from simpleperf_utils import AdbHelper, log_exit, log_info
+from simpleperf_utils import AdbHelper, extant_dir, log_exit, log_info
 
 Device = collections.namedtuple('Device', ['name', 'serial_number'])
 
 Config = collections.namedtuple(
-    'Config', ['devices', 'python_interpreters', 'repeat_times', 'test_patterns', 'test_dir'])
+    'Config',
+    ['devices', 'python_interpreters', 'repeat_times', 'test_patterns', 'test_dir', 'ndk_path'])
 
 CONFIG = None
 
@@ -56,6 +57,7 @@ def parse_args():
     parser.add_argument('--test-dir', default='.', help='test dir')
     parser.add_argument('-p', '--pattern', nargs='+',
                         help='Run tests matching the selected pattern.')
+    parser.add_argument('--ndk-path', type=extant_dir, help='Set the path of a ndk release')
     args = parser.parse_args()
 
     devices = []
@@ -74,8 +76,9 @@ def parse_args():
         python_interpreters = ['python', 'python3']
 
     global CONFIG
-    CONFIG = Config(devices=devices, python_interpreters=python_interpreters,
-                    repeat_times=args.repeat, test_patterns=args.pattern, test_dir=args.test_dir)
+    CONFIG = Config(
+        devices=devices, python_interpreters=python_interpreters, repeat_times=args.repeat,
+        test_patterns=args.pattern, test_dir=args.test_dir, ndk_path=args.ndk_path)
     log_info('config = %s' % (CONFIG,))
 
 def get_test_script_path():
@@ -138,6 +141,8 @@ class Task:
             return
         args = [self.python_interpreter, get_test_script_path(),
                 '--progress-file', self.progress_file]
+        if CONFIG.ndk_path:
+            args += ['--ndk-path', CONFIG.ndk_path]
         args += not_started_tests
         self.test_proc = subprocess.Popen(args, cwd=self.test_dir, env=env)
         self.last_update_time = time.time()
