@@ -595,10 +595,14 @@ struct CallChainRecord : public Record {
 struct UnwindingResultRecord : public Record {
   uint64_t time;
   simpleperf::UnwindingResult unwinding_result;
+  PerfSampleRegsUserType regs_user_data;
+  PerfSampleStackUserType stack_user_data;
 
   explicit UnwindingResultRecord(char* p);
 
-  UnwindingResultRecord(uint64_t time, const simpleperf::UnwindingResult& unwinding_result);
+  UnwindingResultRecord(uint64_t time, const simpleperf::UnwindingResult& unwinding_result,
+                        const PerfSampleRegsUserType& regs_user_data,
+                        const PerfSampleStackUserType& stack_user_data);
 
   uint64_t Timestamp() const override { return time; }
 
