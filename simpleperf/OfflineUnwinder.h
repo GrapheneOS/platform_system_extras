@@ -29,23 +29,10 @@ struct ThreadEntry;
 struct UnwindingResult {
   // time used for unwinding, in ns.
   uint64_t used_time;
-  enum {
-    UNKNOWN_REASON,
-    EXCEED_MAX_FRAMES_LIMIT,
-    ACCESS_REG_FAILED,
-    ACCESS_STACK_FAILED,
-    ACCESS_MEM_FAILED,
-    FIND_PROC_INFO_FAILED,
-    EXECUTE_DWARF_INSTRUCTION_FAILED,
-    DIFFERENT_ARCH,
-    MAP_MISSING,
-  } stop_reason;
-  union {
-    // for ACCESS_REG_FAILED
-    uint64_t regno;
-    // for ACCESS_MEM_FAILED and ACCESS_STACK_FAILED
-    uint64_t addr;
-  } stop_info;
+  // unwindstack::LastErrorCode()
+  uint64_t error_code;
+  // unwindstack::LastErrorAddress()
+  uint64_t error_addr;
   uint64_t stack_start;
   uint64_t stack_end;
 };
