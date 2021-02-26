@@ -153,9 +153,15 @@ class ToolFinder:
             'test_option': 'version',
             'path_in_sdk': 'platform-tools/adb',
         },
-        'readelf': {
-            'is_binutils': True,
-            'accept_tool_without_arch': True,
+        'llvm-objdump': {
+            'is_binutils': False,
+            'path_in_ndk':
+                lambda platform: 'toolchains/llvm/prebuilt/%s-x86_64/bin/llvm-objdump' % platform,
+        },
+        'llvm-readelf': {
+            'is_binutils': False,
+            'path_in_ndk':
+                lambda platform: 'toolchains/llvm/prebuilt/%s-x86_64/bin/llvm-readelf' % platform,
         },
         'llvm-symbolizer': {
             'is_binutils': False,
@@ -748,9 +754,14 @@ class Objdump(object):
         real_path, arch = dso_info
         objdump_path = self.objdump_paths.get(arch)
         if not objdump_path:
-            objdump_path = find_tool_path('objdump', self.ndk_path, arch)
+            if arch == 'arm':
+                # llvm-objdump for arm is not good at showing branch targets.
+                # So still prefer objdump.
+                objdump_path = find_tool_path('objdump', self.ndk_path, arch)
             if not objdump_path:
-                log_exit("Can't find objdump. Please set ndk path with --ndk_path option.")
+                objdump_path = find_tool_path('llvm-objdump', self.ndk_path, arch)
+            if not objdump_path:
+                log_exit("Can't find llvm-objdump. Please set ndk path with --ndk_path option.")
             self.objdump_paths[arch] = objdump_path
 
         # 3. Run objdump.
@@ -758,6 +769,8 @@ class Objdump(object):
                 '--start-address=0x%x' % start_addr,
                 '--stop-address=0x%x' % (start_addr + addr_len),
                 real_path]
+        if arch == 'arm' and 'llvm-objdump' in objdump_path:
+            args += ['--print-imm-hex']
         try:
             subproc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             (stdoutdata, _) = subproc.communicate()
@@ -782,9 +795,9 @@ class Objdump(object):
 class ReadElf(object):
     """ A wrapper of readelf. """
     def __init__(self, ndk_path):
-        self.readelf_path = find_tool_path('readelf', ndk_path)
+        self.readelf_path = find_tool_path('llvm-readelf', ndk_path)
         if not self.readelf_path:
-            log_exit("Can't find readelf. Please set ndk path with --ndk_path option.")
+            log_exit("Can't find llvm-readelf. Please set ndk path with --ndk_path option.")
 
     def get_arch(self, elf_file_path):
         """ Get arch of an elf file. """
