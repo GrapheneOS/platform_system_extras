@@ -59,11 +59,11 @@ fn main() {
             libprofcollectd::trace_once();
         }
         "process" => {
-            println!("Processing traces");
+            println!("Processing traces in background");
             libprofcollectd::process();
         }
         "report" => {
-            println!("Creating profile report");
+            println!("Creating profile report in background");
             libprofcollectd::create_profile_report();
         }
         "reconfig" => {
