@@ -164,30 +164,34 @@ OptError ProfcollectdScheduler::ProcessProfile() {
     return "No trace provider registered.";
   }
 
-  const std::lock_guard<std::mutex> lock(mu);
-  bool success = hwtracer->Process(TRACE_DIR, OUTPUT_DIR, config.binaryFilter);
-  if (!success) {
-    static std::string errmsg = "Process profiles failed";
-    return errmsg;
-  }
+  std::thread t([&]() {
+    const std::lock_guard<std::mutex> lock(mu);
+    hwtracer->Process(TRACE_DIR, OUTPUT_DIR, config.binaryFilter);
+  });
+  t.detach();
+
   return std::nullopt;
 }
 
 OptError ProfcollectdScheduler::CreateProfileReport() {
-  auto processFailureMsg = ProcessProfile();
-  if (processFailureMsg) {
-    return processFailureMsg;
+  if (!hwtracer) {
+    return "No trace provider registered.";
   }
 
-  std::vector<fs::path> profiles;
-  if (fs::exists(OUTPUT_DIR)) {
-    profiles.insert(profiles.begin(), fs::directory_iterator(OUTPUT_DIR), fs::directory_iterator());
-  }
-  bool success = CompressFiles(REPORT_FILE, profiles);
-  if (!success) {
-    static std::string errmsg = "Compress files failed";
-    return errmsg;
-  }
+  std::thread t([&]() {
+    const std::lock_guard<std::mutex> lock(mu);
+
+    hwtracer->Process(TRACE_DIR, OUTPUT_DIR, config.binaryFilter);
+
+    std::vector<fs::path> profiles;
+    if (fs::exists(OUTPUT_DIR)) {
+      profiles.insert(profiles.begin(), fs::directory_iterator(OUTPUT_DIR),
+                      fs::directory_iterator());
+    }
+    CompressFiles(REPORT_FILE, profiles);
+  });
+  t.detach();
+
   return std::nullopt;
 }
 
