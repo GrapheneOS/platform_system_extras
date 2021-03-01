@@ -69,6 +69,11 @@ cc_defaults {
         "-bugprone-unhandled-self-assignment",
         "-bugprone-macro-parentheses",
     ],
+
+    cflags: [
+        // jsoncpp uses volatile.
+        "-Wno-deprecated-volatile",
+    ],
 }
 
 cc_library {
