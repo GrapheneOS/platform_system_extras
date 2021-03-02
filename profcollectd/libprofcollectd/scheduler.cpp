@@ -202,20 +202,22 @@ OptError ProfcollectdScheduler::GetSupportedProvider(std::string& provider) {
 
 std::ostream& operator<<(std::ostream& os, const ProfcollectdScheduler::Config& config) {
   Json::Value root;
-  const auto writer = std::make_unique<Json::StyledStreamWriter>();
   root[CONFIG_BUILD_FINGERPRINT.name] = config.buildFingerprint;
-  root[CONFIG_COLLECTION_INTERVAL_SEC.name] = config.collectionInterval.count();
+  root[CONFIG_COLLECTION_INTERVAL_SEC.name] =
+    static_cast<Json::Int64>(config.collectionInterval.count());
   root[CONFIG_SAMPLING_PERIOD_SEC.name] = config.samplingPeriod.count();
   root[CONFIG_BINARY_FILTER.name] = config.binaryFilter.c_str();
-  writer->write(os, root);
+  Json::StreamWriterBuilder factory;
+  std::unique_ptr<Json::StreamWriter> const writer(factory.newStreamWriter());
+  writer->write(root, &os);
   return os;
 }
 
 std::istream& operator>>(std::istream& is, ProfcollectdScheduler::Config& config) {
   Json::Value root;
-  const auto reader = std::make_unique<Json::Reader>();
-  bool success = reader->parse(is, root);
-  if (!success) {
+  Json::CharReaderBuilder builder;
+  std::string errorMessage;
+  if (!Json::parseFromStream(builder, is, &root, &errorMessage)) {
     return is;
   }
 
