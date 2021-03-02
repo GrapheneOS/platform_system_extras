@@ -36,7 +36,10 @@ rust_binary {
 
     srcs: ["profcollectctl.rs"],
 
-    rustlibs: ["libprofcollectd_rust"],
+    rustlibs: [
+        "libanyhow",
+        "libprofcollectd",
+    ],
 }
 
 rust_binary {
@@ -44,7 +47,10 @@ rust_binary {
 
     srcs: ["profcollectd.rs"],
 
-    rustlibs: ["libprofcollectd_rust"],
+    rustlibs: [
+        "libanyhow",
+        "libprofcollectd",
+    ],
 
     init_rc: ["profcollectd.rc"],
 }
