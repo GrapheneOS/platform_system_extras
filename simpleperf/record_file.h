@@ -22,6 +22,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -52,6 +53,13 @@ struct FileFeature {
   DISALLOW_COPY_AND_ASSIGN(FileFeature);
 };
 
+struct DebugUnwindFile {
+  std::string path;
+  uint64_t size;
+};
+
+using DebugUnwindFeature = std::vector<DebugUnwindFile>;
+
 // RecordFileWriter writes to a perf record file, like perf.data.
 // User should call RecordFileWriter::Close() to finish writing the file, otherwise the file will
 // be removed in RecordFileWriter::~RecordFileWriter().
@@ -77,7 +85,8 @@ class RecordFileWriter {
   bool WriteFileFeatures(const std::vector<Dso*>& dsos);
   bool WriteFileFeature(const FileFeature& file);
   bool WriteMetaInfoFeature(const std::unordered_map<std::string, std::string>& info_map);
-  bool WriteFeature(int feature, const std::vector<char>& data);
+  bool WriteDebugUnwindFeature(const DebugUnwindFeature& debug_unwind);
+  bool WriteFeature(int feature, const char* data, size_t size);
   bool EndWriteFeatures();
 
   bool Close();
@@ -138,6 +147,7 @@ class RecordFileReader {
     return feature_section_descriptors_.find(feature) != feature_section_descriptors_.end();
   }
   bool ReadFeatureSection(int feature, std::vector<char>* data);
+  bool ReadFeatureSection(int feature, std::string* data);
 
   // There are two ways to read records in data section: one is by calling
   // ReadDataSection(), and [callback] is called for each Record. the other
@@ -167,6 +177,7 @@ class RecordFileReader {
   bool ReadFileFeature(size_t& read_pos, FileFeature* file);
 
   const std::unordered_map<std::string, std::string>& GetMetaInfoFeature() { return meta_info_; }
+  std::optional<DebugUnwindFeature> ReadDebugUnwindFeature();
 
   void LoadBuildIdAndFileFeatures(ThreadTree& thread_tree);
 

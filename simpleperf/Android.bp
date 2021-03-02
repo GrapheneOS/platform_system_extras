@@ -223,6 +223,7 @@ cc_defaults {
         "read_elf.cpp",
         "read_symbol_map.cpp",
         "record.cpp",
+        "record_file.proto",
         "record_file_reader.cpp",
         "record_file_writer.cpp",
         "report_sample.proto",
