@@ -42,6 +42,9 @@ const EVP_MD* HashTreeBuilder::HashFunction(const std::string& hash_name) {
   if (android::base::EqualsIgnoreCase(hash_name, "sha512")) {
     return EVP_sha512();
   }
+  if (android::base::EqualsIgnoreCase(hash_name, "blake2b-256")) {
+    return EVP_blake2b256();
+  }
 
   LOG(ERROR) << "Unsupported hash algorithm " << hash_name;
   return nullptr;
