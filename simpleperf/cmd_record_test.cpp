@@ -1111,5 +1111,5 @@ TEST(record_cmd, keep_failed_unwinding_result_option) {
   CreateProcesses(1, &workloads);
   std::string pid = std::to_string(workloads[0]->GetPid());
   ASSERT_TRUE(RunRecordCmd(
-      {"-p", pid, "-g", "--keep-failed-unwinding-result", "--keep-failed-unwinding-stack"}));
+      {"-p", pid, "-g", "--keep-failed-unwinding-result", "--keep-failed-unwinding-debug-info"}));
 }
