@@ -14,18 +14,10 @@
  * limitations under the License.
  */
 
-#pragma once
-
-#include <chrono>
-#include <filesystem>
-
-namespace simpleperf {
-namespace etm {
+extern "C" {
 
 bool HasSupport();
-bool Record(const std::filesystem::path& output, const std::chrono::duration<float>& duration);
-bool Inject(const std::filesystem::path& traceInput, const std::filesystem::path& output,
-            const std::string& binaryFilter);
+bool Record(const char* output, float duration);
+bool Inject(const char* traceInput, const char* profileOutput);
 
-}  // namespace etm
-}  // namespace simpleperf
+}
