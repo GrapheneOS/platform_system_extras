@@ -16,33 +16,31 @@
 
 //! Daemon program to collect system traces.
 
+use anyhow::{bail, Result};
 use std::env;
 
-fn print_help() {
-    println!(
-        r#"(
+const HELP_MSG: &str = r#"
+profcollectd background daemon.
 usage: profcollectd [command]
-    boot      Start daemon and schedule profile collection after a short delay.
-    run       Start daemon but do not schedule profile collection.
-)"#
-    );
-}
+    nostart       Start daemon but do not schedule profile collection.
+"#;
 
-fn main() {
+fn main() -> Result<()> {
+    libprofcollectd::init_logging();
+
     let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        print_help();
-        std::process::exit(1);
+    if args.len() > 2 {
+        bail!("This program only takes one or no argument{}", &HELP_MSG);
+    }
+    if args.len() == 1 {
+        libprofcollectd::init_service(true)?;
     }
 
     let action = &args[1];
     match action.as_str() {
-        "boot" => libprofcollectd::init_service(true),
-        "run" => libprofcollectd::init_service(false),
-        "help" => print_help(),
-        _ => {
-            print_help();
-            std::process::exit(1);
-        }
+        "nostart" => libprofcollectd::init_service(false)?,
+        "help" => println!("{}", &HELP_MSG),
+        arg => bail!("Unknown argument: {}\n{}", &arg, &HELP_MSG),
     }
+    Ok(())
 }
