@@ -25,6 +25,7 @@
 
 #include "event_attr.h"
 #include "record.h"
+#include "system/extras/simpleperf/record_file.pb.h"
 #include "utils.h"
 
 namespace simpleperf {
@@ -54,6 +55,8 @@ static const std::map<int, std::string> feature_name_map = {
     {FEAT_AUXTRACE, "auxtrace"},
     {FEAT_FILE, "file"},
     {FEAT_META_INFO, "meta_info"},
+    {FEAT_DEBUG_UNWIND, "debug_unwind"},
+    {FEAT_DEBUG_UNWIND_FILE, "debug_unwind_file"},
 };
 
 std::string GetFeatureName(int feature_id) {
@@ -386,6 +389,23 @@ bool RecordFileReader::ReadFeatureSection(int feature, std::vector<char>* data) 
   return true;
 }
 
+bool RecordFileReader::ReadFeatureSection(int feature, std::string* data) {
+  const std::map<int, SectionDesc>& section_map = FeatureSectionDescriptors();
+  auto it = section_map.find(feature);
+  if (it == section_map.end()) {
+    return false;
+  }
+  SectionDesc section = it->second;
+  data->resize(section.size);
+  if (section.size == 0) {
+    return true;
+  }
+  if (!ReadAtOffset(section.offset, data->data(), data->size())) {
+    return false;
+  }
+  return true;
+}
+
 std::vector<std::string> RecordFileReader::ReadCmdlineFeature() {
   std::vector<char> buf;
   if (!ReadFeatureSection(FEAT_CMDLINE, &buf)) {
@@ -548,6 +568,24 @@ bool RecordFileReader::ReadMetaInfoFeature() {
     }
   }
   return true;
+}
+
+std::optional<DebugUnwindFeature> RecordFileReader::ReadDebugUnwindFeature() {
+  if (feature_section_descriptors_.count(FEAT_DEBUG_UNWIND)) {
+    std::string s;
+    if (!ReadFeatureSection(FEAT_DEBUG_UNWIND, &s)) {
+      return std::nullopt;
+    }
+    proto::DebugUnwindFeature proto_debug_unwind;
+    proto_debug_unwind.ParseFromString(s);
+    DebugUnwindFeature debug_unwind(proto_debug_unwind.file_size());
+    for (size_t i = 0; i < proto_debug_unwind.file_size(); i++) {
+      debug_unwind[i].path = proto_debug_unwind.file(i).path();
+      debug_unwind[i].size = proto_debug_unwind.file(i).size();
+    }
+    return debug_unwind;
+  }
+  return std::nullopt;
 }
 
 void RecordFileReader::LoadBuildIdAndFileFeatures(ThreadTree& thread_tree) {
