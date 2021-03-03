@@ -37,6 +37,12 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-parameter"
+#include <llvm/Support/MemoryBuffer.h>
+#pragma clang diagnostic pop
+
 #if defined(__ANDROID__)
 #include <android-base/properties.h>
 #endif
@@ -256,8 +262,8 @@ class RecordCommand : public Command {
 "                   the stack data in samples. When the available space reaches critical level,\n"
 "                   it drops all samples. This option makes simpleperf not cut samples when the\n"
 "                   available space reaches low level.\n"
-"--keep-failed-unwinding-result  Keep reasons for failed-to-unwind samples for debugging\n"
-"--keep-failed-unwinding-stack   Keep stack data for failed-to-unwind samples for debugging\n"
+"--keep-failed-unwinding-result        Keep reasons for failed unwinding cases\n"
+"--keep-failed-unwinding-debug-info    Keep debug info for failed unwinding cases\n"
 "\n"
 "Sample filter options:\n"
 "--exclude-perf                Exclude samples for simpleperf process.\n"
@@ -364,7 +370,8 @@ RECORD_FILTER_OPTION_HELP_MSG
   bool DumpBuildIdFeature();
   bool DumpFileFeature();
   bool DumpMetaInfoFeature(bool kernel_symbols_available);
-  void CollectHitFileInfo(const SampleRecord& r);
+  bool DumpDebugUnwindFeature(const std::unordered_set<Dso*>& dso_set);
+  void CollectHitFileInfo(const SampleRecord& r, std::unordered_set<Dso*>* dso_set);
 
   std::unique_ptr<SampleSpeed> sample_speed_;
   bool system_wide_collection_;
@@ -375,7 +382,7 @@ RECORD_FILTER_OPTION_HELP_MSG
   bool unwind_dwarf_callchain_;
   bool post_unwind_;
   bool keep_failed_unwinding_result_ = false;
-  bool keep_failed_unwinding_stack_ = false;
+  bool keep_failed_unwinding_debug_info_ = false;
   std::unique_ptr<OfflineUnwinder> offline_unwinder_;
   bool child_inherit_;
   double duration_in_sec_;
@@ -868,7 +875,10 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     }
   }
   keep_failed_unwinding_result_ = options.PullBoolValue("--keep-failed-unwinding-result");
-  keep_failed_unwinding_stack_ = options.PullBoolValue("--keep-failed-unwinding-stack");
+  keep_failed_unwinding_debug_info_ = options.PullBoolValue("--keep-failed-unwinding-debug-info");
+  if (keep_failed_unwinding_debug_info_) {
+    keep_failed_unwinding_result_ = true;
+  }
 
   for (const OptionValue& value : options.PullValues("--kprobe")) {
     std::vector<std::string> cmds = android::base::Split(*value.str_value, ",");
@@ -1575,7 +1585,7 @@ bool RecordCommand::KeepFailedUnwindingResult(const SampleRecord& r) {
   if (result.error_code != unwindstack::ERROR_NONE) {
     PerfSampleRegsUserType regs_user_data = {};
     PerfSampleStackUserType stack_user_data = {};
-    if (keep_failed_unwinding_stack_) {
+    if (keep_failed_unwinding_debug_info_) {
       regs_user_data = r.regs_user_data;
       stack_user_data = r.stack_user_data;
     }
@@ -1696,9 +1706,7 @@ bool RecordCommand::JoinCallChains() {
   return reader->ReadDataSection(record_callback);
 }
 
-namespace {
-
-void LoadSymbolMapFile(int pid, const std::string& package, ThreadTree* thread_tree) {
+static void LoadSymbolMapFile(int pid, const std::string& package, ThreadTree* thread_tree) {
   // On Linux, symbol map files usually go to /tmp/perf-<pid>.map
   // On Android, there is no directory where any process can create files.
   // For now, use /data/local/tmp/perf-<pid>.map, which works for standalone programs,
@@ -1713,8 +1721,6 @@ void LoadSymbolMapFile(int pid, const std::string& package, ThreadTree* thread_t
   }
 }
 
-}  // namespace
-
 bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args) {
   // Read data section of perf.data to collect hit file information.
   thread_tree_.ClearThreadAndMap();
@@ -1726,6 +1732,9 @@ bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args)
   }
   std::unordered_set<int> loaded_symbol_maps;
   std::vector<uint64_t> auxtrace_offset;
+  std::unordered_set<Dso*> debug_unwinding_files;
+  bool failed_unwinding_sample = false;
+
   auto callback = [&](const Record* r) {
     thread_tree_.Update(*r);
     if (r->type() == PERF_RECORD_SAMPLE) {
@@ -1734,12 +1743,20 @@ bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args)
       if (loaded_symbol_maps.insert(sample->tid_data.pid).second) {
         LoadSymbolMapFile(sample->tid_data.pid, app_package_name_, &thread_tree_);
       }
-      CollectHitFileInfo(*sample);
+      if (failed_unwinding_sample) {
+        failed_unwinding_sample = false;
+        CollectHitFileInfo(*sample, &debug_unwinding_files);
+      } else {
+        CollectHitFileInfo(*sample, nullptr);
+      }
     } else if (r->type() == PERF_RECORD_AUXTRACE) {
       auto auxtrace = static_cast<const AuxTraceRecord*>(r);
       auxtrace_offset.emplace_back(auxtrace->location.file_offset - auxtrace->size());
+    } else if (r->type() == SIMPLE_PERF_RECORD_UNWINDING_RESULT) {
+      failed_unwinding_sample = true;
     }
   };
+
   if (!record_file_writer_->ReadDataSection(callback)) {
     return false;
   }
@@ -1750,6 +1767,9 @@ bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args)
   }
   if (!auxtrace_offset.empty()) {
     feature_count++;
+  }
+  if (keep_failed_unwinding_debug_info_) {
+    feature_count += 2;
   }
   if (!record_file_writer_->BeginWriteFeatures(feature_count)) {
     return false;
@@ -1788,6 +1808,9 @@ bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args)
     return false;
   }
   if (!auxtrace_offset.empty() && !record_file_writer_->WriteAuxTraceFeature(auxtrace_offset)) {
+    return false;
+  }
+  if (keep_failed_unwinding_debug_info_ && !DumpDebugUnwindFeature(debug_unwinding_files)) {
     return false;
   }
 
@@ -1875,55 +1898,47 @@ bool RecordCommand::DumpMetaInfoFeature(bool kernel_symbols_available) {
   return record_file_writer_->WriteMetaInfoFeature(info_map);
 }
 
-void RecordCommand::CollectHitFileInfo(const SampleRecord& r) {
-  const ThreadEntry* thread = thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-  const MapEntry* map = thread_tree_.FindMap(thread, r.ip_data.ip, r.InKernel());
-  Dso* dso = map->dso;
-  const Symbol* symbol;
-  if (dump_symbols_) {
-    symbol = thread_tree_.FindSymbol(map, r.ip_data.ip, nullptr, &dso);
-    if (!symbol->HasDumpId()) {
-      dso->CreateSymbolDumpId(symbol);
+bool RecordCommand::DumpDebugUnwindFeature(const std::unordered_set<Dso*>& dso_set) {
+  DebugUnwindFeature debug_unwind_feature;
+  debug_unwind_feature.reserve(dso_set.size());
+  for (const Dso* dso : dso_set) {
+    if (dso->type() != DSO_ELF_FILE) {
+      continue;
+    }
+    const std::string& filename = dso->GetDebugFilePath();
+    std::unique_ptr<ElfFile> elf = ElfFile::Open(filename);
+    if (elf) {
+      llvm::MemoryBuffer* buffer = elf->GetMemoryBuffer();
+      debug_unwind_feature.resize(debug_unwind_feature.size() + 1);
+      auto& debug_unwind_file = debug_unwind_feature.back();
+      debug_unwind_file.path = filename;
+      debug_unwind_file.size = buffer->getBufferSize();
+      if (!record_file_writer_->WriteFeature(PerfFileFormat::FEAT_DEBUG_UNWIND_FILE,
+                                             buffer->getBufferStart(), buffer->getBufferSize())) {
+        return false;
+      }
     }
   }
-  if (!dso->HasDumpId() && dso->type() != DSO_UNKNOWN_FILE) {
-    dso->CreateDumpId();
-  }
-  if (r.sample_type & PERF_SAMPLE_CALLCHAIN) {
-    bool in_kernel = r.InKernel();
-    bool first_ip = true;
-    for (uint64_t i = 0; i < r.callchain_data.ip_nr; ++i) {
-      uint64_t ip = r.callchain_data.ips[i];
-      if (ip >= PERF_CONTEXT_MAX) {
-        switch (ip) {
-          case PERF_CONTEXT_KERNEL:
-            in_kernel = true;
-            break;
-          case PERF_CONTEXT_USER:
-            in_kernel = false;
-            break;
-          default:
-            LOG(DEBUG) << "Unexpected perf_context in callchain: " << std::hex << ip;
-        }
-      } else {
-        if (first_ip) {
-          first_ip = false;
-          // Remove duplication with sample ip.
-          if (ip == r.ip_data.ip) {
-            continue;
-          }
-        }
-        map = thread_tree_.FindMap(thread, ip, in_kernel);
-        dso = map->dso;
-        if (dump_symbols_) {
-          symbol = thread_tree_.FindSymbol(map, ip, nullptr, &dso);
-          if (!symbol->HasDumpId()) {
-            dso->CreateSymbolDumpId(symbol);
-          }
-        }
-        if (!dso->HasDumpId() && dso->type() != DSO_UNKNOWN_FILE) {
-          dso->CreateDumpId();
-        }
+  return record_file_writer_->WriteDebugUnwindFeature(debug_unwind_feature);
+}
+
+void RecordCommand::CollectHitFileInfo(const SampleRecord& r, std::unordered_set<Dso*>* dso_set) {
+  const ThreadEntry* thread = thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
+  size_t kernel_ip_count;
+  std::vector<uint64_t> ips = r.GetCallChain(&kernel_ip_count);
+  for (size_t i = 0; i < ips.size(); i++) {
+    const MapEntry* map = thread_tree_.FindMap(thread, ips[i], i < kernel_ip_count);
+    Dso* dso = map->dso;
+    if (dump_symbols_) {
+      const Symbol* symbol = thread_tree_.FindSymbol(map, ips[i], nullptr, &dso);
+      if (!symbol->HasDumpId()) {
+        dso->CreateSymbolDumpId(symbol);
+      }
+    }
+    if (!dso->HasDumpId() && dso->type() != DSO_UNKNOWN_FILE) {
+      dso->CreateDumpId();
+      if (dso_set != nullptr) {
+        dso_set->insert(dso);
       }
     }
   }
