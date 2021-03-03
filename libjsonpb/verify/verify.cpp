@@ -135,10 +135,11 @@ bool AllFieldsAreKnown(const Message& message, const Json::Value& json,
 
 bool AllFieldsAreKnown(const google::protobuf::Message& message, const std::string& json,
                        std::string* error) {
-  Json::Reader reader;
+  Json::CharReaderBuilder builder;
+  std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+  std::string errorMessage;
   Json::Value value;
-  if (!reader.parse(json, value)) {
-    *error = reader.getFormattedErrorMessages();
+  if (!reader->parse(&*json.begin(), &*json.end(), &value, error)) {
     return false;
   }
 
@@ -153,10 +154,11 @@ bool AllFieldsAreKnown(const google::protobuf::Message& message, const std::stri
 
 bool EqReformattedJson(const std::string& json, google::protobuf::Message* scratch_space,
                        std::string* error) {
-  Json::Reader reader;
+  Json::CharReaderBuilder builder;
+  std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
   Json::Value old_json;
-  if (!reader.parse(json, old_json)) {
-    *error = reader.getFormattedErrorMessages();
+  std::string errorMessage;
+  if (!reader->parse(&*json.begin(), &*json.end(), &old_json, error)) {
     return false;
   }
 
@@ -166,8 +168,7 @@ bool EqReformattedJson(const std::string& json, google::protobuf::Message* scrat
     return false;
   }
   Json::Value new_json;
-  if (!reader.parse(*new_json_string, new_json)) {
-    *error = reader.getFormattedErrorMessages();
+  if (!reader->parse(&*new_json_string->begin(), &*new_json_string->end(), &new_json, error)) {
     return false;
   }
 
@@ -188,8 +189,10 @@ bool EqReformattedJson(const std::string& json, google::protobuf::Message* scrat
           "option\n"
           "  for appropriate fields.\n"
           "\n"
-          "Reformatted JSON is printed below.\n"
-       << Json::StyledWriter().write(new_json);
+          "Reformatted JSON is printed below.\n";
+    Json::StreamWriterBuilder factory;
+    std::unique_ptr<Json::StreamWriter> const writer(factory.newStreamWriter());
+    writer->write(new_json, &ss);
     *error = ss.str();
     return false;
   }
