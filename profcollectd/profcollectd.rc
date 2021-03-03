@@ -1,4 +1,4 @@
-service profcollectd /system/bin/profcollectd boot
+service profcollectd /system/bin/profcollectd
     class late_start
     disabled
     oneshot
@@ -14,3 +14,4 @@ on post-fs-data
     mkdir /data/misc/profcollectd 0770 root root
     mkdir /data/misc/profcollectd/trace 0770 root root
     mkdir /data/misc/profcollectd/output 0770 root root
+    mkdir /data/misc/profcollectd/report 0770 root root

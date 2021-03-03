@@ -16,54 +16,84 @@
 
 //! ProfCollect Binder client interface.
 
-use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProfCollectd;
+mod config;
+mod report;
+mod scheduler;
+mod service;
+mod simpleperf_etm_trace_provider;
+mod trace_provider;
+
+use crate::binder::Status;
+use anyhow::{anyhow, Context, Error, Result};
+use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProfCollectd::{
+    self, BnProfCollectd,
+};
 use profcollectd_aidl_interface::binder;
+use service::ProfcollectdBinderService;
+
+const PROFCOLLECTD_SERVICE_NAME: &str = "profcollectd";
 
 /// Initialise profcollectd service.
-/// * `start` - Immediately schedule collection after service is initialised.
-pub fn init_service(start: bool) {
-    unsafe {
-        profcollectd_bindgen::android_profcollectd_InitService(start);
+/// * `schedule_now` - Immediately schedule collection after service is initialised.
+pub fn init_service(schedule_now: bool) -> Result<()> {
+    binder::ProcessState::start_thread_pool();
+
+    let profcollect_binder_service = ProfcollectdBinderService::new()?;
+    binder::add_service(
+        &PROFCOLLECTD_SERVICE_NAME,
+        BnProfCollectd::new_binder(profcollect_binder_service).as_binder(),
+    )
+    .context("Failed to register service.")?;
+
+    if schedule_now {
+        trace_once("boot")?;
+        schedule()?;
     }
+
+    binder::ProcessState::join_thread_pool();
+    Ok(())
 }
 
 fn get_profcollectd_service() -> binder::Strong<dyn IProfCollectd::IProfCollectd> {
-    let service_name = "profcollectd";
-    binder::get_interface(&service_name).expect("could not get profcollectd binder service")
+    binder::get_interface(&PROFCOLLECTD_SERVICE_NAME)
+        .expect("Could not get profcollectd binder service")
+}
+
+// b/181225442
+fn binder_status_to_err(s: &Status) -> Error {
+    anyhow!(s.to_string())
 }
 
 /// Schedule periodic profile collection.
-pub fn schedule_collection() {
-    let service = get_profcollectd_service();
-    service.ScheduleCollection().unwrap();
+pub fn schedule() -> Result<()> {
+    get_profcollectd_service().schedule().map_err(|e| binder_status_to_err(&e))
 }
 
 /// Terminate periodic profile collection.
-pub fn terminate_collection() {
-    let service = get_profcollectd_service();
-    service.TerminateCollection().unwrap();
+pub fn terminate() -> Result<()> {
+    get_profcollectd_service().terminate().map_err(|e| binder_status_to_err(&e))
 }
 
 /// Immediately schedule a one-off trace.
-pub fn trace_once() {
-    let service = get_profcollectd_service();
-    service.TraceOnce("manual").unwrap();
+pub fn trace_once(tag: &str) -> Result<()> {
+    get_profcollectd_service().trace_once(tag).map_err(|e| binder_status_to_err(&e))
 }
 
-/// Process the profiles.
-pub fn process() {
-    let service = get_profcollectd_service();
-    service.ProcessProfile().unwrap();
+/// Process traces.
+pub fn process() -> Result<()> {
+    get_profcollectd_service().process(true).map_err(|e| binder_status_to_err(&e))
 }
 
-/// Create profile report.
-pub fn create_profile_report() {
-    let service = get_profcollectd_service();
-    service.CreateProfileReport().unwrap();
+/// Process traces and report profile.
+pub fn report() -> Result<()> {
+    get_profcollectd_service().report().map_err(|e| binder_status_to_err(&e))
 }
 
-/// Read configs from environment variables.
-pub fn read_config() {
-    let service = get_profcollectd_service();
-    service.ReadConfig().unwrap();
+/// Inits logging for Android
+pub fn init_logging() {
+    android_logger::init_once(
+        android_logger::Config::default()
+            .with_tag("profcollectd")
+            .with_min_level(log::Level::Error),
+    );
 }
