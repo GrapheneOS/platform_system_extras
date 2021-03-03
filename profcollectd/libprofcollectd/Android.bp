@@ -34,76 +34,27 @@ aidl_interface {
     },
 }
 
-rust_bindgen {
-    name: "libprofcollectd_bindgen",
-    crate_name: "profcollectd_bindgen",
-    source_stem: "libprofcollectd_bindgen",
-    wrapper_src: "include/libprofcollectd.hpp",
-}
-
 rust_library {
-    name: "libprofcollectd_rust",
+    name: "libprofcollectd",
     stem: "liblibprofcollectd",
     crate_name: "libprofcollectd",
     srcs: ["lib.rs"],
     rustlibs: [
-        "profcollectd_aidl_interface-rust",
-        "libbinder_rs",
-        "libprofcollectd_bindgen",
+        "profcollectd_aidl_interface-rust", // Move to rlib once b/179041242 is fixed.
+        "libandroid_logger",
+        "libanyhow",
+        "libbinder_rs", // Remove once b/179041241 is fixed.
+        "libchrono",
+        "liblazy_static",
+        "liblog_rust",
+        "libserde", // Remove once b/179041241 is fixed.
+        "libserde_json",
+        "libzip",
     ],
-    shared_libs: [
-        "libprofcollectd",
+    rlibs: [
+        "libprofcollect_libflags_rust",
+        "libprofcollect_libbase_rust",
+        "libsimpleperf_profcollect_rust",
     ],
-}
-
-cc_defaults {
-    name: "libprofcollectd_defaults",
-
-    // We are only doing this for C++20. Can be removed after it becomes default.
-    cpp_std: "experimental",
-
-    tidy: true,
-    tidy_checks: [
-        "-google-runtime-int",
-        "-google-explicit-constructor",
-        "-bugprone-unhandled-self-assignment",
-        "-bugprone-macro-parentheses",
-    ],
-
-    cflags: [
-        // jsoncpp uses volatile.
-        "-Wno-deprecated-volatile",
-    ],
-}
-
-cc_library {
-    name: "libprofcollectd",
-
-    defaults: ["libprofcollectd_defaults"],
-
-    shared_libs: [
-        "libbase",
-        "libbinder",
-        "libjsoncpp",
-        "liblog",
-        "libsimpleperf_profcollect",
-        "libutils",
-        "libziparchive",
-        "profcollectd_aidl_interface-cpp",
-        "server_configurable_flags",
-    ],
-
-    static_libs: [
-        "libc++fs",
-    ],
-
-    srcs: [
-        "binder_service.cpp",
-        "compress.cpp",
-        "config_utils.cpp",
-        "scheduler.cpp",
-        "simpleperf_etm_provider.cpp",
-    ],
-
-    export_include_dirs: ["include"],
+    shared_libs: ["libsimpleperf_profcollect"],
 }

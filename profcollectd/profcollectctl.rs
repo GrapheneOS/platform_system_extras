@@ -16,11 +16,10 @@
 
 //! Command to control profcollectd behaviour.
 
+use anyhow::{bail, Context, Result};
 use std::env;
 
-fn print_help() {
-    println!(
-        r#"(
+const HELP_MSG: &str = r#"
 usage: profcollectctl [command]
 
 Command to control profcollectd behaviour.
@@ -33,47 +32,40 @@ command:
     report      Create a report containing all profiles.
     reconfig    Refresh configuration.
     help        Print this message.
-)"#
-    );
-}
+"#;
 
-fn main() {
+fn main() -> Result<()> {
+    libprofcollectd::init_logging();
+
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
-        print_help();
-        std::process::exit(1);
+        bail!("This program only takes one argument{}", &HELP_MSG);
     }
 
     let action = &args[1];
     match action.as_str() {
         "start" => {
             println!("Scheduling profile collection");
-            libprofcollectd::schedule_collection();
+            libprofcollectd::schedule().context("Failed to schedule collection.")?;
         }
         "stop" => {
             println!("Terminating profile collection");
-            libprofcollectd::terminate_collection();
+            libprofcollectd::terminate().context("Failed to terminate collection.")?;
         }
         "once" => {
             println!("Trace once");
-            libprofcollectd::trace_once();
+            libprofcollectd::trace_once("manual").context("Failed to trace.")?;
         }
         "process" => {
-            println!("Processing traces in background");
-            libprofcollectd::process();
+            println!("Processing traces");
+            libprofcollectd::process().context("Failed to process traces.")?;
         }
         "report" => {
-            println!("Creating profile report in background");
-            libprofcollectd::create_profile_report();
+            println!("Creating profile report");
+            libprofcollectd::report().context("Failed to create profile report.")?;
         }
-        "reconfig" => {
-            println!("Refreshing configuration");
-            libprofcollectd::read_config();
-        }
-        "help" => print_help(),
-        _ => {
-            print_help();
-            std::process::exit(1);
-        }
+        "help" => println!("{}", &HELP_MSG),
+        arg => bail!("Unknown argument: {}\n{}", &arg, &HELP_MSG),
     }
+    Ok(())
 }
