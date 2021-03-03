@@ -209,19 +209,22 @@ TEST_F(EmbeddedJsonKeyTest, QuxQuux) {
 class ScalarTest : public LibJsonpbVerifyTest {
  public:
   ::testing::AssertionResult IsJsonEq(const std::string& l, const std::string& r) {
-    Json::Reader reader;
+    Json::CharReaderBuilder builder;
+    std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
     Json::Value lvalue;
-    if (!reader.parse(l, lvalue))
-      return ::testing::AssertionFailure() << reader.getFormattedErrorMessages();
+    std::string errorMessage;
+    if (!reader->parse(&*l.begin(), &*l.end(), &lvalue, &errorMessage))
+      return ::testing::AssertionFailure() << errorMessage;
     Json::Value rvalue;
-    if (!reader.parse(r, rvalue))
-      return ::testing::AssertionFailure() << reader.getFormattedErrorMessages();
-    Json::StyledWriter writer;
+    if (!reader->parse(&*r.begin(), &*r.end(), &rvalue, &errorMessage))
+      return ::testing::AssertionFailure() << errorMessage;
+    Json::StreamWriterBuilder factory;
     return lvalue == rvalue
                ? (::testing::AssertionSuccess() << "Both are \n"
-                                                << writer.write(lvalue))
-               : (::testing::AssertionFailure() << writer.write(lvalue) << "\n does not equal \n"
-                                                << writer.write(rvalue));
+                                                << Json::writeString(factory, lvalue))
+               : (::testing::AssertionFailure() << Json::writeString(factory, lvalue)
+                                                << "\n does not equal \n"
+                                                << Json::writeString(factory, rvalue));
   }
 
   bool EqReformattedJson(const std::string& json, std::string* error) {
