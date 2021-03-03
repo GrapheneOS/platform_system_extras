@@ -55,7 +55,7 @@ inline const OptionFormatMap& GetRecordCmdOptionFormats() {
         {"-j", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
         {"--keep-failed-unwinding-result",
          {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-        {"--keep-failed-unwinding-stack",
+        {"--keep-failed-unwinding-debug-info",
          {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
         {"--kprobe", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::NOT_ALLOWED}},
         {"-m", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
