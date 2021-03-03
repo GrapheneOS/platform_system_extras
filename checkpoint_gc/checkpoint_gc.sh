@@ -23,14 +23,24 @@
 
 # TARGET_SLOT="${1}"
 STATUS_FD="${2}"
-DIRTY_SEGMENTS_THRESHOLD=100
 
 SLEEP=5
 TIME=0
-MAX_TIME=3600
+MAX_TIME=1200
 
 if [ ! -d /dev/sys/fs/by-name/userdata ]; then
   exit 0
+fi
+
+if [ -f /dev/sys/fs/by-name/userdata/unusable ]; then
+  UNUSABLE=1
+  METRIC="unusable blocks"
+  THRESHOLD=25000
+  read START < /dev/sys/fs/by-name/userdata/unusable
+else
+  METRIC="dirty segments"
+  THRESHOLD=200
+  read START < /dev/sys/fs/by-name/userdata/dirty_segments
 fi
 
 log -pi -t checkpoint_gc Turning on GC for userdata
@@ -38,17 +48,21 @@ read OLD_SLEEP < /dev/sys/fs/by-name/userdata/gc_urgent_sleep_time || exit 1
 echo 50 > /dev/sys/fs/by-name/userdata/gc_urgent_sleep_time || exit 1
 echo 1 > /dev/sys/fs/by-name/userdata/gc_urgent || exit 1
 
-read DIRTY_SEGMENTS_START < /dev/sys/fs/by-name/userdata/dirty_segments
-DIRTY_SEGMENTS=${DIRTY_SEGMENTS_START}
-TODO_SEGMENTS=$((${DIRTY_SEGMENTS_START}-${DIRTY_SEGMENTS_THRESHOLD}))
-while [ ${DIRTY_SEGMENTS} -gt ${DIRTY_SEGMENTS_THRESHOLD} ]; do
-  log -pi -t checkpoint_gc dirty segments:${DIRTY_SEGMENTS} \(threshold:${DIRTY_SEGMENTS_THRESHOLD}\)
-  PROGRESS=`echo "(${DIRTY_SEGMENTS_START}-${DIRTY_SEGMENTS})/${TODO_SEGMENTS}"|bc -l`
+
+CURRENT=${START}
+TODO=$((${START}-${THRESHOLD}))
+while [ ${CURRENT} -gt ${THRESHOLD} ]; do
+  log -pi -t checkpoint_gc ${METRIC}:${CURRENT} \(threshold:${THRESHOLD}\)
+  PROGRESS=`echo "(${START}-${CURRENT})/${TODO}"|bc -l`
   if [[ $PROGRESS == -* ]]; then
       PROGRESS=0
   fi
   print -u${STATUS_FD} "global_progress ${PROGRESS}"
-  read DIRTY_SEGMENTS < /dev/sys/fs/by-name/userdata/dirty_segments
+  if [ ${UNUSABLE} -eq 1 ]; then
+    read CURRENT < /dev/sys/fs/by-name/userdata/unusable
+  else
+    read CURRENT < /dev/sys/fs/by-name/userdata/dirty_segments
+  fi
   sleep ${SLEEP}
   TIME=$((${TIME}+${SLEEP}))
   if [ ${TIME} -gt ${MAX_TIME} ]; then
