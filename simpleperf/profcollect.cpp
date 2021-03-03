@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <include/simpleperf_profcollect.h>
+#include <include/simpleperf_profcollect.hpp>
 
 #include "ETMRecorder.h"
 #include "command.h"
@@ -22,8 +22,7 @@
 #include "event_fd.h"
 #include "event_type.h"
 
-namespace simpleperf {
-namespace etm {
+using namespace simpleperf;
 
 bool HasSupport() {
   if (!ETMRecorder::GetInstance().CheckEtmSupport()) {
@@ -36,29 +35,22 @@ bool HasSupport() {
   return IsEventAttrSupported(CreateDefaultPerfEventAttr(*type), type->name);
 }
 
-bool Record(const std::filesystem::path& output, const std::chrono::duration<float>& duration) {
+bool Record(const char* output, float duration) {
   auto recordCmd = CreateCommandInstance("record");
   std::vector<std::string> args;
   args.push_back("-a");
   args.insert(args.end(), {"-e", "cs-etm:u"});
-  args.insert(args.end(), {"--duration", std::to_string(duration.count())});
+  args.insert(args.end(), {"--duration", std::to_string(duration)});
   args.insert(args.end(), {"-o", output});
   return recordCmd->Run(args);
 }
 
-bool Inject(const std::filesystem::path& traceInput, const std::filesystem::path& output,
-            const std::string& binaryFilter) {
+bool Inject(const char* traceInput, const char* profileOutput) {
   auto injectCmd = CreateCommandInstance("inject");
   std::vector<std::string> args;
   args.insert(args.end(), {"-i", traceInput});
-  args.insert(args.end(), {"-o", output});
+  args.insert(args.end(), {"-o", profileOutput});
   args.insert(args.end(), {"--output", "branch-list"});
   args.emplace_back("--exclude-perf");
-  if (!binaryFilter.empty()) {
-    args.insert(args.end(), {"--binary", binaryFilter});
-  }
   return injectCmd->Run(args);
 }
-
-}  // namespace etm
-}  // namespace simpleperf
