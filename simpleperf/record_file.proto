@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 The Android Open Source Project
+ * Copyright (C) 2021 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,14 +14,18 @@
  * limitations under the License.
  */
 
-package com.android.server.profcollect;
+// message types used in perf.data.
 
-/** {@hide} */
-interface IProfCollectd {
-    void schedule();
-    void terminate();
-    void trace_once(@utf8InCpp String tag);
-    void process(boolean blocking);
-    void report();
-    @utf8InCpp String get_supported_provider();
+syntax = "proto3";
+
+package simpleperf.proto;
+
+
+message DebugUnwindFeature {
+  message File {
+    string path = 1;
+    uint64 size = 2;
+  }
+
+  repeated File file = 1;
 }

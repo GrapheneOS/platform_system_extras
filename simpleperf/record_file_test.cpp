@@ -150,3 +150,33 @@ TEST_F(RecordFileTest, write_meta_info_feature_section) {
   ASSERT_TRUE(reader != nullptr);
   ASSERT_EQ(reader->GetMetaInfoFeature(), info_map);
 }
+
+TEST_F(RecordFileTest, write_debug_unwind_feature_section) {
+  // Write to a record file.
+  std::unique_ptr<RecordFileWriter> writer = RecordFileWriter::CreateInstance(tmpfile_.path);
+  ASSERT_TRUE(writer != nullptr);
+  AddEventType("cpu-cycles");
+  ASSERT_TRUE(writer->WriteAttrSection(attr_ids_));
+
+  // Write debug_unwind feature section.
+  ASSERT_TRUE(writer->BeginWriteFeatures(1));
+  DebugUnwindFeature debug_unwind(2);
+  debug_unwind[0].path = "file1";
+  debug_unwind[0].size = 1000;
+  debug_unwind[1].path = "file2";
+  debug_unwind[1].size = 2000;
+  ASSERT_TRUE(writer->WriteDebugUnwindFeature(debug_unwind));
+  ASSERT_TRUE(writer->EndWriteFeatures());
+  ASSERT_TRUE(writer->Close());
+
+  // Read from a record file.
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile_.path);
+  ASSERT_TRUE(reader != nullptr);
+  std::optional<DebugUnwindFeature> opt_debug_unwind = reader->ReadDebugUnwindFeature();
+  ASSERT_TRUE(opt_debug_unwind.has_value());
+  ASSERT_EQ(opt_debug_unwind.value().size(), debug_unwind.size());
+  for (size_t i = 0; i < debug_unwind.size(); i++) {
+    ASSERT_EQ(opt_debug_unwind.value()[i].path, debug_unwind[i].path);
+    ASSERT_EQ(opt_debug_unwind.value()[i].size, debug_unwind[i].size);
+  }
+}

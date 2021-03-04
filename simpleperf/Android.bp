@@ -223,6 +223,7 @@ cc_defaults {
         "read_elf.cpp",
         "read_symbol_map.cpp",
         "record.cpp",
+        "record_file.proto",
         "record_file_reader.cpp",
         "record_file_writer.cpp",
         "report_sample.proto",
@@ -311,14 +312,26 @@ cc_binary {
 
 cc_library {
     name: "libsimpleperf_profcollect",
-    defaults: [
-        "simpleperf_shared_libs",
-    ],
-    host_supported: false,
+    defaults: ["simpleperf_shared_libs"],
     srcs: ["profcollect.cpp"],
-    export_include_dirs: ["include"],
+    host_supported: false,
     static_libs: ["libsimpleperf"],
     shared_libs: ["libLLVM_android"],
+}
+
+rust_bindgen {
+    name: "libsimpleperf_profcollect_bindgen",
+    wrapper_src: "include/simpleperf_profcollect.hpp",
+    crate_name: "simpleperf_profcollect_bindgen",
+    source_stem: "bindings",
+}
+
+rust_library {
+    name: "libsimpleperf_profcollect_rust",
+    crate_name: "simpleperf_profcollect",
+    srcs: ["rust/lib.rs"],
+    rlibs: ["libsimpleperf_profcollect_bindgen"],
+    shared_libs: ["libsimpleperf_profcollect"],
     visibility: ["//system/extras/profcollectd:__subpackages__"],
 }
 

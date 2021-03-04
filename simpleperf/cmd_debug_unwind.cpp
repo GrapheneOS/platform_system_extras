@@ -350,7 +350,8 @@ bool DebugUnwindCommand::WriteFeatureSections() {
   // Copy all feature sections except FEAT_FILE and FEAT_META_INFO, which require special handling.
   while (it != features.end() && it->first < PerfFileFormat::FEAT_FILE) {
     std::vector<char> data;
-    if (!reader_->ReadFeatureSection(it->first, &data) || !writer_->WriteFeature(it->first, data)) {
+    if (!reader_->ReadFeatureSection(it->first, &data) ||
+        !writer_->WriteFeature(it->first, data.data(), data.size())) {
       return false;
     }
     ++it;
