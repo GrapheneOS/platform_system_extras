@@ -66,6 +66,15 @@ meta_info feature section:
   keys in meta_info feature section include:
     simpleperf_version,
 
+debug_unwind feature section:
+  message DebugUnwindSection from record_file.proto
+
+debug_unwind_file feature section:
+  data for file 1
+  data for file 2
+  ...
+
+  The file list is stored in debug_unwind feature section.
 */
 
 namespace simpleperf {
@@ -97,6 +106,8 @@ enum {
   FEAT_SIMPLEPERF_START = 128,
   FEAT_FILE = FEAT_SIMPLEPERF_START,
   FEAT_META_INFO,
+  FEAT_DEBUG_UNWIND,
+  FEAT_DEBUG_UNWIND_FILE,
   FEAT_MAX_NUM = 256,
 };
 

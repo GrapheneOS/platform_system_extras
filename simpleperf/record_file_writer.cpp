@@ -33,6 +33,7 @@
 #include "event_attr.h"
 #include "perf_event.h"
 #include "record.h"
+#include "system/extras/simpleperf/record_file.pb.h"
 #include "utils.h"
 
 namespace simpleperf {
@@ -317,8 +318,8 @@ bool RecordFileWriter::WriteAuxTraceFeature(const std::vector<uint64_t>& auxtrac
     data.push_back(offset);
     data.push_back(AuxTraceRecord::Size());
   }
-  return WriteFeatureBegin(FEAT_AUXTRACE) && Write(data.data(), data.size() * sizeof(uint64_t)) &&
-         WriteFeatureEnd(FEAT_AUXTRACE);
+  return WriteFeature(FEAT_AUXTRACE, reinterpret_cast<char*>(data.data()),
+                      data.size() * sizeof(uint64_t));
 }
 
 bool RecordFileWriter::WriteFileFeatures(const std::vector<Dso*>& dsos) {
@@ -390,7 +391,7 @@ bool RecordFileWriter::WriteFileFeature(const FileFeature& file) {
   }
   CHECK_EQ(buf.size(), static_cast<size_t>(p - buf.data()));
 
-  return WriteFeature(FEAT_FILE, buf);
+  return WriteFeature(FEAT_FILE, buf.data(), buf.size());
 }
 
 bool RecordFileWriter::WriteMetaInfoFeature(
@@ -406,11 +407,27 @@ bool RecordFileWriter::WriteMetaInfoFeature(
     MoveToBinaryFormat(pair.first.c_str(), pair.first.size() + 1, p);
     MoveToBinaryFormat(pair.second.c_str(), pair.second.size() + 1, p);
   }
-  return WriteFeature(FEAT_META_INFO, buf);
+  return WriteFeature(FEAT_META_INFO, buf.data(), buf.size());
 }
 
-bool RecordFileWriter::WriteFeature(int feature, const std::vector<char>& data) {
-  return WriteFeatureBegin(feature) && Write(data.data(), data.size()) && WriteFeatureEnd(feature);
+bool RecordFileWriter::WriteDebugUnwindFeature(const DebugUnwindFeature& debug_unwind) {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+  proto::DebugUnwindFeature proto_debug_unwind;
+  for (auto& file : debug_unwind) {
+    auto proto_file = proto_debug_unwind.add_file();
+    proto_file->set_path(file.path);
+    proto_file->set_size(file.size);
+  }
+  std::string s;
+  if (!proto_debug_unwind.SerializeToString(&s)) {
+    LOG(ERROR) << "SerializeToString() failed";
+    return false;
+  }
+  return WriteFeature(FEAT_DEBUG_UNWIND, s.data(), s.size());
+}
+
+bool RecordFileWriter::WriteFeature(int feature, const char* data, size_t size) {
+  return WriteFeatureBegin(feature) && Write(data, size) && WriteFeatureEnd(feature);
 }
 
 bool RecordFileWriter::WriteFeatureBegin(int feature) {

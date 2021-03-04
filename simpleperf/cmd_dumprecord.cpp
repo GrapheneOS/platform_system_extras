@@ -502,6 +502,14 @@ bool DumpRecordCommand::DumpFeatureSection() {
       for (auto offset : record_file_reader_->ReadAuxTraceFeature()) {
         PrintIndented(2, "%" PRIu64 "\n", offset);
       }
+    } else if (feature == FEAT_DEBUG_UNWIND) {
+      PrintIndented(1, "debug_unwind:\n");
+      if (auto opt_debug_unwind = record_file_reader_->ReadDebugUnwindFeature(); opt_debug_unwind) {
+        for (const DebugUnwindFile& file : opt_debug_unwind.value()) {
+          PrintIndented(2, "path: %s\n", file.path.c_str());
+          PrintIndented(2, "size: %" PRIu64 "\n", file.size);
+        }
+      }
     }
   }
   return true;

@@ -333,7 +333,7 @@ class MergeCommand : public Command {
           feature == PerfFileFormat::FEAT_META_INFO || feature == PerfFileFormat::FEAT_CMDLINE) {
         std::vector<char> data;
         if (!readers_[0]->ReadFeatureSection(feature, &data) ||
-            !writer_->WriteFeature(feature, data)) {
+            !writer_->WriteFeature(feature, data.data(), data.size())) {
           return false;
         }
       } else if (feature == PerfFileFormat::FEAT_BUILD_ID) {
