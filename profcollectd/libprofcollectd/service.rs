@@ -21,13 +21,16 @@ use binder::public_api::Result as BinderResult;
 use binder::Status;
 use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProfCollectd::IProfCollectd;
 use std::ffi::CString;
-use std::fs::{create_dir, read_to_string, remove_dir_all, write};
+use std::fs::{create_dir, read_to_string, remove_dir_all, remove_file, write};
 use std::{
     str::FromStr,
     sync::{Mutex, MutexGuard},
 };
 
-use crate::config::{Config, CONFIG_FILE, PROFILE_OUTPUT_DIR, REPORT_OUTPUT_DIR, TRACE_OUTPUT_DIR};
+use crate::config::{
+    Config, CONFIG_FILE, OLD_REPORT_OUTPUT_FILE, PROFILE_OUTPUT_DIR, REPORT_OUTPUT_DIR,
+    TRACE_OUTPUT_DIR,
+};
 use crate::report::pack_report;
 use crate::scheduler::Scheduler;
 
@@ -104,6 +107,13 @@ impl ProfcollectdBinderService {
             remove_dir_all(*TRACE_OUTPUT_DIR)?;
             create_dir(*PROFILE_OUTPUT_DIR)?;
             create_dir(*TRACE_OUTPUT_DIR)?;
+
+            // Remove the report file in the old output location.
+            // TODO: Remove this after all devices have updated to the new profcollect.
+            if OLD_REPORT_OUTPUT_FILE.exists() {
+                remove_file(*OLD_REPORT_OUTPUT_FILE)?;
+            }
+
             write(*CONFIG_FILE, &new_config.to_string())?;
         }
 
