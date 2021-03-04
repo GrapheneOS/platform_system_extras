@@ -137,7 +137,6 @@ bool AllFieldsAreKnown(const google::protobuf::Message& message, const std::stri
                        std::string* error) {
   Json::CharReaderBuilder builder;
   std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
-  std::string errorMessage;
   Json::Value value;
   if (!reader->parse(&*json.begin(), &*json.end(), &value, error)) {
     return false;
@@ -157,7 +156,6 @@ bool EqReformattedJson(const std::string& json, google::protobuf::Message* scrat
   Json::CharReaderBuilder builder;
   std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
   Json::Value old_json;
-  std::string errorMessage;
   if (!reader->parse(&*json.begin(), &*json.end(), &old_json, error)) {
     return false;
   }
