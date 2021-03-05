@@ -102,3 +102,12 @@ TEST(cmd_debug_unwind, unwind_embedded_lib_in_apk) {
       << output;
   ASSERT_NE(output.find("dso_2: /bionic/lib64/libc.so"), std::string::npos) << output;
 }
+
+TEST(cmd_debug_unwind, unwind_sample_in_unwinding_debug_info_file) {
+  CaptureStdout capture;
+  ASSERT_TRUE(capture.Start());
+  ASSERT_TRUE(DebugUnwindCmd()->Run(
+      {"-i", GetTestData("perf_with_failed_unwinding_debug_info.data"), "--unwind-sample"}));
+  std::string output = capture.Finish();
+  ASSERT_NE(output.find("symbol_5: android.os.Handler.post"), std::string::npos) << output;
+}

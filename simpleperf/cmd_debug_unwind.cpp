@@ -144,6 +144,21 @@ class RecordFileProcessor {
     ScopedCurrentArch scoped_arch(
         GetArchType(reader_->ReadFeatureString(PerfFileFormat::FEAT_ARCH)));
     unwinder_->LoadMetaInfo(reader_->GetMetaInfoFeature());
+    if (reader_->HasFeature(PerfFileFormat::FEAT_DEBUG_UNWIND) &&
+        reader_->HasFeature(PerfFileFormat::FEAT_DEBUG_UNWIND_FILE)) {
+      auto debug_unwind_feature = reader_->ReadDebugUnwindFeature();
+      if (!debug_unwind_feature.has_value()) {
+        return false;
+      }
+      uint64_t offset =
+          reader_->FeatureSectionDescriptors().at(PerfFileFormat::FEAT_DEBUG_UNWIND_FILE).offset;
+      for (DebugUnwindFile& file : debug_unwind_feature.value()) {
+        auto& loc = debug_unwind_files_[file.path];
+        loc.offset = offset;
+        loc.size = file.size;
+        offset += file.size;
+      }
+    }
     callchain_report_builder_.SetRemoveArtFrame(false);
     callchain_report_builder_.SetConvertJITFrame(false);
 
@@ -152,6 +167,11 @@ class RecordFileProcessor {
   }
 
  protected:
+  struct DebugUnwindFileLocation {
+    uint64_t offset;
+    uint64_t size;
+  };
+
   virtual bool CheckRecordCmd(const std::string& record_cmd) = 0;
   virtual bool Process() = 0;
 
@@ -159,6 +179,9 @@ class RecordFileProcessor {
   std::unique_ptr<RecordFileReader> reader_;
   ThreadTree thread_tree_;
   std::unique_ptr<OfflineUnwinder> unwinder_;
+  // Files stored in DEBUG_UNWIND_FILE feature section in the recording file.
+  // Map from file path to offset in the recording file.
+  std::unordered_map<std::string, DebugUnwindFileLocation> debug_unwind_files_;
   CallChainReportBuilder callchain_report_builder_;
 };
 
@@ -202,6 +225,7 @@ class SampleUnwinder : public RecordFileProcessor {
       }
       out_fp_ = nullptr;
     });
+    recording_file_dso_ = Dso::CreateDso(DSO_ELF_FILE, record_filename_);
 
     if (!GetMemStat(&stat_.mem_before_unwinding)) {
       return false;
@@ -219,17 +243,24 @@ class SampleUnwinder : public RecordFileProcessor {
 
   bool ProcessRecord(std::unique_ptr<Record> r) {
     thread_tree_.Update(*r);
-    if (r->type() == PERF_RECORD_SAMPLE) {
+    if (r->type() == SIMPLE_PERF_RECORD_UNWINDING_RESULT) {
+      last_unwinding_result_.reset(static_cast<UnwindingResultRecord*>(r.release()));
+    } else if (r->type() == PERF_RECORD_SAMPLE) {
       if (sample_time_ == 0 || sample_time_ == r->Timestamp()) {
         auto& sr = *static_cast<SampleRecord*>(r.get());
         const PerfSampleStackUserType* stack = &sr.stack_user_data;
         const PerfSampleRegsUserType* regs = &sr.regs_user_data;
+        if (last_unwinding_result_ && last_unwinding_result_->Timestamp() == sr.Timestamp()) {
+          stack = &last_unwinding_result_->stack_user_data;
+          regs = &last_unwinding_result_->regs_user_data;
+        }
         if (stack->size > 0 || regs->reg_mask > 0) {
           if (!UnwindRecord(sr, *regs, *stack)) {
             return false;
           }
         }
       }
+      last_unwinding_result_.reset();
     }
     return true;
   }
@@ -237,11 +268,13 @@ class SampleUnwinder : public RecordFileProcessor {
   bool UnwindRecord(const SampleRecord& r, const PerfSampleRegsUserType& regs,
                     const PerfSampleStackUserType& stack) {
     ThreadEntry* thread = thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
+    ThreadEntry thread_with_new_maps = CreateThreadWithUpdatedMaps(*thread);
 
     RegSet reg_set(regs.abi, regs.reg_mask, regs.regs);
     std::vector<uint64_t> ips;
     std::vector<uint64_t> sps;
-    if (!unwinder_->UnwindCallChain(*thread, reg_set, stack.data, stack.size, &ips, &sps)) {
+    if (!unwinder_->UnwindCallChain(thread_with_new_maps, reg_set, stack.data, stack.size, &ips,
+                                    &sps)) {
       return false;
     }
     stat_.AddUnwindingResult(unwinder_->GetUnwindingResult());
@@ -265,11 +298,41 @@ class SampleUnwinder : public RecordFileProcessor {
     return true;
   }
 
+  // To use files stored in DEBUG_UNWIND_FILE feature section, create maps mapping to them.
+  ThreadEntry CreateThreadWithUpdatedMaps(const ThreadEntry& thread) {
+    ThreadEntry new_thread = thread;
+    new_thread.maps.reset(new MapSet);
+    new_thread.maps->version = thread.maps->version;
+    for (auto& p : thread.maps->maps) {
+      const MapEntry* old_map = p.second;
+      MapEntry* map = nullptr;
+      const std::string& path = old_map->dso->Path();
+      if (auto it = debug_unwind_files_.find(path); it != debug_unwind_files_.end()) {
+        map_storage_.emplace_back(new MapEntry);
+        map = map_storage_.back().get();
+        *map = *old_map;
+        map->dso = recording_file_dso_.get();
+        if (JITDebugReader::IsPathInJITSymFile(old_map->dso->Path())) {
+          map->pgoff = it->second.offset;
+        } else {
+          map->pgoff += it->second.offset;
+        }
+      } else {
+        map = const_cast<MapEntry*>(p.second);
+      }
+      new_thread.maps->maps[p.first] = map;
+    }
+    return new_thread;
+  }
+
  private:
   const std::string output_filename_;
   const uint64_t sample_time_;
+  std::unique_ptr<Dso> recording_file_dso_;
+  std::vector<std::unique_ptr<MapEntry>> map_storage_;
   FILE* out_fp_ = nullptr;
   UnwindingStat stat_;
+  std::unique_ptr<UnwindingResultRecord> last_unwinding_result_;
 };
 
 class DebugUnwindCommand : public Command {
@@ -288,7 +351,7 @@ class DebugUnwindCommand : public Command {
 "Examples:\n"
 "1. Unwind a sample.\n"
 "$ simpleperf debug-unwind -i perf.data --unwind-sample --sample-time 626970493946976\n"
-"  perf.data is be generated with \"--no-unwind\".\n"
+"  perf.data should be generated with \"--no-unwind\" or \"--keep-failed-unwinding-debug-info\".\n"
 "\n"
             // clang-format on
         ) {}
