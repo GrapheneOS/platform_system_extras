@@ -354,11 +354,12 @@ bool RecordFileWriter::WriteFileFeatures(const std::vector<Dso*>& dsos) {
 }
 
 bool RecordFileWriter::WriteFileFeature(const FileFeature& file) {
-  // Symbols written to the file feature section are only accepted in the symbol_ptrs field.
-  CHECK(file.symbols.empty());
-  uint32_t symbol_count = file.symbol_ptrs.size();
+  uint32_t symbol_count = file.symbols.size() + file.symbol_ptrs.size();
   uint32_t size = file.path.size() + 1 + sizeof(uint32_t) * 2 + sizeof(uint64_t) +
                   symbol_count * (sizeof(uint64_t) + sizeof(uint32_t));
+  for (const auto& symbol : file.symbols) {
+    size += strlen(symbol.Name()) + 1;
+  }
   for (const auto& symbol : file.symbol_ptrs) {
     size += strlen(symbol->Name()) + 1;
   }
@@ -375,11 +376,18 @@ bool RecordFileWriter::WriteFileFeature(const FileFeature& file) {
   MoveToBinaryFormat(static_cast<uint32_t>(file.type), p);
   MoveToBinaryFormat(file.min_vaddr, p);
   MoveToBinaryFormat(symbol_count, p);
-  for (const auto& symbol : file.symbol_ptrs) {
+
+  auto write_symbol = [&](const Symbol* symbol) {
     MoveToBinaryFormat(symbol->addr, p);
     uint32_t len = symbol->len;
     MoveToBinaryFormat(len, p);
     MoveToBinaryFormat(symbol->Name(), strlen(symbol->Name()) + 1, p);
+  };
+  for (const auto& symbol : file.symbols) {
+    write_symbol(&symbol);
+  }
+  for (const auto& symbol : file.symbol_ptrs) {
+    write_symbol(symbol);
   }
   if (file.type == DSO_DEX_FILE) {
     uint32_t offset_count = file.dex_file_offsets.size();
