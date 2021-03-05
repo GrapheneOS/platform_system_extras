@@ -111,3 +111,18 @@ TEST(cmd_debug_unwind, unwind_sample_in_unwinding_debug_info_file) {
   std::string output = capture.Finish();
   ASSERT_NE(output.find("symbol_5: android.os.Handler.post"), std::string::npos) << output;
 }
+
+TEST(cmd_debug_unwind, generate_test_file) {
+  TemporaryFile tmpfile;
+  close(tmpfile.release());
+  ASSERT_TRUE(DebugUnwindCmd()->Run(
+      {"-i", GetTestData("perf_with_failed_unwinding_debug_info.data"), "--generate-test-file",
+       "--sample-time", "626968783364202", "-o", tmpfile.path, "--keep-binaries-in-test-file",
+       "perf.data_jit_app_cache:255984-259968,perf.data_jit_app_cache:280144-283632"}));
+
+  CaptureStdout capture;
+  ASSERT_TRUE(capture.Start());
+  ASSERT_TRUE(DebugUnwindCmd()->Run({"-i", tmpfile.path, "--unwind-sample"}));
+  std::string output = capture.Finish();
+  ASSERT_NE(output.find("symbol_2: android.os.Handler.enqueueMessage"), std::string::npos);
+}

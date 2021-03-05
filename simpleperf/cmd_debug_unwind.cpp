@@ -335,6 +335,145 @@ class SampleUnwinder : public RecordFileProcessor {
   std::unique_ptr<UnwindingResultRecord> last_unwinding_result_;
 };
 
+class TestFileGenerator : public RecordFileProcessor {
+ public:
+  TestFileGenerator(const std::string& output_filename, uint64_t sample_time,
+                    const std::unordered_set<std::string>& kept_binaries)
+      : output_filename_(output_filename),
+        sample_time_(sample_time),
+        kept_binaries_(kept_binaries) {}
+
+ protected:
+  bool CheckRecordCmd(const std::string& record_cmd) override {
+    if (record_cmd.find("--keep-failed-unwinding-debug-info") == std::string::npos) {
+      LOG(ERROR) << "file isn't record with --keep-failed-unwinding-debug-info: "
+                 << record_filename_;
+      return false;
+    }
+    return true;
+  }
+
+  bool Process() override {
+    writer_ = RecordFileWriter::CreateInstance(output_filename_);
+    if (!writer_ || !writer_->WriteAttrSection(reader_->AttrSection())) {
+      return false;
+    }
+    if (!reader_->ReadDataSection(
+            [&](std::unique_ptr<Record> r) { return ProcessRecord(std::move(r)); })) {
+      return false;
+    }
+    return WriteFeatureSections();
+  }
+
+  bool ProcessRecord(std::unique_ptr<Record> r) {
+    thread_tree_.Update(*r);
+    bool keep_record = false;
+    if (r->type() == SIMPLE_PERF_RECORD_UNWINDING_RESULT) {
+      keep_record = (sample_time_ == r->Timestamp());
+    } else if (r->type() == PERF_RECORD_SAMPLE) {
+      keep_record = (sample_time_ == r->Timestamp());
+      if (keep_record) {
+        // Dump maps needed to unwind this sample.
+        if (!WriteMapsForSample(*static_cast<SampleRecord*>(r.get()))) {
+          return false;
+        }
+      }
+    }
+    if (keep_record) {
+      return writer_->WriteRecord(*r);
+    }
+    return true;
+  }
+
+  bool WriteMapsForSample(const SampleRecord& r) {
+    ThreadEntry* thread = thread_tree_.FindThread(r.tid_data.tid);
+    if (thread != nullptr && thread->maps) {
+      auto attr = reader_->AttrSection()[0].attr;
+      auto event_id = reader_->AttrSection()[0].ids[0];
+
+      size_t kernel_ip_count;
+      std::vector<uint64_t> ips = r.GetCallChain(&kernel_ip_count);
+      for (size_t i = kernel_ip_count; i < ips.size(); i++) {
+        const MapEntry* map = thread_tree_.FindMap(thread, ips[i], false);
+        if (!thread_tree_.IsUnknownDso(map->dso)) {
+          Mmap2Record map_record(*attr, false, r.tid_data.pid, r.tid_data.tid, map->start_addr,
+                                 map->len, map->pgoff, map->flags, map->dso->Path(), event_id,
+                                 r.Timestamp());
+          if (!writer_->WriteRecord(map_record)) {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  bool WriteFeatureSections() {
+    if (!writer_->BeginWriteFeatures(reader_->FeatureSectionDescriptors().size())) {
+      return false;
+    }
+    std::unordered_set<int> feature_types_to_copy = {
+        PerfFileFormat::FEAT_ARCH, PerfFileFormat::FEAT_CMDLINE, PerfFileFormat::FEAT_META_INFO};
+    const size_t BUFFER_SIZE = 64 * 1024;
+    std::string buffer(BUFFER_SIZE, '\0');
+    for (const auto& p : reader_->FeatureSectionDescriptors()) {
+      auto feat_type = p.first;
+      if (feat_type == PerfFileFormat::FEAT_DEBUG_UNWIND) {
+        DebugUnwindFeature feature;
+        buffer.resize(BUFFER_SIZE);
+        for (const auto& file_p : debug_unwind_files_) {
+          if (kept_binaries_.count(file_p.first)) {
+            feature.resize(feature.size() + 1);
+            feature.back().path = file_p.first;
+            feature.back().size = file_p.second.size;
+            if (!CopyDebugUnwindFile(file_p.second, buffer)) {
+              return false;
+            }
+          }
+        }
+        if (!writer_->WriteDebugUnwindFeature(feature)) {
+          return false;
+        }
+      } else if (feat_type == PerfFileFormat::FEAT_FILE) {
+        size_t read_pos = 0;
+        FileFeature file_feature;
+        while (reader_->ReadFileFeature(read_pos, &file_feature)) {
+          if (kept_binaries_.count(file_feature.path) && !writer_->WriteFileFeature(file_feature)) {
+            return false;
+          }
+        }
+      } else if (feature_types_to_copy.count(feat_type)) {
+        if (!reader_->ReadFeatureSection(feat_type, &buffer) ||
+            !writer_->WriteFeature(feat_type, buffer.data(), buffer.size())) {
+          return false;
+        }
+      }
+    }
+    return writer_->EndWriteFeatures() && writer_->Close();
+  }
+
+  bool CopyDebugUnwindFile(const DebugUnwindFileLocation& loc, std::string& buffer) {
+    uint64_t offset = loc.offset;
+    uint64_t left_size = loc.size;
+    while (left_size > 0) {
+      size_t nread = std::min<size_t>(left_size, buffer.size());
+      if (!reader_->ReadAtOffset(offset, buffer.data(), nread) ||
+          !writer_->WriteFeature(PerfFileFormat::FEAT_DEBUG_UNWIND_FILE, buffer.data(), nread)) {
+        return false;
+      }
+      offset += nread;
+      left_size -= nread;
+    }
+    return true;
+  }
+
+ private:
+  const std::string output_filename_;
+  const uint64_t sample_time_;
+  const std::unordered_set<std::string> kept_binaries_;
+  std::unique_ptr<RecordFileWriter> writer_;
+};
+
 class DebugUnwindCommand : public Command {
  public:
   DebugUnwindCommand()
@@ -342,8 +481,10 @@ class DebugUnwindCommand : public Command {
             "debug-unwind", "Debug/test offline unwinding.",
             // clang-format off
 "Usage: simpleperf debug-unwind [options]\n"
+"--generate-test-file <file_path>   Generate a test file with only one sample.\n"
 "-i <file>                 Input recording file. Default is perf.data.\n"
 "-o <file>                 Output file. Default is stdout.\n"
+"--keep-binaries-in-test-file  binary1,binary2...   Keep binaries in test file.\n"
 "--sample-time <time>      Only process the sample recorded at the selected time.\n"
 "--symfs <dir>             Look for files with symbols relative to this directory.\n"
 "--unwind-sample           Unwind samples.\n"
@@ -352,6 +493,10 @@ class DebugUnwindCommand : public Command {
 "1. Unwind a sample.\n"
 "$ simpleperf debug-unwind -i perf.data --unwind-sample --sample-time 626970493946976\n"
 "  perf.data should be generated with \"--no-unwind\" or \"--keep-failed-unwinding-debug-info\".\n"
+"2. Generate a test file.\n"
+"$ simpleperf debug-unwind -i perf.data --generate-test-file test.data --sample-time \\\n"
+"     626970493946976 --keep-binaries-in-test-file perf.data_jit_app_cache:255984-259968\n"
+"  perf.data should be generated with \"--keep-failed-unwinding-debug-info\".\n"
 "\n"
             // clang-format on
         ) {}
@@ -364,6 +509,8 @@ class DebugUnwindCommand : public Command {
   std::string input_filename_ = "perf.data";
   std::string output_filename_;
   bool unwind_sample_ = false;
+  bool generate_test_file_;
+  std::unordered_set<std::string> kept_binaries_in_test_file_;
   uint64_t sample_time_ = 0;
 };
 
@@ -378,12 +525,19 @@ bool DebugUnwindCommand::Run(const std::vector<std::string>& args) {
     SampleUnwinder sample_unwinder(output_filename_, sample_time_);
     return sample_unwinder.ProcessFile(input_filename_);
   }
+  if (generate_test_file_) {
+    TestFileGenerator test_file_generator(output_filename_, sample_time_,
+                                          kept_binaries_in_test_file_);
+    return test_file_generator.ProcessFile(input_filename_);
+  }
   return true;
 }
 
 bool DebugUnwindCommand::ParseOptions(const std::vector<std::string>& args) {
   const OptionFormatMap option_formats = {
+      {"--generate-test-file", {OptionValueType::NONE, OptionType::SINGLE}},
       {"-i", {OptionValueType::STRING, OptionType::SINGLE}},
+      {"--keep-binaries-in-test-file", {OptionValueType::STRING, OptionType::MULTIPLE}},
       {"-o", {OptionValueType::STRING, OptionType::SINGLE}},
       {"--sample-time", {OptionValueType::UINT, OptionType::SINGLE}},
       {"--symfs", {OptionValueType::STRING, OptionType::MULTIPLE}},
@@ -394,7 +548,12 @@ bool DebugUnwindCommand::ParseOptions(const std::vector<std::string>& args) {
   if (!PreprocessOptions(args, option_formats, &options, &ordered_options)) {
     return false;
   }
+  generate_test_file_ = options.PullBoolValue("--generate-test-file");
   options.PullStringValue("-i", &input_filename_);
+  for (auto& value : options.PullValues("--keep-binaries-in-test-file")) {
+    std::vector<std::string> binaries = android::base::Split(*value.str_value, ",");
+    kept_binaries_in_test_file_.insert(binaries.begin(), binaries.end());
+  }
   options.PullStringValue("-o", &output_filename_);
   options.PullUintValue("--sample-time", &sample_time_);
   if (auto value = options.PullValue("--symfs"); value) {
@@ -403,8 +562,19 @@ bool DebugUnwindCommand::ParseOptions(const std::vector<std::string>& args) {
     }
   }
   unwind_sample_ = options.PullBoolValue("--unwind-sample");
-
   CHECK(options.values.empty());
+
+  if (generate_test_file_) {
+    if (output_filename_.empty()) {
+      LOG(ERROR) << "no output path for generated test file";
+      return false;
+    }
+    if (sample_time_ == 0) {
+      LOG(ERROR) << "no samples are selected via --sample-time";
+      return false;
+    }
+  }
+
   return true;
 }
 
