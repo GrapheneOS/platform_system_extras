@@ -1917,6 +1917,8 @@ bool RecordCommand::DumpDebugUnwindFeature(const std::unordered_set<Dso*>& dso_s
                                              buffer->getBufferStart(), buffer->getBufferSize())) {
         return false;
       }
+    } else {
+      LOG(WARNING) << "failed to keep " << filename << " in debug_unwind_feature section";
     }
   }
   return record_file_writer_->WriteDebugUnwindFeature(debug_unwind_feature);
@@ -1937,9 +1939,9 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r, std::unordered_set
     }
     if (!dso->HasDumpId() && dso->type() != DSO_UNKNOWN_FILE) {
       dso->CreateDumpId();
-      if (dso_set != nullptr) {
-        dso_set->insert(dso);
-      }
+    }
+    if (dso_set != nullptr) {
+      dso_set->insert(dso);
     }
   }
 }
