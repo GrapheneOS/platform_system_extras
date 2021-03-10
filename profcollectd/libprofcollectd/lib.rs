@@ -23,8 +23,7 @@ mod service;
 mod simpleperf_etm_trace_provider;
 mod trace_provider;
 
-use crate::binder::Status;
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{Context, Result};
 use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProfCollectd::{
     self, BnProfCollectd,
 };
@@ -59,34 +58,34 @@ fn get_profcollectd_service() -> binder::Strong<dyn IProfCollectd::IProfCollectd
         .expect("Could not get profcollectd binder service")
 }
 
-// b/181225442
-fn binder_status_to_err(s: &Status) -> Error {
-    anyhow!(s.to_string())
-}
-
 /// Schedule periodic profile collection.
 pub fn schedule() -> Result<()> {
-    get_profcollectd_service().schedule().map_err(|e| binder_status_to_err(&e))
+    get_profcollectd_service().schedule()?;
+    Ok(())
 }
 
 /// Terminate periodic profile collection.
 pub fn terminate() -> Result<()> {
-    get_profcollectd_service().terminate().map_err(|e| binder_status_to_err(&e))
+    get_profcollectd_service().terminate()?;
+    Ok(())
 }
 
 /// Immediately schedule a one-off trace.
 pub fn trace_once(tag: &str) -> Result<()> {
-    get_profcollectd_service().trace_once(tag).map_err(|e| binder_status_to_err(&e))
+    get_profcollectd_service().trace_once(tag)?;
+    Ok(())
 }
 
 /// Process traces.
 pub fn process() -> Result<()> {
-    get_profcollectd_service().process(true).map_err(|e| binder_status_to_err(&e))
+    get_profcollectd_service().process(true)?;
+    Ok(())
 }
 
 /// Process traces and report profile.
 pub fn report() -> Result<()> {
-    get_profcollectd_service().report().map_err(|e| binder_status_to_err(&e))
+    get_profcollectd_service().report()?;
+    Ok(())
 }
 
 /// Inits logging for Android
