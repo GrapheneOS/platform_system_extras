@@ -126,3 +126,15 @@ TEST(cmd_debug_unwind, generate_test_file) {
   std::string output = capture.Finish();
   ASSERT_NE(output.find("symbol_2: android.os.Handler.enqueueMessage"), std::string::npos);
 }
+
+TEST(cmd_debug_unwind, generate_report) {
+  TemporaryFile tmpfile;
+  close(tmpfile.release());
+  ASSERT_TRUE(
+      DebugUnwindCmd()->Run({"-i", GetTestData("perf_with_failed_unwinding_debug_info.data"),
+                             "--generate-report", "-o", tmpfile.path}));
+  std::string output;
+  ASSERT_TRUE(android::base::ReadFileToString(tmpfile.path, &output));
+  ASSERT_NE(output.find("unwinding_error_code: 4"), std::string::npos);
+  ASSERT_NE(output.find("symbol_2: android.os.Handler.enqueueMessage"), std::string::npos);
+}
