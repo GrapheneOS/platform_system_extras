@@ -761,11 +761,12 @@ void SampleRecord::DumpData(size_t indent) const {
   }
   if (sample_type & PERF_SAMPLE_REGS_USER) {
     PrintIndented(indent, "user regs: abi=%" PRId64 "\n", regs_user_data.abi);
-    for (size_t i = 0, pos = 0; i < 64; ++i) {
-      if ((regs_user_data.reg_mask >> i) & 1) {
-        PrintIndented(indent + 1, "reg (%s) 0x%016" PRIx64 "\n",
-                      GetRegName(i, ScopedCurrentArch::GetCurrentArch()).c_str(),
-                      regs_user_data.regs[pos++]);
+    RegSet regs(regs_user_data.abi, regs_user_data.reg_mask, regs_user_data.regs);
+    for (size_t i = 0; i < 64; ++i) {
+      uint64_t value;
+      if (regs.GetRegValue(i, &value)) {
+        PrintIndented(indent + 1, "reg (%s) 0x%016" PRIx64 "\n", GetRegName(i, regs.arch).c_str(),
+                      value);
       }
     }
   }
