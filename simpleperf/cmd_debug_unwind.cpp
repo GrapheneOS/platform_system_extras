@@ -26,7 +26,6 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/parseint.h>
-#include <android-base/scopeguard.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
@@ -117,10 +116,17 @@ struct UnwindingStat {
 
 class RecordFileProcessor {
  public:
-  RecordFileProcessor()
-      : unwinder_(OfflineUnwinder::Create(true)), callchain_report_builder_(thread_tree_) {}
+  RecordFileProcessor(const std::string& output_filename, bool output_binary_mode)
+      : output_filename_(output_filename),
+        output_binary_mode_(output_binary_mode),
+        unwinder_(OfflineUnwinder::Create(true)),
+        callchain_report_builder_(thread_tree_) {}
 
-  virtual ~RecordFileProcessor() {}
+  virtual ~RecordFileProcessor() {
+    if (out_fp_ != nullptr && out_fp_ != stdout) {
+      fclose(out_fp_);
+    }
+  }
 
   bool ProcessFile(const std::string& input_filename) {
     // 1. Check input file.
@@ -162,7 +168,18 @@ class RecordFileProcessor {
     callchain_report_builder_.SetRemoveArtFrame(false);
     callchain_report_builder_.SetConvertJITFrame(false);
 
-    // 3. Process records.
+    // 3. Open output file.
+    if (output_filename_.empty()) {
+      out_fp_ = stdout;
+    } else {
+      out_fp_ = fopen(output_filename_.c_str(), output_binary_mode_ ? "web+" : "we+");
+      if (out_fp_ == nullptr) {
+        PLOG(ERROR) << "failed to write to " << output_filename_;
+        return false;
+      }
+    }
+
+    // 4. Process records.
     return Process();
   }
 
@@ -177,6 +194,9 @@ class RecordFileProcessor {
 
   std::string record_filename_;
   std::unique_ptr<RecordFileReader> reader_;
+  std::string output_filename_;
+  bool output_binary_mode_;
+  FILE* out_fp_ = nullptr;
   ThreadTree thread_tree_;
   std::unique_ptr<OfflineUnwinder> unwinder_;
   // Files stored in DEBUG_UNWIND_FILE feature section in the recording file.
@@ -196,7 +216,7 @@ static void DumpUnwindingResult(const UnwindingResult& result, FILE* fp) {
 class SampleUnwinder : public RecordFileProcessor {
  public:
   SampleUnwinder(const std::string& output_filename, uint64_t sample_time)
-      : output_filename_(output_filename), sample_time_(sample_time) {}
+      : RecordFileProcessor(output_filename, false), sample_time_(sample_time) {}
 
  protected:
   bool CheckRecordCmd(const std::string& record_cmd) override {
@@ -210,21 +230,6 @@ class SampleUnwinder : public RecordFileProcessor {
   }
 
   bool Process() override {
-    if (output_filename_.empty()) {
-      out_fp_ = stdout;
-    } else {
-      out_fp_ = fopen(output_filename_.c_str(), "w");
-      if (out_fp_ == nullptr) {
-        PLOG(ERROR) << "failed to write to " << output_filename_;
-        return false;
-      }
-    }
-    auto file_closer = android::base::make_scope_guard([&]() {
-      if (out_fp_ != nullptr && out_fp_ != stdout) {
-        fclose(out_fp_);
-      }
-      out_fp_ = nullptr;
-    });
     recording_file_dso_ = Dso::CreateDso(DSO_ELF_FILE, record_filename_);
 
     if (!GetMemStat(&stat_.mem_before_unwinding)) {
@@ -288,8 +293,8 @@ class SampleUnwinder : public RecordFileProcessor {
       const auto& entry = entries[i];
       fprintf(out_fp_, "ip_%zu: 0x%" PRIx64 "\n", id, entry.ip);
       fprintf(out_fp_, "sp_%zu: 0x%" PRIx64 "\n", id, sps[i]);
-      fprintf(out_fp_, "map_%zu: [0x%" PRIx64 "-0x%" PRIx64 "]\n", id, entry.map->start_addr,
-              entry.map->get_end_addr());
+      fprintf(out_fp_, "map_%zu: [0x%" PRIx64 "-0x%" PRIx64 "], pgoff 0x%" PRIx64 "\n", id,
+              entry.map->start_addr, entry.map->get_end_addr(), entry.map->pgoff);
       fprintf(out_fp_, "dso_%zu: %s\n", id, entry.map->dso->Path().c_str());
       fprintf(out_fp_, "vaddr_in_file_%zu: 0x%" PRIx64 "\n", id, entry.vaddr_in_file);
       fprintf(out_fp_, "symbol_%zu: %s\n", id, entry.symbol->DemangledName());
@@ -326,11 +331,9 @@ class SampleUnwinder : public RecordFileProcessor {
   }
 
  private:
-  const std::string output_filename_;
   const uint64_t sample_time_;
   std::unique_ptr<Dso> recording_file_dso_;
   std::vector<std::unique_ptr<MapEntry>> map_storage_;
-  FILE* out_fp_ = nullptr;
   UnwindingStat stat_;
   std::unique_ptr<UnwindingResultRecord> last_unwinding_result_;
 };
@@ -339,7 +342,7 @@ class TestFileGenerator : public RecordFileProcessor {
  public:
   TestFileGenerator(const std::string& output_filename, uint64_t sample_time,
                     const std::unordered_set<std::string>& kept_binaries)
-      : output_filename_(output_filename),
+      : RecordFileProcessor(output_filename, true),
         sample_time_(sample_time),
         kept_binaries_(kept_binaries) {}
 
@@ -354,7 +357,7 @@ class TestFileGenerator : public RecordFileProcessor {
   }
 
   bool Process() override {
-    writer_ = RecordFileWriter::CreateInstance(output_filename_);
+    writer_.reset(new RecordFileWriter(output_filename_, out_fp_, false));
     if (!writer_ || !writer_->WriteAttrSection(reader_->AttrSection())) {
       return false;
     }
@@ -468,10 +471,106 @@ class TestFileGenerator : public RecordFileProcessor {
   }
 
  private:
-  const std::string output_filename_;
   const uint64_t sample_time_;
   const std::unordered_set<std::string> kept_binaries_;
   std::unique_ptr<RecordFileWriter> writer_;
+};
+
+class ReportGenerator : public RecordFileProcessor {
+ public:
+  ReportGenerator(const std::string& output_filename)
+      : RecordFileProcessor(output_filename, false) {}
+
+ protected:
+  bool CheckRecordCmd(const std::string& record_cmd) override {
+    if (record_cmd.find("--keep-failed-unwinding-debug-info") == std::string::npos &&
+        record_cmd.find("--keep-failed-unwinding-result") == std::string::npos) {
+      LOG(ERROR) << "file isn't record with --keep-failed-unwinding-debug-info or "
+                 << "--keep-failed-unwinding-result: " << record_filename_;
+      return false;
+    }
+    return true;
+  }
+
+  bool Process() override {
+    if (!reader_->ReadDataSection(
+            [&](std::unique_ptr<Record> r) { return ProcessRecord(std::move(r)); })) {
+      return false;
+    }
+    return true;
+  }
+
+ private:
+  bool ProcessRecord(std::unique_ptr<Record> r) {
+    thread_tree_.Update(*r);
+    if (r->type() == SIMPLE_PERF_RECORD_UNWINDING_RESULT) {
+      last_unwinding_result_.reset(static_cast<UnwindingResultRecord*>(r.release()));
+    } else if (r->type() == PERF_RECORD_SAMPLE) {
+      if (last_unwinding_result_) {
+        ReportUnwindingResult(*static_cast<SampleRecord*>(r.get()), *last_unwinding_result_);
+        last_unwinding_result_.reset();
+      }
+    }
+    return true;
+  }
+
+  void ReportUnwindingResult(const SampleRecord& sr, const UnwindingResultRecord& unwinding_r) {
+    ThreadEntry* thread = thread_tree_.FindThreadOrNew(sr.tid_data.pid, sr.tid_data.tid);
+    size_t kernel_ip_count;
+    std::vector<uint64_t> ips = sr.GetCallChain(&kernel_ip_count);
+    if (kernel_ip_count != 0) {
+      ips.erase(ips.begin(), ips.begin() + kernel_ip_count);
+    }
+
+    fprintf(out_fp_, "sample_time: %" PRIu64 "\n", sr.Timestamp());
+    DumpUnwindingResult(unwinding_r.unwinding_result, out_fp_);
+    // Print callchain.
+    std::vector<CallChainReportEntry> entries = callchain_report_builder_.Build(thread, ips, 0);
+    for (size_t i = 0; i < entries.size(); i++) {
+      size_t id = i + 1;
+      const auto& entry = entries[i];
+      fprintf(out_fp_, "ip_%zu: 0x%" PRIx64 "\n", id, entry.ip);
+      fprintf(out_fp_, "map_%zu: [0x%" PRIx64 "-0x%" PRIx64 "], pgoff 0x%" PRIx64 "\n", id,
+              entry.map->start_addr, entry.map->get_end_addr(), entry.map->pgoff);
+      fprintf(out_fp_, "dso_%zu: %s\n", id, entry.map->dso->Path().c_str());
+      fprintf(out_fp_, "vaddr_in_file_%zu: 0x%" PRIx64 "\n", id, entry.vaddr_in_file);
+      fprintf(out_fp_, "symbol_%zu: %s\n", id, entry.symbol->DemangledName());
+    }
+    // Print regs.
+    uint64_t stack_addr = 0;
+    if (unwinding_r.regs_user_data.reg_nr > 0) {
+      auto& reg_data = unwinding_r.regs_user_data;
+      RegSet regs(reg_data.abi, reg_data.reg_mask, reg_data.regs);
+      uint64_t value;
+      if (regs.GetSpRegValue(&value)) {
+        stack_addr = value;
+        for (size_t i = 0; i < 64; i++) {
+          if (regs.GetRegValue(i, &value)) {
+            fprintf(out_fp_, "reg_%s: 0x%" PRIx64 "\n", GetRegName(i, regs.arch).c_str(), value);
+          }
+        }
+      }
+    }
+    // Print stack.
+    if (unwinding_r.stack_user_data.size > 0) {
+      auto& stack = unwinding_r.stack_user_data;
+      const char* p = stack.data;
+      const char* end = stack.data + stack.size;
+      uint64_t value;
+      while (p + 8 <= end) {
+        fprintf(out_fp_, "stack_%" PRIx64 ":", stack_addr);
+        for (size_t i = 0; i < 4 && p + 8 <= end; ++i) {
+          MoveFromBinaryFormat(value, p);
+          fprintf(out_fp_, " %016" PRIx64, value);
+        }
+        fprintf(out_fp_, "\n");
+        stack_addr += 32;
+      }
+      fprintf(out_fp_, "\n");
+    }
+  }
+
+  std::unique_ptr<UnwindingResultRecord> last_unwinding_result_;
 };
 
 class DebugUnwindCommand : public Command {
@@ -481,7 +580,8 @@ class DebugUnwindCommand : public Command {
             "debug-unwind", "Debug/test offline unwinding.",
             // clang-format off
 "Usage: simpleperf debug-unwind [options]\n"
-"--generate-test-file <file_path>   Generate a test file with only one sample.\n"
+"--generate-report         Generate a failed unwinding report.\n"
+"--generate-test-file      Generate a test file with only one sample.\n"
 "-i <file>                 Input recording file. Default is perf.data.\n"
 "-o <file>                 Output file. Default is stdout.\n"
 "--keep-binaries-in-test-file  binary1,binary2...   Keep binaries in test file.\n"
@@ -494,9 +594,13 @@ class DebugUnwindCommand : public Command {
 "$ simpleperf debug-unwind -i perf.data --unwind-sample --sample-time 626970493946976\n"
 "  perf.data should be generated with \"--no-unwind\" or \"--keep-failed-unwinding-debug-info\".\n"
 "2. Generate a test file.\n"
-"$ simpleperf debug-unwind -i perf.data --generate-test-file test.data --sample-time \\\n"
+"$ simpleperf debug-unwind -i perf.data --generate-test-file -o test.data --sample-time \\\n"
 "     626970493946976 --keep-binaries-in-test-file perf.data_jit_app_cache:255984-259968\n"
 "  perf.data should be generated with \"--keep-failed-unwinding-debug-info\".\n"
+"3. Generate a failed unwinding report.\n"
+"$ simpleperf debug-unwind -i perf.data --generate-report -o report.txt\n"
+"  perf.data should be generated with \"--keep-failed-unwinding-debug-info\" or \\\n"
+"  \"--keep-failed-unwinding-result\".\n"
 "\n"
             // clang-format on
         ) {}
@@ -509,6 +613,7 @@ class DebugUnwindCommand : public Command {
   std::string input_filename_ = "perf.data";
   std::string output_filename_;
   bool unwind_sample_ = false;
+  bool generate_report_ = false;
   bool generate_test_file_;
   std::unordered_set<std::string> kept_binaries_in_test_file_;
   uint64_t sample_time_ = 0;
@@ -530,11 +635,16 @@ bool DebugUnwindCommand::Run(const std::vector<std::string>& args) {
                                           kept_binaries_in_test_file_);
     return test_file_generator.ProcessFile(input_filename_);
   }
+  if (generate_report_) {
+    ReportGenerator report_generator(output_filename_);
+    return report_generator.ProcessFile(input_filename_);
+  }
   return true;
 }
 
 bool DebugUnwindCommand::ParseOptions(const std::vector<std::string>& args) {
   const OptionFormatMap option_formats = {
+      {"--generate-report", {OptionValueType::NONE, OptionType::SINGLE}},
       {"--generate-test-file", {OptionValueType::NONE, OptionType::SINGLE}},
       {"-i", {OptionValueType::STRING, OptionType::SINGLE}},
       {"--keep-binaries-in-test-file", {OptionValueType::STRING, OptionType::MULTIPLE}},
@@ -548,6 +658,7 @@ bool DebugUnwindCommand::ParseOptions(const std::vector<std::string>& args) {
   if (!PreprocessOptions(args, option_formats, &options, &ordered_options)) {
     return false;
   }
+  generate_report_ = options.PullBoolValue("--generate-report");
   generate_test_file_ = options.PullBoolValue("--generate-test-file");
   options.PullStringValue("-i", &input_filename_);
   for (auto& value : options.PullValues("--keep-binaries-in-test-file")) {
