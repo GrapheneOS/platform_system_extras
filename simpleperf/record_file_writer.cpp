@@ -53,12 +53,13 @@ std::unique_ptr<RecordFileWriter> RecordFileWriter::CreateInstance(const std::st
     return nullptr;
   }
 
-  return std::unique_ptr<RecordFileWriter>(new RecordFileWriter(filename, fp));
+  return std::unique_ptr<RecordFileWriter>(new RecordFileWriter(filename, fp, true));
 }
 
-RecordFileWriter::RecordFileWriter(const std::string& filename, FILE* fp)
+RecordFileWriter::RecordFileWriter(const std::string& filename, FILE* fp, bool own_fp)
     : filename_(filename),
       record_fp_(fp),
+      own_fp_(own_fp),
       attr_section_offset_(0),
       attr_section_size_(0),
       data_section_offset_(0),
@@ -67,7 +68,7 @@ RecordFileWriter::RecordFileWriter(const std::string& filename, FILE* fp)
       feature_count_(0) {}
 
 RecordFileWriter::~RecordFileWriter() {
-  if (record_fp_ != nullptr) {
+  if (record_fp_ != nullptr && own_fp_) {
     fclose(record_fp_);
     unlink(filename_.c_str());
   }
@@ -514,7 +515,7 @@ bool RecordFileWriter::Close() {
     result = false;
   }
 
-  if (fclose(record_fp_) != 0) {
+  if (own_fp_ && fclose(record_fp_) != 0) {
     PLOG(ERROR) << "failed to close record file '" << filename_ << "'";
     result = false;
   }
