@@ -67,6 +67,8 @@ class RecordFileWriter {
  public:
   static std::unique_ptr<RecordFileWriter> CreateInstance(const std::string& filename);
 
+  // If own_fp = true, close fp when we finish writing.
+  RecordFileWriter(const std::string& filename, FILE* fp, bool own_fp);
   ~RecordFileWriter();
 
   bool WriteAttrSection(const std::vector<EventAttrWithId>& attr_ids);
@@ -92,7 +94,6 @@ class RecordFileWriter {
   bool Close();
 
  private:
-  RecordFileWriter(const std::string& filename, FILE* fp);
   void GetHitModulesInBuffer(const char* p, const char* end,
                              std::vector<std::string>* hit_kernel_modules,
                              std::vector<std::string>* hit_user_files);
@@ -106,6 +107,7 @@ class RecordFileWriter {
 
   const std::string filename_;
   FILE* record_fp_;
+  bool own_fp_;
 
   perf_event_attr event_attr_;
   uint64_t attr_section_offset_;
