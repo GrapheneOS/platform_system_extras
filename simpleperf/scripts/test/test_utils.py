@@ -65,6 +65,7 @@ class TestHelper:
         self.script_dir = self.script_test_dir.parent
         self.cur_dir = os.getcwd()
         self.testdata_dir = os.path.join(self.cur_dir, 'testdata')
+        self.testdata_dir_p = Path(self.testdata_dir)
         self.test_base_dir = os.path.join(self.cur_dir, 'test_results')
         self.adb = AdbHelper(enable_switch_to_root=True)
         self.android_version = self.adb.get_android_version()
@@ -176,7 +177,7 @@ class TestBase(unittest.TestCase):
             '%s.%s  %s' % (self.__class__.__name__, self._testMethodName, status))
         return ret
 
-    def run_cmd(self, args, return_output=False, drop_output=True):
+    def run_cmd(self, args: List[str], return_output=False, drop_output=True) -> str:
         if args[0] == 'report_html.py' or args[0] == INFERNO_SCRIPT:
             args += TEST_HELPER.browser_option
         if TEST_HELPER.ndk_path:
