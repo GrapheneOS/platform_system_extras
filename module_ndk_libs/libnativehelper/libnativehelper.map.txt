@@ -17,6 +17,7 @@ LIBNATIVEHELPER_S { # introduced=S
     jniThrowNullPointerException; # apex
     jniThrowRuntimeException; # apex
     jniThrowIOException; # apex
+    jniThrowErrnoException; # apex
     jniCreateFileDescriptor; # apex
     jniGetFDFromFileDescriptor; # apex
     jniSetFileDescriptorOfFD; # apex
