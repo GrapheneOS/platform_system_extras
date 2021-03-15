@@ -359,7 +359,8 @@ RECORD_FILTER_OPTION_HELP_MSG
   bool ProcessControlCmd(IOEventLoop* loop);
   void UpdateRecord(Record* record);
   bool UnwindRecord(SampleRecord& r);
-  bool KeepFailedUnwindingResult(const SampleRecord& r);
+  bool KeepFailedUnwindingResult(const SampleRecord& r, const std::vector<uint64_t>& ips,
+                                 const std::vector<uint64_t>& sps);
 
   // post recording functions
   std::unique_ptr<RecordFileReader> MoveRecordFile(const std::string& old_filename);
@@ -1567,7 +1568,7 @@ bool RecordCommand::UnwindRecord(SampleRecord& r) {
         return false;
       }
     }
-    if (keep_failed_unwinding_result_ && !KeepFailedUnwindingResult(r)) {
+    if (keep_failed_unwinding_result_ && !KeepFailedUnwindingResult(r, ips, sps)) {
       return false;
     }
     r.ReplaceRegAndStackWithCallChain(ips);
@@ -1580,19 +1581,17 @@ bool RecordCommand::UnwindRecord(SampleRecord& r) {
   return true;
 }
 
-bool RecordCommand::KeepFailedUnwindingResult(const SampleRecord& r) {
+bool RecordCommand::KeepFailedUnwindingResult(const SampleRecord& r,
+                                              const std::vector<uint64_t>& ips,
+                                              const std::vector<uint64_t>& sps) {
   auto& result = offline_unwinder_->GetUnwindingResult();
   if (result.error_code != unwindstack::ERROR_NONE) {
-    PerfSampleRegsUserType regs_user_data = {};
-    PerfSampleStackUserType stack_user_data = {};
     if (keep_failed_unwinding_debug_info_) {
-      regs_user_data = r.regs_user_data;
-      stack_user_data = r.stack_user_data;
+      return record_file_writer_->WriteRecord(UnwindingResultRecord(
+          r.time_data.time, result, r.regs_user_data, r.stack_user_data, ips, sps));
     }
-    if (!record_file_writer_->WriteRecord(
-            UnwindingResultRecord(r.time_data.time, result, regs_user_data, stack_user_data))) {
-      return false;
-    }
+    return record_file_writer_->WriteRecord(
+        UnwindingResultRecord(r.time_data.time, result, {}, {}, {}, {}));
   }
   return true;
 }
