@@ -48,6 +48,7 @@ from . app_profiler_test import *
 from . app_test import *
 from . binary_cache_builder_test import *
 from . cpp_app_test import *
+from . debug_unwind_reporter_test import *
 from . java_app_test import *
 from . kotlin_app_test import *
 from . pprof_proto_generator_test import *
