@@ -1252,17 +1252,30 @@ UnwindingResultRecord::UnwindingResultRecord(char* p) : Record(p) {
     p += stack_user_data.size;
     MoveFromBinaryFormat(stack_user_data.dyn_size, p);
   }
-  CHECK_EQ(p, end);
+
+  // callchain
+  if (p < end) {
+    MoveFromBinaryFormat(callchain.length, p);
+    callchain.ips = reinterpret_cast<uint64_t*>(p);
+    p += callchain.length * sizeof(uint64_t);
+    callchain.sps = reinterpret_cast<uint64_t*>(p);
+    p += callchain.length * sizeof(uint64_t);
+  }
+  CHECK_LE(p, end);
 }
 
 UnwindingResultRecord::UnwindingResultRecord(uint64_t time, const UnwindingResult& unwinding_result,
                                              const PerfSampleRegsUserType& regs_user_data,
-                                             const PerfSampleStackUserType& stack_user_data) {
+                                             const PerfSampleStackUserType& stack_user_data,
+                                             const std::vector<uint64_t>& ips,
+                                             const std::vector<uint64_t>& sps) {
   SetTypeAndMisc(SIMPLE_PERF_RECORD_UNWINDING_RESULT, 0);
   uint32_t size = header_size() + 6 * sizeof(uint64_t);
   size += (2 + regs_user_data.reg_nr) * sizeof(uint64_t);
   size +=
       stack_user_data.size == 0 ? sizeof(uint64_t) : (2 * sizeof(uint64_t) + stack_user_data.size);
+  CHECK_EQ(ips.size(), sps.size());
+  size += (1 + ips.size() * 2) * sizeof(uint64_t);
   SetSize(size);
   this->time = time;
   this->unwinding_result = unwinding_result;
@@ -1285,6 +1298,9 @@ UnwindingResultRecord::UnwindingResultRecord(uint64_t time, const UnwindingResul
     MoveToBinaryFormat(stack_user_data.data, stack_user_data.size, p);
     MoveToBinaryFormat(stack_user_data.dyn_size, p);
   }
+  MoveToBinaryFormat(static_cast<uint64_t>(ips.size()), p);
+  MoveToBinaryFormat(ips.data(), ips.size(), p);
+  MoveToBinaryFormat(sps.data(), sps.size(), p);
   CHECK_EQ(p, new_binary + size);
   UpdateBinary(new_binary);
 }
@@ -1298,11 +1314,12 @@ void UnwindingResultRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "stack_end 0x%" PRIx64 "\n", unwinding_result.stack_end);
   if (regs_user_data.reg_nr > 0) {
     PrintIndented(indent, "user regs: abi=%" PRId64 "\n", regs_user_data.abi);
-    for (size_t i = 0, pos = 0; i < 64; ++i) {
-      if ((regs_user_data.reg_mask >> i) & 1) {
-        PrintIndented(indent + 1, "reg (%s) 0x%016" PRIx64 "\n",
-                      GetRegName(i, ScopedCurrentArch::GetCurrentArch()).c_str(),
-                      regs_user_data.regs[pos++]);
+    RegSet regs(regs_user_data.abi, regs_user_data.reg_mask, regs_user_data.regs);
+    for (size_t i = 0; i < 64; ++i) {
+      uint64_t value;
+      if (regs.GetRegValue(i, &value)) {
+        PrintIndented(indent + 1, "reg (%s) 0x%016" PRIx64 "\n", GetRegName(i, regs.arch).c_str(),
+                      value);
       }
     }
   }
@@ -1319,6 +1336,13 @@ void UnwindingResultRecord::DumpData(size_t indent) const {
       printf("\n");
     }
     printf("\n");
+  }
+  if (callchain.length > 0) {
+    PrintIndented(indent, "callchain length=%" PRIu64 ":\n", callchain.length);
+    for (uint64_t i = 0; i < callchain.length; i++) {
+      PrintIndented(indent + 1, "ip_%" PRIu64 ": 0x%" PRIx64 "\n", i + 1, callchain.ips[i]);
+      PrintIndented(indent + 1, "sp_%" PRIu64 ": 0x%" PRIx64 "\n", i + 1, callchain.sps[i]);
+    }
   }
 }
 
