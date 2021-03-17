@@ -530,6 +530,10 @@ class ReportGenerator : public RecordFileProcessor {
       size_t id = i + 1;
       const auto& entry = entries[i];
       fprintf(out_fp_, "ip_%zu: 0x%" PRIx64 "\n", id, entry.ip);
+      if (i < unwinding_r.callchain.length) {
+        fprintf(out_fp_, "unwinding_ip_%zu: 0x%" PRIx64 "\n", id, unwinding_r.callchain.ips[i]);
+        fprintf(out_fp_, "unwinding_sp_%zu: 0x%" PRIx64 "\n", id, unwinding_r.callchain.sps[i]);
+      }
       fprintf(out_fp_, "map_%zu: [0x%" PRIx64 "-0x%" PRIx64 "], pgoff 0x%" PRIx64 "\n", id,
               entry.map->start_addr, entry.map->get_end_addr(), entry.map->pgoff);
       fprintf(out_fp_, "dso_%zu: %s\n", id, entry.map->dso->Path().c_str());
