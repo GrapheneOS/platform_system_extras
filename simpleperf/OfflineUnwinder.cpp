@@ -45,11 +45,27 @@
 #include "read_apk.h"
 #include "thread_tree.h"
 
-static_assert(simpleperf::map_flags::PROT_JIT_SYMFILE_MAP ==
-                  unwindstack::MAPS_FLAGS_JIT_SYMFILE_MAP,
-              "");
-
 namespace simpleperf {
+
+// unwindstack only builds on linux. So simpleperf redefines flags in unwindstack, to use them on
+// darwin/windows. Use static_assert to make sure they are on the same page.
+static_assert(map_flags::PROT_JIT_SYMFILE_MAP == unwindstack::MAPS_FLAGS_JIT_SYMFILE_MAP);
+
+#define CHECK_ERROR_CODE(error_code_name) \
+  static_assert(UnwindStackErrorCode::error_code_name == unwindstack::ErrorCode::error_code_name)
+
+CHECK_ERROR_CODE(ERROR_NONE);
+CHECK_ERROR_CODE(ERROR_MEMORY_INVALID);
+CHECK_ERROR_CODE(ERROR_UNWIND_INFO);
+CHECK_ERROR_CODE(ERROR_UNSUPPORTED);
+CHECK_ERROR_CODE(ERROR_INVALID_MAP);
+CHECK_ERROR_CODE(ERROR_MAX_FRAMES_EXCEEDED);
+CHECK_ERROR_CODE(ERROR_REPEATED_FRAME);
+CHECK_ERROR_CODE(ERROR_INVALID_ELF);
+CHECK_ERROR_CODE(ERROR_THREAD_DOES_NOT_EXIST);
+CHECK_ERROR_CODE(ERROR_THREAD_TIMEOUT);
+CHECK_ERROR_CODE(ERROR_SYSTEM_CALL);
+CHECK_ERROR_CODE(ERROR_MAX);
 
 // Max frames seen so far is 463, in http://b/110923759.
 static constexpr size_t MAX_UNWINDING_FRAMES = 512;
