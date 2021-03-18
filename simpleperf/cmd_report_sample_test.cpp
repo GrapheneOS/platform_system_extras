@@ -185,3 +185,9 @@ TEST(cmd_report_sample, show_art_jni_methods) {
   // Don't show art_jni_trampoline.
   ASSERT_EQ(data.find("art_jni_trampoline"), std::string::npos);
 }
+
+TEST(cmd_report_sample, show_unwinding_result) {
+  std::string data;
+  GetProtobufReport("perf_with_failed_unwinding_debug_info.data", &data, {"--show-callchain"});
+  ASSERT_NE(data.find("error_code: ERROR_INVALID_MAP"), std::string::npos);
+}
