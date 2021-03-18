@@ -26,6 +26,22 @@
 namespace simpleperf {
 struct ThreadEntry;
 
+enum UnwindStackErrorCode : uint8_t {
+  ERROR_NONE,                   // No error.
+  ERROR_MEMORY_INVALID,         // Memory read failed.
+  ERROR_UNWIND_INFO,            // Unable to use unwind information to unwind.
+  ERROR_UNSUPPORTED,            // Encountered unsupported feature.
+  ERROR_INVALID_MAP,            // Unwind in an invalid map.
+  ERROR_MAX_FRAMES_EXCEEDED,    // The number of frames exceed the total allowed.
+  ERROR_REPEATED_FRAME,         // The last frame has the same pc/sp as the next.
+  ERROR_INVALID_ELF,            // Unwind in an invalid elf.
+  ERROR_THREAD_DOES_NOT_EXIST,  // Attempt to unwind a local thread that does
+                                // not exist.
+  ERROR_THREAD_TIMEOUT,         // Timeout trying to unwind a local thread.
+  ERROR_SYSTEM_CALL,            // System call failed while unwinding.
+  ERROR_MAX = ERROR_SYSTEM_CALL,
+};
+
 struct UnwindingResult {
   // time used for unwinding, in ns.
   uint64_t used_time;
