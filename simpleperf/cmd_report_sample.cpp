@@ -21,11 +21,12 @@
 
 #include <android-base/strings.h>
 
-#include "system/extras/simpleperf/report_sample.pb.h"
+#include "system/extras/simpleperf/cmd_report_sample.pb.h"
 
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 
+#include "OfflineUnwinder.h"
 #include "command.h"
 #include "event_attr.h"
 #include "event_type.h"
@@ -95,6 +96,30 @@ static const char* ProtoExecutionTypeToString(proto::Sample_CallChainEntry_Execu
   return "";
 }
 
+static const char* ProtoUnwindingErrorCodeToString(
+    proto::Sample_UnwindingResult_ErrorCode error_code) {
+  switch (error_code) {
+    case proto::Sample_UnwindingResult::ERROR_NONE:
+      return "ERROR_NONE";
+    case proto::Sample_UnwindingResult::ERROR_UNKNOWN:
+      return "ERROR_UNKNOWN";
+    case proto::Sample_UnwindingResult::ERROR_NOT_ENOUGH_STACK:
+      return "ERROR_NOT_ENOUGH_STACK";
+    case proto::Sample_UnwindingResult::ERROR_MEMORY_INVALID:
+      return "ERROR_MEMORY_INVALID";
+    case proto::Sample_UnwindingResult::ERROR_UNWIND_INFO:
+      return "ERROR_UNWIND_INFO";
+    case proto::Sample_UnwindingResult::ERROR_INVALID_MAP:
+      return "ERROR_INVALID_MAP";
+    case proto::Sample_UnwindingResult::ERROR_MAX_FRAME_EXCEEDED:
+      return "ERROR_MAX_FRAME_EXCEEDED";
+    case proto::Sample_UnwindingResult::ERROR_REPEATED_FRAME:
+      return "ERROR_REPEATED_FRAME";
+    case proto::Sample_UnwindingResult::ERROR_INVALID_ELF:
+      return "ERROR_INVALID_ELF";
+  }
+}
+
 class ReportSampleCommand : public Command {
  public:
   ReportSampleCommand()
@@ -108,7 +133,7 @@ class ReportSampleCommand : public Command {
 "-o report_file_name  Set report file name. Default report file name is\n"
 "                     report_sample.trace if --protobuf is used, otherwise\n"
 "                     the report is written to stdout.\n"
-"--protobuf  Use protobuf format in report_sample.proto to output samples.\n"
+"--protobuf  Use protobuf format in cmd_report_sample.proto to output samples.\n"
 "            Need to set a report_file_name when using this option.\n"
 "--show-callchain  Print callchain samples.\n"
 "--remove-unknown-kernel-symbols  Remove kernel callchains when kernel symbols\n"
@@ -142,6 +167,7 @@ class ReportSampleCommand : public Command {
   bool ProcessSampleRecord(const SampleRecord& r);
   bool PrintSampleRecordInProtobuf(const SampleRecord& record,
                                    const std::vector<CallChainReportEntry>& entries);
+  void AddUnwindingResultInProtobuf(proto::Sample_UnwindingResult* proto_unwinding_result);
   bool WriteRecordInProtobuf(proto::Record& proto_record);
   bool PrintLostSituationInProtobuf();
   bool PrintFileInfoInProtobuf();
@@ -169,6 +195,7 @@ class ReportSampleCommand : public Command {
   CallChainReportBuilder callchain_report_builder_;
   // map from <pid, tid> to thread name
   std::map<uint64_t, const char*> thread_names_;
+  std::unique_ptr<UnwindingResultRecord> last_unwinding_result_;
 };
 
 bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
@@ -382,6 +409,15 @@ bool ReportSampleCommand::DumpProtobufReport(const std::string& filename) {
                          ProtoExecutionTypeToString(callchain.execution_type()));
         }
       }
+      if (sample.has_unwinding_result()) {
+        FprintIndented(report_fp_, 1, "unwinding_result:\n");
+        FprintIndented(report_fp_, 2, "raw_error_code: %u\n",
+                       sample.unwinding_result().raw_error_code());
+        FprintIndented(report_fp_, 2, "error_addr: 0x%" PRIx64 "\n",
+                       sample.unwinding_result().error_addr());
+        FprintIndented(report_fp_, 2, "error_code: %s\n",
+                       ProtoUnwindingErrorCodeToString(sample.unwinding_result().error_code()));
+      }
     } else if (proto_record.has_lost()) {
       auto& lost = proto_record.lost();
       FprintIndented(report_fp_, 0, "lost_situation:\n");
@@ -486,13 +522,23 @@ bool ReportSampleCommand::PrintMetaInfo() {
 
 bool ReportSampleCommand::ProcessRecord(std::unique_ptr<Record> record) {
   thread_tree_.Update(*record);
-  if (record->type() == PERF_RECORD_SAMPLE) {
-    return ProcessSampleRecord(*static_cast<SampleRecord*>(record.get()));
+  bool result = true;
+  switch (record->type()) {
+    case PERF_RECORD_SAMPLE: {
+      result = ProcessSampleRecord(*static_cast<SampleRecord*>(record.get()));
+      last_unwinding_result_.reset();
+      break;
+    }
+    case SIMPLE_PERF_RECORD_UNWINDING_RESULT: {
+      last_unwinding_result_.reset(static_cast<UnwindingResultRecord*>(record.release()));
+      break;
+    }
+    case PERF_RECORD_LOST: {
+      lost_count_ += static_cast<const LostRecord*>(record.get())->lost;
+      break;
+    }
   }
-  if (record->type() == PERF_RECORD_LOST) {
-    lost_count_ += static_cast<const LostRecord*>(record.get())->lost;
-  }
-  return true;
+  return result;
 }
 
 bool ReportSampleCommand::ProcessSampleRecord(const SampleRecord& r) {
@@ -537,6 +583,7 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(
   sample->set_thread_id(r.tid_data.tid);
   sample->set_event_type_id(record_file_reader_->GetAttrIndexOfRecord(&r));
 
+  bool complete_callchain = false;
   for (const auto& node : entries) {
     proto::Sample_CallChainEntry* callchain = sample->add_callchain();
     uint32_t file_id;
@@ -563,10 +610,65 @@ bool ReportSampleCommand::PrintSampleRecordInProtobuf(
     // _start_main (> android O).
     if (node.dso->FileName() == "libc.so" && (strcmp(node.symbol->Name(), "__libc_init") == 0 ||
                                               strcmp(node.symbol->Name(), "__start_thread") == 0)) {
+      complete_callchain = true;
       break;
     }
   }
+  // No need to add unwinding result for callchains fixed by callchain joiner.
+  if (!complete_callchain && last_unwinding_result_) {
+    AddUnwindingResultInProtobuf(sample->mutable_unwinding_result());
+  }
   return WriteRecordInProtobuf(proto_record);
+}
+
+void ReportSampleCommand::AddUnwindingResultInProtobuf(
+    proto::Sample_UnwindingResult* proto_unwinding_result) {
+  const UnwindingResult& unwinding_result = last_unwinding_result_->unwinding_result;
+  proto_unwinding_result->set_raw_error_code(unwinding_result.error_code);
+  proto_unwinding_result->set_error_addr(unwinding_result.error_addr);
+  proto::Sample_UnwindingResult_ErrorCode error_code;
+  switch (unwinding_result.error_code) {
+    case UnwindStackErrorCode::ERROR_NONE:
+      error_code = proto::Sample_UnwindingResult::ERROR_NONE;
+      break;
+    case UnwindStackErrorCode::ERROR_MEMORY_INVALID: {
+      // We dumped stack data in range [stack_start, stack_end) for dwarf unwinding.
+      // If the failed-to-read memory addr is within [stack_end, stack_end + 128k], then
+      // probably we didn't dump enough stack data.
+      // 128k is a guess number. The size of stack used in one function layer is usually smaller
+      // than it. And using a bigger value is more likely to be false positive.
+      if (unwinding_result.error_addr >= unwinding_result.stack_end &&
+          unwinding_result.error_addr <= unwinding_result.stack_end + 128 * 1024) {
+        error_code = proto::Sample_UnwindingResult::ERROR_NOT_ENOUGH_STACK;
+      } else {
+        error_code = proto::Sample_UnwindingResult::ERROR_MEMORY_INVALID;
+      }
+      break;
+    }
+    case UnwindStackErrorCode::ERROR_UNWIND_INFO:
+      error_code = proto::Sample_UnwindingResult::ERROR_UNWIND_INFO;
+      break;
+    case UnwindStackErrorCode::ERROR_INVALID_MAP:
+      error_code = proto::Sample_UnwindingResult::ERROR_INVALID_MAP;
+      break;
+    case UnwindStackErrorCode::ERROR_MAX_FRAMES_EXCEEDED:
+      error_code = proto::Sample_UnwindingResult::ERROR_MAX_FRAME_EXCEEDED;
+      break;
+    case UnwindStackErrorCode::ERROR_REPEATED_FRAME:
+      error_code = proto::Sample_UnwindingResult::ERROR_REPEATED_FRAME;
+      break;
+    case UnwindStackErrorCode::ERROR_INVALID_ELF:
+      error_code = proto::Sample_UnwindingResult::ERROR_INVALID_ELF;
+      break;
+    case UnwindStackErrorCode::ERROR_UNSUPPORTED:
+    case UnwindStackErrorCode::ERROR_THREAD_DOES_NOT_EXIST:
+    case UnwindStackErrorCode::ERROR_THREAD_TIMEOUT:
+    case UnwindStackErrorCode::ERROR_SYSTEM_CALL:
+      // These error_codes shouldn't happen in simpleperf's use of libunwindstack.
+      error_code = proto::Sample_UnwindingResult::ERROR_UNKNOWN;
+      break;
+  }
+  proto_unwinding_result->set_error_code(error_code);
 }
 
 bool ReportSampleCommand::WriteRecordInProtobuf(proto::Record& proto_record) {
