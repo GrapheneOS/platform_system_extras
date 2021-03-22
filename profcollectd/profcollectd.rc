@@ -9,6 +9,9 @@ service profcollectd /system/bin/profcollectd
 on property:persist.device_config.profcollect_native_boot.enabled=true
     start profcollectd
 
+on property:persist.profcollectd.enabled_override=true
+    start profcollectd
+
 on post-fs-data
     # Create directory for profcollectd.
     mkdir /data/misc/profcollectd 0770 root root
