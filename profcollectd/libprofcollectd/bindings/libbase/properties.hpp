@@ -16,3 +16,4 @@
 
 // C declaration for bindgen.
 const char* GetProperty(const char*, const char*);
+void SetProperty(const char*, const char*);
