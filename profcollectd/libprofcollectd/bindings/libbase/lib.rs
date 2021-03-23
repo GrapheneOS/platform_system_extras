@@ -28,3 +28,12 @@ pub fn get_property<'a>(key: &str, default_value: &'a str) -> &'a str {
         CStr::from_ptr(cstr).to_str().unwrap()
     }
 }
+
+/// Sets the system property `key` to `value`.
+pub fn set_property(key: &str, value: &str) {
+    let key = CString::new(key).unwrap();
+    let value = CString::new(value).unwrap();
+    unsafe {
+        profcollect_libbase_bindgen::SetProperty(key.as_ptr(), value.as_ptr());
+    }
+}
