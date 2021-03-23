@@ -18,6 +18,7 @@
 
 #include "get_test_data.h"
 #include "kallsyms.h"
+#include "test_util.h"
 
 using namespace simpleperf;
 
@@ -36,7 +37,7 @@ static bool KernelSymbolsMatch(const KernelSymbol& sym1, const KernelSymbol& sym
          ModulesMatch(sym1.module, sym2.module);
 }
 
-TEST(utils, ProcessKernelSymbols) {
+TEST(kallsyms, ProcessKernelSymbols) {
   std::string data =
       "ffffffffa005c4e4 d __warned.41698   [libsas]\n"
       "aaaaaaaaaaaaaaaa T _text\n"
@@ -60,3 +61,16 @@ TEST(utils, ProcessKernelSymbols) {
   ASSERT_FALSE(ProcessKernelSymbols(
       data, std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
 }
+
+#if defined(__ANDROID__)
+TEST(kallsyms, GetKernelStartAddress) {
+  TEST_REQUIRE_ROOT();
+  ASSERT_NE(GetKernelStartAddress(), 0u);
+}
+
+TEST(kallsyms, LoadKernelSymbols) {
+  TEST_REQUIRE_ROOT();
+  std::string kallsyms;
+  ASSERT_TRUE(LoadKernelSymbols(&kallsyms));
+}
+#endif  // defined(__ANDROID__)
