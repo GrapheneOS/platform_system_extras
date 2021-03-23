@@ -40,6 +40,7 @@ static bool RunInjectCmd(std::vector<std::string>&& args) {
 
 static bool RunInjectCmd(std::vector<std::string>&& args, std::string* output) {
   TemporaryFile tmpfile;
+  close(tmpfile.release());
   args.insert(args.end(), {"-o", tmpfile.path});
   if (!RunInjectCmd(std::move(args))) {
     return false;
@@ -94,6 +95,7 @@ TEST(cmd_inject, exclude_perf_option) {
 
 TEST(cmd_inject, output_option) {
   TemporaryFile tmpfile;
+  close(tmpfile.release());
   ASSERT_TRUE(RunInjectCmd({"--output", "autofdo", "-o", tmpfile.path}));
   ASSERT_TRUE(RunInjectCmd({"--output", "branch-list", "-o", tmpfile.path}));
   std::string autofdo_data;
@@ -123,4 +125,26 @@ TEST(cmd_inject, skip_empty_output_file) {
   // The empty output file should not be produced.
   ASSERT_FALSE(IsRegularFile(tmpfile.path));
   tmpfile.DoNotRemove();
+}
+
+TEST(cmd_inject, inject_kernel_data) {
+  const std::string recording_file =
+      GetTestData(std::string("etm") + OS_PATH_SEPARATOR + "perf_kernel.data");
+
+  // Inject directly to autofdo format.
+  TemporaryFile tmpfile;
+  close(tmpfile.release());
+  ASSERT_TRUE(RunInjectCmd({"-i", recording_file, "-o", tmpfile.path}));
+  std::string autofdo_output;
+  ASSERT_TRUE(android::base::ReadFileToString(tmpfile.path, &autofdo_output));
+  ASSERT_NE(autofdo_output.find("rq_stats.ko"), std::string::npos);
+
+  // Inject through etm branch list.
+  TemporaryFile tmpfile2;
+  close(tmpfile2.release());
+  ASSERT_TRUE(RunInjectCmd({"-i", recording_file, "-o", tmpfile.path, "--output", "branch-list"}));
+  ASSERT_TRUE(RunInjectCmd({"-i", tmpfile.path, "-o", tmpfile2.path}));
+  std::string output;
+  ASSERT_TRUE(android::base::ReadFileToString(tmpfile2.path, &output));
+  ASSERT_EQ(output, autofdo_output);
 }
