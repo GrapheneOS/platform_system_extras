@@ -17,21 +17,34 @@
 //! Pack profiles into reports.
 
 use anyhow::{anyhow, Result};
+use lazy_static::lazy_static;
+use macaddr::MacAddr6;
 use std::fs::{read_dir, remove_file, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+use uuid::v1::{Context, Timestamp};
+use uuid::Uuid;
 use zip::write::FileOptions;
 use zip::ZipWriter;
 
-pub fn pack_report(profile: &Path, report: &Path) -> Result<()> {
-    // TODO: Allow multiple profiles to be queued for upload.
+use crate::config::Config;
+
+lazy_static! {
+    pub static ref UUID_CONTEXT: Context = Context::new(0);
+}
+
+pub fn pack_report(profile: &Path, report: &Path, config: &Config) -> Result<String> {
     let mut report = PathBuf::from(report);
-    report.push("report.zip");
+    report.push(get_report_filename(&config.node_id)?);
+    report.set_extension("zip");
+    let report_path =
+        report.to_str().ok_or_else(|| anyhow!("Malformed report path: {}", report.display()))?;
 
     // Remove the current report file if exists.
     remove_file(&report).ok();
 
-    let report = File::create(report)?;
+    let report = File::create(&report)?;
     let options = FileOptions::default();
     let mut zip = ZipWriter::new(report);
 
@@ -52,5 +65,14 @@ pub fn pack_report(profile: &Path, report: &Path) -> Result<()> {
             Ok(())
         })?;
     zip.finish()?;
-    Ok(())
+
+    Ok(report_path.to_string())
+}
+
+fn get_report_filename(node_id: &MacAddr6) -> Result<String> {
+    let since_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+    let ts =
+        Timestamp::from_unix(&*UUID_CONTEXT, since_epoch.as_secs(), since_epoch.subsec_nanos());
+    let uuid = Uuid::new_v1(ts, &node_id.as_bytes())?;
+    Ok(uuid.to_string())
 }
