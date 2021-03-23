@@ -18,6 +18,8 @@
 
 use anyhow::Result;
 use lazy_static::lazy_static;
+use macaddr::MacAddr6;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::path::Path;
@@ -25,6 +27,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 const PROFCOLLECT_CONFIG_NAMESPACE: &str = "profcollect_native_boot";
+const PROFCOLLECT_NODE_ID_PROPERTY: &str = "persist.profcollectd.node_id";
 
 lazy_static! {
     pub static ref TRACE_OUTPUT_DIR: &'static Path = Path::new("/data/misc/profcollectd/trace/");
@@ -40,6 +43,8 @@ lazy_static! {
 pub struct Config {
     /// Version of config file scheme, always equals to 1.
     version: u32,
+    /// Application specific node ID.
+    pub node_id: MacAddr6,
     /// Device build fingerprint.
     pub build_fingerprint: String,
     /// Interval between collections.
@@ -54,7 +59,8 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         Ok(Config {
             version: 1,
-            build_fingerprint: get_build_fingerprint(),
+            node_id: get_or_initialise_node_id()?,
+            build_fingerprint: get_build_fingerprint()?,
             collection_interval: Duration::from_secs(get_device_config(
                 "collection_interval",
                 600,
@@ -78,20 +84,54 @@ impl FromStr for Config {
     }
 }
 
-fn get_build_fingerprint() -> String {
-    profcollect_libbase_rust::get_property("ro.build.fingerprint", "unknown").to_string()
+fn get_or_initialise_node_id() -> Result<MacAddr6> {
+    let mut node_id = get_property(&PROFCOLLECT_NODE_ID_PROPERTY, MacAddr6::nil())?;
+    if node_id.is_nil() {
+        node_id = generate_random_node_id();
+        set_property(&PROFCOLLECT_NODE_ID_PROPERTY, node_id);
+    }
+
+    Ok(node_id)
 }
 
-fn get_device_config<T>(key: &str, default: T) -> Result<T>
+fn get_build_fingerprint() -> Result<String> {
+    get_property("ro.build.fingerprint", "unknown".to_string())
+}
+
+fn get_device_config<T>(key: &str, default_value: T) -> Result<T>
 where
     T: FromStr + ToString,
     T::Err: Error + Send + Sync + 'static,
 {
-    let default = default.to_string();
+    let default_value = default_value.to_string();
     let config = profcollect_libflags_rust::get_server_configurable_flag(
         &PROFCOLLECT_CONFIG_NAMESPACE,
         &key,
-        &default,
+        &default_value,
     );
     Ok(T::from_str(&config)?)
+}
+
+fn get_property<T>(key: &str, default_value: T) -> Result<T>
+where
+    T: FromStr + ToString,
+    T::Err: Error + Send + Sync + 'static,
+{
+    let default_value = default_value.to_string();
+    let value = profcollect_libbase_rust::get_property(&key, &default_value);
+    Ok(T::from_str(&value)?)
+}
+
+fn set_property<T>(key: &str, value: T)
+where
+    T: ToString,
+{
+    let value = value.to_string();
+    profcollect_libbase_rust::set_property(&key, &value);
+}
+
+fn generate_random_node_id() -> MacAddr6 {
+    let mut node_id = rand::thread_rng().gen::<[u8; 6]>();
+    node_id[0] |= 0x1;
+    MacAddr6::from(node_id)
 }
