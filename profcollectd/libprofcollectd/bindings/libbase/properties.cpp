@@ -21,3 +21,7 @@ const char* GetProperty(const char* key, const char* default_value) {
   auto v = android::base::GetProperty(std::string(key), std::string(default_value));
   return strdup(v.c_str());
 }
+
+void SetProperty(const char* key, const char* value) {
+  android::base::SetProperty(std::string(key), std::string(value));
+}
