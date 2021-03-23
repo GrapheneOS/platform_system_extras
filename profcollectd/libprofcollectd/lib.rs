@@ -83,9 +83,8 @@ pub fn process() -> Result<()> {
 }
 
 /// Process traces and report profile.
-pub fn report() -> Result<()> {
-    get_profcollectd_service().report()?;
-    Ok(())
+pub fn report() -> Result<String> {
+    Ok(get_profcollectd_service().report()?)
 }
 
 /// Inits logging for Android
