@@ -22,6 +22,6 @@ interface IProfCollectd {
     void terminate();
     void trace_once(@utf8InCpp String tag);
     void process(boolean blocking);
-    void report();
+    @utf8InCpp String report();
     @utf8InCpp String get_supported_provider();
 }
