@@ -79,9 +79,11 @@ impl IProfCollectd for ProfcollectdBinderService {
             .context("Failed to process profiles.")
             .map_err(err_to_binder_status)
     }
-    fn report(&self) -> BinderResult<()> {
+    fn report(&self) -> BinderResult<String> {
         self.process(true)?;
-        pack_report(&PROFILE_OUTPUT_DIR, &REPORT_OUTPUT_DIR)
+
+        let lock = &mut *self.lock();
+        pack_report(&PROFILE_OUTPUT_DIR, &REPORT_OUTPUT_DIR, &lock.config)
             .context("Failed to create profile report.")
             .map_err(err_to_binder_status)
     }

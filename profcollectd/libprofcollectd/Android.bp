@@ -47,8 +47,11 @@ rust_library {
         "libchrono",
         "liblazy_static",
         "liblog_rust",
+        "libmacaddr",
+        "librand",
         "libserde", // Remove once b/179041241 is fixed.
         "libserde_json",
+        "libuuid",
         "libzip",
     ],
     rlibs: [

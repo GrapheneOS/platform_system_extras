@@ -62,7 +62,8 @@ fn main() -> Result<()> {
         }
         "report" => {
             println!("Creating profile report");
-            libprofcollectd::report().context("Failed to create profile report.")?;
+            let path = libprofcollectd::report().context("Failed to create profile report.")?;
+            println!("Report created at: {}", &path);
         }
         "help" => println!("{}", &HELP_MSG),
         arg => bail!("Unknown argument: {}\n{}", &arg, &HELP_MSG),
