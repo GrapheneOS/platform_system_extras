@@ -22,10 +22,9 @@ use binder::Status;
 use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProfCollectd::IProfCollectd;
 use std::ffi::CString;
 use std::fs::{create_dir, read_to_string, remove_dir_all, remove_file, write};
-use std::{
-    str::FromStr,
-    sync::{Mutex, MutexGuard},
-};
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::{Mutex, MutexGuard};
 
 use crate::config::{
     Config, CONFIG_FILE, OLD_REPORT_OUTPUT_FILE, PROFILE_OUTPUT_DIR, REPORT_OUTPUT_DIR,
@@ -86,6 +85,11 @@ impl IProfCollectd for ProfcollectdBinderService {
         pack_report(&PROFILE_OUTPUT_DIR, &REPORT_OUTPUT_DIR, &lock.config)
             .context("Failed to create profile report.")
             .map_err(err_to_binder_status)
+    }
+    fn delete_report(&self, report: &str) -> BinderResult<()> {
+        let report = PathBuf::from(report);
+        remove_file(&report).ok();
+        Ok(())
     }
     fn get_supported_provider(&self) -> BinderResult<String> {
         Ok(self.lock().scheduler.get_trace_provider_name().to_string())
