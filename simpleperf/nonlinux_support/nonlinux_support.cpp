@@ -32,12 +32,12 @@ bool CanRecordRawData() {
 }
 
 bool ReadSymbolsFromDexFileInMemory(void*, uint64_t, const std::vector<uint64_t>&,
-                                    std::vector<DexFileSymbol>*) {
+                                    const std::function<void(DexFileSymbol*)>&) {
   return true;
 }
 
 bool ReadSymbolsFromDexFile(const std::string&, const std::vector<uint64_t>&,
-                            std::vector<DexFileSymbol>*) {
+                            const std::function<void(DexFileSymbol*)>&) {
   return true;
 }
 
