@@ -667,6 +667,10 @@ void ReportSampleCommand::AddUnwindingResultInProtobuf(
       // These error_codes shouldn't happen in simpleperf's use of libunwindstack.
       error_code = proto::Sample_UnwindingResult::ERROR_UNKNOWN;
       break;
+    default:
+      LOG(ERROR) << "unknown unwinding error code: " << unwinding_result.error_code;
+      error_code = proto::Sample_UnwindingResult::ERROR_UNKNOWN;
+      break;
   }
   proto_unwinding_result->set_error_code(error_code);
 }
