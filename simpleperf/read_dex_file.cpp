@@ -31,27 +31,20 @@
 namespace simpleperf {
 
 static bool ReadSymbols(
-    const std::vector<uint64_t>& dex_file_offsets, std::vector<DexFileSymbol>* symbols,
-    const std::function<std::unique_ptr<art_api::dex::DexFile>(uint64_t offset)>& open_file_cb) {
+    const std::vector<uint64_t>& dex_file_offsets,
+    const std::function<std::unique_ptr<art_api::dex::DexFile>(uint64_t offset)>& open_file_cb,
+    const std::function<void(DexFileSymbol*)>& symbol_cb) {
   for (uint64_t offset : dex_file_offsets) {
     std::unique_ptr<art_api::dex::DexFile> dex_file = open_file_cb(offset);
     if (dex_file == nullptr) {
       return false;
     }
 
-    std::vector<art_api::dex::MethodInfo> file_syms = dex_file->GetAllMethodInfos(false);
-
-    // Adjust offsets to be from the start of the combined file.
-    for (art_api::dex::MethodInfo& sym : file_syms) {
-      sym.offset += offset;
-    }
-
-    if (symbols->empty()) {
-      *symbols = std::move(file_syms);
-    } else {
-      symbols->reserve(symbols->size() + file_syms.size());
-      std::move(std::begin(file_syms), std::end(file_syms), std::back_inserter(*symbols));
-    }
+    auto callback = [&](DexFileSymbol* symbol) {
+      symbol->addr += offset;
+      symbol_cb(symbol);
+    };
+    dex_file->GetAllMethodInfos(callback);
   }
 
   return true;
@@ -59,9 +52,10 @@ static bool ReadSymbols(
 
 bool ReadSymbolsFromDexFileInMemory(void* addr, uint64_t size,
                                     const std::vector<uint64_t>& dex_file_offsets,
-                                    std::vector<DexFileSymbol>* symbols) {
+                                    const std::function<void(DexFileSymbol*)>& symbol_callback) {
   return ReadSymbols(
-      dex_file_offsets, symbols, [&](uint64_t offset) -> std::unique_ptr<art_api::dex::DexFile> {
+      dex_file_offsets,
+      [&](uint64_t offset) -> std::unique_ptr<art_api::dex::DexFile> {
         size_t max_file_size;
         if (__builtin_sub_overflow(size, offset, &max_file_size)) {
           return nullptr;
@@ -75,28 +69,31 @@ bool ReadSymbolsFromDexFileInMemory(void* addr, uint64_t size,
           return nullptr;
         }
         return dex_file;
-      });
+      },
+      symbol_callback);
 }
 
 bool ReadSymbolsFromDexFile(const std::string& file_path,
                             const std::vector<uint64_t>& dex_file_offsets,
-                            std::vector<DexFileSymbol>* symbols) {
+                            const std::function<void(DexFileSymbol*)>& symbol_callback) {
   android::base::unique_fd fd(TEMP_FAILURE_RETRY(open(file_path.c_str(), O_RDONLY | O_CLOEXEC)));
   if (fd == -1) {
     return false;
   }
-  return ReadSymbols(dex_file_offsets, symbols,
-                     [&](uint64_t offset) -> std::unique_ptr<art_api::dex::DexFile> {
-                       std::string error_msg;
-                       std::unique_ptr<art_api::dex::DexFile> dex_file =
-                           art_api::dex::DexFile::OpenFromFd(fd, offset, file_path, &error_msg);
-                       if (dex_file == nullptr) {
-                         LOG(WARNING) << "Failed to read dex file symbols from '" << file_path
-                                      << "': " << error_msg;
-                         return nullptr;
-                       }
-                       return dex_file;
-                     });
+  return ReadSymbols(
+      dex_file_offsets,
+      [&](uint64_t offset) -> std::unique_ptr<art_api::dex::DexFile> {
+        std::string error_msg;
+        std::unique_ptr<art_api::dex::DexFile> dex_file =
+            art_api::dex::DexFile::OpenFromFd(fd, offset, file_path, &error_msg);
+        if (dex_file == nullptr) {
+          LOG(WARNING) << "Failed to read dex file symbols from '" << file_path
+                       << "': " << error_msg;
+          return nullptr;
+        }
+        return dex_file;
+      },
+      symbol_callback);
 }
 
 }  // namespace simpleperf
