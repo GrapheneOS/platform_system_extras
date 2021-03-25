@@ -16,7 +16,7 @@
 
 //! ProfCollect Binder service implementation.
 
-use anyhow::{Context, Error, Result};
+use anyhow::{bail, Context, Error, Result};
 use binder::public_api::Result as BinderResult;
 use binder::Status;
 use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProfCollectd::IProfCollectd;
@@ -86,13 +86,26 @@ impl IProfCollectd for ProfcollectdBinderService {
             .context("Failed to create profile report.")
             .map_err(err_to_binder_status)
     }
-    fn delete_report(&self, report: &str) -> BinderResult<()> {
-        let report = PathBuf::from(report);
+    fn delete_report(&self, report_name: &str) -> BinderResult<()> {
+        verify_report_name(&report_name).map_err(err_to_binder_status)?;
+
+        let mut report = PathBuf::from(&*REPORT_OUTPUT_DIR);
+        report.push(report_name);
+        report.set_extension("zip");
         remove_file(&report).ok();
         Ok(())
     }
     fn get_supported_provider(&self) -> BinderResult<String> {
         Ok(self.lock().scheduler.get_trace_provider_name().to_string())
+    }
+}
+
+/// Verify that the report name is valid, i.e. not a relative path component, to prevent potential
+/// attack.
+fn verify_report_name(report_name: &str) -> Result<()> {
+    match report_name.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+        true => Ok(()),
+        false => bail!("Not a report name: {}", report_name),
     }
 }
 
