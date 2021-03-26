@@ -33,6 +33,8 @@ lazy_static! {
     pub static ref TRACE_OUTPUT_DIR: &'static Path = Path::new("/data/misc/profcollectd/trace/");
     pub static ref PROFILE_OUTPUT_DIR: &'static Path = Path::new("/data/misc/profcollectd/output/");
     pub static ref REPORT_OUTPUT_DIR: &'static Path = Path::new("/data/misc/profcollectd/report/");
+    pub static ref BETTERBUG_CACHE_DIR: &'static Path =
+        Path::new("/data/user/10/com.google.android.apps.internal.betterbug/cache/");
     pub static ref OLD_REPORT_OUTPUT_FILE: &'static Path =
         Path::new("/data/misc/profcollectd/report.zip");
     pub static ref CONFIG_FILE: &'static Path =
