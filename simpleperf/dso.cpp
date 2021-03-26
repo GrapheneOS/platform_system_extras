@@ -463,9 +463,12 @@ class DexFileDso : public Dso {
 
   std::vector<Symbol> LoadSymbolsImpl() override {
     std::vector<Symbol> symbols;
-    std::vector<DexFileSymbol> dex_file_symbols;
     auto tuple = SplitUrlInApk(debug_file_path_);
     bool status = false;
+    auto symbol_callback = [&](DexFileSymbol* dex_symbol) {
+      symbols.emplace_back(std::string_view(dex_symbol->name, dex_symbol->name_size),
+                           dex_symbol->addr, dex_symbol->size);
+    };
     if (std::get<0>(tuple)) {
       std::unique_ptr<ArchiveHelper> ahelper = ArchiveHelper::CreateInstance(std::get<1>(tuple));
       ZipEntry entry;
@@ -473,10 +476,10 @@ class DexFileDso : public Dso {
       if (ahelper && ahelper->FindEntry(std::get<2>(tuple), &entry) &&
           ahelper->GetEntryData(entry, &data)) {
         status = ReadSymbolsFromDexFileInMemory(data.data(), data.size(), dex_file_offsets_,
-                                                &dex_file_symbols);
+                                                symbol_callback);
       }
     } else {
-      status = ReadSymbolsFromDexFile(debug_file_path_, dex_file_offsets_, &dex_file_symbols);
+      status = ReadSymbolsFromDexFile(debug_file_path_, dex_file_offsets_, symbol_callback);
     }
     if (!status) {
       android::base::LogSeverity level =
@@ -485,9 +488,6 @@ class DexFileDso : public Dso {
       return symbols;
     }
     LOG(VERBOSE) << "Read symbols from " << debug_file_path_ << " successfully";
-    for (auto& symbol : dex_file_symbols) {
-      symbols.emplace_back(symbol.name, symbol.offset, symbol.len);
-    }
     SortAndFixSymbols(symbols);
     return symbols;
   }
