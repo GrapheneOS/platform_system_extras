@@ -19,8 +19,9 @@
 use anyhow::{anyhow, Result};
 use lazy_static::lazy_static;
 use macaddr::MacAddr6;
-use std::fs::{read_dir, remove_file, File};
+use std::fs::{self, File};
 use std::io::{Read, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use uuid::v1::{Context, Timestamp};
@@ -36,19 +37,20 @@ lazy_static! {
 
 pub fn pack_report(profile: &Path, report: &Path, config: &Config) -> Result<String> {
     let mut report = PathBuf::from(report);
-    report.push(get_report_filename(&config.node_id)?);
+    let report_filename = get_report_filename(&config.node_id)?;
+    report.push(&report_filename);
     report.set_extension("zip");
-    let report_path =
-        report.to_str().ok_or_else(|| anyhow!("Malformed report path: {}", report.display()))?;
 
     // Remove the current report file if exists.
-    remove_file(&report).ok();
+    fs::remove_file(&report).ok();
 
-    let report = File::create(&report)?;
+    // Set report file ACL bits to 644, so that this can be shared to uploaders.
+    // Who has permission to actually read the file is protected by SELinux policy.
+    let report = fs::OpenOptions::new().create_new(true).write(true).mode(0o644).open(&report)?;
     let options = FileOptions::default();
     let mut zip = ZipWriter::new(report);
 
-    read_dir(profile)?
+    fs::read_dir(profile)?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|e| e.is_file())
@@ -66,7 +68,7 @@ pub fn pack_report(profile: &Path, report: &Path, config: &Config) -> Result<Str
         })?;
     zip.finish()?;
 
-    Ok(report_path.to_string())
+    Ok(report_filename)
 }
 
 fn get_report_filename(node_id: &MacAddr6) -> Result<String> {
