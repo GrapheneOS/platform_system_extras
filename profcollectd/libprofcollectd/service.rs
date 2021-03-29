@@ -34,7 +34,8 @@ use crate::report::pack_report;
 use crate::scheduler::Scheduler;
 
 fn err_to_binder_status(msg: Error) -> Status {
-    let msg = CString::new(msg.to_string()).expect("Failed to convert to CString");
+    let msg = format!("{:#?}", msg);
+    let msg = CString::new(msg).expect("Failed to convert to CString");
     Status::new_service_specific_error(1, Some(&msg))
 }
 
