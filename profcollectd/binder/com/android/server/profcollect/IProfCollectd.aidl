@@ -23,7 +23,7 @@ interface IProfCollectd {
     void trace_once(@utf8InCpp String tag);
     void process(boolean blocking);
     @utf8InCpp String report();
-    void copy_report_to_bb(@utf8InCpp String report);
+    void copy_report_to_bb(int bb_profile_id, @utf8InCpp String report);
     void delete_report(@utf8InCpp String report);
     @utf8InCpp String get_supported_provider();
 }
