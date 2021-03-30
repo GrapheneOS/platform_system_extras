@@ -910,9 +910,20 @@ std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_pat
   return nullptr;
 }
 
-std::unique_ptr<Dso> Dso::CreateElfDsoWithBuildId(const std::string& dso_path, BuildId& build_id) {
-  return std::unique_ptr<Dso>(
-      new ElfDso(dso_path, debug_elf_file_finder_.FindDebugFile(dso_path, false, build_id)));
+std::unique_ptr<Dso> Dso::CreateDsoWithBuildId(DsoType dso_type, const std::string& dso_path,
+                                               BuildId& build_id) {
+  std::string debug_path = debug_elf_file_finder_.FindDebugFile(dso_path, false, build_id);
+  switch (dso_type) {
+    case DSO_ELF_FILE:
+      return std::unique_ptr<Dso>(new ElfDso(dso_path, debug_path));
+    case DSO_KERNEL:
+      return std::unique_ptr<Dso>(new KernelDso(dso_path, debug_path));
+    case DSO_KERNEL_MODULE:
+      return std::unique_ptr<Dso>(new KernelModuleDso(dso_path, debug_path, 0, 0, nullptr));
+    default:
+      LOG(FATAL) << "Unexpected dso_type " << static_cast<int>(dso_type);
+  }
+  return nullptr;
 }
 
 std::unique_ptr<Dso> Dso::CreateKernelModuleDso(const std::string& dso_path, uint64_t memory_start,

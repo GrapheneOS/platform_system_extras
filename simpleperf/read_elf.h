@@ -73,6 +73,7 @@ struct ElfSection {
   std::string name;
   uint64_t vaddr = 0;
   uint64_t file_offset = 0;
+  uint64_t size = 0;
 };
 
 class ElfFile {
