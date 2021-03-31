@@ -1863,7 +1863,16 @@ bool RecordCommand::DumpBuildIdFeature() {
 }
 
 bool RecordCommand::DumpFileFeature() {
-  return record_file_writer_->WriteFileFeatures(thread_tree_.GetAllDsos());
+  std::vector<Dso*> dso_v = thread_tree_.GetAllDsos();
+  // To parse ETM data for kernel modules, we need to dump memory address for kernel modules.
+  if (event_selection_set_.HasAuxTrace() && !event_selection_set_.ExcludeKernel()) {
+    for (Dso* dso : dso_v) {
+      if (dso->type() == DSO_KERNEL_MODULE) {
+        dso->CreateDumpId();
+      }
+    }
+  }
+  return record_file_writer_->WriteFileFeatures(dso_v);
 }
 
 bool RecordCommand::DumpMetaInfoFeature(bool kernel_symbols_available) {

@@ -65,8 +65,8 @@ bool CanReadKernelSymbolAddresses() {
 // This is based on the Perfetto implementation.
 class ScopedKptrUnrestrict {
  public:
-  ScopedKptrUnrestrict(bool use_property = false);  // Lowers kptr_restrict if necessary.
-  ~ScopedKptrUnrestrict();                          // Restores the initial kptr_restrict.
+  ScopedKptrUnrestrict();   // Lowers kptr_restrict if necessary.
+  ~ScopedKptrUnrestrict();  // Restores the initial kptr_restrict.
 
   bool KallsymsAvailable();  // Indicates if access to kallsyms should be successful.
 
@@ -79,7 +79,8 @@ class ScopedKptrUnrestrict {
   bool kallsyms_available_ = false;
 };
 
-ScopedKptrUnrestrict::ScopedKptrUnrestrict(bool use_property) : use_property_(use_property) {
+ScopedKptrUnrestrict::ScopedKptrUnrestrict() {
+  use_property_ = GetAndroidVersion() >= 12;
   if (CanReadKernelSymbolAddresses()) {
     // Everything seems to work (e.g., we are running as root and kptr_restrict
     // is < 2). Don't touching anything.
@@ -214,8 +215,8 @@ uint64_t GetKernelStartAddress() {
   return 0;
 }
 
-bool LoadKernelSymbols(std::string* kallsyms, bool use_property /* = false */) {
-  ScopedKptrUnrestrict kptr_unrestrict(use_property);
+bool LoadKernelSymbols(std::string* kallsyms) {
+  ScopedKptrUnrestrict kptr_unrestrict;
   if (kptr_unrestrict.KallsymsAvailable()) {
     return android::base::ReadFileToString(kKallsymsPath, kallsyms);
   }

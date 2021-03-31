@@ -39,7 +39,11 @@ impl TraceProvider for SimpleperfEtmTraceProvider {
         trace_file.push(trace_provider::construct_file_name(tag));
         trace_file.set_extension(ETM_TRACEFILE_EXTENSION);
 
-        simpleperf_profcollect::record(&trace_file, sampling_period)
+        simpleperf_profcollect::record(
+            &trace_file,
+            sampling_period,
+            simpleperf_profcollect::RecordScope::BOTH,
+        );
     }
 
     fn process(&self, trace_dir: &Path, profile_dir: &Path) -> Result<()> {
