@@ -151,7 +151,7 @@ class InjectCommand : public Command {
     }
 
     // 4. Write output file.
-    if (!PostProcess()) {
+    if (!WriteOutput()) {
       return false;
     }
     output_fp_.reset(nullptr);
@@ -268,6 +268,11 @@ class InjectCommand : public Command {
         }
         return etm_decoder_->ProcessData(aux_data_buffer_.data(), aux_size);
       }
+    } else if (r->type() == PERF_RECORD_MMAP && r->InKernel()) {
+      auto& mmap_r = *static_cast<MmapRecord*>(r);
+      if (android::base::StartsWith(mmap_r.filename, DEFAULT_KERNEL_MMAP_NAME)) {
+        kernel_map_start_addr_ = mmap_r.data->addr;
+      }
     }
     return true;
   }
@@ -340,7 +345,12 @@ class InjectCommand : public Command {
     for (size_t i = 0; i < branch_list_proto.binaries_size(); i++) {
       const auto& binary_proto = branch_list_proto.binaries(i);
       BuildId build_id(binary_proto.build_id());
-      std::unique_ptr<Dso> dso = Dso::CreateElfDsoWithBuildId(binary_proto.path(), build_id);
+      std::optional<DsoType> dso_type = ToDsoType(binary_proto.type());
+      if (!dso_type.has_value()) {
+        return false;
+      }
+      std::unique_ptr<Dso> dso =
+          Dso::CreateDsoWithBuildId(dso_type.value(), binary_proto.path(), build_id);
       if (!dso || !FilterDso(dso.get()) || !check_build_id(dso.get(), build_id)) {
         continue;
       }
@@ -348,16 +358,21 @@ class InjectCommand : public Command {
       Dso* dso_p = dso.get();
       branch_list_dso_v_.emplace_back(dso.release());
       auto branch_map = BuildBranchMap(binary_proto);
-      if (!ConvertBranchMapToInstrRanges(dso_p, branch_map, callback)) {
-        LOG(WARNING) << "failed to build instr ranges for binary " << dso_p->Path();
+
+      if (dso_p->type() == DSO_KERNEL) {
+        ModifyBranchMapForKernel(branch_list_proto, dso_p, branch_map);
+      }
+
+      if (auto result = ConvertBranchMapToInstrRanges(dso_p, branch_map, callback); !result.ok()) {
+        LOG(WARNING) << "failed to build instr ranges for binary " << dso_p->Path() << ": "
+                     << result.error();
       }
     }
     return true;
   }
 
-  std::map<uint64_t, std::map<std::vector<bool>, uint64_t>> BuildBranchMap(
-      const proto::ETMBranchList_Binary& binary_proto) {
-    std::map<uint64_t, std::map<std::vector<bool>, uint64_t>> branch_map;
+  BranchMap BuildBranchMap(const proto::ETMBranchList_Binary& binary_proto) {
+    BranchMap branch_map;
     for (size_t i = 0; i < binary_proto.addrs_size(); i++) {
       const auto& addr_proto = binary_proto.addrs(i);
       auto& b_map = branch_map[addr_proto.addr()];
@@ -371,16 +386,31 @@ class InjectCommand : public Command {
     return branch_map;
   }
 
-  bool PostProcess() {
+  void ModifyBranchMapForKernel(const proto::ETMBranchList& branch_list_proto, Dso* dso,
+                                BranchMap& branch_map) {
+    uint64_t kernel_map_start_addr = branch_list_proto.kernel_start_addr();
+    if (kernel_map_start_addr == 0) {
+      return;
+    }
+    // Addresses are still kernel ip addrs in memory. Need to convert them to vaddrs in vmlinux.
+    BranchMap new_branch_map;
+    for (auto& p : branch_map) {
+      uint64_t vaddr_in_file = dso->IpToVaddrInFile(p.first, kernel_map_start_addr, 0);
+      new_branch_map[vaddr_in_file] = std::move(p.second);
+    }
+    branch_map = std::move(new_branch_map);
+  }
+
+  bool WriteOutput() {
     if (output_format_ == OutputFormat::AutoFDO) {
-      PostProcessInstrRange();
+      GenerateInstrRange();
       return true;
     }
     CHECK(output_format_ == OutputFormat::BranchList);
-    return PostProcessBranchList();
+    return GenerateBranchList();
   }
 
-  void PostProcessInstrRange() {
+  void GenerateInstrRange() {
     // autofdo_binary_map is used to store instruction ranges, which can have a large amount. And it
     // has a larger access time (instruction ranges * executed time). So it's better to use
     // unorder_maps to speed up access time. But we also want a stable output here, to compare
@@ -452,7 +482,7 @@ class InjectCommand : public Command {
     return 0;
   }
 
-  bool PostProcessBranchList() {
+  bool GenerateBranchList() {
     // Don't produce empty output file.
     if (branch_list_binary_map_.empty()) {
       LOG(INFO) << "Skip empty output file.";
@@ -474,6 +504,11 @@ class InjectCommand : public Command {
       if (!build_id.IsEmpty()) {
         binary_proto->set_build_id(build_id.ToString().substr(2));
       }
+      auto opt_binary_type = ToProtoBinaryType(dso->type());
+      if (!opt_binary_type.has_value()) {
+        return false;
+      }
+      binary_proto->set_type(opt_binary_type.value());
 
       for (const auto& addr_p : addr_map) {
         auto addr_proto = binary_proto->add_addrs();
@@ -488,12 +523,58 @@ class InjectCommand : public Command {
           branch_proto->set_count(branch_p.second);
         }
       }
+
+      if (dso->type() == DSO_KERNEL) {
+        if (kernel_map_start_addr_ == 0) {
+          LOG(WARNING) << "Can't convert kernel ip addresses without kernel start addr. So remove "
+                          "branches for the kernel.";
+          branch_list_proto.mutable_binaries()->RemoveLast();
+          continue;
+        }
+        if (dso->GetDebugFilePath() == dso->Path()) {
+          // vmlinux isn't available. We still use kernel ip addr. Put kernel start addr in proto
+          // for address conversion later.
+          branch_list_proto.set_kernel_start_addr(kernel_map_start_addr_);
+        } else {
+          // vmlinux is available. We have converted kernel ip addr to vaddr in vmlinux. So no need
+          // to put kernel start addr in proto.
+          branch_list_proto.set_kernel_start_addr(0);
+        }
+      }
     }
     if (!branch_list_proto.SerializeToFileDescriptor(fileno(output_fp_.get()))) {
       PLOG(ERROR) << "failed to write to output file";
       return false;
     }
     return true;
+  }
+
+  std::optional<proto::ETMBranchList_Binary::BinaryType> ToProtoBinaryType(DsoType dso_type) {
+    switch (dso_type) {
+      case DSO_ELF_FILE:
+        return proto::ETMBranchList_Binary::ELF_FILE;
+      case DSO_KERNEL:
+        return proto::ETMBranchList_Binary::KERNEL;
+      case DSO_KERNEL_MODULE:
+        return proto::ETMBranchList_Binary::KERNEL_MODULE;
+      default:
+        LOG(ERROR) << "unexpected dso type " << dso_type;
+        return std::nullopt;
+    }
+  }
+
+  std::optional<DsoType> ToDsoType(proto::ETMBranchList_Binary::BinaryType binary_type) {
+    switch (binary_type) {
+      case proto::ETMBranchList_Binary::ELF_FILE:
+        return DSO_ELF_FILE;
+      case proto::ETMBranchList_Binary::KERNEL:
+        return DSO_KERNEL;
+      case proto::ETMBranchList_Binary::KERNEL_MODULE:
+        return DSO_KERNEL_MODULE;
+      default:
+        LOG(ERROR) << "unexpected binary type " << binary_type;
+        return std::nullopt;
+    }
   }
 
   std::regex binary_name_regex_{""};  // Default to match everything.
@@ -513,6 +594,7 @@ class InjectCommand : public Command {
   // Store results for BranchList.
   std::unordered_map<Dso*, BranchListBinaryInfo> branch_list_binary_map_;
   std::vector<std::unique_ptr<Dso>> branch_list_dso_v_;
+  uint64_t kernel_map_start_addr_ = 0;
 };
 
 }  // namespace

@@ -924,6 +924,15 @@ TEST(record_cmd, cs_etm_event) {
   ASSERT_TRUE(has_aux);
 }
 
+TEST(record_cmd, cs_etm_system_wide) {
+  TEST_REQUIRE_ROOT();
+  if (!ETMRecorder::GetInstance().CheckEtmSupport()) {
+    GTEST_LOG_(INFO) << "Omit this test since etm isn't supported on this device";
+    return;
+  }
+  ASSERT_TRUE(RunRecordCmd({"-e", "cs-etm", "-a"}));
+}
+
 TEST(record_cmd, aux_buffer_size_option) {
   if (!ETMRecorder::GetInstance().CheckEtmSupport()) {
     GTEST_LOG_(INFO) << "Omit this test since etm isn't supported on this device";
