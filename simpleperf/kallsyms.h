@@ -47,11 +47,7 @@ uint64_t GetKernelStartAddress();
 // Loads the /proc/kallsyms file, requesting access if required. The value of
 // kptr_restrict might be modified during the process. Its original value will
 // be restored. This usually requires root privileges.
-// In some cases, the process might have enough permission to send a request to
-// init to change the value of kptr_restrict, using the system property
-// security.lower_kptr_restrict. For this scenario, the use_property
-// argument should be set to true.
-bool LoadKernelSymbols(std::string* kallsyms, bool use_property = false);
+bool LoadKernelSymbols(std::string* kallsyms);
 
 #endif  // defined(__linux__)
 
