@@ -16,6 +16,9 @@
 
 #include "ETMDecoder.h"
 
+#include <sstream>
+
+#include <android-base/expected.h>
 #include <android-base/logging.h>
 #include <android-base/strings.h>
 #include <llvm/Support/MemoryBuffer.h>
@@ -782,21 +785,38 @@ std::unique_ptr<ETMDecoder> ETMDecoder::Create(const AuxTraceInfoRecord& auxtrac
 // Use OpenCSD instruction decoder to convert branches to instruction addresses.
 class BranchDecoder {
  public:
-  bool Init(Dso* dso) {
+  android::base::expected<void, std::string> Init(Dso* dso) {
     ElfStatus status;
     elf_ = ElfFile::Open(dso->GetDebugFilePath(), &status);
     if (!elf_) {
-      return false;
+      std::stringstream ss;
+      ss << status;
+      return android::base::unexpected(ss.str());
     }
-    segments_ = elf_->GetProgramHeader();
-    auto it = std::remove_if(segments_.begin(), segments_.end(),
-                             [](const ElfSegment& s) { return !s.is_executable; });
-    segments_.resize(it - segments_.begin());
+    if (dso->type() == DSO_KERNEL_MODULE) {
+      // Kernel module doesn't have program header. So create a fake one mapping to .text section.
+      for (const auto& section : elf_->GetSectionHeader()) {
+        if (section.name == ".text") {
+          segments_.resize(1);
+          segments_[0].is_executable = true;
+          segments_[0].is_load = true;
+          segments_[0].file_offset = section.file_offset;
+          segments_[0].file_size = section.size;
+          segments_[0].vaddr = section.vaddr;
+          break;
+        }
+      }
+    } else {
+      segments_ = elf_->GetProgramHeader();
+      auto it = std::remove_if(segments_.begin(), segments_.end(),
+                               [](const ElfSegment& s) { return !s.is_executable; });
+      segments_.resize(it - segments_.begin());
+    }
     if (segments_.empty()) {
-      return false;
+      return android::base::unexpected("no segments");
     }
     buffer_ = elf_->GetMemoryBuffer();
-    return true;
+    return {};
   }
 
   void SetAddr(uint64_t addr, bool is_thumb) {
@@ -844,15 +864,14 @@ class BranchDecoder {
   InstructionDecoder instruction_decoder_;
 };
 
-bool ConvertBranchMapToInstrRanges(
-    Dso* dso, const std::map<uint64_t, std::map<std::vector<bool>, uint64_t>>& branch_map,
-    const ETMDecoder::InstrRangeCallbackFn& callback) {
+android::base::expected<void, std::string> ConvertBranchMapToInstrRanges(
+    Dso* dso, const BranchMap& branch_map, const ETMDecoder::InstrRangeCallbackFn& callback) {
   ETMInstrRange instr_range;
   instr_range.dso = dso;
 
   BranchDecoder decoder;
-  if (!decoder.Init(dso)) {
-    return false;
+  if (auto result = decoder.Init(dso); !result.ok()) {
+    return result;
   }
 
   for (const auto& addr_p : branch_map) {
@@ -891,7 +910,7 @@ bool ConvertBranchMapToInstrRanges(
       }
     }
   }
-  return true;
+  return {};
 }
 
 }  // namespace simpleperf
