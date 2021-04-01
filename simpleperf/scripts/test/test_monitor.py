@@ -27,19 +27,23 @@ import argparse
 import collections
 import fnmatch
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
 import time
 
+# fmt: off
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from simpleperf_utils import AdbHelper, extant_dir, log_exit, log_info
+# fmt: on
 
 Device = collections.namedtuple('Device', ['name', 'serial_number'])
 
 Config = collections.namedtuple(
     'Config',
-    ['devices', 'python_interpreters', 'repeat_times', 'test_patterns', 'test_dir', 'ndk_path'])
+    ['devices', 'repeat_times', 'test_patterns', 'test_dir', 'ndk_path'])
 
 CONFIG = None
 
@@ -51,8 +55,6 @@ def parse_args():
     parser.add_argument(
         '-d', '--device', nargs='+',
         help='set devices used to run tests. Each device in format name:serial-number')
-    parser.add_argument('--python-version', choices=['2', '3', 'both'], default='both', help="""
-                        Run tests on which python versions.""")
     parser.add_argument('-r', '--repeat', type=int, default=1, help='times to repeat tests')
     parser.add_argument('--test-dir', default='.', help='test dir')
     parser.add_argument('-p', '--pattern', nargs='+',
@@ -68,18 +70,12 @@ def parse_args():
     else:
         devices.append(Device(name='default', serial_number=None))
 
-    if args.python_version == '2':
-        python_interpreters = ['python']
-    elif args.python_version == '3':
-        python_interpreters = ['python3']
-    else:
-        python_interpreters = ['python', 'python3']
-
     global CONFIG
     CONFIG = Config(
-        devices=devices, python_interpreters=python_interpreters, repeat_times=args.repeat,
+        devices=devices, repeat_times=args.repeat,
         test_patterns=args.pattern, test_dir=args.test_dir, ndk_path=args.ndk_path)
     log_info('config = %s' % (CONFIG,))
+
 
 def get_test_script_path():
     return os.path.join(os.path.dirname(os.path.realpath(__file__)), 'test.py')
@@ -104,13 +100,12 @@ def get_tests():
 
 
 class Task:
-    """ Run test.py one time for a device and python interpreter.
+    """ Run test.py one time for a device.
     """
 
-    def __init__(self, name, device, python_interpreter, tests, repeat_index):
+    def __init__(self, name, device, tests, repeat_index):
         self.name = name
         self.device = device
-        self.python_interpreter = python_interpreter
         self.tests = tests
         self.repeat_index = repeat_index
         self.try_time = 0
@@ -139,8 +134,7 @@ class Task:
                 if t not in self.test_results:
                     self.test_results[t] = 'DEVICE_NOT_AVAILABLE'
             return
-        args = [self.python_interpreter, get_test_script_path(),
-                '--progress-file', self.progress_file]
+        args = [sys.executable, get_test_script_path(), '--progress-file', self.progress_file]
         if CONFIG.ndk_path:
             args += ['--ndk-path', CONFIG.ndk_path]
         args += not_started_tests
@@ -149,8 +143,8 @@ class Task:
         log_info('start task for %s' % self.test_dir)
 
     def _create_test_dir(self):
-        test_name = '%s_%s_%s_repeat%d_try%d' % (
-            self.name, self.device.name, self.python_interpreter, self.repeat_index, self.try_time)
+        test_name = '%s_%s_repeat%d_try%d' % (
+            self.name, self.device.name, self.repeat_index, self.try_time)
         self.test_dir = os.path.abspath(test_name)
         if os.path.isdir(self.test_dir):
             shutil.rmtree(self.test_dir)
@@ -207,15 +201,11 @@ class Task:
         return all([t in self.test_results for t in self.tests])
 
     def enumerate_new_task(self):
-        """ When one task finishes, it can enumerate a new task to run, for repeat testing or
-            another python version.
+        """ When one task finishes, it can enumerate a new task to run, for repeat testing.
         """
         if self.repeat_index < CONFIG.repeat_times:
             return Task(
-                self.name, self.device, self.python_interpreter, self.tests, self.repeat_index + 1)
-        if self.python_interpreter != CONFIG.python_interpreters[-1]:
-            i = CONFIG.python_interpreters.index(self.python_interpreter)
-            return Task(self.name, self.device, CONFIG.python_interpreters[i+1], self.tests, 1)
+                self.name, self.device, self.tests, self.repeat_index + 1)
         return None
 
     def force_stop(self):
@@ -228,15 +218,14 @@ class TestSummary:
         tests.sort()
         self.results = {}
         for device in CONFIG.devices:
-            for python_interpreter in CONFIG.python_interpreters:
-                results = self.results['%s_%s' % (device.name, python_interpreter)] = {}
-                for test in tests:
-                    for repeat_index in range(1, CONFIG.repeat_times + 1):
-                        test_name = '%s_repeat_%d' % (test, repeat_index)
-                        results[test_name] = 'None'
+            results = self.results[device.name] = {}
+            for test in tests:
+                for repeat_index in range(1, CONFIG.repeat_times + 1):
+                    test_name = '%s_repeat_%d' % (test, repeat_index)
+                    results[test_name] = 'None'
 
     def update(self, task):
-        config_name = '%s_%s' % (task.device.name, task.python_interpreter)
+        config_name = task.device.name
         results = self.results[config_name]
         for t, status in task.test_results.items():
             test_name = '%s_repeat_%d' % (t, task.repeat_index)
@@ -298,14 +287,14 @@ def main():
         for device in CONFIG.devices:
             tasks.append(
                 Task(
-                    'test', device, CONFIG.python_interpreters[0],
+                    'test', device,
                     parallel_tests, 1))
         run_tasks(tasks, test_summary)
     if serialized_tests:
         for device in CONFIG.devices:
             tasks = [
                 Task(
-                    'serialized_test', device, CONFIG.python_interpreters[0],
+                    'serialized_test', device,
                     serialized_tests, 1)]
             run_tasks(tasks, test_summary)
 
