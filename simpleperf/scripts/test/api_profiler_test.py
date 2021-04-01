@@ -16,7 +16,7 @@
 
 import os
 import time
-from simpleperf_utils import remove
+from simpleperf_utils import log_info, remove
 from . test_utils import TestBase, TEST_HELPER
 
 
