@@ -1835,16 +1835,19 @@ bool RecordCommand::DumpBuildIdFeature() {
       }
       build_id_records.push_back(BuildIdRecord(true, UINT_MAX, build_id, dso->Path()));
     } else if (dso->type() == DSO_KERNEL_MODULE) {
-      std::string path = dso->Path();
-      std::string module_name = basename(&path[0]);
-      if (android::base::EndsWith(module_name, ".ko")) {
-        module_name = module_name.substr(0, module_name.size() - 3);
+      bool has_build_id = false;
+      if (android::base::EndsWith(dso->Path(), ".ko")) {
+        has_build_id = GetBuildIdFromDsoPath(dso->Path(), &build_id);
+      } else if (const std::string& path = dso->Path();
+                 path.size() > 2 && path[0] == '[' && path.back() == ']') {
+        // For kernel modules that we can't find the corresponding file, read build id from /sysfs.
+        has_build_id = GetModuleBuildId(path.substr(1, path.size() - 2), &build_id);
       }
-      if (!GetModuleBuildId(module_name, &build_id)) {
-        LOG(DEBUG) << "can't read build_id for module " << module_name;
-        continue;
+      if (has_build_id) {
+        build_id_records.push_back(BuildIdRecord(true, UINT_MAX, build_id, dso->Path()));
+      } else {
+        LOG(DEBUG) << "Can't read build_id for module " << dso->Path();
       }
-      build_id_records.push_back(BuildIdRecord(true, UINT_MAX, build_id, path));
     } else if (dso->type() == DSO_ELF_FILE) {
       if (dso->Path() == DEFAULT_EXECNAME_FOR_THREAD_MMAP || dso->IsForJavaMethod()) {
         continue;
