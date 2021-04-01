@@ -181,11 +181,10 @@ std::vector<pid_t> GetAllProcesses() {
 
 bool GetThreadMmapsInProcess(pid_t pid, std::vector<ThreadMmap>* thread_mmaps) {
   thread_mmaps->clear();
-  return android::procinfo::ReadProcessMaps(
-      pid, [&](const android::procinfo::MapInfo& mapinfo) {
-        thread_mmaps->emplace_back(mapinfo.start, mapinfo.end - mapinfo.start, mapinfo.pgoff,
-                                   mapinfo.name.c_str(), mapinfo.flags);
-      });
+  return android::procinfo::ReadProcessMaps(pid, [&](const android::procinfo::MapInfo& mapinfo) {
+    thread_mmaps->emplace_back(mapinfo.start, mapinfo.end - mapinfo.start, mapinfo.pgoff,
+                               mapinfo.name.c_str(), mapinfo.flags);
+  });
 }
 
 bool GetKernelBuildId(BuildId* build_id) {
@@ -841,7 +840,10 @@ int GetAndroidVersion() {
   static int android_version = -1;
   if (android_version == -1) {
     android_version = 0;
-    std::string s = android::base::GetProperty("ro.build.version.release", "");
+    std::string s = android::base::GetProperty("ro.build.version.codename", "REL");
+    if (s == "REL") {
+      s = android::base::GetProperty("ro.build.version.release", "");
+    }
     // The release string can be a list of numbers (like 8.1.0), a character (like Q)
     // or many characters (like OMR1).
     if (!s.empty()) {

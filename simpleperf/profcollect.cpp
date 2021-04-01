@@ -35,11 +35,11 @@ bool HasSupport() {
   return IsEventAttrSupported(CreateDefaultPerfEventAttr(*type), type->name);
 }
 
-bool Record(const char* output, float duration) {
+bool Record(const char* event_name, const char* output, float duration) {
   auto recordCmd = CreateCommandInstance("record");
   std::vector<std::string> args;
   args.push_back("-a");
-  args.insert(args.end(), {"-e", "cs-etm:u"});
+  args.insert(args.end(), {"-e", event_name});
   args.insert(args.end(), {"--duration", std::to_string(duration)});
   args.insert(args.end(), {"-o", output});
   return recordCmd->Run(args);
