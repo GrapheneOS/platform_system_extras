@@ -255,4 +255,5 @@ TEST(read_elf, GetSectionHeader) {
   ASSERT_EQ(sections[13].name, ".text");
   ASSERT_EQ(sections[13].vaddr, 0x400400);
   ASSERT_EQ(sections[13].file_offset, 0x400);
+  ASSERT_EQ(sections[13].size, 0x1b2);
 }

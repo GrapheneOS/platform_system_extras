@@ -350,6 +350,7 @@ class ElfFileImpl<llvm::object::ELFObjectFile<ELFT>> : public ElfFile {
       }
       sections[i].vaddr = shdr.sh_addr;
       sections[i].file_offset = shdr.sh_offset;
+      sections[i].size = shdr.sh_size;
     }
     return sections;
   }
