@@ -25,6 +25,7 @@ import sys
 from simpleperf_utils import remove, get_script_dir, AdbHelper, is_windows, bytes_to_str
 import subprocess
 import time
+from typing import List
 import unittest
 
 INFERNO_SCRIPT = str(Path(__file__).parents[1] / ('inferno.bat' if is_windows() else 'inferno.sh'))
@@ -111,6 +112,7 @@ class TestHelper:
 
         source_dirs = [
             self.script_test_dir / 'script_testdata',
+            self.script_test_dir / 'testdata',
             self.script_dir.parent / 'testdata',
             self.script_dir.parent / 'demo',
             self.script_dir / 'testdata',
