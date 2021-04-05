@@ -34,6 +34,7 @@ from pathlib import Path
 import re
 import sys
 import time
+from tqdm import tqdm
 import types
 from typing import List, Optional
 import unittest
@@ -96,6 +97,22 @@ def get_filtered_tests(test_from: Optional[str], test_pattern: Optional[List[str
         if not tests:
             log_exit('No tests are matched.')
     return tests
+
+
+def get_test_type(test: str) -> Optional[str]:
+    testcase_name, test_name = test.split('.')
+    if test_name == 'test_run_simpleperf_without_usb_connection':
+        return 'device_serialized_test'
+    if testcase_name in (
+        'TestApiProfiler', 'TestNativeProfiling', 'TestNativeLibDownloader',
+            'TestRecordingRealApps', 'TestRunSimpleperfOnDevice'):
+        return 'device_test'
+    if testcase_name.startswith('TestExample'):
+        return 'device_test'
+    if testcase_name in ('TestBinaryCacheBuilder', 'TestDebugUnwindReporter',
+                         'TestPprofProtoGenerator', 'TestReportHtml', 'TestReportLib', 'TestTools'):
+        return 'host_test'
+    return None
 
 
 def build_testdata(testdata_dir: Path):
@@ -171,10 +188,11 @@ class TestProcess:
     TEST_TIMEOUT_IN_SEC = 10 * 60
 
     def __init__(
-            self, tests: List[str],
+            self, test_type: str, tests: List[str],
             device: Optional[Device],
             repeat_index: int,
             test_options: List[str]):
+        self.test_type = test_type
         self.tests = tests
         self.device = device
         self.repeat_index = repeat_index
@@ -200,7 +218,7 @@ class TestProcess:
 
     @property
     def name(self) -> str:
-        name = 'test'
+        name = self.test_type
         if self.device:
             name += '_' + self.device.name
         name += '_repeat_%d' % self.repeat_index
@@ -257,6 +275,38 @@ class TestProcess:
         return True
 
 
+class ProgressBar:
+    def __init__(self, total_count: int):
+        self.total_bar = tqdm(
+            total=total_count, desc='test progress', ascii=' ##',
+            bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}, {rate_fmt}", position=0)
+        self.test_process_bars: Dict[str, tqdm] = {}
+
+    def update(self, test_proc: TestProcess):
+        if test_proc.name not in self.test_process_bars:
+            if not test_proc.alive:
+                return
+            bar = tqdm(total=len(test_proc.tests),
+                       desc=test_proc.name, ascii=' ##',
+                       bar_format="{l_bar}{bar} | {n_fmt}/{total_fmt} [{elapsed}]")
+            self.test_process_bars[test_proc.name] = bar
+        else:
+            bar = self.test_process_bars[test_proc.name]
+
+        add = len(test_proc.test_results) - bar.n
+        if add:
+            bar.update(add)
+            self.total_bar.update(add)
+        if not test_proc.alive:
+            bar.close()
+            del self.test_process_bars[test_proc.name]
+
+    def end_tests(self):
+        for bar in self.test_process_bars.values():
+            bar.close()
+        self.total_bar.close()
+
+
 class TestSummary:
     def __init__(self, test_count: int):
         self.summary_fh = open('test_summary.txt', 'w')
@@ -300,6 +350,7 @@ class TestManager:
         self.repeat_count = args.repeat
         self.test_options = self._build_test_options(args)
         self.devices = self._build_test_devices(args)
+        self.progress_bar: Optional[ProgressBar] = None
         self.test_summary: Optional[TestSummary] = None
 
     def _build_test_devices(self, args: argparse.Namespace) -> List[Device]:
@@ -323,13 +374,49 @@ class TestManager:
         return test_options
 
     def run_all_tests(self, tests: List[str]):
-        total_test_count = len(tests) * len(self.devices) * self.repeat_count
+        device_tests = []
+        device_serialized_tests = []
+        host_tests = []
+        for test in tests:
+            test_type = get_test_type(test)
+            assert test_type, f'No test type for test {test}'
+            if test_type == 'device_test':
+                device_tests.append(test)
+            if test_type == 'device_serialized_test':
+                device_serialized_tests.append(test)
+            if test_type == 'host_test':
+                host_tests.append(test)
+        total_test_count = (len(device_tests) + len(device_serialized_tests)
+                            ) * len(self.devices) * self.repeat_count + len(host_tests)
+        self.progress_bar = ProgressBar(total_test_count)
         self.test_summary = TestSummary(total_test_count)
+        if device_tests:
+            self.run_device_tests(device_tests)
+        if device_serialized_tests:
+            self.run_device_serialized_tests(device_serialized_tests)
+        if host_tests:
+            self.run_host_tests(host_tests)
+        self.progress_bar.end_tests()
+        self.progress_bar = None
+        self.test_summary.end_tests()
+
+    def run_device_tests(self, tests: List[str]):
+        """ Tests can run in parallel on different devices. """
         test_procs: List[TestProcess] = []
         for device in self.devices:
-            test_procs.append(TestProcess(tests, device, 1, self.test_options))
+            test_procs.append(TestProcess('device_test', tests, device, 1, self.test_options))
         self.wait_for_test_results(test_procs, self.repeat_count)
-        self.test_summary.end_tests()
+
+    def run_device_serialized_tests(self, tests: List[str]):
+        """ Tests run on each device in order. """
+        for device in self.devices:
+            test_proc = TestProcess('device_serialized_test', tests, device, 1, self.test_options)
+            self.wait_for_test_results([test_proc], self.repeat_count)
+
+    def run_host_tests(self, tests: List[str]):
+        """ Tests run only once on host. """
+        test_proc = TestProcess('host_tests', tests, None, 1, self.test_options)
+        self.wait_for_test_results([test_proc], 1)
 
     def wait_for_test_results(self, test_procs: List[TestProcess], repeat_count: int):
         test_count = sum(len(test_proc.tests) for test_proc in test_procs)
@@ -340,6 +427,7 @@ class TestManager:
                 if not test_proc.alive:
                     dead_procs.append(test_proc)
                 test_proc.check_update()
+                self.progress_bar.update(test_proc)
                 self.test_summary.update(test_proc)
 
             # Process dead procs.
@@ -350,7 +438,7 @@ class TestManager:
                 test_procs.remove(test_proc)
                 if test_proc.repeat_index < repeat_count:
                     test_procs.append(
-                        TestProcess(test_proc.tests, test_proc.device,
+                        TestProcess(test_proc.test_type, test_proc.tests, test_proc.device,
                                     test_proc.repeat_index + 1, test_proc.test_options))
             time.sleep(0.1)
         return True
