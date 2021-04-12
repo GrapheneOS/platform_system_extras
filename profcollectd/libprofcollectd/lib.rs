@@ -53,38 +53,38 @@ pub fn init_service(schedule_now: bool) -> Result<()> {
     Ok(())
 }
 
-fn get_profcollectd_service() -> binder::Strong<dyn IProfCollectd::IProfCollectd> {
+fn get_profcollectd_service() -> Result<binder::Strong<dyn IProfCollectd::IProfCollectd>> {
     binder::get_interface(&PROFCOLLECTD_SERVICE_NAME)
-        .expect("Could not get profcollectd binder service")
+        .context("Failed to get profcollectd binder service, is profcollectd running?")
 }
 
 /// Schedule periodic profile collection.
 pub fn schedule() -> Result<()> {
-    get_profcollectd_service().schedule()?;
+    get_profcollectd_service()?.schedule()?;
     Ok(())
 }
 
 /// Terminate periodic profile collection.
 pub fn terminate() -> Result<()> {
-    get_profcollectd_service().terminate()?;
+    get_profcollectd_service()?.terminate()?;
     Ok(())
 }
 
 /// Immediately schedule a one-off trace.
 pub fn trace_once(tag: &str) -> Result<()> {
-    get_profcollectd_service().trace_once(tag)?;
+    get_profcollectd_service()?.trace_once(tag)?;
     Ok(())
 }
 
 /// Process traces.
 pub fn process() -> Result<()> {
-    get_profcollectd_service().process(true)?;
+    get_profcollectd_service()?.process(true)?;
     Ok(())
 }
 
 /// Process traces and report profile.
 pub fn report() -> Result<String> {
-    Ok(get_profcollectd_service().report()?)
+    Ok(get_profcollectd_service()?.report()?)
 }
 
 /// Inits logging for Android
