@@ -22,4 +22,5 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import test
 # fmt: on
 
-sys.exit(0 if test.main() else 1)
+if __name__ == '__main__':
+    sys.exit(0 if test.main() else 1)
