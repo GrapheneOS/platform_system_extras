@@ -284,7 +284,7 @@ cc_library_static {
 
     target: {
         linux: {
-            // See note for libdexfile_external_static in simpleperf_ndk.
+            // See note for libdexfile_static in simpleperf_ndk.
             static_libs: ["libdexfile_support"],
         },
     },
@@ -393,12 +393,11 @@ cc_binary {
             },
         },
         linux: {
-            // In the NDK we need libdexfile_external_static which links
-            // libdexfile_external and its ART dependencies statically. However
-            // in other libraries we must use libdexfile_support, which dlopen's
-            // libdexfile_external.so from the ART APEX, to avoid getting ART
-            // internals in the system image.
-            static_libs: ["libdexfile_external_static"],
+            // In the NDK we need libdexfile_static which links libdexfile and
+            // its ART dependencies statically. However in other libraries we
+            // must use libdexfile_support, which dlopen's libdexfile.so from
+            // the ART APEX, to avoid getting ART internals in the system image.
+            static_libs: ["libdexfile_static"],
         },
         linux_glibc_x86: {
             dist: {
@@ -445,8 +444,8 @@ cc_library {
             enabled: false,
         },
         linux: {
-            // See note for libdexfile_support_static in simpleperf_ndk.
-            static_libs: ["libdexfile_external_static"],
+            // See note for libdexfile_static in simpleperf_ndk.
+            static_libs: ["libdexfile_static"],
         },
     },
 }
@@ -471,8 +470,8 @@ cc_library_shared {
         },
         linux: {
             ldflags: ["-Wl,--exclude-libs,ALL"],
-            // See note for libdexfile_support_static in simpleperf_ndk.
-            static_libs: ["libdexfile_external_static"],
+            // See note for libdexfile_static in simpleperf_ndk.
+            static_libs: ["libdexfile_static"],
         },
         darwin: {
             dist: {
