@@ -16,20 +16,21 @@
 
 import os
 import time
+
 from simpleperf_utils import log_info, remove
-from . test_utils import TestBase, TEST_HELPER
+from . test_utils import TestBase, TestHelper
 
 
 class TestApiProfiler(TestBase):
     def run_api_test(self, package_name, apk_name, expected_reports, min_android_version):
-        adb = TEST_HELPER.adb
-        if TEST_HELPER.android_version < ord(min_android_version) - ord('L') + 5:
+        adb = TestHelper.adb
+        if TestHelper.android_version < ord(min_android_version) - ord('L') + 5:
             log_info('skip this test on Android < %s.' % min_android_version)
             return
         # step 1: Prepare profiling.
         self.run_cmd(['api_profiler.py', 'prepare'])
         # step 2: Install and run the app.
-        apk_path = TEST_HELPER.testdata_path(apk_name)
+        apk_path = TestHelper.testdata_path(apk_name)
         adb.run(['uninstall', package_name])
         adb.check_run(['install', '-t', apk_path])
         # Without sleep, the activity may be killed by post install intent ACTION_PACKAGE_CHANGED.

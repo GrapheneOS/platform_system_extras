@@ -15,12 +15,13 @@
 # limitations under the License.
 
 from typing import List
-from . test_utils import TestBase, TEST_HELPER
+
+from . test_utils import TestBase, TestHelper
 
 
 class TestDebugUnwindReporter(TestBase):
     def run_reporter(self, options: List[str]) -> str:
-        report_file = TEST_HELPER.testdata_dir_p / 'debug_unwind_report.txt'
+        report_file = TestHelper.testdata_dir / 'debug_unwind_report.txt'
         return self.run_cmd(['debug_unwind_reporter.py', '-i',
                              str(report_file)] + options, return_output=True)
 
