@@ -19,9 +19,10 @@ import signal
 import subprocess
 import sys
 import time
+
 from simpleperf_utils import is_windows, remove
 from . app_test import TestExampleBase
-from . test_utils import TEST_HELPER, INFERNO_SCRIPT
+from . test_utils import TestHelper, INFERNO_SCRIPT
 
 
 class TestExamplePureJava(TestExampleBase):
@@ -56,7 +57,7 @@ class TestExamplePureJava(TestExampleBase):
             return
         self.adb.check_run(['shell', 'am', 'start', '-n', self.package_name + '/.MainActivity'])
         time.sleep(1)
-        args = [sys.executable, TEST_HELPER.script_path("app_profiler.py"),
+        args = [sys.executable, TestHelper.script_path("app_profiler.py"),
                 "--app", self.package_name, "-r", "--duration 10000", "--disable_adb_root"]
         subproc = subprocess.Popen(args)
         time.sleep(3)
@@ -70,7 +71,7 @@ class TestExamplePureJava(TestExampleBase):
         self.adb.check_run(['shell', 'am', 'start', '-n', self.package_name + '/.MainActivity'])
         time.sleep(1)
         subproc = subprocess.Popen(
-            [sys.executable, TEST_HELPER.script_path('app_profiler.py'),
+            [sys.executable, TestHelper.script_path('app_profiler.py'),
              '--app', self.package_name, '-r', '--duration 10000', '--disable_adb_root'])
         time.sleep(3)
         self.adb.check_run(['shell', 'am', 'force-stop', self.package_name])
@@ -160,7 +161,7 @@ class TestExamplePureJava(TestExampleBase):
         self.adb.check_run(['kill-server'])
         time.sleep(3)
         # Start adb process outside self.test_dir. Because it will be removed after testing.
-        os.chdir(self.saved_cwd)
+        os.chdir(self.test_dir.parent)
         self.adb.check_run(['devices'])
         os.chdir(self.test_dir)
         self.run_cmd(['run_simpleperf_without_usb_connection.py', 'stop'])

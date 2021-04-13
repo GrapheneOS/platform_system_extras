@@ -16,14 +16,15 @@
 
 from app_profiler import NativeLibDownloader
 import shutil
+
 from simpleperf_utils import str_to_bytes, bytes_to_str, remove
-from . test_utils import TestBase, TEST_HELPER, INFERNO_SCRIPT
+from . test_utils import TestBase, TestHelper, INFERNO_SCRIPT
 
 
 class TestNativeProfiling(TestBase):
     def setUp(self):
         super(TestNativeProfiling, self).setUp()
-        self.is_rooted_device = TEST_HELPER.adb.switch_to_root()
+        self.is_rooted_device = TestHelper.adb.switch_to_root()
 
     def test_profile_cmd(self):
         self.run_cmd(["app_profiler.py", "-cmd", "pm -l", "--disable_adb_root"])
@@ -40,7 +41,7 @@ class TestNativeProfiling(TestBase):
     def test_profile_pids(self):
         if not self.is_rooted_device:
             return
-        pid = int(TEST_HELPER.adb.check_run_and_return_output(['shell', 'pidof', 'system_server']))
+        pid = int(TestHelper.adb.check_run_and_return_output(['shell', 'pidof', 'system_server']))
         self.run_cmd(['app_profiler.py', '--pid', str(pid), '-r', '--duration 1'])
         self.run_cmd(['app_profiler.py', '--pid', str(pid), str(pid), '-r', '--duration 1'])
         self.run_cmd(['app_profiler.py', '--tid', str(pid), '-r', '--duration 1'])
@@ -56,9 +57,9 @@ class TestNativeProfiling(TestBase):
 class TestNativeLibDownloader(TestBase):
     def setUp(self):
         super(TestNativeLibDownloader, self).setUp()
-        self.adb = TEST_HELPER.adb
+        self.adb = TestHelper.adb
         self.adb.check_run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
-        self.ndk_path = TEST_HELPER.ndk_path
+        self.ndk_path = TestHelper.ndk_path
 
     def tearDown(self):
         self.adb.check_run(['shell', 'rm', '-rf', '/data/local/tmp/native_libs'])
@@ -72,7 +73,7 @@ class TestNativeLibDownloader(TestBase):
     def test_smoke(self):
         # Sync all native libs on device.
         downloader = NativeLibDownloader(self.ndk_path, 'arm64', self.adb)
-        downloader.collect_native_libs_on_host(TEST_HELPER.testdata_path(
+        downloader.collect_native_libs_on_host(TestHelper.testdata_path(
             'SimpleperfExampleWithNative/app/build/intermediates/cmake/profiling'))
         self.assertEqual(len(downloader.host_build_id_map), 2)
         for entry in downloader.host_build_id_map.values():
@@ -120,7 +121,7 @@ class TestNativeLibDownloader(TestBase):
     def test_download_file_without_build_id(self):
         downloader = NativeLibDownloader(self.ndk_path, 'x86_64', self.adb)
         name = 'elf.so'
-        shutil.copyfile(TEST_HELPER.testdata_path('data/symfs_without_build_id/elf'), name)
+        shutil.copyfile(TestHelper.testdata_path('data/symfs_without_build_id/elf'), name)
         downloader.collect_native_libs_on_host('.')
         downloader.collect_native_libs_on_device()
         self.assertIn(name, downloader.no_build_id_file_map)

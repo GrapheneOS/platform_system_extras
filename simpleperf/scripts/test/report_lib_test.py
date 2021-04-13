@@ -15,14 +15,14 @@
 # limitations under the License.
 
 from simpleperf_report_lib import ReportLib
-from . test_utils import TestBase, TEST_HELPER
+from . test_utils import TestBase, TestHelper
 
 
 class TestReportLib(TestBase):
     def setUp(self):
         super(TestReportLib, self).setUp()
         self.report_lib = ReportLib()
-        self.report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_symbols.data'))
+        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_symbols.data'))
 
     def tearDown(self):
         self.report_lib.Close()
@@ -60,7 +60,7 @@ class TestReportLib(TestBase):
         self.assertTrue(found_sample)
 
     def test_meta_info(self):
-        self.report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_trace_offcpu.data'))
+        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_trace_offcpu.data'))
         meta_info = self.report_lib.MetaInfo()
         self.assertTrue("simpleperf_version" in meta_info)
         self.assertEqual(meta_info["system_wide_collection"], "false")
@@ -69,7 +69,7 @@ class TestReportLib(TestBase):
         self.assertTrue("product_props" in meta_info)
 
     def test_event_name_from_meta_info(self):
-        self.report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_tracepoint_event.data'))
+        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_tracepoint_event.data'))
         event_names = set()
         while self.report_lib.GetNextSample():
             event_names.add(self.report_lib.GetEventOfCurrentSample().name)
@@ -77,13 +77,13 @@ class TestReportLib(TestBase):
         self.assertTrue('cpu-cycles' in event_names)
 
     def test_record_cmd(self):
-        self.report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_trace_offcpu.data'))
+        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_trace_offcpu.data'))
         self.assertEqual(self.report_lib.GetRecordCmd(),
                          "/data/local/tmp/simpleperf record --trace-offcpu --duration 2 -g " +
                          "./simpleperf_runtest_run_and_sleep64")
 
     def test_offcpu(self):
-        self.report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_trace_offcpu.data'))
+        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_trace_offcpu.data'))
         total_period = 0
         sleep_function_period = 0
         sleep_function_name = "SleepFunction(unsigned long long)"
@@ -104,7 +104,7 @@ class TestReportLib(TestBase):
 
     def test_show_art_frames(self):
         def has_art_frame(report_lib):
-            report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_interpreter_frames.data'))
+            report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_interpreter_frames.data'))
             result = False
             while report_lib.GetNextSample():
                 callchain = report_lib.GetCallChainOfCurrentSample()
@@ -127,7 +127,7 @@ class TestReportLib(TestBase):
     def test_merge_java_methods(self):
         def parse_dso_names(report_lib):
             dso_names = set()
-            report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_interpreter_frames.data'))
+            report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_interpreter_frames.data'))
             while report_lib.GetNextSample():
                 dso_names.add(report_lib.GetSymbolOfCurrentSample().dso_name)
                 callchain = report_lib.GetCallChainOfCurrentSample()
@@ -151,7 +151,7 @@ class TestReportLib(TestBase):
 
     def test_jited_java_methods(self):
         report_lib = ReportLib()
-        report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_jit_symbol.data'))
+        report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_jit_symbol.data'))
         has_jit_cache = False
         while report_lib.GetNextSample():
             if report_lib.GetSymbolOfCurrentSample().dso_name == '[JIT app cache]':
@@ -164,7 +164,7 @@ class TestReportLib(TestBase):
         self.assertTrue(has_jit_cache)
 
     def test_tracing_data(self):
-        self.report_lib.SetRecordFile(TEST_HELPER.testdata_path('perf_with_tracepoint_event.data'))
+        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_tracepoint_event.data'))
         has_tracing_data = False
         while self.report_lib.GetNextSample():
             event = self.report_lib.GetEventOfCurrentSample()
@@ -180,7 +180,7 @@ class TestReportLib(TestBase):
         self.assertTrue(has_tracing_data)
 
     def test_dynamic_field_in_tracing_data(self):
-        self.report_lib.SetRecordFile(TEST_HELPER.testdata_path(
+        self.report_lib.SetRecordFile(TestHelper.testdata_path(
             'perf_with_tracepoint_event_dynamic_field.data'))
         has_dynamic_field = False
         while self.report_lib.GetNextSample():
