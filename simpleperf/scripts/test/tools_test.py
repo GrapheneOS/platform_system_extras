@@ -15,9 +15,10 @@
 # limitations under the License.
 
 import os
+
 from simpleperf_utils import (is_elf_file, Addr2Nearestline, Objdump, ReadElf,
                               SourceFileSearcher, is_windows, remove)
-from . test_utils import TestBase, TEST_HELPER
+from . test_utils import TestBase, TestHelper
 
 
 class TestTools(TestBase):
@@ -26,7 +27,7 @@ class TestTools(TestBase):
         self.run_addr2nearestline_test(False)
 
     def run_addr2nearestline_test(self, with_function_name):
-        binary_cache_path = TEST_HELPER.testdata_dir
+        binary_cache_path = TestHelper.testdata_dir
         test_map = {
             '/simpleperf_runtest_two_functions_arm64': [
                 {
@@ -95,7 +96,7 @@ class TestTools(TestBase):
                 }
             ],
         }
-        addr2line = Addr2Nearestline(TEST_HELPER.ndk_path, binary_cache_path, with_function_name)
+        addr2line = Addr2Nearestline(TestHelper.ndk_path, binary_cache_path, with_function_name)
         for dso_path in test_map:
             test_addrs = test_map[dso_path]
             for test_addr in test_addrs:
@@ -136,7 +137,7 @@ class TestTools(TestBase):
                                  (dso_path, test_addr['addr'], expected_source, actual_source))
 
     def test_objdump(self):
-        binary_cache_path = TEST_HELPER.testdata_dir
+        binary_cache_path = TestHelper.testdata_dir
         test_map = {
             '/simpleperf_runtest_two_functions_arm64': {
                 'start_addr': 0x668,
@@ -175,7 +176,7 @@ class TestTools(TestBase):
                 ],
             },
         }
-        objdump = Objdump(TEST_HELPER.ndk_path, binary_cache_path)
+        objdump = Objdump(TestHelper.ndk_path, binary_cache_path)
         for dso_path in test_map:
             dso = test_map[dso_path]
             dso_info = objdump.get_dso_info(dso_path)
@@ -222,10 +223,10 @@ class TestTools(TestBase):
                 'arch': 'x86',
             }
         }
-        readelf = ReadElf(TEST_HELPER.ndk_path)
+        readelf = ReadElf(TestHelper.ndk_path)
         for dso_path in test_map:
             dso_info = test_map[dso_path]
-            path = os.path.join(TEST_HELPER.testdata_dir, dso_path)
+            path = os.path.join(TestHelper.testdata_dir, dso_path)
             self.assertEqual(dso_info['arch'], readelf.get_arch(path))
             if 'build_id' in dso_info:
                 self.assertEqual(dso_info['build_id'], readelf.get_build_id(path), dso_path)
@@ -237,11 +238,11 @@ class TestTools(TestBase):
 
     def test_source_file_searcher(self):
         searcher = SourceFileSearcher(
-            [TEST_HELPER.testdata_path('SimpleperfExampleWithNative'),
-             TEST_HELPER.testdata_path('SimpleperfExampleOfKotlin')])
+            [TestHelper.testdata_path('SimpleperfExampleWithNative'),
+             TestHelper.testdata_path('SimpleperfExampleOfKotlin')])
 
         def format_path(path):
-            return os.path.join(TEST_HELPER.testdata_dir, path.replace('/', os.sep))
+            return os.path.join(TestHelper.testdata_dir, path.replace('/', os.sep))
         # Find a C++ file with pure file name.
         self.assertEqual(
             format_path('SimpleperfExampleWithNative/app/src/main/cpp/native-lib.cpp'),
@@ -262,7 +263,7 @@ class TestTools(TestBase):
             searcher.get_real_path('MainActivity.kt'))
 
     def test_is_elf_file(self):
-        self.assertTrue(is_elf_file(TEST_HELPER.testdata_path(
+        self.assertTrue(is_elf_file(TestHelper.testdata_path(
             'simpleperf_runtest_two_functions_arm')))
         with open('not_elf', 'wb') as fh:
             fh.write(b'\x90123')

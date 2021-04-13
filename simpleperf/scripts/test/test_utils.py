@@ -18,142 +18,112 @@
 """
 
 import logging
+from multiprocessing.connection import Connection
 import os
 from pathlib import Path
 import shutil
 import sys
-from simpleperf_utils import remove, get_script_dir, AdbHelper, is_windows, bytes_to_str
 import subprocess
 import time
-from typing import List
+from typing import List, Optional
 import unittest
+
+from simpleperf_utils import remove, get_script_dir, AdbHelper, is_windows, bytes_to_str
 
 INFERNO_SCRIPT = str(Path(__file__).parents[1] / ('inferno.bat' if is_windows() else 'inferno.sh'))
 
 
-class TestLogger:
-    """ Write test progress in sys.stderr and keep verbose log in log file. """
-
-    def __init__(self):
-        self.log_file = 'test.log'
-        remove(self.log_file)
-        # Logs can come from multiple processes. So use append mode to avoid overwrite.
-        self.log_fh = open(self.log_file, 'a')
-        logging.basicConfig(filename=self.log_file)
-
-    def writeln(self, s):
-        return self.write(s + '\n')
-
-    def write(self, s):
-        sys.stderr.write(s)
-        self.log_fh.write(s)
-        # Child processes can also write to log file, so flush it immediately to keep the order.
-        self.flush()
-
-    def flush(self):
-        self.log_fh.flush()
-
-
-TEST_LOGGER = TestLogger()
-
-
 class TestHelper:
-    """ Keep global test info. """
+    """ Keep global test options. """
 
-    def __init__(self):
-        #self.script_dir = os.path.abspath(get_script_dir())
-        self.script_test_dir = Path(__file__).resolve().parent
-        self.script_dir = self.script_test_dir.parent
-        self.cur_dir = os.getcwd()
-        self.testdata_dir = os.path.join(self.cur_dir, 'testdata')
-        self.testdata_dir_p = Path(self.testdata_dir)
-        self.test_base_dir = os.path.join(self.cur_dir, 'test_results')
-        self.adb = AdbHelper(enable_switch_to_root=True)
-        self.android_version = self.adb.get_android_version()
-        self.device_features = None
-        self.browser_option = []
-        self.progress_fh = None
-        self.ndk_path = None
-
-    def testdata_path(self, testdata_name):
-        """ Return the path of a test data. """
-        return os.path.join(self.testdata_dir, testdata_name.replace('/', os.sep))
-
-    def test_dir(self, test_name):
-        """ Return the dir to run a test. """
-        return os.path.join(self.test_base_dir, test_name)
-
-    def script_path(self, script_name):
-        """ Return the dir of python scripts. """
-        return os.path.join(self.script_dir, script_name)
-
-    def get_device_features(self):
-        if self.device_features is None:
-            args = [sys.executable, self.script_path(
-                'run_simpleperf_on_device.py'), 'list', '--show-features']
-            output = subprocess.check_output(args, stderr=TEST_LOGGER.log_fh)
-            output = bytes_to_str(output)
-            self.device_features = output.split()
-        return self.device_features
-
-    def is_trace_offcpu_supported(self):
-        return 'trace-offcpu' in self.get_device_features()
-
-    def build_testdata(self):
-        """ Collect testdata in self.testdata_dir.
-            In system/extras/simpleperf/scripts, testdata comes from:
-                <script_dir>/../testdata, <script_dir>/test/script_testdata, <script_dir>/../demo
-            In prebuilts/simpleperf, testdata comes from:
-                <script_dir>/testdata
+    @classmethod
+    def init(
+            cls, test_dir: str, testdata_dir: str, use_browser: bool, ndk_path: Optional[str],
+            device_serial_number: Optional[str],
+            progress_conn: Optional[Connection]):
         """
-        if os.path.isdir(self.testdata_dir):
-            return  # already built
-        os.makedirs(self.testdata_dir)
+            When device_serial_number is None, no Android device is used.
+            When device_serial_number is '', use the default Android device.
+            When device_serial_number is not empty, select Android device by serial number.
+        """
+        cls.script_dir = Path(__file__).resolve().parents[1]
+        cls.test_base_dir = Path(test_dir).resolve()
+        cls.test_base_dir.mkdir(parents=True, exist_ok=True)
+        cls.testdata_dir = Path(testdata_dir).resolve()
+        cls.browser_option = [] if use_browser else ['--no_browser']
+        cls.ndk_path = ndk_path
+        cls.progress_conn = progress_conn
 
-        source_dirs = [
-            self.script_test_dir / 'script_testdata',
-            self.script_test_dir / 'testdata',
-            self.script_dir.parent / 'testdata',
-            self.script_dir.parent / 'demo',
-            self.script_dir / 'testdata',
-        ]
+        # Logs can come from multiple processes. So use append mode to avoid overwrite.
+        cls.log_fh = open(cls.test_base_dir / 'test.log', 'a')
+        logging.getLogger().handlers.clear()
+        logging.getLogger().addHandler(logging.StreamHandler(cls.log_fh))
+        os.close(sys.stderr.fileno())
+        os.dup2(cls.log_fh.fileno(), sys.stderr.fileno())
 
-        for source_dir in source_dirs:
-            if not source_dir.is_dir():
-                continue
-            for src_path in source_dir.iterdir():
-                dest_path = Path(self.testdata_dir) / src_path.name
-                if dest_path.exists():
-                    continue
-                if src_path.is_file():
-                    shutil.copyfile(src_path, dest_path)
-                elif src_path.is_dir():
-                    shutil.copytree(src_path, dest_path)
+        if device_serial_number is not None:
+            if device_serial_number:
+                os.environ['ANDROID_SERIAL'] = device_serial_number
+            cls.adb = AdbHelper(enable_switch_to_root=True)
+            cls.android_version = cls.adb.get_android_version()
+            cls.device_features = None
 
-    def get_32bit_abi(self):
-        return self.adb.get_property('ro.product.cpu.abilist32').strip().split(',')[0]
+    @classmethod
+    def log(cls, s: str):
+        cls.log_fh.write(s + '\n')
+        # Child processes can also write to log file, so flush it immediately to keep the order.
+        cls.log_fh.flush()
 
-    def write_progress(self, progress):
-        if self.progress_fh:
-            self.progress_fh.write(progress + '\n')
-            self.progress_fh.flush()
+    @classmethod
+    def testdata_path(cls, testdata_name: str) -> str:
+        """ Return the path of a test data. """
+        return str(cls.testdata_dir / testdata_name)
 
+    @classmethod
+    def get_test_dir(cls, test_name: str) -> Path:
+        """ Return the dir to run a test. """
+        return cls.test_base_dir / test_name
 
-TEST_HELPER = TestHelper()
+    @classmethod
+    def script_path(cls, script_name: str) -> str:
+        """ Return the dir of python scripts. """
+        return str(cls.script_dir / script_name)
+
+    @classmethod
+    def get_device_features(cls):
+        if cls.device_features is None:
+            args = [sys.executable, cls.script_path(
+                'run_simpleperf_on_device.py'), 'list', '--show-features']
+            output = subprocess.check_output(args, stderr=TestHelper.log_fh)
+            output = bytes_to_str(output)
+            cls.device_features = output.split()
+        return cls.device_features
+
+    @classmethod
+    def is_trace_offcpu_supported(cls):
+        return 'trace-offcpu' in cls.get_device_features()
+
+    @classmethod
+    def get_32bit_abi(cls):
+        return cls.adb.get_property('ro.product.cpu.abilist32').strip().split(',')[0]
+
+    @classmethod
+    def write_progress(cls, progress: str):
+        if cls.progress_conn:
+            cls.progress_conn.send(progress)
 
 
 class TestBase(unittest.TestCase):
     def setUp(self):
         """ Run each test in a separate dir. """
-        self.test_dir = TEST_HELPER.test_dir('%s.%s' % (
-            self.__class__.__name__, self._testMethodName))
-        os.makedirs(self.test_dir)
-        self.saved_cwd = os.getcwd()
+        self.test_dir = TestHelper.get_test_dir(
+            '%s.%s' % (self.__class__.__name__, self._testMethodName))
+        self.test_dir.mkdir()
         os.chdir(self.test_dir)
-        TEST_LOGGER.writeln('begin test %s.%s' % (self.__class__.__name__, self._testMethodName))
-        self.start_time = time.time()
+        TestHelper.log('begin test %s.%s' % (self.__class__.__name__, self._testMethodName))
 
     def run(self, result=None):
+        start_time = time.time()
         ret = super(TestBase, self).run(result)
         if result.errors and result.errors[-1][0] == self:
             status = 'FAILED'
@@ -164,30 +134,29 @@ class TestBase(unittest.TestCase):
         else:
             status = 'OK'
 
-        time_taken = time.time() - self.start_time
-        TEST_LOGGER.writeln(
+        time_taken = time.time() - start_time
+        TestHelper.log(
             'end test %s.%s %s (%.3fs)' %
             (self.__class__.__name__, self._testMethodName, status, time_taken))
         if status != 'OK':
-            TEST_LOGGER.writeln(err_info)
+            TestHelper.log(err_info)
 
         # Remove test data for passed tests to save space.
-        os.chdir(self.saved_cwd)
         if status == 'OK':
-            shutil.rmtree(self.test_dir)
-        TEST_HELPER.write_progress(
+            remove(self.test_dir)
+        TestHelper.write_progress(
             '%s.%s  %s' % (self.__class__.__name__, self._testMethodName, status))
         return ret
 
     def run_cmd(self, args: List[str], return_output=False, drop_output=True) -> str:
         if args[0] == 'report_html.py' or args[0] == INFERNO_SCRIPT:
-            args += TEST_HELPER.browser_option
-        if TEST_HELPER.ndk_path:
+            args += TestHelper.browser_option
+        if TestHelper.ndk_path:
             if args[0] in ['app_profiler.py', 'binary_cache_builder.py', 'pprof_proto_generator.py',
                            'report_html.py']:
-                args += ['--ndk_path', TEST_HELPER.ndk_path]
+                args += ['--ndk_path', TestHelper.ndk_path]
         if args[0].endswith('.py'):
-            args = [sys.executable, TEST_HELPER.script_path(args[0])] + args[1:]
+            args = [sys.executable, TestHelper.script_path(args[0])] + args[1:]
         use_shell = args[0].endswith('.bat')
         try:
             if return_output:
@@ -199,7 +168,7 @@ class TestBase(unittest.TestCase):
                 stdout_fd = None
 
             subproc = subprocess.Popen(args, stdout=stdout_fd,
-                                       stderr=TEST_LOGGER.log_fh, shell=use_shell)
+                                       stderr=TestHelper.log_fh, shell=use_shell)
             stdout_data, _ = subproc.communicate()
             output_data = bytes_to_str(stdout_data)
             returncode = subproc.returncode
