@@ -71,15 +71,6 @@ const char* OneTimeFreeAllocator::AllocateString(std::string_view s) {
   return result;
 }
 
-#if !defined(_WIN32)
-char* LineReader::ReadLine() {
-  if (getline(&buf_, &bufsize_, fp_) != -1) {
-    return buf_;
-  }
-  return nullptr;
-}
-#endif
-
 android::base::unique_fd FileHelper::OpenReadOnly(const std::string& filename) {
   int fd = TEMP_FAILURE_RETRY(open(filename.c_str(), O_RDONLY | O_BINARY));
   return android::base::unique_fd(fd);
