@@ -65,6 +65,7 @@ struct Symbol {
   const char* Name() const { return name_; }
 
   const char* DemangledName() const;
+  void SetDemangledName(std::string_view name) const;
 
   bool HasDumpId() const { return dump_id_ != UINT_MAX; }
 

@@ -19,6 +19,7 @@
 #include <android-base/strings.h>
 
 #include "JITDebugReader.h"
+#include "utils.h"
 
 namespace simpleperf {
 
@@ -38,6 +39,53 @@ static bool IsArtEntry(const CallChainReportEntry& entry, bool* is_jni_trampolin
   }
   return false;
 };
+
+bool CallChainReportBuilder::AddProguardMappingFile(std::string_view mapping_file) {
+  // The mapping file format is described in
+  // https://www.guardsquare.com/en/products/proguard/manual/retrace.
+  LineReader reader(mapping_file);
+  if (!reader.Ok()) {
+    PLOG(ERROR) << "failed to read " << mapping_file;
+    return false;
+  }
+  ProguardMappingClass* cur_class = nullptr;
+  std::string* line;
+  while ((line = reader.ReadLine()) != nullptr) {
+    std::string_view s = *line;
+    if (s.empty() || s[0] == '#') {
+      continue;
+    }
+    auto arrow_pos = s.find(" -> ");
+    if (arrow_pos == s.npos) {
+      continue;
+    }
+    auto arrow_end_pos = arrow_pos + strlen(" -> ");
+
+    if (s[0] != ' ') {
+      // Match line "original_classname -> obfuscated_classname:".
+      if (auto colon_pos = s.find(':', arrow_end_pos); colon_pos != s.npos) {
+        std::string_view original_classname = s.substr(0, arrow_pos);
+        std::string obfuscated_classname(s.substr(arrow_end_pos, colon_pos - arrow_end_pos));
+        cur_class = &proguard_class_map_[obfuscated_classname];
+        cur_class->original_classname = original_classname;
+      }
+    } else if (cur_class != nullptr) {
+      // Match line "... [original_classname.]original_methodname(...)... ->
+      // obfuscated_methodname".
+      if (auto left_brace_pos = s.rfind('(', arrow_pos); left_brace_pos != s.npos) {
+        if (auto space_pos = s.rfind(' ', left_brace_pos); space_pos != s.npos) {
+          auto original_methodname = s.substr(space_pos + 1, left_brace_pos - space_pos - 1);
+          if (android::base::StartsWith(original_methodname, cur_class->original_classname)) {
+            original_methodname.remove_prefix(cur_class->original_classname.size() + 1);
+          }
+          std::string obfuscated_methodname(s.substr(arrow_end_pos));
+          cur_class->method_map[obfuscated_methodname] = original_methodname;
+        }
+      }
+    }
+  }
+  return true;
+}
 
 std::vector<CallChainReportEntry> CallChainReportBuilder::Build(const ThreadEntry* thread,
                                                                 const std::vector<uint64_t>& ips,
@@ -75,6 +123,9 @@ std::vector<CallChainReportEntry> CallChainReportBuilder::Build(const ThreadEntr
   }
   if (convert_jit_frame_) {
     ConvertJITFrame(result);
+  }
+  if (!proguard_class_map_.empty()) {
+    DeObfuscateJavaMethods(result);
   }
   return result;
 }
@@ -132,8 +183,8 @@ void CallChainReportBuilder::ConvertJITFrame(std::vector<CallChainReportEntry>& 
         // use the symbol_addr.
         entry.vaddr_in_file = entry.symbol->addr;
 
-        // ART may call from an interpreted Java method into its corresponding JIT method. To avoid
-        // showing the method calling itself, remove the JIT frame.
+        // ART may call from an interpreted Java method into its corresponding JIT method. To
+        // avoid showing the method calling itself, remove the JIT frame.
         if (i + 1 < callchain.size() && callchain[i + 1].dso == entry.dso &&
             callchain[i + 1].symbol == entry.symbol) {
           callchain.erase(callchain.begin() + i);
@@ -157,6 +208,29 @@ void CallChainReportBuilder::CollectJavaMethods() {
         dso->LoadSymbols();
         for (auto& symbol : dso->GetSymbols()) {
           java_method_map_.emplace(symbol.Name(), JavaMethod(dso, &symbol));
+        }
+      }
+    }
+  }
+}
+
+void CallChainReportBuilder::DeObfuscateJavaMethods(std::vector<CallChainReportEntry>& callchain) {
+  for (auto& entry : callchain) {
+    if (entry.execution_type != CallChainExecutionType::JIT_JVM_METHOD &&
+        entry.execution_type != CallChainExecutionType::INTERPRETED_JVM_METHOD) {
+      continue;
+    }
+    std::string_view name = entry.symbol->DemangledName();
+    if (auto split_pos = name.rfind('.'); split_pos != name.npos) {
+      std::string obfuscated_classname(name.substr(0, split_pos));
+      if (auto it = proguard_class_map_.find(obfuscated_classname);
+          it != proguard_class_map_.end()) {
+        const ProguardMappingClass& proguard_class = it->second;
+        std::string obfuscated_methodname(name.substr(split_pos + 1));
+        if (auto method_it = proguard_class.method_map.find(obfuscated_methodname);
+            method_it != proguard_class.method_map.end()) {
+          std::string new_symbol_name = proguard_class.original_classname + "." + method_it->second;
+          entry.symbol->SetDemangledName(new_symbol_name);
         }
       }
     }
