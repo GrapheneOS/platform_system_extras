@@ -216,13 +216,17 @@ Symbol::Symbol(std::string_view name, uint64_t addr, uint64_t len)
 const char* Symbol::DemangledName() const {
   if (demangled_name_ == nullptr) {
     const std::string s = Dso::Demangle(name_);
-    if (s == name_) {
-      demangled_name_ = name_;
-    } else {
-      demangled_name_ = symbol_name_allocator.AllocateString(s);
-    }
+    SetDemangledName(s);
   }
   return demangled_name_;
+}
+
+void Symbol::SetDemangledName(std::string_view name) const {
+  if (name == name_) {
+    demangled_name_ = name_;
+  } else {
+    demangled_name_ = symbol_name_allocator.AllocateString(name);
+  }
 }
 
 static bool CompareSymbolToAddr(const Symbol& s, uint64_t addr) {
