@@ -16,21 +16,22 @@
 
 import collections
 import json
-from . test_utils import TestBase, TEST_HELPER
+
+from . test_utils import TestBase, TestHelper
 
 
 class TestReportHtml(TestBase):
     def test_long_callchain(self):
         self.run_cmd(['report_html.py', '-i',
-                      TEST_HELPER.testdata_path('perf_with_long_callchain.data')])
+                      TestHelper.testdata_path('perf_with_long_callchain.data')])
 
     def test_aggregated_by_thread_name(self):
         # Calculate event_count for each thread name before aggregation.
         event_count_for_thread_name = collections.defaultdict(lambda: 0)
         # use "--min_func_percent 0" to avoid cutting any thread.
         self.run_cmd(['report_html.py', '--min_func_percent', '0', '-i',
-                      TEST_HELPER.testdata_path('aggregatable_perf1.data'),
-                      TEST_HELPER.testdata_path('aggregatable_perf2.data')])
+                      TestHelper.testdata_path('aggregatable_perf1.data'),
+                      TestHelper.testdata_path('aggregatable_perf2.data')])
         record_data = self._load_record_data_in_html('report.html')
         event = record_data['sampleInfo'][0]
         for process in event['processes']:
@@ -41,8 +42,8 @@ class TestReportHtml(TestBase):
         # Check event count for each thread after aggregation.
         self.run_cmd(['report_html.py', '--aggregate-by-thread-name',
                       '--min_func_percent', '0', '-i',
-                      TEST_HELPER.testdata_path('aggregatable_perf1.data'),
-                      TEST_HELPER.testdata_path('aggregatable_perf2.data')])
+                      TestHelper.testdata_path('aggregatable_perf1.data'),
+                      TestHelper.testdata_path('aggregatable_perf2.data')])
         record_data = self._load_record_data_in_html('report.html')
         event = record_data['sampleInfo'][0]
         hit_count = 0
@@ -56,7 +57,7 @@ class TestReportHtml(TestBase):
 
     def test_no_empty_process(self):
         """ Test not showing a process having no threads. """
-        perf_data = TEST_HELPER.testdata_path('two_process_perf.data')
+        perf_data = TestHelper.testdata_path('two_process_perf.data')
         self.run_cmd(['report_html.py', '-i', perf_data])
         record_data = self._load_record_data_in_html('report.html')
         processes = record_data['sampleInfo'][0]['processes']

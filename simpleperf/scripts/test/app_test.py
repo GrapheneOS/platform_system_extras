@@ -18,15 +18,16 @@ import os
 import re
 import shutil
 import subprocess
+
 from simpleperf_utils import remove
-from . test_utils import TestBase, TEST_HELPER, AdbHelper, TEST_LOGGER, INFERNO_SCRIPT
+from . test_utils import TestBase, TestHelper, AdbHelper, INFERNO_SCRIPT
 
 
 class TestExampleBase(TestBase):
     @classmethod
     def prepare(cls, example_name, package_name, activity_name, abi=None, adb_root=False):
         cls.adb = AdbHelper(enable_switch_to_root=adb_root)
-        cls.example_path = TEST_HELPER.testdata_path(example_name)
+        cls.example_path = TestHelper.testdata_path(example_name)
         if not os.path.isdir(cls.example_path):
             log_fatal("can't find " + cls.example_path)
         for root, _, files in os.walk(cls.example_path):
@@ -46,8 +47,8 @@ class TestExampleBase(TestBase):
         cls.has_perf_data_for_report = False
         # On Android >= P (version 9), we can profile JITed and interpreted Java code.
         # So only compile Java code on Android <= O (version 8).
-        cls.use_compiled_java_code = TEST_HELPER.android_version <= 8
-        cls.testcase_dir = TEST_HELPER.test_dir(cls.__name__)
+        cls.use_compiled_java_code = TestHelper.android_version <= 8
+        cls.testcase_dir = TestHelper.get_test_dir(cls.__name__)
 
     @classmethod
     def tearDownClass(cls):
@@ -57,7 +58,7 @@ class TestExampleBase(TestBase):
 
     def setUp(self):
         super(TestExampleBase, self).setUp()
-        if 'TraceOffCpu' in self.id() and not TEST_HELPER.is_trace_offcpu_supported():
+        if 'TraceOffCpu' in self.id() and not TestHelper.is_trace_offcpu_supported():
             self.skipTest('trace-offcpu is not supported on device')
         # Use testcase_dir to share a common perf.data for reporting. So we don't need to
         # generate it for each test.
@@ -219,7 +220,7 @@ class TestExampleBase(TestBase):
 class TestRecordingRealApps(TestBase):
     def setUp(self):
         super(TestRecordingRealApps, self).setUp()
-        self.adb = TEST_HELPER.adb
+        self.adb = TestHelper.adb
         self.installed_packages = []
 
     def tearDown(self):
@@ -233,9 +234,8 @@ class TestRecordingRealApps(TestBase):
         self.installed_packages.append(package_name)
 
     def start_app(self, start_cmd):
-        print('start app %s' % start_cmd)
         subprocess.Popen(self.adb.adb_path + ' ' + start_cmd, shell=True,
-                         stdout=TEST_LOGGER.log_fh, stderr=TEST_LOGGER.log_fh)
+                         stdout=TestHelper.log_fh, stderr=TestHelper.log_fh)
 
     def record_data(self, package_name, record_arg):
         self.run_cmd(['app_profiler.py', '--app', package_name, '-r', record_arg])
@@ -245,20 +245,20 @@ class TestRecordingRealApps(TestBase):
         self.check_strings_in_file('report.txt', [symbol_name])
 
     def test_recording_displaybitmaps(self):
-        self.install_apk(TEST_HELPER.testdata_path('DisplayBitmaps.apk'),
+        self.install_apk(TestHelper.testdata_path('DisplayBitmaps.apk'),
                          'com.example.android.displayingbitmaps')
-        self.install_apk(TEST_HELPER.testdata_path('DisplayBitmapsTest.apk'),
+        self.install_apk(TestHelper.testdata_path('DisplayBitmapsTest.apk'),
                          'com.example.android.displayingbitmaps.test')
         self.start_app('shell am instrument -w -r -e debug false -e class ' +
                        'com.example.android.displayingbitmaps.tests.GridViewTest ' +
                        'com.example.android.displayingbitmaps.test/' +
                        'androidx.test.runner.AndroidJUnitRunner')
         self.record_data('com.example.android.displayingbitmaps', '-e cpu-clock -g --duration 10')
-        if TEST_HELPER.android_version >= 9:
+        if TestHelper.android_version >= 9:
             self.check_symbol_in_record_file('androidx.test.espresso')
 
     def test_recording_endless_tunnel(self):
-        self.install_apk(TEST_HELPER.testdata_path(
+        self.install_apk(TestHelper.testdata_path(
             'EndlessTunnel.apk'), 'com.google.sample.tunnel')
         self.start_app('shell am start -n com.google.sample.tunnel/android.app.NativeActivity -a ' +
                        'android.intent.action.MAIN -c android.intent.category.LAUNCHER')
