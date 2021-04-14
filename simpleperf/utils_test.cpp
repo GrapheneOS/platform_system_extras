@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+#include <android-base/file.h>
+
 #include "get_test_data.h"
 #include "utils.h"
 
@@ -71,4 +73,19 @@ TEST(utils, GetCpusFromString) {
 TEST(utils, GetTidsFromString) {
   ASSERT_EQ(GetTidsFromString("0,12,9", false), std::make_optional(std::set<pid_t>({0, 9, 12})));
   ASSERT_EQ(GetTidsFromString("-2", false), std::nullopt);
+}
+
+TEST(utils, LineReader) {
+  TemporaryFile tmpfile;
+  close(tmpfile.release());
+  ASSERT_TRUE(android::base::WriteStringToFile("line1\nline2", tmpfile.path));
+  LineReader reader(tmpfile.path);
+  ASSERT_TRUE(reader.Ok());
+  std::string* line = reader.ReadLine();
+  ASSERT_TRUE(line != nullptr);
+  ASSERT_EQ(*line, "line1");
+  line = reader.ReadLine();
+  ASSERT_TRUE(line != nullptr);
+  ASSERT_EQ(*line, "line2");
+  ASSERT_TRUE(reader.ReadLine() == nullptr);
 }
