@@ -18,6 +18,9 @@
 
 #include <inttypes.h>
 
+#include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "dso.h"
@@ -52,6 +55,8 @@ class CallChainReportBuilder {
   // If true, convert a JIT method into its corresponding interpreted Java method. So they can be
   // merged in reports like flamegraph. Default is true.
   void SetConvertJITFrame(bool enable) { convert_jit_frame_ = enable; }
+  // Add proguard mapping.txt to de-obfuscate minified symbols.
+  bool AddProguardMappingFile(std::string_view mapping_file);
   std::vector<CallChainReportEntry> Build(const ThreadEntry* thread,
                                           const std::vector<uint64_t>& ips, size_t kernel_ip_count);
 
@@ -62,15 +67,24 @@ class CallChainReportBuilder {
     JavaMethod(Dso* dso, const Symbol* symbol) : dso(dso), symbol(symbol) {}
   };
 
+  struct ProguardMappingClass {
+    std::string original_classname;
+    // Map from minified method names to original method names.
+    std::unordered_map<std::string, std::string> method_map;
+  };
+
   void MarkArtFrame(std::vector<CallChainReportEntry>& callchain);
   void ConvertJITFrame(std::vector<CallChainReportEntry>& callchain);
   void CollectJavaMethods();
+  void DeObfuscateJavaMethods(std::vector<CallChainReportEntry>& callchain);
 
   ThreadTree& thread_tree_;
   bool remove_art_frame_ = true;
   bool convert_jit_frame_ = true;
   bool java_method_initialized_ = false;
   std::unordered_map<std::string, JavaMethod> java_method_map_;
+  // Map from minified class names to ProguardMappingClass.
+  std::unordered_map<std::string, ProguardMappingClass> proguard_class_map_;
 };
 
 }  // namespace simpleperf
