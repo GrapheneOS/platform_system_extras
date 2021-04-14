@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import os
+
 from simpleperf_utils import remove
 from . app_test import TestExampleBase
 from . test_utils import INFERNO_SCRIPT

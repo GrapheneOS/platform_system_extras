@@ -15,9 +15,10 @@
 # limitations under the License.
 
 import os
+
 from simpleperf_utils import remove
 from . app_test import TestExampleBase
-from . test_utils import INFERNO_SCRIPT, TEST_HELPER
+from . test_utils import INFERNO_SCRIPT, TestHelper
 
 
 class TestExampleWithNative(TestExampleBase):
@@ -157,7 +158,7 @@ class TestExampleWithNativeForce32Bit(TestExampleWithNative):
         cls.prepare("SimpleperfExampleWithNative",
                     "com.example.simpleperf.simpleperfexamplewithnative",
                     ".MainActivity",
-                    abi=TEST_HELPER.get_32bit_abi())
+                    abi=TestHelper.get_32bit_abi())
 
 
 class TestExampleWithNativeRootForce32Bit(TestExampleWithNativeRoot):
@@ -166,7 +167,7 @@ class TestExampleWithNativeRootForce32Bit(TestExampleWithNativeRoot):
         cls.prepare("SimpleperfExampleWithNative",
                     "com.example.simpleperf.simpleperfexamplewithnative",
                     ".MainActivity",
-                    abi=TEST_HELPER.get_32bit_abi(),
+                    abi=TestHelper.get_32bit_abi(),
                     adb_root=False)
 
 
@@ -176,4 +177,4 @@ class TestExampleWithNativeTraceOffCpuForce32Bit(TestExampleWithNativeTraceOffCp
         cls.prepare("SimpleperfExampleWithNative",
                     "com.example.simpleperf.simpleperfexamplewithnative",
                     ".SleepActivity",
-                    abi=TEST_HELPER.get_32bit_abi())
+                    abi=TestHelper.get_32bit_abi())
