@@ -845,7 +845,7 @@ std::vector<uint64_t> SampleRecord::GetCallChain(size_t* kernel_ip_count) const 
     if (ip >= PERF_CONTEXT_MAX) {
       switch (ip) {
         case PERF_CONTEXT_KERNEL:
-          CHECK(in_kernel) << "User space callchain followed by kernel callchain.";
+          in_kernel = true;
           break;
         case PERF_CONTEXT_USER:
           in_kernel = false;
