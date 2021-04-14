@@ -191,3 +191,21 @@ TEST(cmd_report_sample, show_unwinding_result) {
   GetProtobufReport("perf_with_failed_unwinding_debug_info.data", &data, {"--show-callchain"});
   ASSERT_NE(data.find("error_code: ERROR_INVALID_MAP"), std::string::npos);
 }
+
+TEST(cmd_report_sample, proguard_mapping_file_option) {
+  std::string data;
+  // Symbols aren't de-obfuscated without proguard mapping file.
+  GetProtobufReport("perf_need_proguard_mapping.data", &data, {"--show-callchain"});
+  ASSERT_EQ(data.find("androidx.fragment.app.FragmentActivity.startActivityForResult"),
+            std::string::npos);
+  ASSERT_EQ(data.find("com.example.android.displayingbitmaps.ui.ImageGridFragment.onItemClick"),
+            std::string::npos);
+  // Symbols are de-obfuscated with proguard mapping file.
+  GetProtobufReport(
+      "perf_need_proguard_mapping.data", &data,
+      {"--show-callchain", "--proguard-mapping-file", GetTestData("proguard_mapping.txt")});
+  ASSERT_NE(data.find("androidx.fragment.app.FragmentActivity.startActivityForResult"),
+            std::string::npos);
+  ASSERT_NE(data.find("com.example.android.displayingbitmaps.ui.ImageGridFragment.onItemClick"),
+            std::string::npos);
+}

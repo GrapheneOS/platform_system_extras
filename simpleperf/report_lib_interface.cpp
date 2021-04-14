@@ -135,6 +135,9 @@ class ReportLib {
     callchain_report_builder_.SetRemoveArtFrame(remove_art_frame);
   }
   void MergeJavaMethods(bool merge) { callchain_report_builder_.SetConvertJITFrame(merge); }
+  bool AddProguardMappingFile(const char* mapping_file) {
+    return callchain_report_builder_.AddProguardMappingFile(mapping_file);
+  }
 
   Sample* GetNextSample();
   Event* GetEventOfCurrentSample() { return &current_event_; }
@@ -413,6 +416,7 @@ bool SetKallsymsFile(ReportLib* report_lib, const char* kallsyms_file) EXPORT;
 void ShowIpForUnknownSymbol(ReportLib* report_lib) EXPORT;
 void ShowArtFrames(ReportLib* report_lib, bool show) EXPORT;
 void MergeJavaMethods(ReportLib* report_lib, bool merge) EXPORT;
+bool AddProguardMappingFile(ReportLib* report_lib, const char* mapping_file) EXPORT;
 
 Sample* GetNextSample(ReportLib* report_lib) EXPORT;
 Event* GetEventOfCurrentSample(ReportLib* report_lib) EXPORT;
@@ -459,6 +463,10 @@ void MergeJavaMethods(ReportLib* report_lib, bool merge) {
 
 bool SetKallsymsFile(ReportLib* report_lib, const char* kallsyms_file) {
   return report_lib->SetKallsymsFile(kallsyms_file);
+}
+
+bool AddProguardMappingFile(ReportLib* report_lib, const char* mapping_file) {
+  return report_lib->AddProguardMappingFile(mapping_file);
 }
 
 Sample* GetNextSample(ReportLib* report_lib) {
