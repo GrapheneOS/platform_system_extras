@@ -15,19 +15,20 @@
 # limitations under the License.
 
 import google.protobuf
+
 from pprof_proto_generator import load_pprof_profile
-from . test_utils import TestBase, TEST_HELPER
+from . test_utils import TestBase, TestHelper
 
 
 class TestPprofProtoGenerator(TestBase):
     def run_generator(self, options=None, testdata_file='perf_with_interpreter_frames.data'):
-        testdata_path = TEST_HELPER.testdata_path(testdata_file)
+        testdata_path = TestHelper.testdata_path(testdata_file)
         options = options or []
         self.run_cmd(['pprof_proto_generator.py', '-i', testdata_path] + options)
         return self.run_cmd(['pprof_proto_generator.py', '--show'], return_output=True)
 
     def generate_profile(self, options, testdata_files):
-        testdata_paths = [TEST_HELPER.testdata_path(f) for f in testdata_files]
+        testdata_paths = [TestHelper.testdata_path(f) for f in testdata_files]
         options = options or []
         self.run_cmd(['pprof_proto_generator.py', '-i'] + testdata_paths + options)
         return load_pprof_profile('pprof.profile')
