@@ -237,7 +237,8 @@ struct Record {
   static uint32_t header_size() { return sizeof(perf_event_header); }
 
   bool InKernel() const {
-    return (header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL;
+    uint16_t cpumode = header.misc & PERF_RECORD_MISC_CPUMODE_MASK;
+    return cpumode == PERF_RECORD_MISC_KERNEL || cpumode == PERF_RECORD_MISC_GUEST_KERNEL;
   }
 
   void SetTypeAndMisc(uint32_t type, uint16_t misc) {
