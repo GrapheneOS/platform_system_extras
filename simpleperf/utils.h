@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <time.h>
 
+#include <fstream>
 #include <functional>
 #include <optional>
 #include <set>
@@ -73,20 +74,15 @@ class OneTimeFreeAllocator {
 
 class LineReader {
  public:
-  explicit LineReader(FILE* fp) : fp_(fp), buf_(nullptr), bufsize_(0) {}
-
-  ~LineReader() {
-    free(buf_);
-    fclose(fp_);
-  }
-
-  char* ReadLine();
-  size_t MaxLineSize() { return bufsize_; }
+  explicit LineReader(std::string_view file_path) : ifs_(file_path) {}
+  // Return true if open file successfully.
+  bool Ok() const { return ifs_.good(); }
+  // If available, return next line content with new line, otherwise return nullptr.
+  std::string* ReadLine() { return (std::getline(ifs_, buf_)) ? &buf_ : nullptr; }
 
  private:
-  FILE* fp_;
-  char* buf_;
-  size_t bufsize_;
+  std::ifstream ifs_;
+  std::string buf_;
 };
 
 class FileHelper {
