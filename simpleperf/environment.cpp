@@ -54,16 +54,15 @@ namespace simpleperf {
 
 std::vector<int> GetOnlineCpus() {
   std::vector<int> result;
-  FILE* fp = fopen("/sys/devices/system/cpu/online", "re");
-  if (fp == nullptr) {
+  LineReader reader("/sys/devices/system/cpu/online");
+  if (!reader.Ok()) {
     PLOG(ERROR) << "can't open online cpu information";
     return result;
   }
 
-  LineReader reader(fp);
-  char* line;
+  std::string* line;
   if ((line = reader.ReadLine()) != nullptr) {
-    if (auto cpus = GetCpusFromString(line); cpus) {
+    if (auto cpus = GetCpusFromString(*line); cpus) {
       result.assign(cpus->begin(), cpus->end());
     }
   }
@@ -928,17 +927,16 @@ std::optional<std::pair<int, int>> GetKernelVersion() {
 
 std::optional<uid_t> GetProcessUid(pid_t pid) {
   std::string status_file = "/proc/" + std::to_string(pid) + "/status";
-  FILE* fp = fopen(status_file.c_str(), "re");
-  if (fp == nullptr) {
+  LineReader reader(status_file);
+  if (!reader.Ok()) {
     return std::nullopt;
   }
 
-  LineReader reader(fp);
-  char* line;
+  std::string* line;
   while ((line = reader.ReadLine()) != nullptr) {
-    if (android::base::StartsWith(line, "Uid:")) {
+    if (android::base::StartsWith(*line, "Uid:")) {
       uid_t uid;
-      if (sscanf(line + strlen("Uid:"), "%u", &uid) == 1) {
+      if (sscanf(line->data() + strlen("Uid:"), "%u", &uid) == 1) {
         return uid;
       }
     }
