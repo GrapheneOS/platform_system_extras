@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (C) 2017 The Android Open Source Project
 #
@@ -27,6 +27,7 @@ from simpleperf_utils import (Addr2Nearestline, get_script_dir, log_exit, log_in
                               open_report_in_browser, SourceFileSearcher)
 
 MAX_CALLSTACK_LENGTH = 750
+
 
 class HtmlWriter(object):
 
@@ -60,8 +61,10 @@ class HtmlWriter(object):
             self.add(f.read())
         return self
 
+
 def modify_text_for_html(text):
     return text.replace('>', '&gt;').replace('<', '&lt;')
+
 
 class EventScope(object):
 
@@ -384,6 +387,7 @@ class CallNode(object):
 
 class LibSet(object):
     """ Collection of shared libraries used in perf.data. """
+
     def __init__(self):
         self.lib_name_to_id = {}
         self.lib_id_to_name = []
@@ -402,6 +406,7 @@ class LibSet(object):
 
 class Function(object):
     """ Represent a function in a shared library. """
+
     def __init__(self, lib_id, func_name, func_id, start_addr, addr_len):
         self.lib_id = lib_id
         self.func_name = func_name
@@ -414,6 +419,7 @@ class Function(object):
 
 class FunctionSet(object):
     """ Collection of functions used in perf.data. """
+
     def __init__(self):
         self.name_to_func = {}
         self.id_to_func = {}
@@ -440,6 +446,7 @@ class FunctionSet(object):
 
 class SourceFile(object):
     """ A source file containing source code hit by samples. """
+
     def __init__(self, file_id, abstract_path):
         self.file_id = file_id
         self.abstract_path = abstract_path  # path reported by addr2line
@@ -464,6 +471,7 @@ class SourceFile(object):
 
 class SourceFileSet(object):
     """ Collection of source files. """
+
     def __init__(self):
         self.path_to_source_files = {}  # map from file path to SourceFile.
 
@@ -480,7 +488,6 @@ class SourceFileSet(object):
             real_path = file_searcher.get_real_path(source_file.abstract_path)
             if real_path:
                 source_file.add_source_code(real_path)
-
 
 
 class RecordData(object):
@@ -839,6 +846,7 @@ class RecordData(object):
             file_list.append(file_data)
         return file_list
 
+
 URLS = {
     'jquery': 'https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js',
     'bootstrap4-css': 'https://stackpath.bootstrapcdn.com/bootstrap/4.1.2/css/bootstrap.min.css',
@@ -850,6 +858,7 @@ URLS = {
     'dataTable-css': 'https://cdn.datatables.net/1.10.19/css/dataTables.bootstrap4.min.css',
     'gstatic-charts': 'https://www.gstatic.com/charts/loader.js',
 }
+
 
 class ReportGenerator(object):
 
