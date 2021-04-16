@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (C) 2018 The Android Open Source Project
 #
@@ -34,6 +34,7 @@ import time
 
 from simpleperf_utils import AdbHelper, get_target_binary_path, log_warning
 
+
 def start_recording(args):
     adb = AdbHelper()
     device_arch = adb.get_device_arch()
@@ -59,6 +60,7 @@ def start_recording(args):
         adb.run(['shell', 'cat', '/data/local/tmp/simpleperf_output'])
         sys.exit(subproc.returncode)
 
+
 def stop_recording(args):
     adb = AdbHelper()
     result = adb.run(['shell', 'pidof', 'simpleperf'])
@@ -72,6 +74,7 @@ def stop_recording(args):
     adb.run(['shell', 'cat', '/data/local/tmp/simpleperf_output'])
     adb.check_run(['pull', '/data/local/tmp/perf.data', args.perf_data_path])
     print('The recording data has been collected in %s.' % args.perf_data_path)
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
@@ -94,6 +97,7 @@ def main():
     stop_parser.set_defaults(func=stop_recording)
     args = parser.parse_args()
     args.func(args)
+
 
 if __name__ == '__main__':
     main()

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (C) 2016 The Android Open Source Project
 #
@@ -42,6 +42,7 @@ def _char_pt(s):
 
 def _char_pt_to_str(char_pt):
     return bytes_to_str(char_pt)
+
 
 def _check(cond, failmsg):
     if not cond:
@@ -117,7 +118,7 @@ class TracingFieldFormatStruct(ct.Structure):
             length = 0
             while length < self.elem_count and bytes_to_str(data[self.offset + length]) != '\x00':
                 length += 1
-            return bytes_to_str(data[self.offset : self.offset + length])
+            return bytes_to_str(data[self.offset: self.offset + length])
         unpack_key = self._unpack_key_dict.get(self.elem_size)
         if unpack_key:
             if not self.is_signed:
@@ -129,7 +130,7 @@ class TracingFieldFormatStruct(ct.Structure):
             value = []
             offset = self.offset
             for _ in range(self.elem_count):
-                value.append(data[offset : offset + self.elem_size])
+                value.append(data[offset: offset + self.elem_size])
                 offset += self.elem_size
         if self.elem_count == 1:
             value = value[0]
