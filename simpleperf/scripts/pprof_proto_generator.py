@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (C) 2017 The Android Open Source Project
 #
@@ -36,6 +36,7 @@ try:
     import profile_pb2
 except ImportError:
     log_exit('google.protobuf module is missing. Please install it first.')
+
 
 def load_pprof_profile(filename):
     profile = profile_pb2.Profile()
