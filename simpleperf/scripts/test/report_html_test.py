@@ -16,6 +16,7 @@
 
 import collections
 import json
+from typing import Any, Dict, List
 
 from . test_utils import TestBase, TestHelper
 
@@ -29,10 +30,9 @@ class TestReportHtml(TestBase):
         # Calculate event_count for each thread name before aggregation.
         event_count_for_thread_name = collections.defaultdict(lambda: 0)
         # use "--min_func_percent 0" to avoid cutting any thread.
-        self.run_cmd(['report_html.py', '--min_func_percent', '0', '-i',
-                      TestHelper.testdata_path('aggregatable_perf1.data'),
-                      TestHelper.testdata_path('aggregatable_perf2.data')])
-        record_data = self._load_record_data_in_html('report.html')
+        record_data = self.get_record_data(['--min_func_percent', '0', '-i',
+                                            TestHelper.testdata_path('aggregatable_perf1.data'),
+                                            TestHelper.testdata_path('aggregatable_perf2.data')])
         event = record_data['sampleInfo'][0]
         for process in event['processes']:
             for thread in process['threads']:
@@ -40,11 +40,10 @@ class TestReportHtml(TestBase):
                 event_count_for_thread_name[thread_name] += thread['eventCount']
 
         # Check event count for each thread after aggregation.
-        self.run_cmd(['report_html.py', '--aggregate-by-thread-name',
-                      '--min_func_percent', '0', '-i',
-                      TestHelper.testdata_path('aggregatable_perf1.data'),
-                      TestHelper.testdata_path('aggregatable_perf2.data')])
-        record_data = self._load_record_data_in_html('report.html')
+        record_data = self.get_record_data(['--aggregate-by-thread-name',
+                                            '--min_func_percent', '0', '-i',
+                                            TestHelper.testdata_path('aggregatable_perf1.data'),
+                                            TestHelper.testdata_path('aggregatable_perf2.data')])
         event = record_data['sampleInfo'][0]
         hit_count = 0
         for process in event['processes']:
@@ -58,20 +57,32 @@ class TestReportHtml(TestBase):
     def test_no_empty_process(self):
         """ Test not showing a process having no threads. """
         perf_data = TestHelper.testdata_path('two_process_perf.data')
-        self.run_cmd(['report_html.py', '-i', perf_data])
-        record_data = self._load_record_data_in_html('report.html')
+        record_data = self.get_record_data(['-i', perf_data])
         processes = record_data['sampleInfo'][0]['processes']
         self.assertEqual(len(processes), 2)
 
         # One process is removed because all its threads are removed for not
         # reaching the min_func_percent limit.
-        self.run_cmd(['report_html.py', '-i', perf_data, '--min_func_percent', '20'])
-        record_data = self._load_record_data_in_html('report.html')
+        record_data = self.get_record_data(['-i', perf_data, '--min_func_percent', '20'])
         processes = record_data['sampleInfo'][0]['processes']
         self.assertEqual(len(processes), 1)
 
-    def _load_record_data_in_html(self, html_file):
-        with open(html_file, 'r') as fh:
+    def test_proguard_mapping_file(self):
+        """ Test --proguard-mapping-file option. """
+        testdata_file = TestHelper.testdata_path('perf_need_proguard_mapping.data')
+        proguard_mapping_file = TestHelper.testdata_path('proguard_mapping.txt')
+        original_methodname = 'androidx.fragment.app.FragmentActivity.startActivityForResult'
+        # Can't show original method name without proguard mapping file.
+        record_data = self.get_record_data(['-i', testdata_file])
+        self.assertNotIn(original_methodname, json.dumps(record_data))
+        # Show original method name with proguard mapping file.
+        record_data = self.get_record_data(
+            ['-i', testdata_file, '--proguard-mapping-file', proguard_mapping_file])
+        self.assertIn(original_methodname, json.dumps(record_data))
+
+    def get_record_data(self, options: List[str]) -> Dict[str, Any]:
+        self.run_cmd(['report_html.py'] + options)
+        with open('report.html', 'r') as fh:
             data = fh.read()
         start_str = 'type="application/json"'
         end_str = '</script>'

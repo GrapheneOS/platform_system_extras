@@ -290,6 +290,8 @@ class PprofProfileGenerator(object):
 
         if self.config.get('show_art_frames'):
             self.lib.ShowArtFrames()
+        for file_path in self.config['proguard_mapping_file'] or []:
+            self.lib.AddProguardMappingFile(file_path)
 
         # Process all samples in perf.data, aggregate samples.
         while True:
@@ -614,6 +616,9 @@ def main():
     parser.add_argument('--ndk_path', type=extant_dir, help='Set the path of a ndk release.')
     parser.add_argument('--show_art_frames', action='store_true',
                         help='Show frames of internal methods in the ART Java interpreter.')
+    parser.add_argument(
+        '--proguard-mapping-file', nargs='+',
+        help='Add proguard mapping file to de-obfuscate symbols')
 
     args = parser.parse_args()
     if args.show:
@@ -632,6 +637,7 @@ def main():
     config['ndk_path'] = args.ndk_path
     config['show_art_frames'] = args.show_art_frames
     config['max_chain_length'] = args.max_chain_length
+    config['proguard_mapping_file'] = args.proguard_mapping_file
     generator = PprofProfileGenerator(config)
     for record_file in args.record_file:
         generator.load_record_file(record_file)
