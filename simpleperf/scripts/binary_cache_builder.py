@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (C) 2016 The Android Open Source Project
 #
@@ -29,11 +29,14 @@ from simpleperf_report_lib import ReportLib
 from simpleperf_utils import (AdbHelper, extant_dir, extant_file, flatten_arg_list, log_info,
                               log_warning, ReadElf, set_log_level)
 
+
 def is_jit_symfile(dso_name):
     return dso_name.split('/')[-1].startswith('TemporaryFile')
 
+
 class BinaryCacheBuilder(object):
     """Collect all binaries needed by perf.data in binary_cache."""
+
     def __init__(self, ndk_path, disable_adb_root):
         self.adb = AdbHelper(enable_switch_to_root=not disable_adb_root)
         self.readelf = ReadElf(ndk_path)
@@ -42,13 +45,11 @@ class BinaryCacheBuilder(object):
             os.makedirs(self.binary_cache_dir)
         self.binaries = {}
 
-
     def build_binary_cache(self, perf_data_path, symfs_dirs):
         self._collect_used_binaries(perf_data_path)
         self.copy_binaries_from_symfs_dirs(symfs_dirs)
         self.pull_binaries_from_device()
         self._pull_kernel_symbols()
-
 
     def _collect_used_binaries(self, perf_data_path):
         """read perf.data, collect all used binaries and their build id (if available)."""
@@ -74,7 +75,6 @@ class BinaryCacheBuilder(object):
                         continue
                     binaries[dso_name] = lib.GetBuildIdForPath(dso_name)
         self.binaries = binaries
-
 
     def copy_binaries_from_symfs_dirs(self, symfs_dirs):
         """collect all files in symfs_dirs."""
@@ -113,7 +113,6 @@ class BinaryCacheBuilder(object):
                                                        expected_build_id, binary)
                             break
 
-
     def _copy_to_binary_cache(self, from_path, expected_build_id, target_file):
         if target_file[0] == '/':
             target_file = target_file[1:]
@@ -128,7 +127,6 @@ class BinaryCacheBuilder(object):
         log_info('copy to binary_cache: %s to %s' % (from_path, target_file))
         shutil.copy(from_path, target_file)
 
-
     def _need_to_copy(self, source_file, target_file, expected_build_id):
         if not os.path.isfile(target_file):
             return True
@@ -136,7 +134,6 @@ class BinaryCacheBuilder(object):
             return True
         return self._get_file_stripped_level(source_file) < self._get_file_stripped_level(
             target_file)
-
 
     def _get_file_stripped_level(self, file_path):
         """Return stripped level of an ELF file. Larger value means more stripped."""
@@ -146,7 +143,6 @@ class BinaryCacheBuilder(object):
         if '.symtab' in sections:
             return 1
         return 2
-
 
     def pull_binaries_from_device(self):
         """pull binaries needed in perf.data to binary_cache."""
@@ -158,7 +154,6 @@ class BinaryCacheBuilder(object):
             binary_cache_file = binary[1:].replace('/', os.sep)
             binary_cache_file = os.path.join(self.binary_cache_dir, binary_cache_file)
             self._check_and_pull_binary(binary, build_id, binary_cache_file)
-
 
     def _check_and_pull_binary(self, binary, expected_build_id, binary_cache_file):
         """If the binary_cache_file exists and has the expected_build_id, there
@@ -182,11 +177,9 @@ class BinaryCacheBuilder(object):
         else:
             log_info('use current file in binary_cache: %s' % binary_cache_file)
 
-
     def _read_build_id(self, file_path):
         """read build id of a binary on host."""
         return self.readelf.get_build_id(file_path)
-
 
     def _pull_file_from_device(self, device_path, host_path):
         if self.adb.run(['pull', device_path, host_path]):
@@ -200,7 +193,6 @@ class BinaryCacheBuilder(object):
             return True
         log_warning('failed to pull %s from device' % device_path)
         return False
-
 
     def _pull_kernel_symbols(self):
         file_path = os.path.join(self.binary_cache_dir, 'kallsyms')
