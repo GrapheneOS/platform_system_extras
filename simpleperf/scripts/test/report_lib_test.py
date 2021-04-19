@@ -194,3 +194,9 @@ class TestReportLib(TestBase):
             else:
                 self.assertIsNone(tracing_data)
         self.assertTrue(has_dynamic_field)
+
+    def test_add_proguard_mapping_file(self):
+        with self.assertRaises(ValueError):
+            self.report_lib.AddProguardMappingFile('non_exist_file')
+        proguard_mapping_file = TestHelper.testdata_path('proguard_mapping.txt')
+        self.report_lib.AddProguardMappingFile(proguard_mapping_file)
