@@ -21,6 +21,7 @@ import datetime
 import json
 import os
 import sys
+from typing import List, Optional
 
 from simpleperf_report_lib import ReportLib
 from simpleperf_utils import (Addr2Nearestline, get_script_dir, log_exit, log_info, Objdump,
@@ -570,10 +571,12 @@ class RecordData(object):
                 }
     """
 
-    def __init__(self, binary_cache_path, ndk_path, build_addr_hit_map):
+    def __init__(self, binary_cache_path, ndk_path, build_addr_hit_map,
+                 proguard_mapping_files: Optional[List[str]] = None):
         self.binary_cache_path = binary_cache_path
         self.ndk_path = ndk_path
         self.build_addr_hit_map = build_addr_hit_map
+        self.proguard_mapping_files = proguard_mapping_files
         self.meta_info = None
         self.cmdline = None
         self.arch = None
@@ -594,6 +597,8 @@ class RecordData(object):
             lib.ShowArtFrames()
         if self.binary_cache_path:
             lib.SetSymfs(self.binary_cache_path)
+        for file_path in self.proguard_mapping_files or []:
+            lib.AddProguardMappingFile(file_path)
         self.meta_info = lib.MetaInfo()
         self.cmdline = lib.GetRecordCmd()
         self.arch = lib.GetArch()
@@ -929,6 +934,9 @@ def main():
     parser.add_argument('--aggregate-by-thread-name', action='store_true', help="""aggregate
                         samples by thread name instead of thread id. This is useful for
                         showing multiple perf.data generated for the same app.""")
+    parser.add_argument(
+        '--proguard-mapping-file', nargs='+',
+        help='Add proguard mapping file to de-obfuscate symbols')
     args = parser.parse_args()
 
     # 1. Process args.
@@ -947,7 +955,8 @@ def main():
     ndk_path = None if not args.ndk_path else args.ndk_path[0]
 
     # 2. Produce record data.
-    record_data = RecordData(binary_cache_path, ndk_path, build_addr_hit_map)
+    record_data = RecordData(binary_cache_path, ndk_path,
+                             build_addr_hit_map, args.proguard_mapping_file)
     for record_file in args.record_file:
         record_data.load_record_file(record_file, args.show_art_frames)
     if args.aggregate_by_thread_name:
