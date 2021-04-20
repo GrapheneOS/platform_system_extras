@@ -22,7 +22,10 @@
 
 import collections
 import ctypes as ct
+from pathlib import Path
 import struct
+from typing import Union
+
 from simpleperf_utils import bytes_to_str, get_host_binary_path, is_windows, str_to_bytes
 
 
@@ -252,6 +255,8 @@ class ReportLib(object):
         self._ShowIpForUnknownSymbolFunc = self._lib.ShowIpForUnknownSymbol
         self._ShowArtFramesFunc = self._lib.ShowArtFrames
         self._MergeJavaMethodsFunc = self._lib.MergeJavaMethods
+        self._AddProguardMappingFileFunc = self._lib.AddProguardMappingFile
+        self._AddProguardMappingFileFunc.restype = ct.c_bool
         self._GetNextSampleFunc = self._lib.GetNextSample
         self._GetNextSampleFunc.restype = ct.POINTER(SampleStruct)
         self._GetEventOfCurrentSampleFunc = self._lib.GetEventOfCurrentSample
@@ -316,6 +321,11 @@ class ReportLib(object):
             Java methods are merged by default.
         """
         self._MergeJavaMethodsFunc(self.getInstance(), merge)
+
+    def AddProguardMappingFile(self, mapping_file: Union[str, Path]):
+        """ Add proguard mapping.txt to de-obfuscate method names. """
+        if not self._AddProguardMappingFileFunc(self.getInstance(), _char_pt(str(mapping_file))):
+            raise ValueError(f'failed to add proguard mapping file: {mapping_file}')
 
     def SetKallsymsFile(self, kallsym_file):
         """ Set the file path to a copy of the /proc/kallsyms file (for off device decoding) """
