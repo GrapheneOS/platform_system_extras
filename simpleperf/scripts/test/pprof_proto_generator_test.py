@@ -99,3 +99,14 @@ class TestPprofProtoGenerator(TestBase):
         # pylint: disable=no-member
         self.assertGreater(len(profile_both.sample), len(profile1.sample))
         self.assertGreater(len(profile_both.sample), len(profile2.sample))
+
+    def test_proguard_mapping_file(self):
+        """ Test --proguard-mapping-file option. """
+        testdata_file = 'perf_need_proguard_mapping.data'
+        proguard_mapping_file = TestHelper.testdata_path('proguard_mapping.txt')
+        original_methodname = 'androidx.fragment.app.FragmentActivity.startActivityForResult'
+        # Can't show original method name without proguard mapping file.
+        self.assertNotIn(original_methodname, self.run_generator(testdata_file=testdata_file))
+        # Show original method name with proguard mapping file.
+        self.assertIn(original_methodname, self.run_generator(
+            ['--proguard-mapping-file', proguard_mapping_file], testdata_file))
