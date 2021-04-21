@@ -72,7 +72,6 @@ cc_test_host {
         "libcrypto_utils",
         "libext4_utils",
         "libsquashfs_utils",
-        "libgtest_prod",
         "libcrypto",
         "libcutils",
         "liblog",
