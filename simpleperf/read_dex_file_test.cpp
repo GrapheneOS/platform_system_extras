@@ -30,8 +30,7 @@ using namespace simpleperf;
 TEST(read_dex_file, smoke) {
   std::vector<Symbol> symbols;
   auto symbol_callback = [&](DexFileSymbol* symbol) {
-    symbols.emplace_back(std::string_view(symbol->name, symbol->name_size), symbol->addr,
-                         symbol->size);
+    symbols.emplace_back(symbol->name, symbol->addr, symbol->size);
   };
   ASSERT_TRUE(ReadSymbolsFromDexFile(GetTestData("base.vdex"), {0x28}, symbol_callback));
   ASSERT_EQ(12435u, symbols.size());
