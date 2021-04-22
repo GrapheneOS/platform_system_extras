@@ -27,7 +27,7 @@ use anyhow::{Context, Result};
 use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProfCollectd::{
     self, BnProfCollectd,
 };
-use profcollectd_aidl_interface::binder;
+use profcollectd_aidl_interface::binder::{self, BinderFeatures};
 use service::ProfcollectdBinderService;
 
 const PROFCOLLECTD_SERVICE_NAME: &str = "profcollectd";
@@ -40,7 +40,8 @@ pub fn init_service(schedule_now: bool) -> Result<()> {
     let profcollect_binder_service = ProfcollectdBinderService::new()?;
     binder::add_service(
         &PROFCOLLECTD_SERVICE_NAME,
-        BnProfCollectd::new_binder(profcollect_binder_service).as_binder(),
+        BnProfCollectd::new_binder(profcollect_binder_service, BinderFeatures::default())
+            .as_binder(),
     )
     .context("Failed to register service.")?;
 
