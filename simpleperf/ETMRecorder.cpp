@@ -159,14 +159,25 @@ bool ETMRecorder::ReadEtmInfo() {
 }
 
 bool ETMRecorder::FindSinkConfig() {
+  bool has_etr = false;
+  bool has_trbe = false;
   for (const auto& name : GetEntriesInDir(ETM_DIR + "sinks")) {
-    if (name.find("etr") != -1) {
+    if (!has_etr && name.find("etr") != -1) {
       if (ReadValueInEtmDir("sinks/" + name, &sink_config_)) {
-        return true;
+        has_etr = true;
       }
     }
+    if (name.find("trbe") != -1) {
+      has_trbe = true;
+      break;
+    }
   }
-  return false;
+  if (has_trbe) {
+    // When TRBE is present, let the driver choose the most suitable
+    // configuration.
+    sink_config_ = 0;
+  }
+  return has_trbe || has_etr;
 }
 
 void ETMRecorder::SetEtmPerfEventAttr(perf_event_attr* attr) {
