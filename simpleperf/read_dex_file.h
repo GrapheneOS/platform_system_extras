@@ -28,17 +28,11 @@
 
 namespace simpleperf {
 
-#ifdef NO_LIBDEXFILE_SUPPORT
 struct DexFileSymbol {
-  size_t sizeof_struct;
-  uint32_t addr;
-  uint32_t size;
-  const char* name;
-  size_t name_size;
+  std::string_view name;
+  uint64_t addr;
+  uint64_t size;
 };
-#else
-using DexFileSymbol = ExtDexFileMethodInfo;
-#endif
 
 bool ReadSymbolsFromDexFileInMemory(void* addr, uint64_t size,
                                     const std::vector<uint64_t>& dex_file_offsets,

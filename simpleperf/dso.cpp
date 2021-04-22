@@ -469,9 +469,8 @@ class DexFileDso : public Dso {
     std::vector<Symbol> symbols;
     auto tuple = SplitUrlInApk(debug_file_path_);
     bool status = false;
-    auto symbol_callback = [&](DexFileSymbol* dex_symbol) {
-      symbols.emplace_back(std::string_view(dex_symbol->name, dex_symbol->name_size),
-                           dex_symbol->addr, dex_symbol->size);
+    auto symbol_callback = [&](DexFileSymbol* symbol) {
+      symbols.emplace_back(symbol->name, symbol->addr, symbol->size);
     };
     if (std::get<0>(tuple)) {
       std::unique_ptr<ArchiveHelper> ahelper = ArchiveHelper::CreateInstance(std::get<1>(tuple));

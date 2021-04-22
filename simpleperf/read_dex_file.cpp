@@ -25,8 +25,11 @@
 #include <vector>
 
 #include <android-base/logging.h>
+#include <android-base/mapped_file.h>
 #include <android-base/unique_fd.h>
 #include <art_api/dex_file_support.h>
+
+#include "utils.h"
 
 namespace simpleperf {
 
@@ -34,17 +37,20 @@ static bool ReadSymbols(
     const std::vector<uint64_t>& dex_file_offsets,
     const std::function<std::unique_ptr<art_api::dex::DexFile>(uint64_t offset)>& open_file_cb,
     const std::function<void(DexFileSymbol*)>& symbol_cb) {
-  for (uint64_t offset : dex_file_offsets) {
-    std::unique_ptr<art_api::dex::DexFile> dex_file = open_file_cb(offset);
+  for (uint64_t dex_offset : dex_file_offsets) {
+    std::unique_ptr<art_api::dex::DexFile> dex_file = open_file_cb(dex_offset);
     if (dex_file == nullptr) {
       return false;
     }
 
-    auto callback = [&](DexFileSymbol* symbol) {
-      symbol->addr += offset;
-      symbol_cb(symbol);
+    auto callback = [&](const art_api::dex::DexFile::Method& method) {
+      size_t name_size, code_size;
+      const char* name = method.GetQualifiedName(/*with_params=*/false, &name_size);
+      size_t offset = method.GetCodeOffset(&code_size);
+      DexFileSymbol symbol{std::string_view(name, name_size), dex_offset + offset, code_size};
+      symbol_cb(&symbol);
     };
-    dex_file->GetAllMethodInfos(callback);
+    dex_file->ForEachMethod(callback);
   }
 
   return true;
@@ -61,11 +67,11 @@ bool ReadSymbolsFromDexFileInMemory(void* addr, uint64_t size,
           return nullptr;
         }
         uint8_t* file_addr = static_cast<uint8_t*>(addr) + offset;
-        std::string error_msg;
-        std::unique_ptr<art_api::dex::DexFile> dex_file =
-            art_api::dex::DexFile::OpenFromMemory(file_addr, &max_file_size, "", &error_msg);
+        std::unique_ptr<art_api::dex::DexFile> dex_file;
+        art_api::dex::DexFile::Error error_msg =
+          art_api::dex::DexFile::Create(file_addr, max_file_size, nullptr, "", &dex_file);
         if (dex_file == nullptr) {
-          LOG(WARNING) << "Failed to read dex file symbols: " << error_msg;
+          LOG(WARNING) << "Failed to read dex file symbols: " << error_msg.ToString();
           return nullptr;
         }
         return dex_file;
@@ -80,20 +86,16 @@ bool ReadSymbolsFromDexFile(const std::string& file_path,
   if (fd == -1) {
     return false;
   }
-  return ReadSymbols(
-      dex_file_offsets,
-      [&](uint64_t offset) -> std::unique_ptr<art_api::dex::DexFile> {
-        std::string error_msg;
-        std::unique_ptr<art_api::dex::DexFile> dex_file =
-            art_api::dex::DexFile::OpenFromFd(fd, offset, file_path, &error_msg);
-        if (dex_file == nullptr) {
-          LOG(WARNING) << "Failed to read dex file symbols from '" << file_path
-                       << "': " << error_msg;
-          return nullptr;
-        }
-        return dex_file;
-      },
-      symbol_callback);
+  size_t file_size = GetFileSize(file_path);
+  if (file_size == 0) {
+    return false;
+  }
+  std::unique_ptr<android::base::MappedFile> map;
+  map = android::base::MappedFile::FromFd(fd, 0, file_size, PROT_READ);
+  if (map == nullptr) {
+    return false;
+  }
+  return ReadSymbolsFromDexFileInMemory(map->data(), file_size, dex_file_offsets, symbol_callback);
 }
 
 }  // namespace simpleperf
