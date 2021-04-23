@@ -148,3 +148,13 @@ TEST(cmd_inject, inject_kernel_data) {
   ASSERT_TRUE(android::base::ReadFileToString(tmpfile2.path, &output));
   ASSERT_EQ(output, autofdo_output);
 }
+
+TEST(cmd_inject, unformatted_trace) {
+  std::string data;
+  std::string perf_with_unformatted_trace =
+      GetTestData(std::string("etm") + OS_PATH_SEPARATOR + "perf_with_unformatted_trace.data");
+  ASSERT_TRUE(RunInjectCmd({"-i", perf_with_unformatted_trace}, &data));
+  // Test that we can find instr range in etm_test_loop binary.
+  ASSERT_NE(data.find("etm_test_loop"), std::string::npos);
+  CheckMatchingExpectedData(data);
+}

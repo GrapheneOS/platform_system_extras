@@ -101,7 +101,13 @@ class ETMV4IDecodeTree {
     frame_decoder_.getTrcRawFrameAttachPt()->replace_first(&frame_printer);
   }
 
-  ITrcDataIn& GetDataIn() { return frame_decoder_; }
+  ITrcDataIn& GetFormattedDataIn() { return frame_decoder_; }
+
+  ITrcDataIn& GetUnformattedDataIn(uint8_t trace_id) {
+    auto& decoder = packet_decoders_[trace_id];
+    CHECK(decoder);
+    return *decoder;
+  }
 
   void ProcessError(const ocsdError& error) {
     if (error.getErrorCode() == OCSD_ERR_INVALID_PCKT_HDR) {
@@ -648,6 +654,7 @@ class ETMDecoderImpl : public ETMDecoder {
       cfg.arch_ver = ARCH_V8;
       cfg.core_prof = profile_CortexA;
       uint8_t trace_id = cfg.reg_traceidr & 0x7f;
+      trace_ids_.emplace(etm4.cpu, trace_id);
       configs_.emplace(trace_id, &cfg);
       decode_tree_.CreateDecoder(configs_[trace_id]);
       auto result = packet_sinks_.emplace(trace_id, trace_id);
@@ -683,14 +690,17 @@ class ETMDecoderImpl : public ETMDecoder {
     InstallPacketCallback(branch_list_parser_.get());
   }
 
-  bool ProcessData(const uint8_t* data, size_t size) override {
+  bool ProcessData(const uint8_t* data, size_t size, bool formatted, uint32_t cpu) override {
     // Reset decoders before processing each data block. Because:
     // 1. Data blocks are not continuous. So decoders shouldn't keep previous states when
     //    processing a new block.
     // 2. The beginning part of a data block may be truncated if kernel buffer is temporarily full.
     //    So we may see garbage data, which can cause decoding errors if we don't reset decoders.
-    auto resp =
-        decode_tree_.GetDataIn().TraceDataIn(OCSD_OP_RESET, data_index_, 0, nullptr, nullptr);
+    LOG(DEBUG) << "Processing " << (!formatted ? "un" : "") << "formatted data with size " << size;
+    auto& decoder = formatted ? decode_tree_.GetFormattedDataIn()
+                              : decode_tree_.GetUnformattedDataIn(trace_ids_[cpu]);
+
+    auto resp = decoder.TraceDataIn(OCSD_OP_RESET, data_index_, 0, nullptr, nullptr);
     if (IsRespError(resp)) {
       LOG(ERROR) << "failed to reset decoder, resp " << resp;
       return false;
@@ -698,13 +708,11 @@ class ETMDecoderImpl : public ETMDecoder {
     size_t left_size = size;
     while (left_size > 0) {
       uint32_t processed;
-      auto resp = decode_tree_.GetDataIn().TraceDataIn(OCSD_OP_DATA, data_index_, left_size, data,
-                                                       &processed);
+      auto resp = decoder.TraceDataIn(OCSD_OP_DATA, data_index_, left_size, data, &processed);
       if (IsRespError(resp)) {
         // A decoding error shouldn't ruin all data. Reset decoders to recover from it.
         LOG(INFO) << "reset etm decoders for seeing a decode failure, resp " << resp;
-        decode_tree_.GetDataIn().TraceDataIn(OCSD_OP_RESET, data_index_ + processed, 0, nullptr,
-                                             nullptr);
+        decoder.TraceDataIn(OCSD_OP_RESET, data_index_ + processed, 0, nullptr, nullptr);
       }
       data += processed;
       left_size -= processed;
@@ -758,6 +766,8 @@ class ETMDecoderImpl : public ETMDecoder {
   ThreadTree& thread_tree_;
   // handle to build OpenCSD decoder
   ETMV4IDecodeTree decode_tree_;
+  // map from cpu to trace id
+  std::unordered_map<uint64_t, uint8_t> trace_ids_;
   // map from the trace id of an etm device to its config
   std::unordered_map<uint8_t, EtmV4Config> configs_;
   // map from the trace id of an etm device to its PacketSink
