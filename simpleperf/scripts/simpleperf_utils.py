@@ -18,11 +18,11 @@
 """utils.py: export utility functions.
 """
 
-from __future__ import print_function
 import argparse
 import logging
 import os
 import os.path
+from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -250,9 +250,21 @@ class ToolFinder:
         tool_info = cls.EXPECTED_TOOLS.get(toolname)
         if not tool_info:
             return None
+
         is_binutils = tool_info['is_binutils']
         test_option = tool_info.get('test_option', '--help')
         platform = get_platform()
+
+        # Find tool in clang prebuilts in Android platform.
+        if toolname.startswith('llvm-') and platform == 'linux' and get_script_dir().endswith(
+                'system/extras/simpleperf/scripts'):
+            path = str(
+                Path(get_script_dir()).parents[3] / 'prebuilts' / 'clang' / 'host' / 'linux-x86' /
+                'llvm-binutils-stable' / toolname)
+            if is_executable_available(path, test_option):
+                return path
+
+        # Find tool in NDK or SDK.
         path_in_ndk = None
         path_in_sdk = None
         if is_binutils:
