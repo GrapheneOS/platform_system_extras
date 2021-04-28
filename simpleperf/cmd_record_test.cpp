@@ -752,7 +752,7 @@ static void TestRecordingApps(const std::string& app_name) {
   // Bring the app to foreground to avoid no samples.
   ASSERT_TRUE(Workload::RunCmd({"am", "start", app_name + "/.MainActivity"}));
   TemporaryFile tmpfile;
-  ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "--app", app_name, "-g", "--duration", "3"}));
+  ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "--app", app_name, "-g", "--duration", "10"}));
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
   ASSERT_TRUE(reader);
   // Check if having samples.
