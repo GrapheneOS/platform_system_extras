@@ -36,6 +36,14 @@ static void llvm_signal_handler(__unused int signum) {
   }
 }
 
+static void writeFileWithoutReturn() {
+  __llvm_profile_write_file();
+}
+
+static __attribute__((constructor)) void register_quick_exit_handler(void) {
+  at_quick_exit(writeFileWithoutReturn);
+}
+
 __attribute__((weak)) int init_profile_extras_once = 0;
 
 // Initialize libprofile-extras:
