@@ -28,6 +28,7 @@
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
 
+#include "environment.h"
 #include "utils.h"
 
 namespace simpleperf {
@@ -139,10 +140,14 @@ bool ETMRecorder::CheckEtmSupport() {
 }
 
 bool ETMRecorder::ReadEtmInfo() {
-  int cpu_count = get_nprocs_conf();
+  std::vector<int> online_cpus = GetOnlineCpus();
   for (const auto& name : GetEntriesInDir(ETM_DIR)) {
     int cpu;
     if (sscanf(name.c_str(), "cpu%d", &cpu) == 1) {
+      // We can't read ETM registers for offline cpus. So skip them.
+      if (std::find(online_cpus.begin(), online_cpus.end(), cpu) == online_cpus.end()) {
+        continue;
+      }
       ETMPerCpu& cpu_info = etm_info_[cpu];
       bool success = ReadValueInEtmDir(name + "/trcidr/trcidr0", &cpu_info.trcidr0) &&
                      ReadValueInEtmDir(name + "/trcidr/trcidr1", &cpu_info.trcidr1) &&
@@ -155,7 +160,7 @@ bool ETMRecorder::ReadEtmInfo() {
       }
     }
   }
-  return (etm_info_.size() == cpu_count);
+  return (etm_info_.size() == online_cpus.size());
 }
 
 bool ETMRecorder::FindSinkConfig() {
