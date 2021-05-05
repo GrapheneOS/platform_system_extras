@@ -2,7 +2,11 @@ LIBNATIVEHELPER_S { # introduced=S
   global:
     # NDK API for libnativehelper.
     AFileDescriptor_create;
+    AFileDescriptor_getFd;
+    AFileDescriptor_setFd;
+    # AFileDescriptor_getFD is deprecated pending removal (b/185256332).
     AFileDescriptor_getFD;
+    # AFileDescriptor_setFD is deprecated pending removal (b/185256332).
     AFileDescriptor_setFD;
 
     # JNI Invocation methods available to platform and apps.
