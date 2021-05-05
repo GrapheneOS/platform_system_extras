@@ -215,8 +215,9 @@ static void DumpUnwindingResult(const UnwindingResult& result, FILE* fp) {
 
 class SampleUnwinder : public RecordFileProcessor {
  public:
-  SampleUnwinder(const std::string& output_filename, uint64_t sample_time)
-      : RecordFileProcessor(output_filename, false), sample_time_(sample_time) {}
+  SampleUnwinder(const std::string& output_filename,
+                 const std::unordered_set<uint64_t>& sample_times)
+      : RecordFileProcessor(output_filename, false), sample_times_(sample_times) {}
 
  protected:
   bool CheckRecordCmd(const std::string& record_cmd) override {
@@ -251,7 +252,7 @@ class SampleUnwinder : public RecordFileProcessor {
     if (r->type() == SIMPLE_PERF_RECORD_UNWINDING_RESULT) {
       last_unwinding_result_.reset(static_cast<UnwindingResultRecord*>(r.release()));
     } else if (r->type() == PERF_RECORD_SAMPLE) {
-      if (sample_time_ == 0 || sample_time_ == r->Timestamp()) {
+      if (sample_times_.empty() || sample_times_.count(r->Timestamp())) {
         auto& sr = *static_cast<SampleRecord*>(r.get());
         const PerfSampleStackUserType* stack = &sr.stack_user_data;
         const PerfSampleRegsUserType* regs = &sr.regs_user_data;
@@ -331,7 +332,7 @@ class SampleUnwinder : public RecordFileProcessor {
   }
 
  private:
-  const uint64_t sample_time_;
+  const std::unordered_set<uint64_t> sample_times_;
   std::unique_ptr<Dso> recording_file_dso_;
   std::vector<std::unique_ptr<MapEntry>> map_storage_;
   UnwindingStat stat_;
@@ -340,21 +341,15 @@ class SampleUnwinder : public RecordFileProcessor {
 
 class TestFileGenerator : public RecordFileProcessor {
  public:
-  TestFileGenerator(const std::string& output_filename, uint64_t sample_time,
+  TestFileGenerator(const std::string& output_filename,
+                    const std::unordered_set<uint64_t>& sample_times,
                     const std::unordered_set<std::string>& kept_binaries)
       : RecordFileProcessor(output_filename, true),
-        sample_time_(sample_time),
+        sample_times_(sample_times),
         kept_binaries_(kept_binaries) {}
 
  protected:
-  bool CheckRecordCmd(const std::string& record_cmd) override {
-    if (record_cmd.find("--keep-failed-unwinding-debug-info") == std::string::npos) {
-      LOG(ERROR) << "file isn't record with --keep-failed-unwinding-debug-info: "
-                 << record_filename_;
-      return false;
-    }
-    return true;
-  }
+  bool CheckRecordCmd(const std::string&) override { return true; }
 
   bool Process() override {
     writer_.reset(new RecordFileWriter(output_filename_, out_fp_, false));
@@ -372,9 +367,9 @@ class TestFileGenerator : public RecordFileProcessor {
     thread_tree_.Update(*r);
     bool keep_record = false;
     if (r->type() == SIMPLE_PERF_RECORD_UNWINDING_RESULT) {
-      keep_record = (sample_time_ == r->Timestamp());
+      keep_record = (sample_times_.count(r->Timestamp()) > 0);
     } else if (r->type() == PERF_RECORD_SAMPLE) {
-      keep_record = (sample_time_ == r->Timestamp());
+      keep_record = (sample_times_.count(r->Timestamp()) > 0);
       if (keep_record) {
         // Dump maps needed to unwind this sample.
         if (!WriteMapsForSample(*static_cast<SampleRecord*>(r.get()))) {
@@ -445,6 +440,17 @@ class TestFileGenerator : public RecordFileProcessor {
             return false;
           }
         }
+      } else if (feat_type == PerfFileFormat::FEAT_BUILD_ID) {
+        std::vector<BuildIdRecord> build_ids = reader_->ReadBuildIdFeature();
+        std::vector<BuildIdRecord> write_build_ids;
+        for (auto& build_id : build_ids) {
+          if (kept_binaries_.count(build_id.filename)) {
+            write_build_ids.emplace_back(std::move(build_id));
+          }
+        }
+        if (!writer_->WriteBuildIdFeature(write_build_ids)) {
+          return false;
+        }
       } else if (feature_types_to_copy.count(feat_type)) {
         if (!reader_->ReadFeatureSection(feat_type, &buffer) ||
             !writer_->WriteFeature(feat_type, buffer.data(), buffer.size())) {
@@ -471,7 +477,7 @@ class TestFileGenerator : public RecordFileProcessor {
   }
 
  private:
-  const uint64_t sample_time_;
+  const std::unordered_set<uint64_t> sample_times_;
   const std::unordered_set<std::string> kept_binaries_;
   std::unique_ptr<RecordFileWriter> writer_;
 };
@@ -589,9 +595,9 @@ class DebugUnwindCommand : public Command {
 "-i <file>                 Input recording file. Default is perf.data.\n"
 "-o <file>                 Output file. Default is stdout.\n"
 "--keep-binaries-in-test-file  binary1,binary2...   Keep binaries in test file.\n"
-"--sample-time <time>      Only process the sample recorded at the selected time.\n"
-"--symfs <dir>             Look for files with symbols relative to this directory.\n"
-"--unwind-sample           Unwind samples.\n"
+"--sample-time time1,time2...      Only process samples recorded at selected times.\n"
+"--symfs <dir>                     Look for files with symbols relative to this directory.\n"
+"--unwind-sample                   Unwind samples.\n"
 "\n"
 "Examples:\n"
 "1. Unwind a sample.\n"
@@ -600,7 +606,6 @@ class DebugUnwindCommand : public Command {
 "2. Generate a test file.\n"
 "$ simpleperf debug-unwind -i perf.data --generate-test-file -o test.data --sample-time \\\n"
 "     626970493946976 --keep-binaries-in-test-file perf.data_jit_app_cache:255984-259968\n"
-"  perf.data should be generated with \"--keep-failed-unwinding-debug-info\".\n"
 "3. Generate a failed unwinding report.\n"
 "$ simpleperf debug-unwind -i perf.data --generate-report -o report.txt\n"
 "  perf.data should be generated with \"--keep-failed-unwinding-debug-info\" or \\\n"
@@ -620,7 +625,7 @@ class DebugUnwindCommand : public Command {
   bool generate_report_ = false;
   bool generate_test_file_;
   std::unordered_set<std::string> kept_binaries_in_test_file_;
-  uint64_t sample_time_ = 0;
+  std::unordered_set<uint64_t> sample_times_;
 };
 
 bool DebugUnwindCommand::Run(const std::vector<std::string>& args) {
@@ -631,11 +636,11 @@ bool DebugUnwindCommand::Run(const std::vector<std::string>& args) {
 
   // 2. Distribute sub commands.
   if (unwind_sample_) {
-    SampleUnwinder sample_unwinder(output_filename_, sample_time_);
+    SampleUnwinder sample_unwinder(output_filename_, sample_times_);
     return sample_unwinder.ProcessFile(input_filename_);
   }
   if (generate_test_file_) {
-    TestFileGenerator test_file_generator(output_filename_, sample_time_,
+    TestFileGenerator test_file_generator(output_filename_, sample_times_,
                                           kept_binaries_in_test_file_);
     return test_file_generator.ProcessFile(input_filename_);
   }
@@ -653,7 +658,7 @@ bool DebugUnwindCommand::ParseOptions(const std::vector<std::string>& args) {
       {"-i", {OptionValueType::STRING, OptionType::SINGLE}},
       {"--keep-binaries-in-test-file", {OptionValueType::STRING, OptionType::MULTIPLE}},
       {"-o", {OptionValueType::STRING, OptionType::SINGLE}},
-      {"--sample-time", {OptionValueType::UINT, OptionType::SINGLE}},
+      {"--sample-time", {OptionValueType::STRING, OptionType::MULTIPLE}},
       {"--symfs", {OptionValueType::STRING, OptionType::MULTIPLE}},
       {"--unwind-sample", {OptionValueType::NONE, OptionType::SINGLE}},
   };
@@ -670,7 +675,13 @@ bool DebugUnwindCommand::ParseOptions(const std::vector<std::string>& args) {
     kept_binaries_in_test_file_.insert(binaries.begin(), binaries.end());
   }
   options.PullStringValue("-o", &output_filename_);
-  options.PullUintValue("--sample-time", &sample_time_);
+  for (auto& value : options.PullValues("--sample-time")) {
+    auto times = ParseUintVector<uint64_t>(*value.str_value);
+    if (!times) {
+      return false;
+    }
+    sample_times_.insert(times.value().begin(), times.value().end());
+  }
   if (auto value = options.PullValue("--symfs"); value) {
     if (!Dso::SetSymFsDir(*value->str_value)) {
       return false;
@@ -684,7 +695,7 @@ bool DebugUnwindCommand::ParseOptions(const std::vector<std::string>& args) {
       LOG(ERROR) << "no output path for generated test file";
       return false;
     }
-    if (sample_time_ == 0) {
+    if (sample_times_.empty()) {
       LOG(ERROR) << "no samples are selected via --sample-time";
       return false;
     }
