@@ -24,6 +24,8 @@
 #include <llvm/Support/MemoryBuffer.h>
 #include <opencsd.h>
 
+#include "ETMConstants.h"
+
 namespace simpleperf {
 namespace {
 
@@ -183,8 +185,10 @@ class MapLocator : public PacketCallback {
                                      const EtmV4ITrcPacket* pkt) override {
     TraceData& data = trace_data_[trace_id];
     if (op == OCSD_OP_DATA) {
-      if (pkt != nullptr && pkt->getContext().updated_c) {
-        int32_t new_tid = static_cast<int32_t>(pkt->getContext().ctxtID);
+      if (pkt != nullptr && ((!data.use_vmid && pkt->getContext().updated_c) ||
+                             (data.use_vmid && pkt->getContext().updated_v))) {
+        int32_t new_tid =
+            static_cast<int32_t>(data.use_vmid ? pkt->getContext().VMID : pkt->getContext().ctxtID);
         if (data.tid != new_tid) {
           data.tid = new_tid;
           data.thread = nullptr;
@@ -222,11 +226,14 @@ class MapLocator : public PacketCallback {
     return thread_tree_.GetKernelMaps().FindMapByAddr(addr);
   }
 
+  void SetUseVmid(uint8_t trace_id, bool value) { trace_data_[trace_id].use_vmid = value; }
+
  private:
   struct TraceData {
     int32_t tid = -1;  // thread id, -1 if invalid
     const ThreadEntry* thread = nullptr;
     const MapEntry* userspace_map = nullptr;
+    bool use_vmid = false;  // use vmid for PID
   };
 
   ThreadTree& thread_tree_;
@@ -720,6 +727,13 @@ class ETMDecoderImpl : public ETMDecoder {
   void InstallMapLocator() {
     if (!map_locator_) {
       map_locator_.reset(new MapLocator(thread_tree_));
+
+      for (auto& cfg : configs_) {
+        map_locator_->SetUseVmid(
+            cfg.first,
+            (*cfg.second).reg_configr & (1U << ETM4_CFG_BIT_VMID | 1U << ETM4_CFG_BIT_VMID_OPT));
+      }
+
       InstallPacketCallback(map_locator_.get());
     }
   }
