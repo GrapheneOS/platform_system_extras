@@ -157,7 +157,7 @@ class CallChainJoinerTest : public ::testing::Test {
 #else
     std::string tmpdir = "/tmp";
 #endif
-    scoped_temp_files_.reset(new ScopedTempFiles(tmpdir));
+    scoped_temp_files_ = ScopedTempFiles::Create(tmpdir);
   }
 
  private:
