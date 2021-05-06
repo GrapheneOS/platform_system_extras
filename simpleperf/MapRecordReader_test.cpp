@@ -73,7 +73,8 @@ TEST_F(MapRecordReaderTest, MapRecordThread) {
 #else
   std::string tmpdir = "/tmp";
 #endif
-  ScopedTempFiles scoped_temp_files(tmpdir);
+  auto scoped_temp_files = ScopedTempFiles::Create(tmpdir);
+  ASSERT_TRUE(scoped_temp_files);
   ASSERT_TRUE(CreateMapRecordReader());
   MapRecordThread thread(*reader_);
   ASSERT_TRUE(thread.Join());
