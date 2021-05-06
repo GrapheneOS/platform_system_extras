@@ -26,6 +26,7 @@
 #endif
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -98,7 +99,7 @@ void AllowMoreOpenedFiles();
 
 class ScopedTempFiles {
  public:
-  ScopedTempFiles(const std::string& tmp_dir);
+  static std::unique_ptr<ScopedTempFiles> Create(const std::string& tmp_dir);
   ~ScopedTempFiles();
   // If delete_in_destructor = true, the temp file will be deleted in the destructor of
   // ScopedTempFile. Otherwise, it should be deleted by the caller.
@@ -106,6 +107,8 @@ class ScopedTempFiles {
   static void RegisterTempFile(const std::string& path);
 
  private:
+  ScopedTempFiles(const std::string& tmp_dir);
+
   static std::string tmp_dir_;
   static std::vector<std::string> files_to_delete_;
 };

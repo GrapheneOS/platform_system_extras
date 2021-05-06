@@ -23,6 +23,7 @@
 #include <string.h>
 #include <sys/resource.h>
 #include <sys/utsname.h>
+#include <unistd.h>
 
 #include <limits>
 #include <set>
@@ -792,6 +793,13 @@ void AllowMoreOpenedFiles() {
 
 std::string ScopedTempFiles::tmp_dir_;
 std::vector<std::string> ScopedTempFiles::files_to_delete_;
+
+std::unique_ptr<ScopedTempFiles> ScopedTempFiles::Create(const std::string& tmp_dir) {
+  if (access(tmp_dir.c_str(), W_OK | X_OK) != 0) {
+    return nullptr;
+  }
+  return std::unique_ptr<ScopedTempFiles>(new ScopedTempFiles(tmp_dir));
+}
 
 ScopedTempFiles::ScopedTempFiles(const std::string& tmp_dir) {
   CHECK(tmp_dir_.empty());  // No other ScopedTempFiles.
