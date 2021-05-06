@@ -458,7 +458,13 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   if (!AdjustPerfEventLimit()) {
     return false;
   }
-  ScopedTempFiles scoped_temp_files(android::base::Dirname(record_filename_));
+  std::unique_ptr<ScopedTempFiles> scoped_temp_files =
+      ScopedTempFiles::Create(android::base::Dirname(record_filename_));
+  if (!scoped_temp_files) {
+    PLOG(ERROR) << "Can't create output file in directory "
+                << android::base::Dirname(record_filename_);
+    return false;
+  }
   if (!app_package_name_.empty() && !in_app_context_) {
     // Some users want to profile non debuggable apps on rooted devices. If we use run-as,
     // it will be impossible when using --app. So don't switch to app's context when we are
