@@ -20,20 +20,18 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include <android-base/file.h>
-#include <android-base/logging.h>
-#include <android-base/stringprintf.h>
-#include <android-base/strings.h>
-
-#if defined(__ANDROID__)
-#include <android-base/properties.h>
-#endif
-
 #include <filesystem>
 #include <map>
 #include <memory>
 #include <regex>
 #include <thread>
+
+#include <android-base/file.h>
+#include <android-base/logging.h>
+#include <android-base/properties.h>
+#include <android-base/stringprintf.h>
+#include <android-base/strings.h>
+#include <android-base/test_utils.h>
 
 #include "ETMRecorder.h"
 #include "ProbeEvents.h"
@@ -1121,4 +1119,28 @@ TEST(record_cmd, keep_failed_unwinding_result_option) {
   std::string pid = std::to_string(workloads[0]->GetPid());
   ASSERT_TRUE(RunRecordCmd(
       {"-p", pid, "-g", "--keep-failed-unwinding-result", "--keep-failed-unwinding-debug-info"}));
+}
+
+TEST(record_cmd, kernel_address_warning) {
+  TEST_REQUIRE_NON_ROOT();
+  const std::string warning_msg = "Access to kernel symbol addresses is restricted.";
+  CapturedStderr capture;
+
+  // When excluding kernel samples, no kernel address warning is printed.
+  ResetKernelAddressWarning();
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({"-e", "cpu-clock:u"}, tmpfile.path));
+  capture.Stop();
+  ASSERT_EQ(capture.str().find(warning_msg), std::string::npos);
+
+  // When not excluding kernel samples, kernel address warning is printed once.
+  capture.Reset();
+  capture.Start();
+  ResetKernelAddressWarning();
+  ASSERT_TRUE(RunRecordCmd({"-e", "cpu-clock"}, tmpfile.path));
+  capture.Stop();
+  std::string output = capture.str();
+  auto pos = output.find(warning_msg);
+  ASSERT_NE(pos, std::string::npos);
+  ASSERT_EQ(output.find(warning_msg, pos + warning_msg.size()), std::string::npos);
 }
