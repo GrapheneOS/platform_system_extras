@@ -135,6 +135,7 @@ def build_testdata(testdata_dir: Path):
         script_test_dir / 'testdata',
         script_dir.parent / 'testdata',
         script_dir.parent / 'demo',
+        script_dir.parent / 'runtest',
     ]
 
     for source_dir in source_dirs:
