@@ -49,9 +49,13 @@ TEST(cmd_debug_unwind, sample_time_option) {
   CaptureStdout capture;
 
   ASSERT_TRUE(capture.Start());
-  ASSERT_TRUE(DebugUnwindCmd()->Run(
-      {"-i", input_data, "--unwind-sample", "--sample-time", "1516379654300997"}));
-  ASSERT_NE(capture.Finish().find("sample_time: 1516379654300997"), std::string::npos);
+  ASSERT_TRUE(DebugUnwindCmd()->Run({"-i", input_data, "--unwind-sample", "--sample-time",
+                                     "1516379654300997", "--sample-time",
+                                     "1516379654363914,1516379655959122"}));
+  std::string output = capture.Finish();
+  ASSERT_NE(output.find("sample_time: 1516379654300997"), std::string::npos);
+  ASSERT_NE(output.find("sample_time: 1516379654363914"), std::string::npos);
+  ASSERT_NE(output.find("sample_time: 1516379655959122"), std::string::npos);
 }
 
 TEST(cmd_debug_unwind, output_option) {
@@ -125,6 +129,20 @@ TEST(cmd_debug_unwind, generate_test_file) {
   ASSERT_TRUE(DebugUnwindCmd()->Run({"-i", tmpfile.path, "--unwind-sample"}));
   std::string output = capture.Finish();
   ASSERT_NE(output.find("symbol_2: android.os.Handler.enqueueMessage"), std::string::npos);
+}
+
+TEST(cmd_debug_unwind, generate_test_file_with_build_id) {
+  TemporaryFile tmpfile;
+  close(tmpfile.release());
+  ASSERT_TRUE(DebugUnwindCmd()->Run({"-i", GetTestData("perf_display_bitmaps.data"),
+                                     "--generate-test-file", "--sample-time", "684943450156904",
+                                     "-o", tmpfile.path, "--keep-binaries-in-test-file",
+                                     "/apex/com.android.runtime/lib64/bionic/libc.so"}));
+  auto reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader);
+  auto build_ids = reader->ReadBuildIdFeature();
+  ASSERT_EQ(build_ids.size(), 1);
+  ASSERT_STREQ(build_ids[0].filename, "/apex/com.android.runtime/lib64/bionic/libc.so");
 }
 
 TEST(cmd_debug_unwind, generate_report) {
