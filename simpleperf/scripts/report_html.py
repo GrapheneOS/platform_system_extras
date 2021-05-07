@@ -17,15 +17,17 @@
 
 import argparse
 import collections
+from dataclasses import dataclass
 import datetime
 import json
 import os
 import sys
-from typing import List, Optional
+from typing import Callable, Dict, List, Optional
 
 from simpleperf_report_lib import ReportLib
-from simpleperf_utils import (Addr2Nearestline, get_script_dir, log_exit, log_info, Objdump,
-                              open_report_in_browser, SourceFileSearcher)
+from simpleperf_utils import (
+    Addr2Nearestline, BinaryFinder, get_script_dir, log_exit, log_info, Objdump,
+    open_report_in_browser, ReadElf, SourceFileSearcher)
 
 MAX_CALLSTACK_LENGTH = 750
 
@@ -386,23 +388,31 @@ class CallNode(object):
                 cur_child.merge(child)
 
 
+@dataclass
+class LibInfo:
+    name: str
+    build_id: str
+
+
 class LibSet(object):
     """ Collection of shared libraries used in perf.data. """
 
     def __init__(self):
-        self.lib_name_to_id = {}
-        self.lib_id_to_name = []
+        self.lib_name_to_id: Dict[str, int] = {}
+        self.libs: List[LibInfo] = []
 
-    def get_lib_id(self, lib_name):
-        lib_id = self.lib_name_to_id.get(lib_name)
-        if lib_id is None:
-            lib_id = len(self.lib_id_to_name)
-            self.lib_name_to_id[lib_name] = lib_id
-            self.lib_id_to_name.append(lib_name)
+    def get_lib_id(self, lib_name: str) -> Optional[int]:
+        return self.lib_name_to_id.get(lib_name)
+
+    def add_lib(self, lib_name: str, build_id: str) -> int:
+        """ Return lib_id of the newly added lib. """
+        lib_id = len(self.libs)
+        self.libs.append(LibInfo(lib_name, build_id))
+        self.lib_name_to_id[lib_name] = lib_id
         return lib_id
 
-    def get_lib_name(self, lib_id):
-        return self.lib_id_to_name[lib_id]
+    def get_lib(self, lib_id: int) -> LibInfo:
+        return self.libs[lib_id]
 
 
 class Function(object):
@@ -422,8 +432,8 @@ class FunctionSet(object):
     """ Collection of functions used in perf.data. """
 
     def __init__(self):
-        self.name_to_func = {}
-        self.id_to_func = {}
+        self.name_to_func: Dict[Tuple[int, str], Function] = {}
+        self.id_to_func: Dict[int, Function] = {}
 
     def get_func_id(self, lib_id, symbol):
         key = (lib_id, symbol.symbol_name)
@@ -586,6 +596,7 @@ class RecordData(object):
         self.total_samples = 0
         self.source_files = SourceFileSet()
         self.gen_addr_hit_map_in_record_info = False
+        self.binary_finder = BinaryFinder(binary_cache_path, ReadElf(ndk_path))
 
     def load_record_file(self, record_file, show_art_frames):
         lib = ReportLib()
@@ -621,11 +632,16 @@ class RecordData(object):
             thread.sample_count += 1
 
             lib_id = self.libs.get_lib_id(symbol.dso_name)
+            if lib_id is None:
+                lib_id = self.libs.add_lib(symbol.dso_name, lib.GetBuildIdForPath(symbol.dso_name))
             func_id = self.functions.get_func_id(lib_id, symbol)
             callstack = [(lib_id, func_id, symbol.vaddr_in_file)]
             for i in range(callchain.nr):
                 symbol = callchain.entries[i].symbol
                 lib_id = self.libs.get_lib_id(symbol.dso_name)
+                if lib_id is None:
+                    lib_id = self.libs.add_lib(
+                        symbol.dso_name, lib.GetBuildIdForPath(symbol.dso_name))
                 func_id = self.functions.get_func_id(lib_id, symbol)
                 callstack.append((lib_id, func_id, symbol.vaddr_in_file))
             if len(callstack) > MAX_CALLSTACK_LENGTH:
@@ -680,32 +696,33 @@ class RecordData(object):
             2. Find line for each addr in FunctionScope.addr_hit_map.
             3. Collect needed source code in SourceFileSet.
         """
-        addr2line = Addr2Nearestline(self.ndk_path, self.binary_cache_path, False)
+        addr2line = Addr2Nearestline(self.ndk_path, self.binary_finder, False)
         # Request line range for each function.
         for function in self.functions.id_to_func.values():
             if function.func_name == 'unknown':
                 continue
-            lib_name = self.libs.get_lib_name(function.lib_id)
-            if filter_lib(lib_name):
-                addr2line.add_addr(lib_name, function.start_addr, function.start_addr)
-                addr2line.add_addr(lib_name, function.start_addr,
+            lib_info = self.libs.get_lib(function.lib_id)
+            if filter_lib(lib_info.name):
+                addr2line.add_addr(lib_info.name, lib_info.build_id,
+                                   function.start_addr, function.start_addr)
+                addr2line.add_addr(lib_info.name, lib_info.build_id, function.start_addr,
                                    function.start_addr + function.addr_len - 1)
         # Request line for each addr in FunctionScope.addr_hit_map.
         for event in self.events.values():
             for lib in event.libraries:
-                lib_name = self.libs.get_lib_name(lib.lib_id)
-                if filter_lib(lib_name):
+                lib_info = self.libs.get_lib(lib.lib_id)
+                if filter_lib(lib_info.name):
                     for function in lib.functions.values():
                         func_addr = self.functions.id_to_func[function.func_id].start_addr
                         for addr in function.addr_hit_map:
-                            addr2line.add_addr(lib_name, func_addr, addr)
+                            addr2line.add_addr(lib_info.name, lib_info.build_id, func_addr, addr)
         addr2line.convert_addrs_to_lines()
 
         # Set line range for each function.
         for function in self.functions.id_to_func.values():
             if function.func_name == 'unknown':
                 continue
-            dso = addr2line.get_dso(self.libs.get_lib_name(function.lib_id))
+            dso = addr2line.get_dso(self.libs.get_lib(function.lib_id).name)
             if not dso:
                 continue
             start_source = addr2line.get_addr_source(dso, function.start_addr)
@@ -723,7 +740,7 @@ class RecordData(object):
         # Build FunctionScope.line_hit_map.
         for event in self.events.values():
             for lib in event.libraries:
-                dso = addr2line.get_dso(self.libs.get_lib_name(lib.lib_id))
+                dso = addr2line.get_dso(self.libs.get_lib(lib.lib_id).name)
                 if not dso:
                     continue
                 for function in lib.functions.values():
@@ -742,22 +759,22 @@ class RecordData(object):
         # Collect needed source code in SourceFileSet.
         self.source_files.load_source_code(source_dirs)
 
-    def add_disassembly(self, filter_lib):
+    def add_disassembly(self, filter_lib: Callable[[str], bool]):
         """ Collect disassembly information:
             1. Use objdump to collect disassembly for each function in FunctionSet.
             2. Set flag to dump addr_hit_map when generating record info.
         """
-        objdump = Objdump(self.ndk_path, self.binary_cache_path)
-        cur_lib_name = None
+        objdump = Objdump(self.ndk_path, self.binary_finder)
+        cur_lib_name: Optional[str] = None
         dso_info = None
         for function in sorted(self.functions.id_to_func.values(), key=lambda a: a.lib_id):
             if function.func_name == 'unknown':
                 continue
-            lib_name = self.libs.get_lib_name(function.lib_id)
-            if lib_name != cur_lib_name:
-                cur_lib_name = lib_name
-                if filter_lib(lib_name):
-                    dso_info = objdump.get_dso_info(lib_name)
+            lib = self.libs.get_lib(function.lib_id)
+            if lib.name != cur_lib_name:
+                cur_lib_name = lib.name
+                if filter_lib(lib.name):
+                    dso_info = objdump.get_dso_info(lib.name, lib.build_id)
                 else:
                     dso_info = None
                 if dso_info:
@@ -810,7 +827,7 @@ class RecordData(object):
         return thread_names
 
     def _gen_lib_list(self):
-        return [modify_text_for_html(x) for x in self.libs.lib_id_to_name]
+        return [modify_text_for_html(lib.name) for lib in self.libs.libs]
 
     def _gen_function_map(self):
         func_map = {}
