@@ -478,14 +478,7 @@ void EventSelectionSet::SetClockId(int clock_id) {
 }
 
 bool EventSelectionSet::NeedKernelSymbol() const {
-  for (const auto& group : groups_) {
-    for (const auto& selection : group) {
-      if (!selection.event_type_modifier.exclude_kernel) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return !ExcludeKernel();
 }
 
 void EventSelectionSet::SetRecordNotExecutableMaps(bool record) {
