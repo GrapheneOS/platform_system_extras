@@ -54,6 +54,14 @@ void CheckElfFileSymbols(const std::map<std::string, ElfFileSymbol>& symbols);
     }                                                                    \
   } while (0)
 
+#define TEST_REQUIRE_NON_ROOT()                                            \
+  do {                                                                     \
+    if (IsRoot()) {                                                        \
+      GTEST_LOG_(INFO) << "Skip this test as it tests non-root behavior."; \
+      return;                                                              \
+    }                                                                      \
+  } while (0)
+
 #if defined(__ANDROID__)
 #define TEST_REQUIRE_HOST_ROOT()
 #else
