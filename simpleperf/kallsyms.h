@@ -49,6 +49,9 @@ uint64_t GetKernelStartAddress();
 // be restored. This usually requires root privileges.
 bool LoadKernelSymbols(std::string* kallsyms);
 
+// only for testing
+void ResetKernelAddressWarning();
+
 #endif  // defined(__linux__)
 
 }  // namespace simpleperf

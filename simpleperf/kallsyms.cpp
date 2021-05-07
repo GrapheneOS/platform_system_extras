@@ -66,33 +66,41 @@ class ScopedKptrUnrestrict {
   ScopedKptrUnrestrict();   // Lowers kptr_restrict if necessary.
   ~ScopedKptrUnrestrict();  // Restores the initial kptr_restrict.
 
-  bool KallsymsAvailable();  // Indicates if access to kallsyms should be successful.
+  // Indicates if access to kallsyms should be successful.
+  bool KallsymsAvailable() { return kallsyms_available_; }
+
+  static void ResetWarning() { kernel_address_warning_printed_ = false; }
 
  private:
-  static bool WriteKptrRestrict(const std::string&);
+  bool WriteKptrRestrict(const std::string& value);
+  void PrintWarning();
 
-  std::string initial_value_;
-  bool use_property_;
-  bool restore_on_dtor_ = true;
+  bool restore_property_ = false;
+  bool restore_restrict_value_ = false;
+  std::string saved_restrict_value_;
   bool kallsyms_available_ = false;
+
+  static bool kernel_address_warning_printed_;
 };
 
+bool ScopedKptrUnrestrict::kernel_address_warning_printed_ = false;
+
 ScopedKptrUnrestrict::ScopedKptrUnrestrict() {
-  use_property_ = GetAndroidVersion() >= 12;
   if (CanReadKernelSymbolAddresses()) {
     // Everything seems to work (e.g., we are running as root and kptr_restrict
     // is < 2). Don't touching anything.
-    restore_on_dtor_ = false;
     kallsyms_available_ = true;
     return;
   }
 
-  if (use_property_) {
-    bool ret = android::base::SetProperty(kLowerPtrRestrictAndroidProp, "1");
-    if (!ret) {
-      LOG(ERROR) << "Unable to set " << kLowerPtrRestrictAndroidProp << " to 1.";
+  if (GetAndroidVersion() >= 12 && IsRoot()) {
+    // Enable kernel addresses by setting property.
+    if (!android::base::SetProperty(kLowerPtrRestrictAndroidProp, "1")) {
+      LOG(DEBUG) << "Unable to set " << kLowerPtrRestrictAndroidProp << " to 1.";
+      PrintWarning();
       return;
     }
+    restore_property_ = true;
     // Init takes some time to react to the property change.
     // Unfortunately, we cannot read kptr_restrict because of SELinux. Instead,
     // we detect this by reading the initial lines of kallsyms and checking
@@ -104,53 +112,57 @@ ScopedKptrUnrestrict::ScopedKptrUnrestrict() {
         return;
       }
     }
-    LOG(ERROR) << "kallsyms addresses are still masked after setting "
+    LOG(DEBUG) << "kallsyms addresses are still masked after setting "
                << kLowerPtrRestrictAndroidProp;
+    PrintWarning();
     return;
   }
 
   // Otherwise, read the kptr_restrict value and lower it if needed.
-  bool read_res = android::base::ReadFileToString(kPtrRestrictPath, &initial_value_);
-  if (!read_res) {
-    LOG(WARNING) << "Failed to read " << kPtrRestrictPath;
+  if (!android::base::ReadFileToString(kPtrRestrictPath, &saved_restrict_value_)) {
+    LOG(DEBUG) << "Failed to read " << kPtrRestrictPath;
+    PrintWarning();
     return;
   }
 
   // Progressively lower kptr_restrict until we can read kallsyms.
-  for (int value = atoi(initial_value_.c_str()); value > 0; --value) {
-    bool ret = WriteKptrRestrict(std::to_string(value));
-    if (!ret) {
-      LOG(WARNING) << "Access to kernel symbol addresses is restricted. If "
-                   << "possible, please do `echo 0 >/proc/sys/kernel/kptr_restrict` "
-                   << "to fix this.";
-      return;
+  for (int value = atoi(saved_restrict_value_.c_str()); value > 0; --value) {
+    if (!WriteKptrRestrict(std::to_string(value))) {
+      break;
     }
+    restore_restrict_value_ = true;
     if (CanReadKernelSymbolAddresses()) {
       kallsyms_available_ = true;
       return;
     }
   }
+  PrintWarning();
 }
 
 ScopedKptrUnrestrict::~ScopedKptrUnrestrict() {
-  if (!restore_on_dtor_) return;
-  if (use_property_) {
+  if (restore_property_) {
     android::base::SetProperty(kLowerPtrRestrictAndroidProp, "0");
-  } else if (!initial_value_.empty()) {
-    WriteKptrRestrict(initial_value_);
   }
-}
-
-bool ScopedKptrUnrestrict::KallsymsAvailable() {
-  return kallsyms_available_;
+  if (restore_restrict_value_) {
+    WriteKptrRestrict(saved_restrict_value_);
+  }
 }
 
 bool ScopedKptrUnrestrict::WriteKptrRestrict(const std::string& value) {
   if (!android::base::WriteStringToFile(value, kPtrRestrictPath)) {
-    LOG(WARNING) << "Failed to set " << kPtrRestrictPath << " to " << value;
+    LOG(DEBUG) << "Failed to set " << kPtrRestrictPath << " to " << value;
     return false;
   }
   return true;
+}
+
+void ScopedKptrUnrestrict::PrintWarning() {
+  if (!kernel_address_warning_printed_) {
+    kernel_address_warning_printed_ = true;
+    LOG(WARNING) << "Access to kernel symbol addresses is restricted. If "
+                 << "possible, please do `echo 0 >/proc/sys/kernel/kptr_restrict` "
+                 << "to fix this.";
+  }
 }
 
 }  // namespace
@@ -219,6 +231,10 @@ bool LoadKernelSymbols(std::string* kallsyms) {
     return android::base::ReadFileToString(kKallsymsPath, kallsyms);
   }
   return false;
+}
+
+void ResetKernelAddressWarning() {
+  ScopedKptrUnrestrict::ResetWarning();
 }
 
 #endif  // defined(__linux__)
