@@ -1272,9 +1272,12 @@ bool RecordCommand::DumpMaps() {
       map_record_thread_.emplace(*map_record_reader_);
       return true;
     }
-    return map_record_reader_->ReadKernelMaps();
+    if (!event_selection_set_.ExcludeKernel()) {
+      return map_record_reader_->ReadKernelMaps();
+    }
+    return true;
   }
-  if (!map_record_reader_->ReadKernelMaps()) {
+  if (!event_selection_set_.ExcludeKernel() && !map_record_reader_->ReadKernelMaps()) {
     return false;
   }
   // Map from process id to a set of thread ids in that process.
@@ -1731,7 +1734,7 @@ bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args)
   thread_tree_.ClearThreadAndMap();
   bool kernel_symbols_available = false;
   std::string kallsyms;
-  if (LoadKernelSymbols(&kallsyms)) {
+  if (event_selection_set_.NeedKernelSymbol() && LoadKernelSymbols(&kallsyms)) {
     Dso::SetKallsyms(kallsyms);
     kernel_symbols_available = true;
   }
