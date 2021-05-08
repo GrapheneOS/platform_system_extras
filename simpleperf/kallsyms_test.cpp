@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+#include <android-base/test_utils.h>
+
 #include "get_test_data.h"
 #include "kallsyms.h"
 #include "test_util.h"
@@ -72,5 +74,48 @@ TEST(kallsyms, LoadKernelSymbols) {
   TEST_REQUIRE_ROOT();
   std::string kallsyms;
   ASSERT_TRUE(LoadKernelSymbols(&kallsyms));
+}
+
+TEST(kallsyms, print_warning) {
+  TEST_REQUIRE_NON_ROOT();
+  const std::string warning_msg = "Access to kernel symbol addresses is restricted.";
+  CapturedStderr capture;
+
+  // Call each function requiring kernel addresses once. Check if the warning is printed.
+  ResetKernelAddressWarning();
+  ASSERT_EQ(0, GetKernelStartAddress());
+  capture.Stop();
+  ASSERT_NE(capture.str().find(warning_msg), std::string::npos);
+
+  capture.Reset();
+  capture.Start();
+  ResetKernelAddressWarning();
+  std::string kallsyms;
+  ASSERT_FALSE(LoadKernelSymbols(&kallsyms));
+  capture.Stop();
+  ASSERT_NE(capture.str().find(warning_msg), std::string::npos);
+
+  capture.Reset();
+  capture.Start();
+  ResetKernelAddressWarning();
+  ASSERT_TRUE(GetLoadedModules().empty());
+  capture.Stop();
+  ASSERT_NE(capture.str().find(warning_msg), std::string::npos);
+
+  // Call functions requiring kernel addresses more than once.
+  // Check if the kernel address warning is only printed once.
+  capture.Reset();
+  capture.Start();
+  ResetKernelAddressWarning();
+  for (int i = 0; i < 2; i++) {
+    ASSERT_EQ(0, GetKernelStartAddress());
+    ASSERT_FALSE(LoadKernelSymbols(&kallsyms));
+    ASSERT_TRUE(GetLoadedModules().empty());
+  }
+  capture.Stop();
+  std::string output = capture.str();
+  auto pos = output.find(warning_msg);
+  ASSERT_NE(pos, std::string::npos);
+  ASSERT_EQ(output.find(warning_msg, pos + warning_msg.size()), std::string::npos);
 }
 #endif  // defined(__ANDROID__)
