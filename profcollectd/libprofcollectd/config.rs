@@ -36,8 +36,6 @@ lazy_static! {
     pub static ref BETTERBUG_CACHE_DIR_PREFIX: &'static Path = Path::new("/data/user/");
     pub static ref BETTERBUG_CACHE_DIR_SUFFIX: &'static Path =
         Path::new("com.google.android.apps.internal.betterbug/cache/");
-    pub static ref OLD_REPORT_OUTPUT_FILE: &'static Path =
-        Path::new("/data/misc/profcollectd/report.zip");
     pub static ref CONFIG_FILE: &'static Path =
         Path::new("/data/misc/profcollectd/output/config.json");
 }
