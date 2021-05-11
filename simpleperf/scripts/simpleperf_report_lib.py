@@ -24,7 +24,7 @@ import collections
 import ctypes as ct
 from pathlib import Path
 import struct
-from typing import Union
+from typing import Dict, Union
 
 from simpleperf_utils import bytes_to_str, get_host_binary_path, is_windows, str_to_bytes
 
@@ -374,7 +374,7 @@ class ReportLib(object):
         assert not _is_null(build_id)
         return _char_pt_to_str(build_id)
 
-    def GetRecordCmd(self):
+    def GetRecordCmd(self) -> str:
         if self.record_cmd is not None:
             return self.record_cmd
         self.record_cmd = ''
@@ -400,7 +400,7 @@ class ReportLib(object):
             self.record_cmd = ' '.join(args)
         return self.record_cmd
 
-    def _GetFeatureString(self, feature_name):
+    def _GetFeatureString(self, feature_name: str) -> str:
         feature_data = self._GetFeatureSection(self.getInstance(), _char_pt(feature_name))
         result = ''
         if not _is_null(feature_data):
@@ -415,10 +415,10 @@ class ReportLib(object):
                 result += c
         return result
 
-    def GetArch(self):
+    def GetArch(self) -> str:
         return self._GetFeatureString('arch')
 
-    def MetaInfo(self):
+    def MetaInfo(self) -> Dict[str, str]:
         """ Return a string to string map stored in meta_info section in perf.data.
             It is used to pass some short meta information.
         """

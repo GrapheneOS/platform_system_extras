@@ -15,16 +15,18 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
 import argparse
 import collections
 from dataclasses import dataclass
 import datetime
 import json
 import os
+from pathlib import Path
 import sys
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union
 
-from simpleperf_report_lib import ReportLib
+from simpleperf_report_lib import ReportLib, SymbolStruct
 from simpleperf_utils import (
     Addr2Nearestline, BinaryFinder, get_script_dir, log_exit, log_info, Objdump,
     open_report_in_browser, ReadElf, SourceFileSearcher)
@@ -34,14 +36,14 @@ MAX_CALLSTACK_LENGTH = 750
 
 class HtmlWriter(object):
 
-    def __init__(self, output_path):
+    def __init__(self, output_path: Union[Path, str]):
         self.fh = open(output_path, 'w')
         self.tag_stack = []
 
     def close(self):
         self.fh.close()
 
-    def open_tag(self, tag, **attrs):
+    def open_tag(self, tag: str, **attrs: Dict[str, str]) -> HtmlWriter:
         attr_str = ''
         for key in attrs:
             attr_str += ' %s="%s"' % (key, attrs[key])
@@ -49,41 +51,41 @@ class HtmlWriter(object):
         self.tag_stack.append(tag)
         return self
 
-    def close_tag(self, tag=None):
+    def close_tag(self, tag: Optional[str] = None):
         if tag:
             assert tag == self.tag_stack[-1]
         self.fh.write('</%s>\n' % self.tag_stack.pop())
 
-    def add(self, text):
+    def add(self, text: str) -> HtmlWriter:
         self.fh.write(text)
         return self
 
-    def add_file(self, file_path):
+    def add_file(self, file_path: Union[Path, str]) -> HtmlWriter:
         file_path = os.path.join(get_script_dir(), file_path)
         with open(file_path, 'r') as f:
             self.add(f.read())
         return self
 
 
-def modify_text_for_html(text):
+def modify_text_for_html(text: str) -> str:
     return text.replace('>', '&gt;').replace('<', '&lt;')
 
 
 class EventScope(object):
 
-    def __init__(self, name):
+    def __init__(self, name: str):
         self.name = name
-        self.processes = {}  # map from pid to ProcessScope
+        self.processes: Dict[int, ProcessScope] = {}  # map from pid to ProcessScope
         self.sample_count = 0
         self.event_count = 0
 
-    def get_process(self, pid):
+    def get_process(self, pid: int) -> ProcessScope:
         process = self.processes.get(pid)
         if not process:
             process = self.processes[pid] = ProcessScope(pid)
         return process
 
-    def get_sample_info(self, gen_addr_hit_map):
+    def get_sample_info(self, gen_addr_hit_map: bool) -> Dict[str, Any]:
         result = {}
         result['eventName'] = self.name
         result['eventCount'] = self.event_count
@@ -93,13 +95,13 @@ class EventScope(object):
         return result
 
     @property
-    def threads(self):
+    def threads(self) -> Iterator[ThreadScope]:
         for process in self.processes.values():
             for thread in process.threads.values():
                 yield thread
 
     @property
-    def libraries(self):
+    def libraries(self) -> Iterator[LibScope]:
         for process in self.processes.values():
             for thread in process.threads.values():
                 for lib in thread.libs.values():
@@ -108,13 +110,13 @@ class EventScope(object):
 
 class ProcessScope(object):
 
-    def __init__(self, pid):
+    def __init__(self, pid: int):
         self.pid = pid
         self.name = ''
         self.event_count = 0
-        self.threads = {}  # map from tid to ThreadScope
+        self.threads: Dict[int, ThreadScope] = {}  # map from tid to ThreadScope
 
-    def get_thread(self, tid, thread_name):
+    def get_thread(self, tid: int, thread_name: str) -> ThreadScope:
         thread = self.threads.get(tid)
         if not thread:
             thread = self.threads[tid] = ThreadScope(tid)
@@ -123,7 +125,7 @@ class ProcessScope(object):
             self.name = thread_name
         return thread
 
-    def get_sample_info(self, gen_addr_hit_map):
+    def get_sample_info(self, gen_addr_hit_map: bool) -> Dict[str, Any]:
         result = {}
         result['pid'] = self.pid
         result['eventCount'] = self.event_count
@@ -132,10 +134,11 @@ class ProcessScope(object):
                              for thread in threads]
         return result
 
-    def merge_by_thread_name(self, process):
+    def merge_by_thread_name(self, process: ProcessScope):
         self.event_count += process.event_count
-        thread_list = list(self.threads.values()) + list(process.threads.values())
-        new_threads = {}  # map from thread name to ThreadScope
+        thread_list: List[ThreadScope] = list(
+            self.threads.values()) + list(process.threads.values())
+        new_threads: Dict[str, ThreadScope] = {}  # map from thread name to ThreadScope
         for thread in thread_list:
             cur_thread = new_threads.get(thread.name)
             if cur_thread is None:
@@ -149,19 +152,21 @@ class ProcessScope(object):
 
 class ThreadScope(object):
 
-    def __init__(self, tid):
+    def __init__(self, tid: int):
         self.tid = tid
         self.name = ''
         self.event_count = 0
         self.sample_count = 0
-        self.libs = {}  # map from lib_id to LibScope
+        self.libs: Dict[int, LibScope] = {}  # map from lib_id to LibScope
         self.call_graph = CallNode(-1)
         self.reverse_call_graph = CallNode(-1)
 
-    def add_callstack(self, event_count, callstack, build_addr_hit_map):
+    def add_callstack(
+            self, event_count: int, callstack: List[Tuple[int, int, int]],
+            build_addr_hit_map: bool):
         """ callstack is a list of tuple (lib_id, func_id, addr).
             For each i > 0, callstack[i] calls callstack[i-1]."""
-        hit_func_ids = set()
+        hit_func_ids: Set[int] = set()
         for i, (lib_id, func_id, addr) in enumerate(callstack):
             # When a callstack contains recursive function, only add for each function once.
             if func_id in hit_func_ids:
@@ -194,7 +199,8 @@ class ThreadScope(object):
         self.call_graph.update_subtree_event_count()
         self.reverse_call_graph.update_subtree_event_count()
 
-    def limit_percents(self, min_func_limit, min_callchain_percent, hit_func_ids):
+    def limit_percents(self, min_func_limit: float, min_callchain_percent: float,
+                       hit_func_ids: Set[int]):
         for lib in self.libs.values():
             to_del_funcs = []
             for function in lib.functions.values():
@@ -208,7 +214,7 @@ class ThreadScope(object):
         self.call_graph.cut_edge(min_limit, hit_func_ids)
         self.reverse_call_graph.cut_edge(min_limit, hit_func_ids)
 
-    def get_sample_info(self, gen_addr_hit_map):
+    def get_sample_info(self, gen_addr_hit_map: bool) -> Dict[str, Any]:
         result = {}
         result['tid'] = self.tid
         result['eventCount'] = self.event_count
@@ -219,7 +225,7 @@ class ThreadScope(object):
         result['rg'] = self.reverse_call_graph.gen_sample_info()
         return result
 
-    def merge(self, thread):
+    def merge(self, thread: ThreadScope):
         self.event_count += thread.event_count
         self.sample_count += thread.sample_count
         for lib_id, lib in thread.libs.items():
@@ -234,18 +240,18 @@ class ThreadScope(object):
 
 class LibScope(object):
 
-    def __init__(self, lib_id):
+    def __init__(self, lib_id: int):
         self.lib_id = lib_id
         self.event_count = 0
-        self.functions = {}  # map from func_id to FunctionScope.
+        self.functions: Dict[int, FunctionScope] = {}  # map from func_id to FunctionScope.
 
-    def get_function(self, func_id):
+    def get_function(self, func_id: int) -> FunctionScope:
         function = self.functions.get(func_id)
         if not function:
             function = self.functions[func_id] = FunctionScope(func_id)
         return function
 
-    def gen_sample_info(self, gen_addr_hit_map):
+    def gen_sample_info(self, gen_addr_hit_map: bool) -> Dict[str, Any]:
         result = {}
         result['libId'] = self.lib_id
         result['eventCount'] = self.event_count
@@ -253,7 +259,7 @@ class LibScope(object):
                                for func in self.functions.values()]
         return result
 
-    def merge(self, lib):
+    def merge(self, lib: LibScope):
         self.event_count += lib.event_count
         for func_id, function in lib.functions.items():
             cur_function = self.functions.get(func_id)
@@ -265,7 +271,7 @@ class LibScope(object):
 
 class FunctionScope(object):
 
-    def __init__(self, func_id):
+    def __init__(self, func_id: int):
         self.func_id = func_id
         self.sample_count = 0
         self.event_count = 0
@@ -274,7 +280,7 @@ class FunctionScope(object):
         # map from (source_file_id, line) to [event_count, subtree_event_count].
         self.line_hit_map = None
 
-    def build_addr_hit_map(self, addr, event_count, subtree_event_count):
+    def build_addr_hit_map(self, addr: int, event_count: int, subtree_event_count: int):
         if self.addr_hit_map is None:
             self.addr_hit_map = {}
         count_info = self.addr_hit_map.get(addr)
@@ -284,7 +290,8 @@ class FunctionScope(object):
             count_info[0] += event_count
             count_info[1] += subtree_event_count
 
-    def build_line_hit_map(self, source_file_id, line, event_count, subtree_event_count):
+    def build_line_hit_map(self, source_file_id: int, line: int, event_count: int,
+                           subtree_event_count: int):
         if self.line_hit_map is None:
             self.line_hit_map = {}
         key = (source_file_id, line)
@@ -295,7 +302,7 @@ class FunctionScope(object):
             count_info[0] += event_count
             count_info[1] += subtree_event_count
 
-    def gen_sample_info(self, gen_addr_hit_map):
+    def gen_sample_info(self, gen_addr_hit_map: bool) -> Dict[str, Any]:
         result = {}
         result['f'] = self.func_id
         result['c'] = [self.sample_count, self.event_count, self.subtree_event_count]
@@ -314,7 +321,7 @@ class FunctionScope(object):
             result['a'] = items
         return result
 
-    def merge(self, function):
+    def merge(self, function: FunctionScope):
         self.sample_count += function.sample_count
         self.event_count += function.event_count
         self.subtree_event_count += function.subtree_event_count
@@ -322,7 +329,8 @@ class FunctionScope(object):
         self.line_hit_map = self.__merge_hit_map(self.line_hit_map, function.line_hit_map)
 
     @staticmethod
-    def __merge_hit_map(map1, map2):
+    def __merge_hit_map(map1: Optional[Dict[int, List[int]]],
+                        map2: Optional[Dict[int, List[int]]]) -> Optional[Dict[int, List[int]]]:
         if not map1:
             return map2
         if not map2:
@@ -339,13 +347,14 @@ class FunctionScope(object):
 
 class CallNode(object):
 
-    def __init__(self, func_id):
+    def __init__(self, func_id: int):
         self.event_count = 0
         self.subtree_event_count = 0
         self.func_id = func_id
-        self.children = collections.OrderedDict()  # map from func_id to CallNode
+        # map from func_id to CallNode
+        self.children: Dict[int, CallNode] = collections.OrderedDict()
 
-    def get_child(self, func_id):
+    def get_child(self, func_id: int) -> CallNode:
         child = self.children.get(func_id)
         if not child:
             child = self.children[func_id] = CallNode(func_id)
@@ -357,7 +366,7 @@ class CallNode(object):
             self.subtree_event_count += child.update_subtree_event_count()
         return self.subtree_event_count
 
-    def cut_edge(self, min_limit, hit_func_ids):
+    def cut_edge(self, min_limit: float, hit_func_ids: Set[int]):
         hit_func_ids.add(self.func_id)
         to_del_children = []
         for key in self.children:
@@ -369,7 +378,7 @@ class CallNode(object):
         for key in to_del_children:
             del self.children[key]
 
-    def gen_sample_info(self):
+    def gen_sample_info(self) -> Dict[str, Any]:
         result = {}
         result['e'] = self.event_count
         result['s'] = self.subtree_event_count
@@ -377,7 +386,7 @@ class CallNode(object):
         result['c'] = [child.gen_sample_info() for child in self.children.values()]
         return result
 
-    def merge(self, node):
+    def merge(self, node: CallNode):
         self.event_count += node.event_count
         self.subtree_event_count += node.subtree_event_count
         for key, child in node.children.items():
@@ -418,7 +427,7 @@ class LibSet(object):
 class Function(object):
     """ Represent a function in a shared library. """
 
-    def __init__(self, lib_id, func_name, func_id, start_addr, addr_len):
+    def __init__(self, lib_id: int, func_name: str, func_id: int, start_addr: int, addr_len: int):
         self.lib_id = lib_id
         self.func_name = func_name
         self.func_id = func_id
@@ -435,7 +444,7 @@ class FunctionSet(object):
         self.name_to_func: Dict[Tuple[int, str], Function] = {}
         self.id_to_func: Dict[int, Function] = {}
 
-    def get_func_id(self, lib_id, symbol):
+    def get_func_id(self, lib_id: int, symbol: SymbolStruct) -> int:
         key = (lib_id, symbol.symbol_name)
         function = self.name_to_func.get(key)
         if function is None:
@@ -446,7 +455,7 @@ class FunctionSet(object):
             self.id_to_func[func_id] = function
         return function.func_id
 
-    def trim_functions(self, left_func_ids):
+    def trim_functions(self, left_func_ids: Set[int]):
         """ Remove functions excepts those in left_func_ids. """
         for function in self.name_to_func.values():
             if function.func_id not in left_func_ids:
@@ -458,17 +467,17 @@ class FunctionSet(object):
 class SourceFile(object):
     """ A source file containing source code hit by samples. """
 
-    def __init__(self, file_id, abstract_path):
+    def __init__(self, file_id: int, abstract_path: str):
         self.file_id = file_id
         self.abstract_path = abstract_path  # path reported by addr2line
-        self.real_path = None  # file path in the file system
-        self.requested_lines = set()
-        self.line_to_code = {}  # map from line to code in that line.
+        self.real_path: Optional[str] = None  # file path in the file system
+        self.requested_lines: Optional[Set[int]] = set()
+        self.line_to_code: Dict[int, str] = {}  # map from line to code in that line.
 
-    def request_lines(self, start_line, end_line):
+    def request_lines(self, start_line: int, end_line: int):
         self.requested_lines |= set(range(start_line, end_line + 1))
 
-    def add_source_code(self, real_path):
+    def add_source_code(self, real_path: str):
         self.real_path = real_path
         with open(real_path, 'r') as f:
             source_code = f.readlines()
@@ -484,16 +493,16 @@ class SourceFileSet(object):
     """ Collection of source files. """
 
     def __init__(self):
-        self.path_to_source_files = {}  # map from file path to SourceFile.
+        self.path_to_source_files: Dict[str, SourceFile] = {}  # map from file path to SourceFile.
 
-    def get_source_file(self, file_path):
+    def get_source_file(self, file_path: str) -> SourceFile:
         source_file = self.path_to_source_files.get(file_path)
-        if source_file is None:
+        if not source_file:
             source_file = SourceFile(len(self.path_to_source_files), file_path)
             self.path_to_source_files[file_path] = source_file
         return source_file
 
-    def load_source_code(self, source_dirs):
+    def load_source_code(self, source_dirs: List[str]):
         file_searcher = SourceFileSearcher(source_dirs)
         for source_file in self.path_to_source_files.values():
             real_path = file_searcher.get_real_path(source_file.abstract_path)
@@ -503,7 +512,7 @@ class SourceFileSet(object):
 
 class RecordData(object):
 
-    """RecordData reads perf.data, and generates data used by report.js in json format.
+    """RecordData reads perf.data, and generates data used by report_html.js in json format.
         All generated items are listed as below:
             1. recordTime: string
             2. machineType: string
@@ -581,16 +590,18 @@ class RecordData(object):
                 }
     """
 
-    def __init__(self, binary_cache_path, ndk_path, build_addr_hit_map,
-                 proguard_mapping_files: Optional[List[str]] = None):
+    def __init__(
+            self, binary_cache_path: Optional[str],
+            ndk_path: Optional[str],
+            build_addr_hit_map: bool, proguard_mapping_files: Optional[List[str]] = None):
         self.binary_cache_path = binary_cache_path
         self.ndk_path = ndk_path
         self.build_addr_hit_map = build_addr_hit_map
         self.proguard_mapping_files = proguard_mapping_files
-        self.meta_info = None
-        self.cmdline = None
-        self.arch = None
-        self.events = {}
+        self.meta_info: Optional[Dict[str, str]] = None
+        self.cmdline: Optional[str] = None
+        self.arch: Optional[str] = None
+        self.events: Dict[str, EventScope] = {}
         self.libs = LibSet()
         self.functions = FunctionSet()
         self.total_samples = 0
@@ -598,7 +609,7 @@ class RecordData(object):
         self.gen_addr_hit_map_in_record_info = False
         self.binary_finder = BinaryFinder(binary_cache_path, ReadElf(ndk_path))
 
-    def load_record_file(self, record_file, show_art_frames):
+    def load_record_file(self, record_file: str, show_art_frames: bool):
         lib = ReportLib()
         lib.SetRecordFile(record_file)
         # If not showing ip for unknown symbols, the percent of the unknown symbol may be
@@ -665,8 +676,8 @@ class RecordData(object):
             for process in new_processes.values():
                 event.processes[process.pid] = process
 
-    def limit_percents(self, min_func_percent, min_callchain_percent):
-        hit_func_ids = set()
+    def limit_percents(self, min_func_percent: float, min_callchain_percent: float):
+        hit_func_ids: Set[int] = set()
         for event in self.events.values():
             min_limit = event.event_count * min_func_percent * 0.01
             to_del_processes = []
@@ -685,12 +696,12 @@ class RecordData(object):
                 del event.processes[process]
         self.functions.trim_functions(hit_func_ids)
 
-    def _get_event(self, event_name):
+    def _get_event(self, event_name: str) -> EventScope:
         if event_name not in self.events:
             self.events[event_name] = EventScope(event_name)
         return self.events[event_name]
 
-    def add_source_code(self, source_dirs, filter_lib):
+    def add_source_code(self, source_dirs: List[str], filter_lib: Callable[[str], bool]):
         """ Collect source code information:
             1. Find line ranges for each function in FunctionSet.
             2. Find line for each addr in FunctionScope.addr_hit_map.
@@ -785,7 +796,8 @@ class RecordData(object):
 
         self.gen_addr_hit_map_in_record_info = True
 
-    def gen_record_info(self):
+    def gen_record_info(self) -> Dict[str, Any]:
+        """ Return json data which will be used by report_html.js. """
         record_info = {}
         timestamp = self.meta_info.get('timestamp')
         if timestamp:
@@ -811,26 +823,26 @@ class RecordData(object):
         record_info['sourceFiles'] = self._gen_source_files()
         return record_info
 
-    def _gen_process_names(self):
-        process_names = {}
+    def _gen_process_names(self) -> Dict[int, str]:
+        process_names: Dict[int, str] = {}
         for event in self.events.values():
             for process in event.processes.values():
                 process_names[process.pid] = process.name
         return process_names
 
-    def _gen_thread_names(self):
-        thread_names = {}
+    def _gen_thread_names(self) -> Dict[int, str]:
+        thread_names: Dict[int, str] = {}
         for event in self.events.values():
             for process in event.processes.values():
                 for thread in process.threads.values():
                     thread_names[thread.tid] = thread.name
         return thread_names
 
-    def _gen_lib_list(self):
+    def _gen_lib_list(self) -> List[str]:
         return [modify_text_for_html(lib.name) for lib in self.libs.libs]
 
-    def _gen_function_map(self):
-        func_map = {}
+    def _gen_function_map(self) -> Dict[int, Any]:
+        func_map: Dict[int, Any] = {}
         for func_id in sorted(self.functions.id_to_func):
             function = self.functions.id_to_func[func_id]
             func_data = {}
@@ -846,11 +858,11 @@ class RecordData(object):
             func_map[func_id] = func_data
         return func_map
 
-    def _gen_sample_info(self):
+    def _gen_sample_info(self) -> List[Dict[str, Any]]:
         return [event.get_sample_info(self.gen_addr_hit_map_in_record_info)
                 for event in self.events.values()]
 
-    def _gen_source_files(self):
+    def _gen_source_files(self) -> List[Dict[str, Any]]:
         source_files = sorted(self.source_files.path_to_source_files.values(),
                               key=lambda x: x.file_id)
         file_list = []
@@ -884,7 +896,7 @@ URLS = {
 
 class ReportGenerator(object):
 
-    def __init__(self, html_path):
+    def __init__(self, html_path: Union[Path, str]):
         self.hw = HtmlWriter(html_path)
         self.hw.open_tag('html')
         self.hw.open_tag('head')
@@ -904,12 +916,11 @@ class ReportGenerator(object):
             """).close_tag()
         self.hw.close_tag('head')
         self.hw.open_tag('body')
-        self.record_info = {}
 
     def write_content_div(self):
         self.hw.open_tag('div', id='report_content').close_tag()
 
-    def write_record_data(self, record_data):
+    def write_record_data(self, record_data: Dict[str, Any]):
         self.hw.open_tag('script', id='record_data', type='application/json')
         self.hw.add(json.dumps(record_data))
         self.hw.close_tag()
@@ -980,7 +991,7 @@ def main():
         record_data.aggregate_by_thread_name()
     record_data.limit_percents(args.min_func_percent, args.min_callchain_percent)
 
-    def filter_lib(lib_name):
+    def filter_lib(lib_name: str) -> bool:
         if not args.binary_filter:
             return True
         for binary in args.binary_filter:
