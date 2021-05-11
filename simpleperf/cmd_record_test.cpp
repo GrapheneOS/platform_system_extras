@@ -1144,3 +1144,24 @@ TEST(record_cmd, kernel_address_warning) {
   ASSERT_NE(pos, std::string::npos);
   ASSERT_EQ(output.find(warning_msg, pos + warning_msg.size()), std::string::npos);
 }
+
+TEST(record_cmd, add_meta_info_option) {
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({"--add-meta-info", "key1=value1", "--add-meta-info", "key2=value2"},
+                           tmpfile.path));
+  auto reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader);
+
+  const std::unordered_map<std::string, std::string>& meta_info = reader->GetMetaInfoFeature();
+  auto it = meta_info.find("key1");
+  ASSERT_NE(it, meta_info.end());
+  ASSERT_EQ(it->second, "value1");
+  it = meta_info.find("key2");
+  ASSERT_NE(it, meta_info.end());
+  ASSERT_EQ(it->second, "value2");
+
+  // Report error for invalid meta info.
+  ASSERT_FALSE(RunRecordCmd({"--add-meta-info", "key1"}, tmpfile.path));
+  ASSERT_FALSE(RunRecordCmd({"--add-meta-info", "key1="}, tmpfile.path));
+  ASSERT_FALSE(RunRecordCmd({"--add-meta-info", "=value1"}, tmpfile.path));
+}
