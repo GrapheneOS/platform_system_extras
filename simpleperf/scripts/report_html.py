@@ -72,6 +72,12 @@ def modify_text_for_html(text: str) -> str:
     return text.replace('>', '&gt;').replace('<', '&lt;')
 
 
+def hex_address_for_json(addr: int) -> str:
+    """ To handle big addrs (nears uint64_max) in Javascript, store addrs as hex strings in Json.
+    """
+    return '0x%x' % addr
+
+
 class EventScope(object):
 
     def __init__(self, name: str):
@@ -318,7 +324,10 @@ class FunctionScope(object):
             items = []
             for addr in sorted(self.addr_hit_map):
                 count_info = self.addr_hit_map[addr]
-                items.append({'a': addr, 'e': count_info[0], 's': count_info[1]})
+                items.append(
+                    {'a': hex_address_for_json(addr),
+                     'e': count_info[0],
+                     's': count_info[1]})
             result['a'] = items
         return result
 
@@ -858,7 +867,9 @@ class RecordData(object):
             if function.disassembly:
                 disassembly_list = []
                 for code, addr in function.disassembly:
-                    disassembly_list.append([modify_text_for_html(code), addr])
+                    disassembly_list.append(
+                        [modify_text_for_html(code),
+                         hex_address_for_json(addr)])
                 func_data['d'] = disassembly_list
             func_map[func_id] = func_data
         return func_map
