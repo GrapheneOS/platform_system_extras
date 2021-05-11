@@ -165,8 +165,7 @@ class TestReportHtml(TestBase):
                     function_name = function_data['f']
                     for dis_line, dis_addr in function_data.get('d') or []:
                         if addr == dis_addr:
-                            addr_str = '0x%x' % addr
-                            s = (f'{lib_name}:{function_name}:{addr_str}:' +
+                            s = (f'{lib_name}:{function_name}:{addr}:' +
                                  f'{event_count}:{subtree_event_count}')
                             disassembly_list.append(s)
 
