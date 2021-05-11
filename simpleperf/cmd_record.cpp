@@ -1162,7 +1162,7 @@ bool RecordCommand::AdjustPerfEventLimit() {
     set_prop = true;
   }
 
-  if (GetAndroidVersion() >= kAndroidVersionP + 1 && set_prop && !in_app_context_) {
+  if (GetAndroidVersion() >= kAndroidVersionQ && set_prop && !in_app_context_) {
     return SetPerfEventLimits(std::max(max_sample_freq_, cur_max_freq), cpu_time_max_percent_,
                               std::max(mlock_kb, cur_mlock_kb));
   }

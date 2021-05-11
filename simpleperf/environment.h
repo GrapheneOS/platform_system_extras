@@ -114,11 +114,17 @@ class ScopedTempFiles {
 };
 
 bool SignalIsIgnored(int signo);
+
+enum {
+  kAndroidVersionP = 9,
+  kAndroidVersionQ = 10,
+  kAndroidVersionR = 11,
+  kAndroidVersionS = 12,
+};
+
 // Return 0 if no android version.
 int GetAndroidVersion();
 std::optional<std::pair<int, int>> GetKernelVersion();
-
-constexpr int kAndroidVersionP = 9;
 
 std::string GetHardwareFromCpuInfo(const std::string& cpu_info);
 
