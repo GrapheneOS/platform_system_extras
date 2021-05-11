@@ -96,18 +96,19 @@ bool HashTreeBuilder::ParseBytesArrayFromString(
   return true;
 }
 
-uint64_t HashTreeBuilder::CalculateSize(uint64_t input_size) const {
+uint64_t HashTreeBuilder::CalculateSize(
+    uint64_t input_size, size_t block_size, size_t hash_size) {
   uint64_t verity_blocks = 0;
   size_t level_blocks;
   size_t levels = 0;
   do {
     level_blocks =
-        verity_tree_blocks(input_size, block_size_, hash_size_, levels);
+        verity_tree_blocks(input_size, block_size, hash_size, levels);
     levels++;
     verity_blocks += level_blocks;
   } while (level_blocks > 1);
 
-  return verity_blocks * block_size_;
+  return verity_blocks * block_size;
 }
 
 bool HashTreeBuilder::Initialize(int64_t expected_data_size,
