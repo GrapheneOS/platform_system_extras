@@ -674,14 +674,21 @@ class RunAs : public InAppRunner {
 
  protected:
   std::vector<std::string> GetPrefixArgs(const std::string& cmd) {
-    return {"run-as",
-            package_name_,
-            "--user",
-            user_id_,
-            simpleperf_copied_in_app_ ? "./simpleperf" : simpleperf_path_,
-            cmd,
-            "--app",
-            package_name_};
+    std::vector<std::string> args = {"run-as",
+                                     package_name_,
+                                     "--user",
+                                     user_id_,
+                                     simpleperf_copied_in_app_ ? "./simpleperf" : simpleperf_path_,
+                                     cmd,
+                                     "--app",
+                                     package_name_};
+    if (cmd == "record") {
+      if (simpleperf_copied_in_app_ || GetAndroidVersion() >= kAndroidVersionS) {
+        args.emplace_back("--add-meta-info");
+        args.emplace_back("app_type=debuggable");
+      }
+    }
+    return args;
   }
 
   bool simpleperf_copied_in_app_ = false;
@@ -717,7 +724,7 @@ class SimpleperfAppRunner : public InAppRunner {
  public:
   SimpleperfAppRunner(int user_id, const std::string& package_name)
       : InAppRunner(user_id, package_name) {}
-  bool Prepare() override { return GetAndroidVersion() >= kAndroidVersionP + 1; }
+  bool Prepare() override { return GetAndroidVersion() >= kAndroidVersionQ; }
 
  protected:
   std::vector<std::string> GetPrefixArgs(const std::string& cmd) {
@@ -727,6 +734,10 @@ class SimpleperfAppRunner : public InAppRunner {
       args.emplace_back(user_id_);
     }
     args.emplace_back(cmd);
+    if (cmd == "record" && GetAndroidVersion() >= kAndroidVersionS) {
+      args.emplace_back("--add-meta-info");
+      args.emplace_back("app_type=profileable");
+    }
     return args;
   }
 };
