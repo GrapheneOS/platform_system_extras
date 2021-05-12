@@ -535,7 +535,7 @@ class Addr2Nearestline(object):
             addrs: a map from address to Addr object in this dso.
         """
 
-        def __init__(self, build_id: str):
+        def __init__(self, build_id: Optional[str]):
             self.build_id = build_id
             self.addrs = {}
 
@@ -567,7 +567,7 @@ class Addr2Nearestline(object):
         self.func_name_to_id = {}
         self.func_id_to_name = []
 
-    def add_addr(self, dso_path: str, build_id: str, func_addr: int, addr: int):
+    def add_addr(self, dso_path: str, build_id: Optional[str], func_addr: int, addr: int):
         dso = self.dso_map.get(dso_path)
         if dso is None:
             dso = self.dso_map[dso_path] = self.Dso(build_id)
@@ -752,16 +752,16 @@ class SourceFileSearcher(object):
                         '.java', '.kt'}
 
     @classmethod
-    def is_source_filename(cls, filename):
+    def is_source_filename(cls, filename: str):
         ext = os.path.splitext(filename)[1]
         return ext in cls.SOURCE_FILE_EXTS
 
-    def __init__(self, source_dirs):
+    def __init__(self, source_dirs: List[str]):
         # Map from filename to a list of reversed directory path containing filename.
         self.filename_to_rparents = {}
         self._collect_paths(source_dirs)
 
-    def _collect_paths(self, source_dirs):
+    def _collect_paths(self, source_dirs: List[str]):
         for source_dir in source_dirs:
             for parent, _, file_names in os.walk(source_dir):
                 rparent = None
@@ -774,7 +774,7 @@ class SourceFileSearcher(object):
                             rparent = parent[::-1]
                         rparents.append(rparent)
 
-    def get_real_path(self, abstract_path):
+    def get_real_path(self, abstract_path: str) -> Optional[str]:
         abstract_path = abstract_path.replace('/', os.sep)
         abstract_parent, file_name = os.path.split(abstract_path)
         abstract_rparent = abstract_parent[::-1]
