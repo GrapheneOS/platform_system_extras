@@ -31,10 +31,10 @@ bool CheckUnwindMaps(UnwindMaps& maps, const MapSet& map_set) {
   unwindstack::MapInfo* prev_real_map = nullptr;
   for (size_t i = 0; i < maps.Total(); i++) {
     unwindstack::MapInfo* info = maps.Get(i);
-    if (info == nullptr || map_set.maps.find(info->start) == map_set.maps.end()) {
+    if (info == nullptr || map_set.maps.find(info->start()) == map_set.maps.end()) {
       return false;
     }
-    if (info->prev_real_map != prev_real_map) {
+    if (info->prev_real_map() != prev_real_map) {
       return false;
     }
     if (!info->IsBlank()) {
