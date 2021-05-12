@@ -535,7 +535,7 @@ class Addr2Nearestline(object):
             addrs: a map from address to Addr object in this dso.
         """
 
-        def __init__(self, build_id: str):
+        def __init__(self, build_id: Optional[str]):
             self.build_id = build_id
             self.addrs = {}
 
@@ -567,7 +567,7 @@ class Addr2Nearestline(object):
         self.func_name_to_id = {}
         self.func_id_to_name = []
 
-    def add_addr(self, dso_path: str, build_id: str, func_addr: int, addr: int):
+    def add_addr(self, dso_path: str, build_id: Optional[str], func_addr: int, addr: int):
         dso = self.dso_map.get(dso_path)
         if dso is None:
             dso = self.dso_map[dso_path] = self.Dso(build_id)
