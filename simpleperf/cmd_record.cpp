@@ -281,6 +281,7 @@ RECORD_FILTER_OPTION_HELP_MSG
 "--symfs <dir>    Look for files with symbols relative to this directory.\n"
 "                 This option is used to provide files with symbol table and\n"
 "                 debug information, which are used for unwinding and dumping symbols.\n"
+"--add-meta-info key=value     Add extra meta info, which will be stored in the recording file.\n"
 "\n"
 "Other options:\n"
 "--exit-with-parent            Stop recording when the process starting\n"
@@ -432,6 +433,8 @@ RECORD_FILTER_OPTION_HELP_MSG
 
   std::optional<MapRecordReader> map_record_reader_;
   std::optional<MapRecordThread> map_record_thread_;
+
+  std::unordered_map<std::string, std::string> extra_meta_info_;
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
@@ -799,6 +802,16 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   // Process options.
   system_wide_collection_ = options.PullBoolValue("-a");
 
+  for (const OptionValue& value : options.PullValues("--add-meta-info")) {
+    const std::string& s = *value.str_value;
+    auto split_pos = s.find('=');
+    if (split_pos == std::string::npos || split_pos == 0 || split_pos + 1 == s.size()) {
+      LOG(ERROR) << "invalid meta-info: " << s;
+      return false;
+    }
+    extra_meta_info_[s.substr(0, split_pos)] = s.substr(split_pos + 1);
+  }
+
   if (auto value = options.PullValue("--addr-filter"); value) {
     auto filters = ParseAddrFilterOption(*value->str_value);
     if (filters.empty()) {
@@ -1149,7 +1162,7 @@ bool RecordCommand::AdjustPerfEventLimit() {
     set_prop = true;
   }
 
-  if (GetAndroidVersion() >= kAndroidVersionP + 1 && set_prop && !in_app_context_) {
+  if (GetAndroidVersion() >= kAndroidVersionQ && set_prop && !in_app_context_) {
     return SetPerfEventLimits(std::max(max_sample_freq_, cur_max_freq), cpu_time_max_percent_,
                               std::max(mlock_kb, cur_mlock_kb));
   }
@@ -1888,7 +1901,7 @@ bool RecordCommand::DumpFileFeature() {
 }
 
 bool RecordCommand::DumpMetaInfoFeature(bool kernel_symbols_available) {
-  std::unordered_map<std::string, std::string> info_map;
+  std::unordered_map<std::string, std::string> info_map = extra_meta_info_;
   info_map["simpleperf_version"] = GetSimpleperfVersion();
   info_map["system_wide_collection"] = system_wide_collection_ ? "true" : "false";
   info_map["trace_offcpu"] = trace_offcpu_ ? "true" : "false";
