@@ -360,7 +360,9 @@ class InjectCommand : public Command {
       auto branch_map = BuildBranchMap(binary_proto);
 
       if (dso_p->type() == DSO_KERNEL) {
-        ModifyBranchMapForKernel(branch_list_proto, dso_p, branch_map);
+        if (!ModifyBranchMapForKernel(binary_proto, dso_p, branch_map)) {
+          return false;
+        }
       }
 
       if (auto result = ConvertBranchMapToInstrRanges(dso_p, branch_map, callback); !result.ok()) {
@@ -386,11 +388,15 @@ class InjectCommand : public Command {
     return branch_map;
   }
 
-  void ModifyBranchMapForKernel(const proto::ETMBranchList& branch_list_proto, Dso* dso,
+  bool ModifyBranchMapForKernel(const proto::ETMBranchList_Binary& binary_proto, Dso* dso,
                                 BranchMap& branch_map) {
-    uint64_t kernel_map_start_addr = branch_list_proto.kernel_start_addr();
+    if (!binary_proto.has_kernel_info()) {
+      LOG(ERROR) << "no kernel info";
+      return false;
+    }
+    uint64_t kernel_map_start_addr = binary_proto.kernel_info().kernel_start_addr();
     if (kernel_map_start_addr == 0) {
-      return;
+      return true;
     }
     // Addresses are still kernel ip addrs in memory. Need to convert them to vaddrs in vmlinux.
     BranchMap new_branch_map;
@@ -399,6 +405,7 @@ class InjectCommand : public Command {
       new_branch_map[vaddr_in_file] = std::move(p.second);
     }
     branch_map = std::move(new_branch_map);
+    return true;
   }
 
   bool WriteOutput() {
@@ -534,11 +541,11 @@ class InjectCommand : public Command {
         if (dso->GetDebugFilePath() == dso->Path()) {
           // vmlinux isn't available. We still use kernel ip addr. Put kernel start addr in proto
           // for address conversion later.
-          branch_list_proto.set_kernel_start_addr(kernel_map_start_addr_);
+          binary_proto->mutable_kernel_info()->set_kernel_start_addr(kernel_map_start_addr_);
         } else {
           // vmlinux is available. We have converted kernel ip addr to vaddr in vmlinux. So no need
           // to put kernel start addr in proto.
-          branch_list_proto.set_kernel_start_addr(0);
+          binary_proto->mutable_kernel_info()->set_kernel_start_addr(0);
         }
       }
     }
