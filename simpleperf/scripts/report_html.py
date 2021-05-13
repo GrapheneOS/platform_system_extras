@@ -18,6 +18,7 @@
 from __future__ import annotations
 import argparse
 import collections
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 import datetime
 import json
@@ -28,7 +29,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Un
 
 from simpleperf_report_lib import ReportLib, SymbolStruct
 from simpleperf_utils import (
-    Addr2Nearestline, BinaryFinder, get_script_dir, log_exit, log_info, Objdump,
+    Addr2Nearestline, ArgParseFormatter, BinaryFinder, get_script_dir, log_exit, log_info, Objdump,
     open_report_in_browser, ReadElf, SourceFileSearcher)
 
 MAX_CALLSTACK_LENGTH = 750
@@ -69,6 +70,12 @@ class HtmlWriter(object):
 
 def modify_text_for_html(text: str) -> str:
     return text.replace('>', '&gt;').replace('<', '&lt;')
+
+
+def hex_address_for_json(addr: int) -> str:
+    """ To handle big addrs (nears uint64_max) in Javascript, store addrs as hex strings in Json.
+    """
+    return '0x%x' % addr
 
 
 class EventScope(object):
@@ -317,7 +324,10 @@ class FunctionScope(object):
             items = []
             for addr in sorted(self.addr_hit_map):
                 count_info = self.addr_hit_map[addr]
-                items.append({'a': addr, 'e': count_info[0], 's': count_info[1]})
+                items.append(
+                    {'a': hex_address_for_json(addr),
+                     'e': count_info[0],
+                     's': count_info[1]})
             result['a'] = items
         return result
 
@@ -770,30 +780,34 @@ class RecordData(object):
         # Collect needed source code in SourceFileSet.
         self.source_files.load_source_code(source_dirs)
 
-    def add_disassembly(self, filter_lib: Callable[[str], bool]):
+    def add_disassembly(self, filter_lib: Callable[[str], bool], jobs: int):
         """ Collect disassembly information:
             1. Use objdump to collect disassembly for each function in FunctionSet.
             2. Set flag to dump addr_hit_map when generating record info.
         """
         objdump = Objdump(self.ndk_path, self.binary_finder)
-        cur_lib_name: Optional[str] = None
-        dso_info = None
-        for function in sorted(self.functions.id_to_func.values(), key=lambda a: a.lib_id):
+        executor = ThreadPoolExecutor(jobs)
+        lib_functions: Dict[int, List[Function]] = collections.defaultdict(list)
+
+        for function in self.functions.id_to_func.values():
             if function.func_name == 'unknown':
                 continue
-            lib = self.libs.get_lib(function.lib_id)
-            if lib.name != cur_lib_name:
-                cur_lib_name = lib.name
-                if filter_lib(lib.name):
-                    dso_info = objdump.get_dso_info(lib.name, lib.build_id)
-                else:
-                    dso_info = None
-                if dso_info:
-                    log_info('Disassemble %s' % dso_info[0])
-            if dso_info:
-                code = objdump.disassemble_code(dso_info, function.start_addr, function.addr_len)
-                function.disassembly = code
+            lib_functions[function.lib_id].append(function)
 
+        for lib_id, functions in lib_functions.items():
+            lib = self.libs.get_lib(lib_id)
+            if not filter_lib(lib.name):
+                continue
+            dso_info = objdump.get_dso_info(lib.name, lib.build_id)
+            if not dso_info:
+                continue
+            log_info('Disassemble %s' % dso_info[0])
+            for function in functions:
+                def task(function, dso_info):
+                    function.disassembly = objdump.disassemble_code(
+                        dso_info, function.start_addr, function.addr_len)
+                executor.submit(task, function, dso_info)
+        executor.shutdown(wait=True)
         self.gen_addr_hit_map_in_record_info = True
 
     def gen_record_info(self) -> Dict[str, Any]:
@@ -853,7 +867,9 @@ class RecordData(object):
             if function.disassembly:
                 disassembly_list = []
                 for code, addr in function.disassembly:
-                    disassembly_list.append([modify_text_for_html(code), addr])
+                    disassembly_list.append(
+                        [modify_text_for_html(code),
+                         hex_address_for_json(addr)])
                 func_data['d'] = disassembly_list
             func_map[func_id] = func_data
         return func_map
@@ -934,27 +950,29 @@ class ReportGenerator(object):
         self.hw.close()
 
 
-def main():
-    sys.setrecursionlimit(MAX_CALLSTACK_LENGTH * 2 + 50)
-    parser = argparse.ArgumentParser(description='report profiling data')
+def get_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description='report profiling data', formatter_class=ArgParseFormatter)
     parser.add_argument('-i', '--record_file', nargs='+', default=['perf.data'], help="""
-                        Set profiling data file to report. Default is perf.data.""")
-    parser.add_argument('-o', '--report_path', default='report.html', help="""
-                        Set output html file. Default is report.html.""")
+                        Set profiling data file to report.""")
+    parser.add_argument('-o', '--report_path', default='report.html', help='Set output html file')
     parser.add_argument('--min_func_percent', default=0.01, type=float, help="""
                         Set min percentage of functions shown in the report.
                         For example, when set to 0.01, only functions taking >= 0.01%% of total
-                        event count are collected in the report. Default is 0.01.""")
+                        event count are collected in the report.""")
     parser.add_argument('--min_callchain_percent', default=0.01, type=float, help="""
                         Set min percentage of callchains shown in the report.
                         It is used to limit nodes shown in the function flamegraph. For example,
                         when set to 0.01, only callchains taking >= 0.01%% of the event count of
-                        the starting function are collected in the report. Default is 0.01.""")
+                        the starting function are collected in the report.""")
     parser.add_argument('--add_source_code', action='store_true', help='Add source code.')
     parser.add_argument('--source_dirs', nargs='+', help='Source code directories.')
     parser.add_argument('--add_disassembly', action='store_true', help='Add disassembled code.')
     parser.add_argument('--binary_filter', nargs='+', help="""Annotate source code and disassembly
                         only for selected binaries.""")
+    parser.add_argument(
+        '-j', '--jobs', type=int, default=os.cpu_count(),
+        help='Use multithreading to speed up disassembly and source code annotation.')
     parser.add_argument('--ndk_path', nargs=1, help='Find tools in the ndk path.')
     parser.add_argument('--no_browser', action='store_true', help="Don't open report in browser.")
     parser.add_argument('--show_art_frames', action='store_true',
@@ -965,7 +983,12 @@ def main():
     parser.add_argument(
         '--proguard-mapping-file', nargs='+',
         help='Add proguard mapping file to de-obfuscate symbols')
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def main():
+    sys.setrecursionlimit(MAX_CALLSTACK_LENGTH * 2 + 50)
+    args = get_args()
 
     # 1. Process args.
     binary_cache_path = 'binary_cache'
@@ -981,6 +1004,8 @@ def main():
         log_exit('--source_dirs is needed to add source code.')
     build_addr_hit_map = args.add_source_code or args.add_disassembly
     ndk_path = None if not args.ndk_path else args.ndk_path[0]
+    if args.jobs < 1:
+        log_exit('Invalid --jobs option.')
 
     # 2. Produce record data.
     record_data = RecordData(binary_cache_path, ndk_path,
@@ -1001,7 +1026,7 @@ def main():
     if args.add_source_code:
         record_data.add_source_code(args.source_dirs, filter_lib)
     if args.add_disassembly:
-        record_data.add_disassembly(filter_lib)
+        record_data.add_disassembly(filter_lib, args.jobs)
 
     # 3. Generate report html.
     report_generator = ReportGenerator(args.report_path)
