@@ -21,6 +21,7 @@ SIMPLEPERF_SCRIPT_LIST := \
     app_api \
     doc \
     demo \
+    runtest \
     scripts \
     testdata
 
