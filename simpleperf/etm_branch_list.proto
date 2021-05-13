@@ -47,15 +47,20 @@ message ETMBranchList {
       KERNEL_MODULE = 2;
     }
     BinaryType type = 4;
+
+    message KernelBinaryInfo {
+      // kernel_start_addr is used to convert kernel ip address to vaddr in vmlinux.
+      // If it is zero, the Address in KERNEL binary has been converted to vaddr. Otherwise,
+      // the Address in KERNEL binary is still ip address, and need to be converted later.
+      uint64 kernel_start_addr = 1;
+    }
+
+    KernelBinaryInfo kernel_info = 5;
+
   }
 
   // Used to identify format in generated proto files.
   // Should always be "simpleperf:EtmBranchList".
   string magic = 1;
   repeated Binary binaries = 2;
-
-  // kernel_start_addr is used to convert kernel ip address to vaddr in vmlinux.
-  // If it is zero, the Address in KERNEL binary has been converted to vaddr.
-  // Otherwise, the Address in KERNEL binary is still ip address, and need to be converted later.
-  uint64 kernel_start_addr = 3;
 }
