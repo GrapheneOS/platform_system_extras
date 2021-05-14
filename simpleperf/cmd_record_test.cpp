@@ -720,7 +720,7 @@ class RecordingAppHelper {
   TemporaryFile perf_data_file_;
 };
 
-static void TestRecordingApps(const std::string& app_name) {
+static void TestRecordingApps(const std::string& app_name, const std::string& app_type) {
   RecordingAppHelper helper;
   // Bring the app to foreground to avoid no samples.
   ASSERT_TRUE(helper.StartApp("am start " + app_name + "/.MainActivity"));
@@ -736,20 +736,32 @@ static void TestRecordingApps(const std::string& app_name) {
            strstr(name, expected_method_name.c_str()) != nullptr;
   };
   ASSERT_TRUE(helper.CheckData(process_symbol));
+
+  // Check app_package_name and app_type.
+  auto reader = RecordFileReader::CreateInstance(helper.GetDataPath());
+  ASSERT_TRUE(reader);
+  const std::unordered_map<std::string, std::string>& meta_info = reader->GetMetaInfoFeature();
+  auto it = meta_info.find("app_package_name");
+  ASSERT_NE(it, meta_info.end());
+  ASSERT_EQ(it->second, app_name);
+  it = meta_info.find("app_type");
+  ASSERT_NE(it, meta_info.end());
+  ASSERT_EQ(it->second, app_type);
 }
 
 TEST(record_cmd, app_option_for_debuggable_app) {
   TEST_REQUIRE_APPS();
   SetRunInAppToolForTesting(true, false);
-  TestRecordingApps("com.android.simpleperf.debuggable");
+  TestRecordingApps("com.android.simpleperf.debuggable", "debuggable");
   SetRunInAppToolForTesting(false, true);
-  TestRecordingApps("com.android.simpleperf.debuggable");
+  // Although the app is actually debuggable, we profile the app using simpleperf_app_runner.
+  TestRecordingApps("com.android.simpleperf.debuggable", "profileable");
 }
 
 TEST(record_cmd, app_option_for_profileable_app) {
   TEST_REQUIRE_APPS();
   SetRunInAppToolForTesting(false, true);
-  TestRecordingApps("com.android.simpleperf.profileable");
+  TestRecordingApps("com.android.simpleperf.profileable", "profileable");
 }
 
 #if defined(__ANDROID__)
@@ -1143,4 +1155,25 @@ TEST(record_cmd, kernel_address_warning) {
   auto pos = output.find(warning_msg);
   ASSERT_NE(pos, std::string::npos);
   ASSERT_EQ(output.find(warning_msg, pos + warning_msg.size()), std::string::npos);
+}
+
+TEST(record_cmd, add_meta_info_option) {
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({"--add-meta-info", "key1=value1", "--add-meta-info", "key2=value2"},
+                           tmpfile.path));
+  auto reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader);
+
+  const std::unordered_map<std::string, std::string>& meta_info = reader->GetMetaInfoFeature();
+  auto it = meta_info.find("key1");
+  ASSERT_NE(it, meta_info.end());
+  ASSERT_EQ(it->second, "value1");
+  it = meta_info.find("key2");
+  ASSERT_NE(it, meta_info.end());
+  ASSERT_EQ(it->second, "value2");
+
+  // Report error for invalid meta info.
+  ASSERT_FALSE(RunRecordCmd({"--add-meta-info", "key1"}, tmpfile.path));
+  ASSERT_FALSE(RunRecordCmd({"--add-meta-info", "key1="}, tmpfile.path));
+  ASSERT_FALSE(RunRecordCmd({"--add-meta-info", "=value1"}, tmpfile.path));
 }
