@@ -530,9 +530,10 @@ std::set<pid_t> WaitForAppProcesses(const std::string& package_name) {
 
 namespace {
 
-bool IsAppDebuggable(const std::string& user_id, const std::string& package_name) {
-  return Workload::RunCmd(
-      {"run-as", package_name, "--user", user_id, "echo", ">/dev/null", "2>/dev/null"}, false);
+bool IsAppDebuggable(int user_id, const std::string& package_name) {
+  return Workload::RunCmd({"run-as", package_name, "--user", std::to_string(user_id), "echo",
+                           ">/dev/null", "2>/dev/null"},
+                          false);
 }
 
 class InAppRunner {
@@ -696,10 +697,6 @@ class RunAs : public InAppRunner {
 };
 
 bool RunAs::Prepare() {
-  // Test if run-as can access the package.
-  if (!IsAppDebuggable(user_id_, package_name_)) {
-    return false;
-  }
   // run-as can't run /data/local/tmp/simpleperf directly. So copy simpleperf binary if needed.
   if (!android::base::Readlink("/proc/self/exe", &simpleperf_path_)) {
     PLOG(ERROR) << "ReadLink failed";
@@ -722,8 +719,12 @@ bool RunAs::Prepare() {
 
 class SimpleperfAppRunner : public InAppRunner {
  public:
-  SimpleperfAppRunner(int user_id, const std::string& package_name)
-      : InAppRunner(user_id, package_name) {}
+  SimpleperfAppRunner(int user_id, const std::string& package_name, const std::string app_type)
+      : InAppRunner(user_id, package_name) {
+    // On Android < S, the app type is unknown before running simpleperf_app_runner. Assume it's
+    // profileable.
+    app_type_ = app_type == "unknown" ? "profileable" : app_type;
+  }
   bool Prepare() override { return GetAndroidVersion() >= kAndroidVersionQ; }
 
  protected:
@@ -736,10 +737,12 @@ class SimpleperfAppRunner : public InAppRunner {
     args.emplace_back(cmd);
     if (cmd == "record" && GetAndroidVersion() >= kAndroidVersionS) {
       args.emplace_back("--add-meta-info");
-      args.emplace_back("app_type=profileable");
+      args.emplace_back("app_type=" + app_type_);
     }
     return args;
   }
+
+  std::string app_type_;
 };
 
 }  // namespace
@@ -766,21 +769,45 @@ static int GetCurrentUserId() {
   return 0;
 }
 
+std::string GetAppType(const std::string& app_package_name) {
+  if (GetAndroidVersion() < kAndroidVersionS) {
+    return "unknown";
+  }
+  std::string cmd = "simpleperf_app_runner " + app_package_name + " --show-app-type";
+  std::unique_ptr<FILE, decltype(&pclose)> fp(popen(cmd.c_str(), "re"), pclose);
+  if (fp) {
+    char buf[128];
+    if (fgets(buf, sizeof(buf), fp.get()) != nullptr) {
+      return android::base::Trim(buf);
+    }
+  }
+  // Can't get app_type. It means the app doesn't exist.
+  return "not_exist";
+}
+
 bool RunInAppContext(const std::string& app_package_name, const std::string& cmd,
                      const std::vector<std::string>& args, size_t workload_args_size,
                      const std::string& output_filepath, bool need_tracepoint_events) {
   int user_id = GetCurrentUserId();
   std::unique_ptr<InAppRunner> in_app_runner;
-  if (allow_run_as) {
+
+  std::string app_type = GetAppType(app_package_name);
+  if (app_type == "unknown" && IsAppDebuggable(user_id, app_package_name)) {
+    app_type = "debuggable";
+  }
+
+  if (allow_run_as && app_type == "debuggable") {
     in_app_runner.reset(new RunAs(user_id, app_package_name));
     if (!in_app_runner->Prepare()) {
       in_app_runner = nullptr;
     }
   }
   if (!in_app_runner && allow_simpleperf_app_runner) {
-    in_app_runner.reset(new SimpleperfAppRunner(user_id, app_package_name));
-    if (!in_app_runner->Prepare()) {
-      in_app_runner = nullptr;
+    if (app_type == "debuggable" || app_type == "profileable" || app_type == "unknown") {
+      in_app_runner.reset(new SimpleperfAppRunner(user_id, app_package_name, app_type));
+      if (!in_app_runner->Prepare()) {
+        in_app_runner = nullptr;
+      }
     }
   }
   if (!in_app_runner) {
