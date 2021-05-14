@@ -20,7 +20,6 @@
 
 from __future__ import annotations
 import argparse
-from collections.abc import Iterator
 import logging
 import os
 import os.path
@@ -30,7 +29,7 @@ import shutil
 import subprocess
 import sys
 import time
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, Iterator, List, Optional, Set, Union
 
 
 def get_script_dir() -> str:
