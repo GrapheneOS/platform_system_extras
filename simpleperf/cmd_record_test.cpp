@@ -754,8 +754,7 @@ TEST(record_cmd, app_option_for_debuggable_app) {
   SetRunInAppToolForTesting(true, false);
   TestRecordingApps("com.android.simpleperf.debuggable", "debuggable");
   SetRunInAppToolForTesting(false, true);
-  // Although the app is actually debuggable, we profile the app using simpleperf_app_runner.
-  TestRecordingApps("com.android.simpleperf.debuggable", "profileable");
+  TestRecordingApps("com.android.simpleperf.debuggable", "debuggable");
 }
 
 TEST(record_cmd, app_option_for_profileable_app) {
