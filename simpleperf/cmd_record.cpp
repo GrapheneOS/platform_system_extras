@@ -1918,6 +1918,9 @@ bool RecordCommand::DumpMetaInfoFeature(bool kernel_symbols_available) {
   info_map["android_build_type"] = android::base::GetProperty("ro.build.type", "");
   if (!app_package_name_.empty()) {
     info_map["app_package_name"] = app_package_name_;
+    if (IsRoot()) {
+      info_map["app_type"] = GetAppType(app_package_name_);
+    }
   }
   if (event_selection_set_.HasAuxTrace()) {
     // used by --exclude-perf in cmd_inject.cpp
