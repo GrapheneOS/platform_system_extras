@@ -29,8 +29,8 @@ import os
 import os.path
 
 from simpleperf_report_lib import ReportLib
-from simpleperf_utils import (Addr2Nearestline, BinaryFinder, extant_dir, find_tool_path,
-                              flatten_arg_list, log_info, log_exit, ReadElf)
+from simpleperf_utils import (Addr2Nearestline, BinaryFinder, extant_dir,
+                              flatten_arg_list, log_info, log_exit, ReadElf, ToolFinder)
 try:
     import profile_pb2
 except ImportError:
@@ -481,7 +481,7 @@ class PprofProfileGenerator(object):
         if not self.config.get('binary_cache_dir'):
             log_info("Can't generate line information because binary_cache is missing.")
             return
-        if not find_tool_path('llvm-symbolizer', self.config['ndk_path']):
+        if not ToolFinder.find_tool_path('llvm-symbolizer', self.config['ndk_path']):
             log_info("Can't generate line information because can't find llvm-symbolizer.")
             return
         # We have changed dso names to paths in binary_cache in self.get_binary(). So no need to

@@ -470,7 +470,7 @@ bool MonitorCommand::AdjustPerfEventLimit() {
     set_prop = true;
   }
 
-  if (GetAndroidVersion() >= kAndroidVersionP + 1 && set_prop) {
+  if (GetAndroidVersion() >= kAndroidVersionQ && set_prop) {
     return SetPerfEventLimits(std::max(max_sample_freq_, cur_max_freq), cpu_time_max_percent_,
                               std::max(mlock_kb, cur_mlock_kb));
   }
