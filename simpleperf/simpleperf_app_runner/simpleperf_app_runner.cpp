@@ -164,9 +164,16 @@ static void CheckSimpleperfArguments(std::string_view cmd_name, char** args) {
 
 int main(int argc, char* argv[]) {
   if (argc < 3) {
-    error(1, 0,
-          "usage: simpleperf_app_runner package_name [--user uid] simpleperf_cmd "
-          "simpleperf_cmd_args...");
+    fprintf(
+        stderr,
+        // clang-format off
+"Usage: simpleperf_app_runner package_name [options] [simpleperf cmd simpleperf_cmd_args]\n"
+"Options:\n"
+"--user uid        profile app process run by uid\n"
+"--show-app-type   show if the app is debuggable or profileable\n"
+        // clang-format on
+    );
+    return 1;
   }
   int i = 1;
   char* pkgname = argv[i++];
@@ -177,6 +184,21 @@ int main(int argc, char* argv[]) {
     }
     i += 2;
   }
+  if (i < argc && strcmp(argv[i], "--show-app-type") == 0) {
+    pkg_info* info = ReadPackageInfo(pkgname);
+    if (info == nullptr) {
+      error(1, 0, "failed to find package %s", pkgname);
+    }
+    if (info->debuggable) {
+      printf("debuggable\n");
+    } else if (info->profileable_from_shell) {
+      printf("profileable\n");
+    } else {
+      printf("non_profileable\n");
+    }
+    return 0;
+  }
+
   if (i == argc) {
     error(1, 0, "no simpleperf command name");
   }
