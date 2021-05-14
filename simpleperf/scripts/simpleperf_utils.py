@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 import argparse
+from collections.abc import Iterator
 import logging
 import os
 import os.path
@@ -29,22 +30,22 @@ import shutil
 import subprocess
 import sys
 import time
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Set, Union
 
 
-def get_script_dir():
+def get_script_dir() -> str:
     return os.path.dirname(os.path.realpath(__file__))
 
 
-def is_windows():
+def is_windows() -> bool:
     return sys.platform == 'win32' or sys.platform == 'cygwin'
 
 
-def is_darwin():
+def is_darwin() -> bool:
     return sys.platform == 'darwin'
 
 
-def get_platform():
+def get_platform() -> str:
     if is_windows():
         return 'windows'
     if is_darwin():
@@ -52,27 +53,27 @@ def get_platform():
     return 'linux'
 
 
-def is_python3():
+def is_python3() -> str:
     return sys.version_info >= (3, 0)
 
 
-def log_debug(msg):
+def log_debug(msg: str):
     logging.debug(msg)
 
 
-def log_info(msg):
+def log_info(msg: str):
     logging.info(msg)
 
 
-def log_warning(msg):
+def log_warning(msg: str):
     logging.warning(msg)
 
 
-def log_fatal(msg):
+def log_fatal(msg: str):
     raise Exception(msg)
 
 
-def log_exit(msg):
+def log_exit(msg: str):
     sys.exit(msg)
 
 
@@ -80,7 +81,7 @@ def disable_debug_log():
     logging.getLogger().setLevel(logging.WARN)
 
 
-def set_log_level(level_name):
+def set_log_level(level_name: str):
     if level_name == 'debug':
         level = logging.DEBUG
     elif level_name == 'info':
@@ -92,7 +93,7 @@ def set_log_level(level_name):
     logging.getLogger().setLevel(level)
 
 
-def str_to_bytes(str_value):
+def str_to_bytes(str_value: str) -> bytes:
     if not is_python3():
         return str_value
     # In python 3, str are wide strings whereas the C api expects 8 bit strings,
@@ -100,7 +101,7 @@ def str_to_bytes(str_value):
     return str_value.encode('utf-8')
 
 
-def bytes_to_str(bytes_value):
+def bytes_to_str(bytes_value: Optional[bytes]) -> str:
     if not bytes_value:
         return ''
     if not is_python3():
@@ -108,7 +109,7 @@ def bytes_to_str(bytes_value):
     return bytes_value.decode('utf-8')
 
 
-def get_target_binary_path(arch, binary_name):
+def get_target_binary_path(arch: str, binary_name: str) -> str:
     if arch == 'aarch64':
         arch = 'arm64'
     arch_dir = os.path.join(get_script_dir(), "bin", "android", arch)
@@ -120,7 +121,7 @@ def get_target_binary_path(arch, binary_name):
     return binary_path
 
 
-def get_host_binary_path(binary_name):
+def get_host_binary_path(binary_name: str) -> str:
     dirname = os.path.join(get_script_dir(), 'bin')
     if is_windows():
         if binary_name.endswith('.so'):
@@ -141,7 +142,7 @@ def get_host_binary_path(binary_name):
     return binary_path
 
 
-def is_executable_available(executable, option='--help'):
+def is_executable_available(executable: str, option='--help') -> bool:
     """ Run an executable to see if it exists. """
     try:
         subproc = subprocess.Popen([executable, option], stdout=subprocess.PIPE,
@@ -190,7 +191,8 @@ class ToolFinder:
     }
 
     @classmethod
-    def find_ndk_and_sdk_paths(cls, ndk_path=None):
+    def find_ndk_and_sdk_paths(cls, ndk_path: Optional[str] = None
+                               ) -> Iterator[Tuple[Optional[str], Optional[str]]]:
         # Use the given ndk path.
         if ndk_path and os.path.isdir(ndk_path):
             ndk_path = os.path.abspath(ndk_path)
@@ -222,7 +224,7 @@ class ToolFinder:
                 yield ndk_path, sdk_path
 
     @classmethod
-    def find_sdk_path(cls, ndk_path):
+    def find_sdk_path(cls, ndk_path: str) -> Optional[str]:
         path = ndk_path
         for _ in range(2):
             path = os.path.dirname(path)
@@ -231,7 +233,8 @@ class ToolFinder:
         return None
 
     @classmethod
-    def _get_binutils_path_in_ndk(cls, toolname, arch, platform):
+    def _get_binutils_path_in_ndk(cls, toolname: str, arch: Optional[str], platform: str
+                                  ) -> Tuple[str, str]:
         if not arch:
             arch = 'arm64'
         if arch == 'arm64':
@@ -248,7 +251,8 @@ class ToolFinder:
         return (name, path)
 
     @classmethod
-    def find_tool_path(cls, toolname, ndk_path=None, arch=None):
+    def find_tool_path(cls, toolname: str, ndk_path: Optional[str] = None,
+                       arch: Optional[str] = None) -> Optional[str]:
         tool_info = cls.EXPECTED_TOOLS.get(toolname)
         if not tool_info:
             return None
@@ -304,29 +308,23 @@ class ToolFinder:
         return None
 
 
-def find_tool_path(toolname, ndk_path=None, arch=None):
-    return ToolFinder.find_tool_path(toolname, ndk_path, arch)
-
-
 class AdbHelper(object):
-    def __init__(self, enable_switch_to_root=True):
-        adb_path = find_tool_path('adb')
+    def __init__(self, enable_switch_to_root: bool = True):
+        adb_path = ToolFinder.find_tool_path('adb')
         if not adb_path:
             log_exit("Can't find adb in PATH environment.")
-        self.adb_path = adb_path
+        self.adb_path: str = adb_path
         self.enable_switch_to_root = enable_switch_to_root
-        self.serial_number = None
+        self.serial_number: Optional[str] = None
 
     def is_device_available(self) -> bool:
-        result, _ = self.run_and_return_output(
-            ['shell', 'whoami'],
-            log_output=False, log_stderr=False)
-        return result == True
+        return self.run_and_return_output(['shell', 'whoami'])[0]
 
-    def run(self, adb_args):
-        return self.run_and_return_output(adb_args)[0]
+    def run(self, adb_args: List[str], log_output: bool = False, log_stderr: bool = False) -> bool:
+        return self.run_and_return_output(adb_args, log_output, log_stderr)[0]
 
-    def run_and_return_output(self, adb_args, log_output=True, log_stderr=True):
+    def run_and_return_output(self, adb_args: List[str], log_output: bool = False,
+                              log_stderr: bool = False) -> Tuple[bool, str]:
         adb_args = [self.adb_path] + adb_args
         log_debug('run adb cmd: %s' % adb_args)
         env = None
@@ -340,20 +338,21 @@ class AdbHelper(object):
         stderr_data = bytes_to_str(stderr_data)
         returncode = subproc.returncode
         result = (returncode == 0)
-        if log_output and stdout_data and adb_args[1] != 'push' and adb_args[1] != 'pull':
+        if log_output and stdout_data:
             log_debug(stdout_data)
         if log_stderr and stderr_data:
             log_warning(stderr_data)
         log_debug('run adb cmd: %s  [result %s]' % (adb_args, result))
         return (result, stdout_data)
 
-    def check_run(self, adb_args):
-        self.check_run_and_return_output(adb_args)
+    def check_run(self, adb_args: List[str], log_output: bool = False):
+        self.check_run_and_return_output(adb_args, log_output)
 
-    def check_run_and_return_output(self, adb_args, stdout_file=None, log_output=True):
-        result, stdoutdata = self.run_and_return_output(adb_args, stdout_file, log_output)
+    def check_run_and_return_output(self, adb_args: List[str], log_output: bool = False,
+                                    log_stderr: bool = False) -> str:
+        result, stdoutdata = self.run_and_return_output(adb_args, log_output, True)
         if not result:
-            log_exit('run "adb %s" failed' % adb_args)
+            log_exit('run "adb %s" failed: %s' % (adb_args, stdoutdata))
         return stdoutdata
 
     def _unroot(self):
@@ -367,7 +366,7 @@ class AdbHelper(object):
         self.run(['wait-for-device'])
         time.sleep(1)
 
-    def switch_to_root(self):
+    def switch_to_root(self) -> bool:
         if not self.enable_switch_to_root:
             self._unroot()
             return False
@@ -385,14 +384,14 @@ class AdbHelper(object):
         result, stdoutdata = self.run_and_return_output(['shell', 'whoami'])
         return result and 'root' in stdoutdata
 
-    def get_property(self, name):
+    def get_property(self, name: str) -> Optional[str]:
         result, stdoutdata = self.run_and_return_output(['shell', 'getprop', name])
         return stdoutdata if result else None
 
-    def set_property(self, name, value):
+    def set_property(self, name: str, value: str) -> bool:
         return self.run(['shell', 'setprop', name, value])
 
-    def get_device_arch(self):
+    def get_device_arch(self) -> str:
         output = self.check_run_and_return_output(['shell', 'uname', '-m'])
         if 'aarch64' in output:
             return 'arm64'
@@ -421,7 +420,7 @@ class AdbHelper(object):
         return android_version
 
 
-def flatten_arg_list(arg_list):
+def flatten_arg_list(arg_list: List[List[str]]) -> List[str]:
     res = []
     if arg_list:
         for items in arg_list:
@@ -429,14 +428,14 @@ def flatten_arg_list(arg_list):
     return res
 
 
-def remove(dir_or_file):
+def remove(dir_or_file: Union[Path, str]):
     if os.path.isfile(dir_or_file):
         os.remove(dir_or_file)
     elif os.path.isdir(dir_or_file):
         shutil.rmtree(dir_or_file, ignore_errors=True)
 
 
-def open_report_in_browser(report_path):
+def open_report_in_browser(report_path: str):
     if is_darwin():
         # On darwin 10.12.6, webbrowser can't open browser, so try `open` cmd first.
         try:
@@ -537,7 +536,7 @@ class Addr2Nearestline(object):
 
         def __init__(self, build_id: Optional[str]):
             self.build_id = build_id
-            self.addrs = {}
+            self.addrs: Dict[int, Addr2Nearestline.Addr] = {}
 
     class Addr(object):
         """ Info of an addr request.
@@ -546,26 +545,26 @@ class Addr2Nearestline(object):
                           source_lines[:-1] are all for inlined functions.
         """
 
-        def __init__(self, func_addr):
+        def __init__(self, func_addr: int):
             self.func_addr = func_addr
-            self.source_lines = None
+            self.source_lines: Optional[List[int, int]] = None
 
     def __init__(
             self, ndk_path: Optional[str],
             binary_finder: BinaryFinder, with_function_name: bool):
-        self.symbolizer_path = find_tool_path('llvm-symbolizer', ndk_path)
+        self.symbolizer_path = ToolFinder.find_tool_path('llvm-symbolizer', ndk_path)
         if not self.symbolizer_path:
             log_exit("Can't find llvm-symbolizer. Please set ndk path with --ndk_path option.")
         self.readelf = ReadElf(ndk_path)
-        self.dso_map = {}  # map from dso_path to Dso.
+        self.dso_map: Dict[str, Addr2Nearestline.Dso] = {}  # map from dso_path to Dso.
         self.binary_finder = binary_finder
         self.with_function_name = with_function_name
         # Saving file names for each addr takes a lot of memory. So we store file ids in Addr,
         # and provide data structures connecting file id and file name here.
-        self.file_name_to_id = {}
-        self.file_id_to_name = []
-        self.func_name_to_id = {}
-        self.func_id_to_name = []
+        self.file_name_to_id: Dict[str, int] = {}
+        self.file_id_to_name: List[str] = []
+        self.func_name_to_id: Dict[str, int] = {}
+        self.func_id_to_name: List[str] = []
 
     def add_addr(self, dso_path: str, build_id: Optional[str], func_addr: int, addr: int):
         dso = self.dso_map.get(dso_path)
@@ -595,10 +594,10 @@ class Addr2Nearestline(object):
         self._collect_line_info(dso, real_path,
                                 range(-addr_step * 5, -addr_step * 128 - 1, -addr_step))
 
-    def _check_debug_line_section(self, real_path: Path):
+    def _check_debug_line_section(self, real_path: Path) -> bool:
         return '.debug_line' in self.readelf.get_sections(real_path)
 
-    def _get_addr_step(self, real_path: Path):
+    def _get_addr_step(self, real_path: Path) -> int:
         arch = self.readelf.get_arch(real_path)
         if arch == 'arm64':
             return 4
@@ -610,7 +609,7 @@ class Addr2Nearestline(object):
             self, dso: Addr2Nearestline.Dso, real_path: Path, addr_shifts: List[int]):
         """ Use addr2line to get line info in a dso, with given addr shifts. """
         # 1. Collect addrs to send to addr2line.
-        addr_set = set()
+        addr_set: Set[int] = set()
         for addr in dso.addrs:
             addr_obj = dso.addrs[addr]
             if addr_obj.source_lines:  # already has source line, no need to search.
@@ -633,10 +632,10 @@ class Addr2Nearestline(object):
             stdoutdata = bytes_to_str(stdoutdata)
         except OSError:
             return
-        addr_map = {}
-        cur_line_list = None
+        addr_map: Dict[int, List[Tuple[int]]] = {}
+        cur_line_list: Optional[List[Tuple[int]]] = None
         need_function_name = self.with_function_name
-        cur_function_name = None
+        cur_function_name: Optional[str] = None
         for line in stdoutdata.strip().split('\n'):
             line = line.strip()
             if not line:
@@ -688,7 +687,7 @@ class Addr2Nearestline(object):
             args.append('--functions=none')
         return args
 
-    def _parse_source_location(self, line):
+    def _parse_source_location(self, line: str) -> Tuple[Optional[str], Optional[int]]:
         file_path, line_number = None, None
         # Handle lines in format filename:line:column, like "runtest/two_functions.cpp:14:25".
         # Filename may contain ':' like "C:\Users\...\file".
@@ -703,24 +702,24 @@ class Addr2Nearestline(object):
             return None, None
         return file_path, line_number
 
-    def _get_file_id(self, file_path):
+    def _get_file_id(self, file_path: str) -> int:
         file_id = self.file_name_to_id.get(file_path)
         if file_id is None:
             file_id = self.file_name_to_id[file_path] = len(self.file_id_to_name)
             self.file_id_to_name.append(file_path)
         return file_id
 
-    def _get_func_id(self, func_name):
+    def _get_func_id(self, func_name: str) -> int:
         func_id = self.func_name_to_id.get(func_name)
         if func_id is None:
             func_id = self.func_name_to_id[func_name] = len(self.func_id_to_name)
             self.func_id_to_name.append(func_name)
         return func_id
 
-    def get_dso(self, dso_path):
+    def get_dso(self, dso_path: str) -> Addr2Nearestline.Dso:
         return self.dso_map.get(dso_path)
 
-    def get_addr_source(self, dso, addr):
+    def get_addr_source(self, dso: Addr2Nearestline.Dso, addr: int) -> Optional[List[Tuple[int]]]:
         source = dso.addrs[addr].source_lines
         if source is None:
             return None
@@ -752,13 +751,13 @@ class SourceFileSearcher(object):
                         '.java', '.kt'}
 
     @classmethod
-    def is_source_filename(cls, filename: str):
+    def is_source_filename(cls, filename: str) -> bool:
         ext = os.path.splitext(filename)[1]
         return ext in cls.SOURCE_FILE_EXTS
 
     def __init__(self, source_dirs: List[str]):
         # Map from filename to a list of reversed directory path containing filename.
-        self.filename_to_rparents = {}
+        self.filename_to_rparents: Dict[str, List[str]] = {}
         self._collect_paths(source_dirs)
 
     def _collect_paths(self, source_dirs: List[str]):
@@ -800,7 +799,7 @@ class Objdump(object):
         self.ndk_path = ndk_path
         self.binary_finder = binary_finder
         self.readelf = ReadElf(ndk_path)
-        self.objdump_paths = {}
+        self.objdump_paths: Dict[str, str] = {}
 
     def get_dso_info(self, dso_path: str, expected_build_id: Optional[str]
                      ) -> Optional[Tuple[str, str]]:
@@ -812,7 +811,7 @@ class Objdump(object):
             return None
         return (str(real_path), arch)
 
-    def disassemble_code(self, dso_info, start_addr, addr_len):
+    def disassemble_code(self, dso_info, start_addr, addr_len) -> List[Tuple[str, int]]:
         """ Disassemble [start_addr, start_addr + addr_len] of dso_path.
             Return a list of pair (disassemble_code_line, addr).
         """
@@ -822,9 +821,9 @@ class Objdump(object):
             if arch == 'arm':
                 # llvm-objdump for arm is not good at showing branch targets.
                 # So still prefer objdump.
-                objdump_path = find_tool_path('objdump', self.ndk_path, arch)
+                objdump_path = ToolFinder.find_tool_path('objdump', self.ndk_path, arch)
             if not objdump_path:
-                objdump_path = find_tool_path('llvm-objdump', self.ndk_path, arch)
+                objdump_path = ToolFinder.find_tool_path('llvm-objdump', self.ndk_path, arch)
             if not objdump_path:
                 log_exit("Can't find llvm-objdump. Please set ndk path with --ndk_path option.")
             self.objdump_paths[arch] = objdump_path
@@ -860,19 +859,19 @@ class Objdump(object):
 class ReadElf(object):
     """ A wrapper of readelf. """
 
-    def __init__(self, ndk_path):
-        self.readelf_path = find_tool_path('llvm-readelf', ndk_path)
+    def __init__(self, ndk_path: Optional[str]):
+        self.readelf_path = ToolFinder.find_tool_path('llvm-readelf', ndk_path)
         if not self.readelf_path:
             log_exit("Can't find llvm-readelf. Please set ndk path with --ndk_path option.")
 
     @staticmethod
-    def is_elf_file(path: Union[Path, str]):
+    def is_elf_file(path: Union[Path, str]) -> bool:
         if os.path.isfile(path):
             with open(path, 'rb') as fh:
                 return fh.read(4) == b'\x7fELF'
         return False
 
-    def get_arch(self, elf_file_path: Union[Path, str]):
+    def get_arch(self, elf_file_path: Union[Path, str]) -> str:
         """ Get arch of an elf file. """
         if self.is_elf_file(elf_file_path):
             try:
@@ -907,7 +906,7 @@ class ReadElf(object):
         return ""
 
     @staticmethod
-    def pad_build_id(build_id):
+    def pad_build_id(build_id: str) -> str:
         """ Pad build id to 40 hex numbers (20 bytes). """
         if len(build_id) < 40:
             build_id += '0' * (40 - len(build_id))
@@ -934,7 +933,7 @@ class ReadElf(object):
         return section_names
 
 
-def extant_dir(arg):
+def extant_dir(arg: str) -> str:
     """ArgumentParser type that only accepts extant directories.
 
     Args:
@@ -949,7 +948,7 @@ def extant_dir(arg):
     return path
 
 
-def extant_file(arg):
+def extant_file(arg: str) -> str:
     """ArgumentParser type that only accepts extant files.
 
     Args:
