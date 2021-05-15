@@ -1914,8 +1914,13 @@ bool RecordCommand::DumpMetaInfoFeature(bool kernel_symbols_available) {
       android::base::GetProperty("ro.product.model", "").c_str(),
       android::base::GetProperty("ro.product.name", "").c_str());
   info_map["android_version"] = android::base::GetProperty("ro.build.version.release", "");
+  info_map["android_sdk_version"] = android::base::GetProperty("ro.build.version.sdk", "");
+  info_map["android_build_type"] = android::base::GetProperty("ro.build.type", "");
   if (!app_package_name_.empty()) {
     info_map["app_package_name"] = app_package_name_;
+    if (IsRoot()) {
+      info_map["app_type"] = GetAppType(app_package_name_);
+    }
   }
   if (event_selection_set_.HasAuxTrace()) {
     // used by --exclude-perf in cmd_inject.cpp
