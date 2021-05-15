@@ -754,8 +754,7 @@ TEST(record_cmd, app_option_for_debuggable_app) {
   SetRunInAppToolForTesting(true, false);
   TestRecordingApps("com.android.simpleperf.debuggable", "debuggable");
   SetRunInAppToolForTesting(false, true);
-  // Although the app is actually debuggable, we profile the app using simpleperf_app_runner.
-  TestRecordingApps("com.android.simpleperf.debuggable", "profileable");
+  TestRecordingApps("com.android.simpleperf.debuggable", "debuggable");
 }
 
 TEST(record_cmd, app_option_for_profileable_app) {
@@ -1176,4 +1175,19 @@ TEST(record_cmd, add_meta_info_option) {
   ASSERT_FALSE(RunRecordCmd({"--add-meta-info", "key1"}, tmpfile.path));
   ASSERT_FALSE(RunRecordCmd({"--add-meta-info", "key1="}, tmpfile.path));
   ASSERT_FALSE(RunRecordCmd({"--add-meta-info", "=value1"}, tmpfile.path));
+}
+
+TEST(record_cmd, device_meta_info) {
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
+  auto reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader);
+
+  const std::unordered_map<std::string, std::string>& meta_info = reader->GetMetaInfoFeature();
+  auto it = meta_info.find("android_sdk_version");
+  ASSERT_NE(it, meta_info.end());
+  ASSERT_FALSE(it->second.empty());
+  it = meta_info.find("android_build_type");
+  ASSERT_NE(it, meta_info.end());
+  ASSERT_FALSE(it->second.empty());
 }

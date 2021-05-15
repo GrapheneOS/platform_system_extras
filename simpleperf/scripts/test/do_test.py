@@ -65,7 +65,8 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         '-d', '--device', nargs='+',
         help='set devices used to run tests. Each device in format name:serial-number')
-    parser.add_argument('--list-tests', action='store_true', help='List all tests.')
+    parser.add_argument('--only-host-test', action='store_true', help='Only run host tests')
+    parser.add_argument('--list-tests', action='store_true', help='List tests')
     parser.add_argument('--ndk-path', type=extant_dir, help='Set the path of a ndk release')
     parser.add_argument('-p', '--pattern', nargs='+',
                         help='Run tests matching the selected pattern.')
@@ -86,8 +87,16 @@ def get_all_tests() -> List[str]:
     return sorted(tests)
 
 
-def get_filtered_tests(test_from: Optional[str], test_pattern: Optional[List[str]]) -> List[str]:
-    tests = get_all_tests()
+def get_host_tests() -> List[str]:
+    def filter_fn(test: str) -> bool:
+        return get_test_type(test) == 'host_test'
+    return list(filter(filter_fn, get_all_tests()))
+
+
+def get_filtered_tests(
+        tests: List[str],
+        test_from: Optional[str],
+        test_pattern: Optional[List[str]]) -> List[str]:
     if test_from:
         try:
             tests = tests[tests.index(test_from):]
@@ -466,11 +475,12 @@ def run_tests_in_child_process(tests: List[str], args: argparse.Namespace) -> bo
 
 def main() -> bool:
     args = get_args()
-    if args.list_tests:
-        print('\n'.join(get_all_tests()))
-        return True
+    tests = get_host_tests() if args.only_host_test else get_all_tests()
+    tests = get_filtered_tests(tests, args.test_from, args.pattern)
 
-    tests = get_filtered_tests(args.test_from, args.pattern)
+    if args.list_tests:
+        print('\n'.join(tests))
+        return True
 
     test_dir = Path(args.test_dir).resolve()
     remove(test_dir)
