@@ -37,10 +37,9 @@ Below is an example using debug_unwind_reporter.py:
 
 import argparse
 from collections import Counter, defaultdict
-from collections.abc import Iterator
 from simpleperf_utils import ArgParseFormatter
 from texttable import Texttable
-from typing import List, Dict
+from typing import Dict, Iterator, List
 
 
 class CallChainNode:
