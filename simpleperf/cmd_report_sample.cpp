@@ -458,6 +458,17 @@ bool ReportSampleCommand::DumpProtobufReport(const std::string& filename) {
         FprintIndented(report_fp_, 0, "app_package_name: %s\n",
                        meta_info.app_package_name().c_str());
       }
+      if (meta_info.has_app_type()) {
+        FprintIndented(report_fp_, 0, "app_type: %s\n", meta_info.app_type().c_str());
+      }
+      if (meta_info.has_android_sdk_version()) {
+        FprintIndented(report_fp_, 0, "android_sdk_version: %s\n",
+                       meta_info.android_sdk_version().c_str());
+      }
+      if (meta_info.has_android_build_type()) {
+        FprintIndented(report_fp_, 0, "android_build_type: %s\n",
+                       meta_info.android_build_type().c_str());
+      }
     } else {
       LOG(ERROR) << "unexpected record type ";
       return false;
@@ -498,16 +509,36 @@ bool ReportSampleCommand::OpenRecordFile() {
 
 bool ReportSampleCommand::PrintMetaInfo() {
   auto& meta_info = record_file_reader_->GetMetaInfoFeature();
-  auto it = meta_info.find("app_package_name");
-  std::string app_package_name = it != meta_info.end() ? it->second : "";
+
+  auto get_meta_info_value = [&meta_info](const char* key) -> std::string {
+    if (auto it = meta_info.find(key); it != meta_info.end()) {
+      return it->second;
+    }
+    return "";
+  };
+
+  std::string app_package_name = get_meta_info_value("app_package_name");
+  std::string app_type = get_meta_info_value("app_type");
+  std::string android_sdk_version = get_meta_info_value("android_sdk_version");
+  std::string android_build_type = get_meta_info_value("android_build_type");
+
   if (use_protobuf_) {
     proto::Record proto_record;
-    proto::MetaInfo* meta_info = proto_record.mutable_meta_info();
+    proto::MetaInfo* proto_meta_info = proto_record.mutable_meta_info();
     for (auto& event_type : event_types_) {
-      *(meta_info->add_event_type()) = event_type;
+      *(proto_meta_info->add_event_type()) = event_type;
     }
     if (!app_package_name.empty()) {
-      meta_info->set_app_package_name(app_package_name);
+      proto_meta_info->set_app_package_name(app_package_name);
+    }
+    if (!app_type.empty()) {
+      proto_meta_info->set_app_type(app_type);
+    }
+    if (!android_sdk_version.empty()) {
+      proto_meta_info->set_android_sdk_version(android_sdk_version);
+    }
+    if (!android_build_type.empty()) {
+      proto_meta_info->set_android_build_type(android_build_type);
     }
     return WriteRecordInProtobuf(proto_record);
   }
@@ -518,6 +549,15 @@ bool ReportSampleCommand::PrintMetaInfo() {
   }
   if (!app_package_name.empty()) {
     FprintIndented(report_fp_, 1, "app_package_name: %s\n", app_package_name.c_str());
+  }
+  if (!app_type.empty()) {
+    FprintIndented(report_fp_, 1, "app_type: %s\n", app_type.c_str());
+  }
+  if (!android_sdk_version.empty()) {
+    FprintIndented(report_fp_, 1, "android_sdk_version: %s\n", android_sdk_version.c_str());
+  }
+  if (!android_build_type.empty()) {
+    FprintIndented(report_fp_, 1, "android_build_type: %s\n", android_build_type.c_str());
   }
   return true;
 }
