@@ -29,6 +29,10 @@
 
 #include <jni.h>
 
+#if !defined(__BIONIC__) && !defined(__INTRODUCED_IN)
+#define __INTRODUCED_IN(x)
+#endif
+
 __BEGIN_DECLS
 
 /**
