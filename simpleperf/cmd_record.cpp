@@ -683,6 +683,8 @@ bool RecordCommand::DoRecording(Workload* workload) {
     return false;
   }
   time_stat_.finish_recording_time = GetSystemClock();
+  uint64_t recording_time = time_stat_.finish_recording_time - time_stat_.start_recording_time;
+  LOG(INFO) << "Recorded for " << recording_time / 1e9 << " seconds. Start post processing.";
   return true;
 }
 
@@ -778,13 +780,13 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
     }
   }
   LOG(DEBUG) << "Prepare recording time "
-             << (time_stat_.start_recording_time - time_stat_.prepare_recording_time) / 1e6
-             << " ms, recording time "
-             << (time_stat_.stop_recording_time - time_stat_.start_recording_time) / 1e6
-             << " ms, stop recording time "
-             << (time_stat_.finish_recording_time - time_stat_.stop_recording_time) / 1e6
-             << " ms, post process time "
-             << (time_stat_.post_process_time - time_stat_.finish_recording_time) / 1e6 << " ms.";
+             << (time_stat_.start_recording_time - time_stat_.prepare_recording_time) / 1e9
+             << " s, recording time "
+             << (time_stat_.stop_recording_time - time_stat_.start_recording_time) / 1e9
+             << " s, stop recording time "
+             << (time_stat_.finish_recording_time - time_stat_.stop_recording_time) / 1e9
+             << " s, post process time "
+             << (time_stat_.post_process_time - time_stat_.finish_recording_time) / 1e9 << " s.";
   return true;
 }
 
