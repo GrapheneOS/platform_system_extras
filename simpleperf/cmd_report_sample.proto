@@ -120,6 +120,9 @@ message Thread {
 message MetaInfo {
   repeated string event_type = 1;
   optional string app_package_name = 2;
+  optional string app_type = 3;  // debuggable, profileable or non_profileable
+  optional string android_sdk_version = 4;
+  optional string android_build_type = 5;  // user, userdebug or eng
 }
 
 message Record {

@@ -37,11 +37,11 @@ static void llvm_signal_handler(__unused int signum) {
 }
 
 #if __ANDROID_API__ >= 21
-static void writeFileWithoutReturn() {
+void writeFileWithoutReturn() {
   __llvm_profile_write_file();
 }
 
-static __attribute__((constructor)) void register_quick_exit_handler(void) {
+__attribute__((constructor)) void register_quick_exit_handler(void) {
   at_quick_exit(writeFileWithoutReturn);
 }
 #endif  // #if __ANDROID_API__ >= 21
