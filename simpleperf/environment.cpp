@@ -719,7 +719,7 @@ bool RunAs::Prepare() {
 
 class SimpleperfAppRunner : public InAppRunner {
  public:
-  SimpleperfAppRunner(int user_id, const std::string& package_name, const std::string app_type)
+  SimpleperfAppRunner(int user_id, const std::string& package_name, const std::string& app_type)
       : InAppRunner(user_id, package_name) {
     // On Android < S, the app type is unknown before running simpleperf_app_runner. Assume it's
     // profileable.
