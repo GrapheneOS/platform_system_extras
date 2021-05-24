@@ -27,6 +27,7 @@ use std::time::SystemTime;
 use uuid::v1::{Context, Timestamp};
 use uuid::Uuid;
 use zip::write::FileOptions;
+use zip::CompressionMethod::Deflated;
 use zip::ZipWriter;
 
 use crate::config::Config;
@@ -47,7 +48,7 @@ pub fn pack_report(profile: &Path, report: &Path, config: &Config) -> Result<Str
     // Set report file ACL bits to 644, so that this can be shared to uploaders.
     // Who has permission to actually read the file is protected by SELinux policy.
     let report = fs::OpenOptions::new().create_new(true).write(true).mode(0o644).open(&report)?;
-    let options = FileOptions::default();
+    let options = FileOptions::default().compression_method(Deflated);
     let mut zip = ZipWriter::new(report);
 
     fs::read_dir(profile)?
