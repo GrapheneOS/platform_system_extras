@@ -427,6 +427,8 @@ struct AuxRecord : public Record {
 
   AuxRecord(const perf_event_attr& attr, char* p);
 
+  bool Unformatted() const { return data->flags & PERF_AUX_FLAG_CORESIGHT_FORMAT_RAW; }
+
  protected:
   void DumpData(size_t indent) const override;
 };
