@@ -19,9 +19,9 @@
 use anyhow::{anyhow, Result};
 use lazy_static::lazy_static;
 use macaddr::MacAddr6;
-use std::fs::{self, File};
+use std::fs::{self, File, Permissions};
 use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use uuid::v1::{Context, Timestamp};
@@ -45,11 +45,14 @@ pub fn pack_report(profile: &Path, report: &Path, config: &Config) -> Result<Str
     // Remove the current report file if exists.
     fs::remove_file(&report).ok();
 
+    let report_file = fs::OpenOptions::new().create_new(true).write(true).open(&report)?;
+
     // Set report file ACL bits to 644, so that this can be shared to uploaders.
     // Who has permission to actually read the file is protected by SELinux policy.
-    let report = fs::OpenOptions::new().create_new(true).write(true).mode(0o644).open(&report)?;
+    fs::set_permissions(&report, Permissions::from_mode(0o644))?;
+
     let options = FileOptions::default().compression_method(Deflated);
-    let mut zip = ZipWriter::new(report);
+    let mut zip = ZipWriter::new(report_file);
 
     fs::read_dir(profile)?
         .filter_map(|e| e.ok())
