@@ -68,6 +68,8 @@ class ETMRecorder {
   bool etm_supported_ = false;
   // select ETR device, setting in perf_event_attr->config2
   uint32_t sink_config_ = 0;
+  // use EL2 PID tracing or not
+  bool use_contextid2_ = false;
   // select etm options (timestamp, context_id, ...), setting in perf_event_attr->config
   uint64_t etm_event_config_ = 0;
   // record etm options in AuxTraceInfoRecord
