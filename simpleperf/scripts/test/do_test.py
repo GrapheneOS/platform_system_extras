@@ -42,6 +42,7 @@ import unittest
 from simpleperf_utils import extant_dir, log_exit, remove, ArgParseFormatter
 
 from . api_profiler_test import *
+from . annotate_test import *
 from . app_profiler_test import *
 from . app_test import *
 from . binary_cache_builder_test import *
@@ -120,9 +121,9 @@ def get_test_type(test: str) -> Optional[str]:
         return 'device_test'
     if testcase_name.startswith('TestExample'):
         return 'device_test'
-    if testcase_name in ('TestBinaryCacheBuilder', 'TestDebugUnwindReporter', 'TestInferno',
-                         'TestPprofProtoGenerator', 'TestPurgatorio', 'TestReportHtml',
-                         'TestReportLib', 'TestTools'):
+    if testcase_name in ('TestAnnotate', 'TestBinaryCacheBuilder', 'TestDebugUnwindReporter',
+                         'TestInferno', 'TestPprofProtoGenerator', 'TestPurgatorio',
+                         'TestReportHtml', 'TestReportLib', 'TestTools'):
         return 'host_test'
     return None
 
