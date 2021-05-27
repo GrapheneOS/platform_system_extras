@@ -266,7 +266,8 @@ class InjectCommand : public Command {
           LOG(ERROR) << "failed to read aux data";
           return false;
         }
-        return etm_decoder_->ProcessData(aux_data_buffer_.data(), aux_size);
+        return etm_decoder_->ProcessData(aux_data_buffer_.data(), aux_size, !aux->Unformatted(),
+                                         aux->Cpu());
       }
     } else if (r->type() == PERF_RECORD_MMAP && r->InKernel()) {
       auto& mmap_r = *static_cast<MmapRecord*>(r);
