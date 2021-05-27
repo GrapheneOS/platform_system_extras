@@ -145,7 +145,8 @@ class TestBase(unittest.TestCase):
         if status == 'OK':
             remove(self.test_dir)
         TestHelper.write_progress(
-            '%s.%s  %s' % (self.__class__.__name__, self._testMethodName, status))
+            '%s.%s  %s  %.3fs' %
+            (self.__class__.__name__, self._testMethodName, status, time_taken))
         return ret
 
     def run_cmd(self, args: List[str], return_output=False, drop_output=True) -> str:

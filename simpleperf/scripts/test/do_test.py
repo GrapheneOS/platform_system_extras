@@ -192,6 +192,7 @@ class Device:
 class TestResult:
     try_time: int
     ok: bool
+    duration: str
 
 
 class TestProcess:
@@ -265,9 +266,9 @@ class TestProcess:
             self.proc.terminate()
 
     def _process_msg(self, msg: str):
-        test_name, test_success = msg.split()
+        test_name, test_success, test_duration = msg.split()
         test_success = test_success == 'OK'
-        self.test_results[test_name] = TestResult(self.try_time, test_success)
+        self.test_results[test_name] = TestResult(self.try_time, test_success, test_duration)
 
     def join(self):
         self.proc.join()
@@ -324,7 +325,7 @@ class TestSummary:
     def __init__(self, test_count: int):
         self.summary_fh = open('test_summary.txt', 'w')
         self.failed_summary_fh = open('failed_test_summary.txt', 'w')
-        self.results: Dict[Tuple[str, str], bool] = {}
+        self.results: Dict[Tuple[str, str], TestResult] = {}
         self.test_count = test_count
 
     @property
@@ -335,15 +336,16 @@ class TestSummary:
         for test, result in test_proc.test_results.items():
             key = (test, '%s_try_%s' % (test_proc.name, result.try_time))
             if key not in self.results:
-                self.results[key] = result.ok
-                self._write_result(key[0], key[1], result.ok)
+                self.results[key] = result
+                self._write_result(key[0], key[1], result)
 
-    def _write_result(self, test_name: str, test_env: str, test_result: bool):
+    def _write_result(self, test_name: str, test_env: str, test_result: TestResult):
         print(
-            '%s    %s    %s' % (test_name, test_env, 'OK' if test_result else 'FAILED'),
+            '%s    %s    %s    %s' %
+            (test_name, test_env, 'OK' if test_result.ok else 'FAILED', test_result.duration),
             file=self.summary_fh, flush=True)
-        if not test_result:
-            print('%s    %s    FAILED' % (test_name, test_env),
+        if not test_result.ok:
+            print('%s    %s    FAILED    %s' % (test_name, test_env, test_result.duration),
                   file=self.failed_summary_fh, flush=True)
 
     def end_tests(self):
