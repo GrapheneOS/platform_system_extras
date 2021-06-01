@@ -725,7 +725,7 @@ static void TestRecordingApps(const std::string& app_name, const std::string& ap
   // Bring the app to foreground to avoid no samples.
   ASSERT_TRUE(helper.StartApp("am start " + app_name + "/.MainActivity"));
 
-  ASSERT_TRUE(helper.RecordData("--app " + app_name + " -g --duration 3 -e " + GetDefaultEvent()));
+  ASSERT_TRUE(helper.RecordData("--app " + app_name + " -g --duration 10 -e " + GetDefaultEvent()));
 
   // Check if we can profile Java code by looking for a Java method name in dumped symbols, which
   // is app_name + ".MainActivity$1.run".
