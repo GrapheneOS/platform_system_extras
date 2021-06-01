@@ -36,16 +36,6 @@ static void llvm_signal_handler(__unused int signum) {
   }
 }
 
-#if __ANDROID_API__ >= 21
-void writeFileWithoutReturn() {
-  __llvm_profile_write_file();
-}
-
-__attribute__((constructor)) void register_quick_exit_handler(void) {
-  at_quick_exit(writeFileWithoutReturn);
-}
-#endif  // #if __ANDROID_API__ >= 21
-
 __attribute__((weak)) int init_profile_extras_once = 0;
 
 // Initialize libprofile-extras:
