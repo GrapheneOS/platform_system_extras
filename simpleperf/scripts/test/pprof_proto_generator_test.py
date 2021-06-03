@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections import namedtuple
 import google.protobuf
 from typing import List, Optional
 
@@ -124,3 +125,50 @@ class TestPprofProtoGenerator(TestBase):
         output = self.run_generator(testdata_file=testdata_file)
         self.assertIn('simpleperf_runtest_two_functions_arm64', output)
         self.assertIn('two_functions.cpp', output)
+
+    def test_line_info(self):
+        """ Check line numbers generated in profile. """
+        testdata_file = TestHelper.testdata_path('runtest_two_functions_arm64_perf.data')
+
+        # Build binary_cache.
+        binary_cache_builder = BinaryCacheBuilder(TestHelper.ndk_path, False)
+        binary_cache_builder.build_binary_cache(testdata_file, [TestHelper.testdata_dir])
+
+        # Generate profile.
+        profile = self.generate_profile(None, [testdata_file])
+
+        CheckItem = namedtuple(
+            'CheckItem', ['addr', 'source_file', 'source_line', 'func_name', 'func_start_line'])
+
+        check_items = [
+            CheckItem(0x113c, 'two_functions.cpp', 22, 'main', 20),
+            CheckItem(0x1140, 'two_functions.cpp', 23, 'main', 20),
+            CheckItem(0x1094, 'two_functions.cpp', 9, 'Function1', 6),
+            CheckItem(0x1104, 'two_functions.cpp', 16, 'Function2', 13),
+        ]
+        mapping = None
+        for mapping in profile.mapping:
+            binary_path = profile.string_table[mapping.filename]
+            if 'runtest_two_functions_arm64' in binary_path:
+                self.assertTrue(mapping.has_line_numbers)
+                mapping = mapping
+                break
+        self.assertIsNotNone(mapping)
+
+        for check_item in check_items:
+            found = False
+            for location in profile.location:
+                if location.mapping_id != mapping.id:
+                    continue
+                addr = location.address - mapping.memory_start + mapping.file_offset
+                if addr == check_item.addr:
+                    found = True
+                    self.assertEqual(len(location.line), 1)
+                    line = location.line[0]
+                    function = profile.function[line.function_id - 1]
+                    self.assertIn(check_item.source_file, profile.string_table[function.filename])
+                    self.assertEqual(line.line, check_item.source_line)
+                    self.assertIn(check_item.func_name, profile.string_table[function.name])
+                    self.assertEqual(function.start_line, check_item.func_start_line)
+                    break
+            self.assertTrue(found, check_item)
