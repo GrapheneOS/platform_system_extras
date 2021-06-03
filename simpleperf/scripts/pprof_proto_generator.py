@@ -322,9 +322,9 @@ class PprofProfileGenerator(object):
             if sample.location_ids:
                 self.add_sample(sample)
 
-    def gen(self):
+    def gen(self, jobs: int):
         # 1. Generate line info for locations and functions.
-        self.gen_source_lines()
+        self.gen_source_lines(jobs)
 
         # 2. Produce samples/locations/functions in profile.
         for sample in self.sample_list:
@@ -476,7 +476,7 @@ class PprofProfileGenerator(object):
             self.sample_list.append(sample)
             self.sample_map[sample.key] = sample
 
-    def gen_source_lines(self):
+    def gen_source_lines(self, jobs: int):
         # 1. Create Addr2line instance
         if not self.config.get('binary_cache_dir'):
             log_info("Can't generate line information because binary_cache is missing.")
@@ -501,7 +501,7 @@ class PprofProfileGenerator(object):
             addr2line.add_addr(dso_name, None, function.vaddr_in_dso, function.vaddr_in_dso)
 
         # 3. Generate source lines.
-        addr2line.convert_addrs_to_lines()
+        addr2line.convert_addrs_to_lines(jobs)
 
         # 4. Annotate locations and functions.
         for location in self.location_list:
@@ -613,6 +613,9 @@ def main():
     parser.add_argument(
         '--proguard-mapping-file', nargs='+',
         help='Add proguard mapping file to de-obfuscate symbols')
+    parser.add_argument(
+        '-j', '--jobs', type=int, default=os.cpu_count(),
+        help='Use multithreading to speed up source code annotation.')
 
     args = parser.parse_args()
     if args.show:
@@ -635,7 +638,7 @@ def main():
     generator = PprofProfileGenerator(config)
     for record_file in args.record_file:
         generator.load_record_file(record_file)
-    profile = generator.gen()
+    profile = generator.gen(args.jobs)
     store_pprof_profile(config['output_file'], profile)
 
 

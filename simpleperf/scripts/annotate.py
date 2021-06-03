@@ -62,7 +62,7 @@ class Addr2Line(object):
         self.addr2line.add_addr(dso_path, build_id, func_addr, addr)
 
     def convert_addrs_to_lines(self):
-        self.addr2line.convert_addrs_to_lines()
+        self.addr2line.convert_addrs_to_lines(jobs=os.cpu_count())
 
     def get_sources(self, dso_path, addr):
         dso = self.addr2line.get_dso(dso_path)
