@@ -101,7 +101,7 @@ class TestTools(TestBase):
             test_addrs = test_map[dso_path]
             for test_addr in test_addrs:
                 addr2line.add_addr(dso_path, None, test_addr['func_addr'], test_addr['addr'])
-        addr2line.convert_addrs_to_lines()
+        addr2line.convert_addrs_to_lines(4)
         for dso_path in test_map:
             dso = addr2line.get_dso(dso_path)
             self.assertIsNotNone(dso, dso_path)

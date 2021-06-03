@@ -18,7 +18,7 @@
 from __future__ import annotations
 import argparse
 import collections
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 import datetime
 import json
@@ -711,7 +711,7 @@ class RecordData(object):
             self.events[event_name] = EventScope(event_name)
         return self.events[event_name]
 
-    def add_source_code(self, source_dirs: List[str], filter_lib: Callable[[str], bool]):
+    def add_source_code(self, source_dirs: List[str], filter_lib: Callable[[str], bool], jobs: int):
         """ Collect source code information:
             1. Find line ranges for each function in FunctionSet.
             2. Find line for each addr in FunctionScope.addr_hit_map.
@@ -737,7 +737,7 @@ class RecordData(object):
                         func_addr = self.functions.id_to_func[function.func_id].start_addr
                         for addr in function.addr_hit_map:
                             addr2line.add_addr(lib_info.name, lib_info.build_id, func_addr, addr)
-        addr2line.convert_addrs_to_lines()
+        addr2line.convert_addrs_to_lines(jobs)
 
         # Set line range for each function.
         for function in self.functions.id_to_func.values():
@@ -786,7 +786,6 @@ class RecordData(object):
             2. Set flag to dump addr_hit_map when generating record info.
         """
         objdump = Objdump(self.ndk_path, self.binary_finder)
-        executor = ThreadPoolExecutor(jobs)
         lib_functions: Dict[int, List[Function]] = collections.defaultdict(list)
 
         for function in self.functions.id_to_func.values():
@@ -794,20 +793,23 @@ class RecordData(object):
                 continue
             lib_functions[function.lib_id].append(function)
 
-        for lib_id, functions in lib_functions.items():
-            lib = self.libs.get_lib(lib_id)
-            if not filter_lib(lib.name):
-                continue
-            dso_info = objdump.get_dso_info(lib.name, lib.build_id)
-            if not dso_info:
-                continue
-            log_info('Disassemble %s' % dso_info[0])
-            for function in functions:
-                def task(function, dso_info):
-                    function.disassembly = objdump.disassemble_code(
-                        dso_info, function.start_addr, function.addr_len)
-                executor.submit(task, function, dso_info)
-        executor.shutdown(wait=True)
+        with ThreadPoolExecutor(jobs) as executor:
+            for lib_id, functions in lib_functions.items():
+                lib = self.libs.get_lib(lib_id)
+                if not filter_lib(lib.name):
+                    continue
+                dso_info = objdump.get_dso_info(lib.name, lib.build_id)
+                if not dso_info:
+                    continue
+                log_info('Disassemble %s' % dso_info[0])
+                futures: List[Future] = []
+                for function in functions:
+                    futures.append(
+                        executor.submit(objdump.disassemble_code, dso_info,
+                                        function.start_addr, function.addr_len))
+                for i in range(len(functions)):
+                    # Call future.result() to report exceptions raised in the executor.
+                    functions[i].disassembly = futures[i].result()
         self.gen_addr_hit_map_in_record_info = True
 
     def gen_record_info(self) -> Dict[str, Any]:
@@ -1024,7 +1026,7 @@ def main():
                 return True
         return False
     if args.add_source_code:
-        record_data.add_source_code(args.source_dirs, filter_lib)
+        record_data.add_source_code(args.source_dirs, filter_lib, args.jobs)
     if args.add_disassembly:
         record_data.add_disassembly(filter_lib, args.jobs)
 
