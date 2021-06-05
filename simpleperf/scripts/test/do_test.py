@@ -282,7 +282,8 @@ class TestProcess:
             """ Exceed max try time. So mark left tests as failed. """
             for test in self.tests:
                 if test not in self.test_results:
-                    self.test_results[test] = TestResult(self.try_time, False)
+                    test_duration = '%.3fs' % (time.time() - self.last_update_time)
+                    self.test_results[test] = TestResult(self.try_time, False, test_duration)
             return False
 
         self.try_time += 1
@@ -331,7 +332,7 @@ class TestSummary:
 
     @property
     def failed_test_count(self) -> int:
-        return self.test_count - sum(1 for result in self.results.values() if result)
+        return self.test_count - sum(1 for result in self.results.values() if result.ok)
 
     def update(self, test_proc: TestProcess):
         for test, result in test_proc.test_results.items():

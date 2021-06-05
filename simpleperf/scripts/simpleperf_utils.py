@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 import argparse
+from concurrent.futures import Future, ThreadPoolExecutor
 import logging
 import os
 import os.path
@@ -536,6 +537,26 @@ class Addr2Nearestline(object):
         def __init__(self, build_id: Optional[str]):
             self.build_id = build_id
             self.addrs: Dict[int, Addr2Nearestline.Addr] = {}
+            # Saving file names for each addr takes a lot of memory. So we store file ids in Addr,
+            # and provide data structures connecting file id and file name here.
+            self.file_name_to_id: Dict[str, int] = {}
+            self.file_id_to_name: List[str] = []
+            self.func_name_to_id: Dict[str, int] = {}
+            self.func_id_to_name: List[str] = []
+
+        def get_file_id(self, file_path: str) -> int:
+            file_id = self.file_name_to_id.get(file_path)
+            if file_id is None:
+                file_id = self.file_name_to_id[file_path] = len(self.file_id_to_name)
+                self.file_id_to_name.append(file_path)
+            return file_id
+
+        def get_func_id(self, func_name: str) -> int:
+            func_id = self.func_name_to_id.get(func_name)
+            if func_id is None:
+                func_id = self.func_name_to_id[func_name] = len(self.func_id_to_name)
+                self.func_id_to_name.append(func_name)
+            return func_id
 
     class Addr(object):
         """ Info of an addr request.
@@ -558,12 +579,6 @@ class Addr2Nearestline(object):
         self.dso_map: Dict[str, Addr2Nearestline.Dso] = {}  # map from dso_path to Dso.
         self.binary_finder = binary_finder
         self.with_function_name = with_function_name
-        # Saving file names for each addr takes a lot of memory. So we store file ids in Addr,
-        # and provide data structures connecting file id and file name here.
-        self.file_name_to_id: Dict[str, int] = {}
-        self.file_id_to_name: List[str] = []
-        self.func_name_to_id: Dict[str, int] = {}
-        self.func_id_to_name: List[str] = []
 
     def add_addr(self, dso_path: str, build_id: Optional[str], func_addr: int, addr: int):
         dso = self.dso_map.get(dso_path)
@@ -572,9 +587,14 @@ class Addr2Nearestline(object):
         if addr not in dso.addrs:
             dso.addrs[addr] = self.Addr(func_addr)
 
-    def convert_addrs_to_lines(self):
-        for dso_path, dso in self.dso_map.items():
-            self._convert_addrs_in_one_dso(dso_path, dso)
+    def convert_addrs_to_lines(self, jobs: int):
+        with ThreadPoolExecutor(jobs) as executor:
+            futures: List[Future] = []
+            for dso_path, dso in self.dso_map.items():
+                futures.append(executor.submit(self._convert_addrs_in_one_dso, dso_path, dso))
+            for future in futures:
+                # Call future.result() to report exceptions raised in the executor.
+                future.result()
 
     def _convert_addrs_in_one_dso(self, dso_path: str, dso: Addr2Nearestline.Dso):
         real_path = self.binary_finder.find_binary(dso_path, dso.build_id)
@@ -657,9 +677,9 @@ class Addr2Nearestline(object):
                     if not cur_line_list:
                         cur_line_list = None
                     continue
-                file_id = self._get_file_id(file_path)
+                file_id = dso.get_file_id(file_path)
                 if self.with_function_name:
-                    func_id = self._get_func_id(cur_function_name)
+                    func_id = dso.get_func_id(cur_function_name)
                     cur_line_list.append((file_id, line_number, func_id))
                 else:
                     cur_line_list.append((file_id, line_number))
@@ -701,20 +721,6 @@ class Addr2Nearestline(object):
             return None, None
         return file_path, line_number
 
-    def _get_file_id(self, file_path: str) -> int:
-        file_id = self.file_name_to_id.get(file_path)
-        if file_id is None:
-            file_id = self.file_name_to_id[file_path] = len(self.file_id_to_name)
-            self.file_id_to_name.append(file_path)
-        return file_id
-
-    def _get_func_id(self, func_name: str) -> int:
-        func_id = self.func_name_to_id.get(func_name)
-        if func_id is None:
-            func_id = self.func_name_to_id[func_name] = len(self.func_id_to_name)
-            self.func_id_to_name.append(func_name)
-        return func_id
-
     def get_dso(self, dso_path: str) -> Addr2Nearestline.Dso:
         return self.dso_map.get(dso_path)
 
@@ -723,9 +729,9 @@ class Addr2Nearestline(object):
         if source is None:
             return None
         if self.with_function_name:
-            return [(self.file_id_to_name[file_id], line, self.func_id_to_name[func_id])
+            return [(dso.file_id_to_name[file_id], line, dso.func_id_to_name[func_id])
                     for (file_id, line, func_id) in source]
-        return [(self.file_id_to_name[file_id], line) for (file_id, line) in source]
+        return [(dso.file_id_to_name[file_id], line) for (file_id, line) in source]
 
 
 class SourceFileSearcher(object):
