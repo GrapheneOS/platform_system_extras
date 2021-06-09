@@ -14,7 +14,7 @@ on property:persist.profcollectd.enabled_override=true
 
 on post-fs-data
     # Create directory for profcollectd.
-    mkdir /data/misc/profcollectd 0770 root root
-    mkdir /data/misc/profcollectd/trace 0770 root root
-    mkdir /data/misc/profcollectd/output 0770 root root
-    mkdir /data/misc/profcollectd/report 0770 root root
+    mkdir /data/misc/profcollectd 0770 root system
+    mkdir /data/misc/profcollectd/trace 0770 root system
+    mkdir /data/misc/profcollectd/output 0770 root system
+    mkdir /data/misc/profcollectd/report 0770 root system
