@@ -829,6 +829,8 @@ class RecordData(object):
             machine_type = '%s (%s) by %s, arch %s' % (model, name, manufacturer, self.arch)
         record_info['machineType'] = machine_type
         record_info['androidVersion'] = self.meta_info.get('android_version', '')
+        record_info['androidBuildFingerprint'] = self.meta_info.get('android_build_fingerprint', '')
+        record_info['kernelVersion'] = self.meta_info.get('kernel_version', '')
         record_info['recordCmdline'] = self.cmdline
         record_info['totalSamples'] = self.total_samples
         record_info['processNames'] = self._gen_process_names()
