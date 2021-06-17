@@ -231,8 +231,6 @@ class SampleUnwinder : public RecordFileProcessor {
   }
 
   bool Process() override {
-    recording_file_dso_ = Dso::CreateDso(DSO_ELF_FILE, record_filename_);
-
     if (!GetMemStat(&stat_.mem_before_unwinding)) {
       return false;
     }
@@ -248,6 +246,7 @@ class SampleUnwinder : public RecordFileProcessor {
   }
 
   bool ProcessRecord(std::unique_ptr<Record> r) {
+    UpdateRecord(r.get());
     thread_tree_.Update(*r);
     if (r->type() == SIMPLE_PERF_RECORD_UNWINDING_RESULT) {
       last_unwinding_result_.reset(static_cast<UnwindingResultRecord*>(r.release()));
@@ -271,16 +270,40 @@ class SampleUnwinder : public RecordFileProcessor {
     return true;
   }
 
+  void UpdateRecord(Record* record) {
+    if (record->type() == PERF_RECORD_MMAP) {
+      UpdateMmapRecordForEmbeddedFiles(*static_cast<MmapRecord*>(record));
+    } else if (record->type() == PERF_RECORD_MMAP2) {
+      UpdateMmapRecordForEmbeddedFiles(*static_cast<Mmap2Record*>(record));
+    }
+  }
+
+  template <typename MmapRecordType>
+  void UpdateMmapRecordForEmbeddedFiles(MmapRecordType& record) {
+    // Modify mmap records to point to files stored in DEBUG_UNWIND_FILE feature section.
+    std::string filename = record.filename;
+    if (auto it = debug_unwind_files_.find(filename); it != debug_unwind_files_.end()) {
+      auto data = *record.data;
+      uint64_t old_pgoff = data.pgoff;
+      if (JITDebugReader::IsPathInJITSymFile(filename)) {
+        data.pgoff = it->second.offset;
+      } else {
+        data.pgoff += it->second.offset;
+      }
+      debug_unwind_dsos_[data.pgoff] =
+          std::make_pair(thread_tree_.FindUserDsoOrNew(filename), old_pgoff);
+      record.SetDataAndFilename(data, record_filename_);
+    }
+  }
+
   bool UnwindRecord(const SampleRecord& r, const PerfSampleRegsUserType& regs,
                     const PerfSampleStackUserType& stack) {
     ThreadEntry* thread = thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-    ThreadEntry thread_with_new_maps = CreateThreadWithUpdatedMaps(*thread);
 
     RegSet reg_set(regs.abi, regs.reg_mask, regs.regs);
     std::vector<uint64_t> ips;
     std::vector<uint64_t> sps;
-    if (!unwinder_->UnwindCallChain(thread_with_new_maps, reg_set, stack.data, stack.size, &ips,
-                                    &sps)) {
+    if (!unwinder_->UnwindCallChain(*thread, reg_set, stack.data, stack.size, &ips, &sps)) {
       return false;
     }
     stat_.AddUnwindingResult(unwinder_->GetUnwindingResult());
@@ -291,12 +314,23 @@ class SampleUnwinder : public RecordFileProcessor {
     std::vector<CallChainReportEntry> entries = callchain_report_builder_.Build(thread, ips, 0);
     for (size_t i = 0; i < entries.size(); i++) {
       size_t id = i + 1;
-      const auto& entry = entries[i];
+      auto& entry = entries[i];
       fprintf(out_fp_, "ip_%zu: 0x%" PRIx64 "\n", id, entry.ip);
       fprintf(out_fp_, "sp_%zu: 0x%" PRIx64 "\n", id, sps[i]);
       fprintf(out_fp_, "map_%zu: [0x%" PRIx64 "-0x%" PRIx64 "], pgoff 0x%" PRIx64 "\n", id,
               entry.map->start_addr, entry.map->get_end_addr(), entry.map->pgoff);
-      fprintf(out_fp_, "dso_%zu: %s\n", id, entry.map->dso->Path().c_str());
+      Dso* dso = entry.map->dso;
+      if (dso->Path() == record_filename_) {
+        auto it = debug_unwind_dsos_.find(entry.map->pgoff);
+        CHECK(it != debug_unwind_dsos_.end());
+        const auto& p = it->second;
+        dso = p.first;
+        if (!JITDebugReader::IsPathInJITSymFile(dso->Path())) {
+          entry.vaddr_in_file = dso->IpToVaddrInFile(entry.ip, entry.map->start_addr, p.second);
+        }
+        entry.symbol = dso->FindSymbol(entry.vaddr_in_file);
+      }
+      fprintf(out_fp_, "dso_%zu: %s\n", id, dso->Path().c_str());
       fprintf(out_fp_, "vaddr_in_file_%zu: 0x%" PRIx64 "\n", id, entry.vaddr_in_file);
       fprintf(out_fp_, "symbol_%zu: %s\n", id, entry.symbol->DemangledName());
     }
@@ -304,37 +338,10 @@ class SampleUnwinder : public RecordFileProcessor {
     return true;
   }
 
-  // To use files stored in DEBUG_UNWIND_FILE feature section, create maps mapping to them.
-  ThreadEntry CreateThreadWithUpdatedMaps(const ThreadEntry& thread) {
-    ThreadEntry new_thread = thread;
-    new_thread.maps.reset(new MapSet);
-    new_thread.maps->version = thread.maps->version;
-    for (auto& p : thread.maps->maps) {
-      const MapEntry* old_map = p.second;
-      MapEntry* map = nullptr;
-      const std::string& path = old_map->dso->Path();
-      if (auto it = debug_unwind_files_.find(path); it != debug_unwind_files_.end()) {
-        map_storage_.emplace_back(new MapEntry);
-        map = map_storage_.back().get();
-        *map = *old_map;
-        map->dso = recording_file_dso_.get();
-        if (JITDebugReader::IsPathInJITSymFile(old_map->dso->Path())) {
-          map->pgoff = it->second.offset;
-        } else {
-          map->pgoff += it->second.offset;
-        }
-      } else {
-        map = const_cast<MapEntry*>(p.second);
-      }
-      new_thread.maps->maps[p.first] = map;
-    }
-    return new_thread;
-  }
-
  private:
   const std::unordered_set<uint64_t> sample_times_;
-  std::unique_ptr<Dso> recording_file_dso_;
-  std::vector<std::unique_ptr<MapEntry>> map_storage_;
+  // Map from offset in recording file to the corresponding debug_unwind_file.
+  std::unordered_map<uint64_t, std::pair<Dso*, uint64_t>> debug_unwind_dsos_;
   UnwindingStat stat_;
   std::unique_ptr<UnwindingResultRecord> last_unwinding_result_;
 };
