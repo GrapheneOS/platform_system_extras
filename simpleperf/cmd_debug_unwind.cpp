@@ -216,8 +216,10 @@ static void DumpUnwindingResult(const UnwindingResult& result, FILE* fp) {
 class SampleUnwinder : public RecordFileProcessor {
  public:
   SampleUnwinder(const std::string& output_filename,
-                 const std::unordered_set<uint64_t>& sample_times)
-      : RecordFileProcessor(output_filename, false), sample_times_(sample_times) {}
+                 const std::unordered_set<uint64_t>& sample_times, bool skip_sample_print)
+      : RecordFileProcessor(output_filename, false),
+        sample_times_(sample_times),
+        skip_sample_print_(skip_sample_print) {}
 
  protected:
   bool CheckRecordCmd(const std::string& record_cmd) override {
@@ -308,38 +310,41 @@ class SampleUnwinder : public RecordFileProcessor {
     }
     stat_.AddUnwindingResult(unwinder_->GetUnwindingResult());
 
-    // Print unwinding result.
-    fprintf(out_fp_, "sample_time: %" PRIu64 "\n", r.Timestamp());
-    DumpUnwindingResult(unwinder_->GetUnwindingResult(), out_fp_);
-    std::vector<CallChainReportEntry> entries = callchain_report_builder_.Build(thread, ips, 0);
-    for (size_t i = 0; i < entries.size(); i++) {
-      size_t id = i + 1;
-      auto& entry = entries[i];
-      fprintf(out_fp_, "ip_%zu: 0x%" PRIx64 "\n", id, entry.ip);
-      fprintf(out_fp_, "sp_%zu: 0x%" PRIx64 "\n", id, sps[i]);
-      fprintf(out_fp_, "map_%zu: [0x%" PRIx64 "-0x%" PRIx64 "], pgoff 0x%" PRIx64 "\n", id,
-              entry.map->start_addr, entry.map->get_end_addr(), entry.map->pgoff);
-      Dso* dso = entry.map->dso;
-      if (dso->Path() == record_filename_) {
-        auto it = debug_unwind_dsos_.find(entry.map->pgoff);
-        CHECK(it != debug_unwind_dsos_.end());
-        const auto& p = it->second;
-        dso = p.first;
-        if (!JITDebugReader::IsPathInJITSymFile(dso->Path())) {
-          entry.vaddr_in_file = dso->IpToVaddrInFile(entry.ip, entry.map->start_addr, p.second);
+    if (!skip_sample_print_) {
+      // Print unwinding result.
+      fprintf(out_fp_, "sample_time: %" PRIu64 "\n", r.Timestamp());
+      DumpUnwindingResult(unwinder_->GetUnwindingResult(), out_fp_);
+      std::vector<CallChainReportEntry> entries = callchain_report_builder_.Build(thread, ips, 0);
+      for (size_t i = 0; i < entries.size(); i++) {
+        size_t id = i + 1;
+        auto& entry = entries[i];
+        fprintf(out_fp_, "ip_%zu: 0x%" PRIx64 "\n", id, entry.ip);
+        fprintf(out_fp_, "sp_%zu: 0x%" PRIx64 "\n", id, sps[i]);
+        fprintf(out_fp_, "map_%zu: [0x%" PRIx64 "-0x%" PRIx64 "], pgoff 0x%" PRIx64 "\n", id,
+                entry.map->start_addr, entry.map->get_end_addr(), entry.map->pgoff);
+        Dso* dso = entry.map->dso;
+        if (dso->Path() == record_filename_) {
+          auto it = debug_unwind_dsos_.find(entry.map->pgoff);
+          CHECK(it != debug_unwind_dsos_.end());
+          const auto& p = it->second;
+          dso = p.first;
+          if (!JITDebugReader::IsPathInJITSymFile(dso->Path())) {
+            entry.vaddr_in_file = dso->IpToVaddrInFile(entry.ip, entry.map->start_addr, p.second);
+          }
+          entry.symbol = dso->FindSymbol(entry.vaddr_in_file);
         }
-        entry.symbol = dso->FindSymbol(entry.vaddr_in_file);
+        fprintf(out_fp_, "dso_%zu: %s\n", id, dso->Path().c_str());
+        fprintf(out_fp_, "vaddr_in_file_%zu: 0x%" PRIx64 "\n", id, entry.vaddr_in_file);
+        fprintf(out_fp_, "symbol_%zu: %s\n", id, entry.symbol->DemangledName());
       }
-      fprintf(out_fp_, "dso_%zu: %s\n", id, dso->Path().c_str());
-      fprintf(out_fp_, "vaddr_in_file_%zu: 0x%" PRIx64 "\n", id, entry.vaddr_in_file);
-      fprintf(out_fp_, "symbol_%zu: %s\n", id, entry.symbol->DemangledName());
+      fprintf(out_fp_, "\n");
     }
-    fprintf(out_fp_, "\n");
     return true;
   }
 
  private:
   const std::unordered_set<uint64_t> sample_times_;
+  bool skip_sample_print_;
   // Map from offset in recording file to the corresponding debug_unwind_file.
   std::unordered_map<uint64_t, std::pair<Dso*, uint64_t>> debug_unwind_dsos_;
   UnwindingStat stat_;
@@ -605,6 +610,7 @@ class DebugUnwindCommand : public Command {
 "--sample-time time1,time2...      Only process samples recorded at selected times.\n"
 "--symfs <dir>                     Look for files with symbols relative to this directory.\n"
 "--unwind-sample                   Unwind samples.\n"
+"--skip-sample-print               Skip printing unwound samples.\n"
 "\n"
 "Examples:\n"
 "1. Unwind a sample.\n"
@@ -629,6 +635,7 @@ class DebugUnwindCommand : public Command {
   std::string input_filename_ = "perf.data";
   std::string output_filename_;
   bool unwind_sample_ = false;
+  bool skip_sample_print_ = false;
   bool generate_report_ = false;
   bool generate_test_file_;
   std::unordered_set<std::string> kept_binaries_in_test_file_;
@@ -643,7 +650,7 @@ bool DebugUnwindCommand::Run(const std::vector<std::string>& args) {
 
   // 2. Distribute sub commands.
   if (unwind_sample_) {
-    SampleUnwinder sample_unwinder(output_filename_, sample_times_);
+    SampleUnwinder sample_unwinder(output_filename_, sample_times_, skip_sample_print_);
     return sample_unwinder.ProcessFile(input_filename_);
   }
   if (generate_test_file_) {
@@ -666,6 +673,7 @@ bool DebugUnwindCommand::ParseOptions(const std::vector<std::string>& args) {
       {"--keep-binaries-in-test-file", {OptionValueType::STRING, OptionType::MULTIPLE}},
       {"-o", {OptionValueType::STRING, OptionType::SINGLE}},
       {"--sample-time", {OptionValueType::STRING, OptionType::MULTIPLE}},
+      {"--skip-sample-print", {OptionValueType::NONE, OptionType::SINGLE}},
       {"--symfs", {OptionValueType::STRING, OptionType::MULTIPLE}},
       {"--unwind-sample", {OptionValueType::NONE, OptionType::SINGLE}},
   };
@@ -681,6 +689,7 @@ bool DebugUnwindCommand::ParseOptions(const std::vector<std::string>& args) {
     std::vector<std::string> binaries = android::base::Split(*value.str_value, ",");
     kept_binaries_in_test_file_.insert(binaries.begin(), binaries.end());
   }
+  skip_sample_print_ = options.PullBoolValue("--skip-sample-print");
   options.PullStringValue("-o", &output_filename_);
   for (auto& value : options.PullValues("--sample-time")) {
     auto times = ParseUintVector<uint64_t>(*value.str_value);
