@@ -152,24 +152,28 @@ TEST(DebugElfFileFinder, build_id_mismatch) {
 TEST(dso, dex_file_dso) {
 #if defined(__linux__)
   for (DsoType dso_type : {DSO_DEX_FILE, DSO_ELF_FILE}) {
-    std::unique_ptr<Dso> dso = Dso::CreateDso(dso_type, GetTestData("base.vdex"));
-    ASSERT_TRUE(dso);
-    dso->AddDexFileOffset(0x28);
-    ASSERT_EQ(DSO_DEX_FILE, dso->type());
-    const Symbol* symbol = dso->FindSymbol(0x6c77e);
-    ASSERT_NE(symbol, nullptr);
-    ASSERT_EQ(symbol->addr, static_cast<uint64_t>(0x6c77e));
-    ASSERT_EQ(symbol->len, static_cast<uint64_t>(0x16));
-    ASSERT_STREQ(symbol->DemangledName(),
-                 "com.example.simpleperf.simpleperfexamplewithnative.MixActivity$1.run");
-    uint64_t min_vaddr;
-    uint64_t file_offset_of_min_vaddr;
-    dso->GetMinExecutableVaddr(&min_vaddr, &file_offset_of_min_vaddr);
-    ASSERT_EQ(min_vaddr, 0);
-    ASSERT_EQ(file_offset_of_min_vaddr, 0);
+    for (const DexFileTestData& entry : dex_file_test_data) {
+      if (entry.filename == "base_with_cdex_v1.vdex") {
+        continue;  // TODO: reenable it.
+      }
+      std::unique_ptr<Dso> dso = Dso::CreateDso(dso_type, GetTestData(entry.filename));
+      ASSERT_TRUE(dso);
+      dso->AddDexFileOffset(entry.dexfile_offset);
+      ASSERT_EQ(DSO_DEX_FILE, dso->type());
+      const Symbol* symbol = dso->FindSymbol(entry.symbol_addr);
+      ASSERT_NE(symbol, nullptr);
+      ASSERT_EQ(symbol->addr, entry.symbol_addr);
+      ASSERT_EQ(symbol->len, entry.symbol_len);
+      ASSERT_STREQ(symbol->DemangledName(), entry.symbol_name.c_str());
+      uint64_t min_vaddr;
+      uint64_t file_offset_of_min_vaddr;
+      dso->GetMinExecutableVaddr(&min_vaddr, &file_offset_of_min_vaddr);
+      ASSERT_EQ(min_vaddr, 0);
+      ASSERT_EQ(file_offset_of_min_vaddr, 0);
+    }
 
     // Don't crash on not exist zip entry.
-    dso = Dso::CreateDso(dso_type, GetTestData("base.zip!/not_exist_entry"));
+    std::unique_ptr<Dso> dso = Dso::CreateDso(dso_type, GetTestData("base.zip!/not_exist_entry"));
     ASSERT_TRUE(dso);
     ASSERT_EQ(nullptr, dso->FindSymbol(0));
   }
