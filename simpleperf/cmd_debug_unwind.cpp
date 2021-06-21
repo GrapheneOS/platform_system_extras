@@ -320,19 +320,22 @@ class SampleUnwinder : public RecordFileProcessor {
         auto& entry = entries[i];
         fprintf(out_fp_, "ip_%zu: 0x%" PRIx64 "\n", id, entry.ip);
         fprintf(out_fp_, "sp_%zu: 0x%" PRIx64 "\n", id, sps[i]);
-        fprintf(out_fp_, "map_%zu: [0x%" PRIx64 "-0x%" PRIx64 "], pgoff 0x%" PRIx64 "\n", id,
-                entry.map->start_addr, entry.map->get_end_addr(), entry.map->pgoff);
+
         Dso* dso = entry.map->dso;
+        uint64_t pgoff = entry.map->pgoff;
         if (dso->Path() == record_filename_) {
           auto it = debug_unwind_dsos_.find(entry.map->pgoff);
           CHECK(it != debug_unwind_dsos_.end());
           const auto& p = it->second;
           dso = p.first;
+          pgoff = p.second;
           if (!JITDebugReader::IsPathInJITSymFile(dso->Path())) {
-            entry.vaddr_in_file = dso->IpToVaddrInFile(entry.ip, entry.map->start_addr, p.second);
+            entry.vaddr_in_file = dso->IpToVaddrInFile(entry.ip, entry.map->start_addr, pgoff);
           }
           entry.symbol = dso->FindSymbol(entry.vaddr_in_file);
         }
+        fprintf(out_fp_, "map_%zu: [0x%" PRIx64 "-0x%" PRIx64 "], pgoff 0x%" PRIx64 "\n", id,
+                entry.map->start_addr, entry.map->get_end_addr(), pgoff);
         fprintf(out_fp_, "dso_%zu: %s\n", id, dso->Path().c_str());
         fprintf(out_fp_, "vaddr_in_file_%zu: 0x%" PRIx64 "\n", id, entry.vaddr_in_file);
         fprintf(out_fp_, "symbol_%zu: %s\n", id, entry.symbol->DemangledName());
@@ -401,17 +404,13 @@ class TestFileGenerator : public RecordFileProcessor {
       auto attr = reader_->AttrSection()[0].attr;
       auto event_id = reader_->AttrSection()[0].ids[0];
 
-      size_t kernel_ip_count;
-      std::vector<uint64_t> ips = r.GetCallChain(&kernel_ip_count);
-      for (size_t i = kernel_ip_count; i < ips.size(); i++) {
-        const MapEntry* map = thread_tree_.FindMap(thread, ips[i], false);
-        if (!thread_tree_.IsUnknownDso(map->dso)) {
-          Mmap2Record map_record(*attr, false, r.tid_data.pid, r.tid_data.tid, map->start_addr,
-                                 map->len, map->pgoff, map->flags, map->dso->Path(), event_id,
-                                 r.Timestamp());
-          if (!writer_->WriteRecord(map_record)) {
-            return false;
-          }
+      for (const auto& p : thread->maps->maps) {
+        const MapEntry* map = p.second;
+        Mmap2Record map_record(*attr, false, r.tid_data.pid, r.tid_data.tid, map->start_addr,
+                               map->len, map->pgoff, map->flags, map->dso->Path(), event_id,
+                               r.Timestamp());
+        if (!writer_->WriteRecord(map_record)) {
+          return false;
         }
       }
     }
