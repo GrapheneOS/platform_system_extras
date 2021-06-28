@@ -43,7 +43,7 @@ struct FileFeature {
   std::string path;
   DsoType type;
   uint64_t min_vaddr;
-  uint64_t file_offset_of_min_vaddr;
+  uint64_t file_offset_of_min_vaddr;       // for DSO_ELF_FILE or DSO_KERNEL_MODULE
   std::vector<Symbol> symbols;             // used for reading symbols
   std::vector<const Symbol*> symbol_ptrs;  // used for writing symbols
   std::vector<uint64_t> dex_file_offsets;
@@ -196,6 +196,8 @@ class RecordFileReader {
   bool ReadAttrSection();
   bool ReadIdsForAttr(const PerfFileFormat::FileAttr& attr, std::vector<uint64_t>* ids);
   bool ReadFeatureSectionDescriptors();
+  bool ReadFileV1Feature(size_t& read_pos, FileFeature* file);
+  bool ReadFileV2Feature(size_t& read_pos, FileFeature* file);
   bool ReadMetaInfoFeature();
   void UseRecordingEnvironment();
   std::unique_ptr<Record> ReadRecord();

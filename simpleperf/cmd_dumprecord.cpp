@@ -471,7 +471,7 @@ bool DumpRecordCommand::DumpFeatureSection() {
     } else if (feature == FEAT_CMDLINE) {
       std::vector<std::string> cmdline = record_file_reader_->ReadCmdlineFeature();
       PrintIndented(1, "cmdline: %s\n", android::base::Join(cmdline, ' ').c_str());
-    } else if (feature == FEAT_FILE) {
+    } else if (feature == FEAT_FILE || feature == FEAT_FILE2) {
       FileFeature file;
       size_t read_pos = 0;
       PrintIndented(1, "file:\n");

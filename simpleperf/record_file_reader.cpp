@@ -57,6 +57,7 @@ static const std::map<int, std::string> feature_name_map = {
     {FEAT_META_INFO, "meta_info"},
     {FEAT_DEBUG_UNWIND, "debug_unwind"},
     {FEAT_DEBUG_UNWIND_FILE, "debug_unwind_file"},
+    {FEAT_FILE2, "file2"},
 };
 
 std::string GetFeatureName(int feature_id) {
@@ -487,6 +488,16 @@ std::vector<uint64_t> RecordFileReader::ReadAuxTraceFeature() {
 }
 
 bool RecordFileReader::ReadFileFeature(size_t& read_pos, FileFeature* file) {
+  if (HasFeature(FEAT_FILE)) {
+    return ReadFileV1Feature(read_pos, file);
+  }
+  if (HasFeature(FEAT_FILE2)) {
+    return ReadFileV2Feature(read_pos, file);
+  }
+  return false;
+}
+
+bool RecordFileReader::ReadFileV1Feature(size_t& read_pos, FileFeature* file) {
   auto it = feature_section_descriptors_.find(FEAT_FILE);
   if (it == feature_section_descriptors_.end()) {
     return false;
@@ -551,6 +562,57 @@ bool RecordFileReader::ReadFileFeature(size_t& read_pos, FileFeature* file) {
   return true;
 }
 
+bool RecordFileReader::ReadFileV2Feature(size_t& read_pos, FileFeature* file) {
+  auto it = feature_section_descriptors_.find(FEAT_FILE2);
+  if (it == feature_section_descriptors_.end()) {
+    return false;
+  }
+  if (read_pos >= it->second.size) {
+    return false;
+  }
+  if (read_pos == 0) {
+    if (fseek(record_fp_, it->second.offset, SEEK_SET) != 0) {
+      PLOG(ERROR) << "fseek() failed";
+      return false;
+    }
+  }
+  uint32_t size;
+  if (!Read(&size, 4)) {
+    return false;
+  }
+  read_pos += 4 + size;
+  std::string s(size, '\0');
+  if (!Read(s.data(), size)) {
+    return false;
+  }
+  proto::FileFeature proto_file;
+  if (!proto_file.ParseFromString(s)) {
+    return false;
+  }
+  file->path = proto_file.path();
+  file->type = static_cast<DsoType>(proto_file.type());
+  file->min_vaddr = proto_file.min_vaddr();
+  file->symbols.clear();
+  file->symbols.reserve(proto_file.symbol_size());
+  for (size_t i = 0; i < proto_file.symbol_size(); i++) {
+    const auto& proto_symbol = proto_file.symbol(i);
+    file->symbols.emplace_back(proto_symbol.name(), proto_symbol.vaddr(), proto_symbol.len());
+  }
+  if (file->type == DSO_DEX_FILE) {
+    CHECK(proto_file.has_dex_file());
+    const auto& dex_file_offsets = proto_file.dex_file().dex_file_offset();
+    file->dex_file_offsets.insert(file->dex_file_offsets.end(), dex_file_offsets.begin(),
+                                  dex_file_offsets.end());
+  } else if (file->type == DSO_ELF_FILE) {
+    CHECK(proto_file.has_elf_file());
+    file->file_offset_of_min_vaddr = proto_file.elf_file().file_offset_of_min_vaddr();
+  } else if (file->type == DSO_KERNEL_MODULE) {
+    CHECK(proto_file.has_kernel_module());
+    file->file_offset_of_min_vaddr = proto_file.kernel_module().memory_offset_of_min_vaddr();
+  }
+  return true;
+}
+
 bool RecordFileReader::ReadMetaInfoFeature() {
   if (feature_section_descriptors_.count(FEAT_META_INFO)) {
     std::vector<char> buf;
@@ -596,7 +658,7 @@ void RecordFileReader::LoadBuildIdAndFileFeatures(ThreadTree& thread_tree) {
   }
   Dso::SetBuildIds(build_ids);
 
-  if (HasFeature(PerfFileFormat::FEAT_FILE)) {
+  if (HasFeature(PerfFileFormat::FEAT_FILE) || HasFeature(PerfFileFormat::FEAT_FILE2)) {
     FileFeature file_feature;
     size_t read_pos = 0;
     while (ReadFileFeature(read_pos, &file_feature)) {
