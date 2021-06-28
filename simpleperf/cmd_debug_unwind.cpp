@@ -443,7 +443,8 @@ class TestFileGenerator : public RecordFileProcessor {
         if (!writer_->WriteDebugUnwindFeature(feature)) {
           return false;
         }
-      } else if (feat_type == PerfFileFormat::FEAT_FILE) {
+      } else if (feat_type == PerfFileFormat::FEAT_FILE ||
+                 feat_type == PerfFileFormat::FEAT_FILE2) {
         size_t read_pos = 0;
         FileFeature file_feature;
         while (reader_->ReadFileFeature(read_pos, &file_feature)) {
