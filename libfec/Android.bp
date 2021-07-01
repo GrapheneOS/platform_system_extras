@@ -70,7 +70,6 @@ cc_library {
     name: "libfec",
     defaults: ["libfec_default"],
     host_supported: true,
-    ramdisk_available: true,
     recovery_available: true,
 
     target: {
