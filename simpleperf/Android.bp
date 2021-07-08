@@ -656,3 +656,8 @@ python_library_host {
         "scripts/bin/windows/**/*.dll",
     ],
 }
+
+filegroup {
+    name: "system-extras-simpleperf-testdata",
+    srcs: ["CtsSimpleperfTestCases_testdata/**/*"],
+}
