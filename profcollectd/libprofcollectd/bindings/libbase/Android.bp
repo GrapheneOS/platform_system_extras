@@ -26,20 +26,25 @@ package {
 cc_library_static {
     name: "libprofcollect_libbase",
     srcs: ["properties.cpp"],
+    generated_headers: ["cxx-bridge-header"],
+    generated_sources: ["libprofcollect_libbase_bridge_code"],
 }
 
-rust_bindgen {
-    name: "libprofcollect_libbase_bindgen",
-    wrapper_src: "properties.hpp",
-    crate_name: "profcollect_libbase_bindgen",
-    source_stem: "bindings",
+genrule {
+    name: "libprofcollect_libbase_bridge_code",
+    tools: ["cxxbridge"],
+    cmd: "$(location cxxbridge) $(in) >> $(out)",
+    srcs: ["lib.rs"],
+    out: ["libprofcollect_libbase_cxx_generated.cc"],
 }
 
 rust_library {
     name: "libprofcollect_libbase_rust",
     crate_name: "profcollect_libbase_rust",
     srcs: ["lib.rs"],
-    rlibs: ["libprofcollect_libbase_bindgen"],
+    rustlibs: [
+        "libcxx",
+    ],
     static_libs: ["libprofcollect_libbase"],
     shared_libs: [
         "libc++",
