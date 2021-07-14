@@ -284,10 +284,6 @@ void DumpRecordCommand::DumpFileHeader() {
                   << "doesn't match expected header size " << sizeof(header);
   }
   printf("attr_size: %" PRId64 "\n", header.attr_size);
-  if (header.attr_size != sizeof(FileAttr)) {
-    LOG(WARNING) << "record file attr size " << header.attr_size
-                 << " doesn't match expected attr size " << sizeof(FileAttr);
-  }
   printf("attrs[file section]: offset %" PRId64 ", size %" PRId64 "\n", header.attrs.offset,
          header.attrs.size);
   printf("data[file section]: offset %" PRId64 ", size %" PRId64 "\n", header.data.offset,
