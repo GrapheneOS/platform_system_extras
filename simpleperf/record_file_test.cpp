@@ -246,8 +246,10 @@ TEST_F(RecordFileTest, write_file2_feature_section) {
     if (file.type == DSO_DEX_FILE) {
       ASSERT_EQ(file.dex_file_offsets, expected_file.dex_file_offsets);
     } else if (file.type == DSO_ELF_FILE) {
+      ASSERT_TRUE(file.dex_file_offsets.empty());
       ASSERT_EQ(file.file_offset_of_min_vaddr, expected_file.file_offset_of_min_vaddr);
     } else if (file.type == DSO_KERNEL_MODULE) {
+      ASSERT_TRUE(file.dex_file_offsets.empty());
       ASSERT_EQ(file.file_offset_of_min_vaddr, expected_file.file_offset_of_min_vaddr);
     }
   }
