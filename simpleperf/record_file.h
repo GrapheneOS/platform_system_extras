@@ -50,6 +50,16 @@ struct FileFeature {
 
   FileFeature() {}
 
+  void Clear() {
+    path.clear();
+    type = DSO_UNKNOWN_FILE;
+    min_vaddr = 0;
+    file_offset_of_min_vaddr = 0;
+    symbols.clear();
+    symbol_ptrs.clear();
+    dex_file_offsets.clear();
+  }
+
   DISALLOW_COPY_AND_ASSIGN(FileFeature);
 };
 

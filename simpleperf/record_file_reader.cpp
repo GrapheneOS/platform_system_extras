@@ -488,6 +488,7 @@ std::vector<uint64_t> RecordFileReader::ReadAuxTraceFeature() {
 }
 
 bool RecordFileReader::ReadFileFeature(size_t& read_pos, FileFeature* file) {
+  file->Clear();
   if (HasFeature(FEAT_FILE)) {
     return ReadFileV1Feature(read_pos, file);
   }
@@ -534,7 +535,6 @@ bool RecordFileReader::ReadFileV1Feature(size_t& read_pos, FileFeature* file) {
   MoveFromBinaryFormat(file->min_vaddr, p);
   uint32_t symbol_count;
   MoveFromBinaryFormat(symbol_count, p);
-  file->symbols.clear();
   file->symbols.reserve(symbol_count);
   for (uint32_t i = 0; i < symbol_count; ++i) {
     uint64_t start_vaddr;
@@ -545,7 +545,6 @@ bool RecordFileReader::ReadFileV1Feature(size_t& read_pos, FileFeature* file) {
     p += name.size() + 1;
     file->symbols.emplace_back(name, start_vaddr, len);
   }
-  file->dex_file_offsets.clear();
   if (file->type == DSO_DEX_FILE) {
     uint32_t offset_count;
     MoveFromBinaryFormat(offset_count, p);
@@ -592,7 +591,6 @@ bool RecordFileReader::ReadFileV2Feature(size_t& read_pos, FileFeature* file) {
   file->path = proto_file.path();
   file->type = static_cast<DsoType>(proto_file.type());
   file->min_vaddr = proto_file.min_vaddr();
-  file->symbols.clear();
   file->symbols.reserve(proto_file.symbol_size());
   for (size_t i = 0; i < proto_file.symbol_size(); i++) {
     const auto& proto_symbol = proto_file.symbol(i);
