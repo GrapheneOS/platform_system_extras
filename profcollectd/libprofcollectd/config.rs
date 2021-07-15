@@ -119,7 +119,7 @@ where
     T::Err: Error + Send + Sync + 'static,
 {
     let default_value = default_value.to_string();
-    let value = profcollect_libbase_rust::get_property(&key, &default_value);
+    let value = profcollect_libbase_rust::GetProperty(&key, &default_value);
     Ok(T::from_str(&value)?)
 }
 
@@ -128,7 +128,7 @@ where
     T: ToString,
 {
     let value = value.to_string();
-    profcollect_libbase_rust::set_property(&key, &value);
+    profcollect_libbase_rust::SetProperty(&key, &value);
 }
 
 fn generate_random_node_id() -> MacAddr6 {
