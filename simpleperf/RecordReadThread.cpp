@@ -487,6 +487,13 @@ bool RecordReadThread::ReadRecordsFromKernelBuffer() {
     if (!has_data) {
       break;
     }
+    // Having collected everything available, this is a good time to
+    // try to re-enabled any events that might have been disabled by
+    // the kernel.
+    for (auto event_fd : event_fds_disabled_by_kernel_) {
+      event_fd->SetEnableEvent(true);
+    }
+    event_fds_disabled_by_kernel_.clear();
     if (!SendDataNotificationToMainThread()) {
       return false;
     }
@@ -568,6 +575,18 @@ void RecordReadThread::PushRecordToRecordBuffer(KernelRecordReader* kernel_recor
   char* p = record_buffer_.AllocWriteSpace(header.size);
   if (p != nullptr) {
     kernel_record_reader->ReadRecord(0, header.size, p);
+    if (header.type == PERF_RECORD_AUX) {
+      AuxRecord r{attr_, p};
+      if (r.data->flags & PERF_AUX_FLAG_TRUNCATED) {
+        // When the kernel sees aux output flagged with PERF_AUX_FLAG_TRUNCATED,
+        // it sets a pending disable on the event:
+        // https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/kernel/events/ring_buffer.c?h=v5.13#n516
+        // The truncated flag is set by the Coresight driver when some trace was lost,
+        // which can be caused by a full buffer. Therefore, try to re-enable the event
+        // only after we have collected the aux data.
+        event_fds_disabled_by_kernel_.insert(kernel_record_reader->GetEventFd());
+      }
+    }
     record_buffer_.FinishWrite();
   } else {
     if (header.type == PERF_RECORD_SAMPLE) {
