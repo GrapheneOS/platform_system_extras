@@ -24,6 +24,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <unordered_set>
 
 #include <android-base/macros.h>
 #include <android-base/unique_fd.h>
@@ -207,6 +208,8 @@ class RecordReadThread {
   std::unique_ptr<std::thread> read_thread_;
   std::vector<KernelRecordReader> kernel_record_readers_;
   pid_t exclude_pid_ = -1;
+
+  std::unordered_set<EventFd*> event_fds_disabled_by_kernel_;
 
   RecordStat stat_;
 };
