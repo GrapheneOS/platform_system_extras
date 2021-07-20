@@ -29,6 +29,8 @@ use std::time::Duration;
 const PROFCOLLECT_CONFIG_NAMESPACE: &str = "profcollect_native_boot";
 const PROFCOLLECT_NODE_ID_PROPERTY: &str = "persist.profcollectd.node_id";
 
+pub const REPORT_RETENTION_SECS: u64 = 14 * 24 * 60 * 60; // 14 days.
+
 lazy_static! {
     pub static ref TRACE_OUTPUT_DIR: &'static Path = Path::new("/data/misc/profcollectd/trace/");
     pub static ref PROFILE_OUTPUT_DIR: &'static Path = Path::new("/data/misc/profcollectd/output/");

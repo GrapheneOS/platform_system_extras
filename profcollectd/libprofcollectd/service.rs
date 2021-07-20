@@ -21,16 +21,17 @@ use binder::public_api::Result as BinderResult;
 use binder::Status;
 use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProfCollectd::IProfCollectd;
 use std::ffi::CString;
-use std::fs::{copy, create_dir, read_to_string, remove_dir_all, remove_file, write};
+use std::fs::{copy, create_dir, read_dir, read_to_string, remove_dir_all, remove_file, write};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Mutex, MutexGuard};
+use std::time::Duration;
 
 use crate::config::{
     Config, BETTERBUG_CACHE_DIR_PREFIX, BETTERBUG_CACHE_DIR_SUFFIX, CONFIG_FILE,
-    PROFILE_OUTPUT_DIR, REPORT_OUTPUT_DIR, TRACE_OUTPUT_DIR,
+    PROFILE_OUTPUT_DIR, REPORT_OUTPUT_DIR, REPORT_RETENTION_SECS, TRACE_OUTPUT_DIR,
 };
-use crate::report::pack_report;
+use crate::report::{get_report_ts, pack_report};
 use crate::scheduler::Scheduler;
 
 fn err_to_binder_status(msg: Error) -> Status {
@@ -153,6 +154,30 @@ impl ProfcollectdBinderService {
             create_dir(*TRACE_OUTPUT_DIR)?;
 
             write(*CONFIG_FILE, &new_config.to_string())?;
+        }
+
+        // Clear profile reports out of rentention period.
+        for report in read_dir(*REPORT_OUTPUT_DIR)? {
+            let report = report?.path();
+            let report_name = report
+                .file_stem()
+                .and_then(|f| f.to_str())
+                .ok_or_else(|| anyhow!("Malformed path {}", report.display()))?;
+            let report_ts = get_report_ts(report_name);
+            if let Err(e) = report_ts {
+                log::error!(
+                    "Cannot decode creation timestamp for report {}, caused by {}, deleting",
+                    report_name,
+                    e
+                );
+                remove_file(report)?;
+                continue;
+            }
+            let report_age = report_ts.unwrap().elapsed()?;
+            if report_age > Duration::from_secs(REPORT_RETENTION_SECS) {
+                log::info!("Report {} past rentention period, deleting", report_name);
+                remove_file(report)?;
+            }
         }
 
         Ok(ProfcollectdBinderService {
