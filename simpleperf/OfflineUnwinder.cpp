@@ -51,8 +51,9 @@ namespace simpleperf {
 // darwin/windows. Use static_assert to make sure they are on the same page.
 static_assert(map_flags::PROT_JIT_SYMFILE_MAP == unwindstack::MAPS_FLAGS_JIT_SYMFILE_MAP);
 
-#define CHECK_ERROR_CODE(error_code_name) \
-  static_assert(UnwindStackErrorCode::error_code_name == unwindstack::ErrorCode::error_code_name)
+#define CHECK_ERROR_CODE(error_code_name)                \
+  static_assert(UnwindStackErrorCode::error_code_name == \
+                (UnwindStackErrorCode)unwindstack::ErrorCode::error_code_name)
 
 CHECK_ERROR_CODE(ERROR_NONE);
 CHECK_ERROR_CODE(ERROR_MEMORY_INVALID);
