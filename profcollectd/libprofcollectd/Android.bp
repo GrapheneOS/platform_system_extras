@@ -51,12 +51,12 @@ rust_library {
         "librand",
         "libserde", // Remove once b/179041241 is fixed.
         "libserde_json",
+        "libsystem_properties-rust",
         "libuuid",
         "libzip",
     ],
     rlibs: [
         "libprofcollect_libflags_rust",
-        "libprofcollect_libbase_rust",
         "libsimpleperf_profcollect_rust",
     ],
     shared_libs: ["libsimpleperf_profcollect"],
