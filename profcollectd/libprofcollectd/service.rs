@@ -89,7 +89,7 @@ impl IProfCollectd for ProfcollectdBinderService {
             .map_err(err_to_binder_status)
     }
     fn delete_report(&self, report_name: &str) -> BinderResult<()> {
-        verify_report_name(&report_name).map_err(err_to_binder_status)?;
+        verify_report_name(report_name).map_err(err_to_binder_status)?;
 
         let mut report = PathBuf::from(&*REPORT_OUTPUT_DIR);
         report.push(report_name);
@@ -101,7 +101,7 @@ impl IProfCollectd for ProfcollectdBinderService {
         if bb_profile_id < 0 {
             return Err(err_to_binder_status(anyhow!("Invalid profile ID")));
         }
-        verify_report_name(&report_name).map_err(err_to_binder_status)?;
+        verify_report_name(report_name).map_err(err_to_binder_status)?;
 
         let mut report = PathBuf::from(&*REPORT_OUTPUT_DIR);
         report.push(report_name);
