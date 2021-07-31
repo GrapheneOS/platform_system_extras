@@ -48,29 +48,6 @@ bool IsInNativeAbi() {
   return in_native_abi == 1;
 }
 
-static bool InCloudAndroid() {
-#if defined(__i386__) || defined(__x86_64__)
-#if defined(__ANDROID__)
-  std::string prop_value = android::base::GetProperty("ro.build.flavor", "");
-  if (android::base::StartsWith(prop_value, "cf_x86_phone") ||
-      android::base::StartsWith(prop_value, "aosp_cf_x86_phone") ||
-      android::base::StartsWith(prop_value, "cf_x86_64_phone") ||
-      android::base::StartsWith(prop_value, "aosp_cf_x86_64_phone")) {
-    return true;
-  }
-  // aosp_x86* builds may also run on cloud Android. Detect it by checking
-  /// if cpu-cycles isn't supported.
-  if (android::base::StartsWith(prop_value, "aosp_x86")) {
-    const simpleperf::EventType* type = simpleperf::FindEventTypeByName("cpu-cycles", false);
-    CHECK(type != nullptr);
-    perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
-    return !IsEventAttrSupported(attr, "cpu-cycles");
-  }
-#endif
-#endif
-  return false;
-}
-
 #if defined(__arm__)
 // Check if we can get a non-zero instruction event count by monitoring current thread.
 static bool HasNonZeroInstructionEventCount() {
@@ -96,18 +73,28 @@ static bool HasNonZeroInstructionEventCount() {
 #endif  // defined(__arm__)
 
 bool HasHardwareCounter() {
+#if defined(__linux__)
   static int has_hw_counter = -1;
   if (has_hw_counter == -1) {
-    // Cloud Android doesn't have hardware counters.
-    has_hw_counter = InCloudAndroid() ? 0 : 1;
-#if defined(__arm__)
+    has_hw_counter = 1;
+#if defined(__x86__) || defined(__x86_64__)
+    // On x86 and x86_64, it's likely to run on an emulator or vm without hardware perf counters.
+    // It's hard to enumerate them all. So check the support at runtime.
+    const simpleperf::EventType* type = simpleperf::FindEventTypeByName("cpu-cycles", false);
+    CHECK(type != nullptr);
+    perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
+    has_hw_counter = IsEventAttrSupported(attr, "cpu-cycles") ? 1 : 0;
+#elif defined(__arm__)
     // For arm32 devices, external non-invasive debug signal controls PMU counters. Once it is
     // disabled for security reason, we always get zero values for PMU counters. And we want to
     // skip hardware counter tests once we detect it.
     has_hw_counter &= HasNonZeroInstructionEventCount() ? 1 : 0;
-#endif
+#endif  // defined(__arm__)
   }
   return has_hw_counter == 1;
+#else   // defined(__linux__)
+  return false;
+#endif  // defined(__linux__)
 }
 
 bool HasPmuCounter() {
