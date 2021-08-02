@@ -42,7 +42,7 @@ pub fn init_service(schedule_now: bool) -> Result<()> {
 
     let profcollect_binder_service = ProfcollectdBinderService::new()?;
     binder::add_service(
-        &PROFCOLLECTD_SERVICE_NAME,
+        PROFCOLLECTD_SERVICE_NAME,
         BnProfCollectd::new_binder(profcollect_binder_service, BinderFeatures::default())
             .as_binder(),
     )
@@ -58,7 +58,7 @@ pub fn init_service(schedule_now: bool) -> Result<()> {
 }
 
 fn get_profcollectd_service() -> Result<binder::Strong<dyn IProfCollectd::IProfCollectd>> {
-    binder::get_interface(&PROFCOLLECTD_SERVICE_NAME)
+    binder::get_interface(PROFCOLLECTD_SERVICE_NAME)
         .context("Failed to get profcollectd binder service, is profcollectd running?")
 }
 
