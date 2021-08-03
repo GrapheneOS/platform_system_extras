@@ -49,9 +49,9 @@ rust_library {
         "liblog_rust",
         "libmacaddr",
         "librand",
+        "librustutils",
         "libserde", // Remove once b/179041241 is fixed.
         "libserde_json",
-        "libsystem_properties-rust",
         "libuuid",
         "libzip",
     ],
