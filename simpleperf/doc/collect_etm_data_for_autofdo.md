@@ -1,5 +1,16 @@
 # Collect ETM data for AutoFDO
 
+## Table of Contents
+
+- [Collect ETM data for AutoFDO](#collect-etm-data-for-autofdo)
+	- [Table of Contents](#table-of-contents)
+	- [Introduction](#introduction)
+	- [Examples](#examples)
+	- [Collect ETM data with a daemon](#collect-etm-data-with-a-daemon)
+	- [Support ETM in the kernel](#support-etm-in-the-kernel)
+	- [Enable ETM in the bootloader](#enable-etm-in-the-bootloader)
+	- [Related docs](#related-docs)
+
 ## Introduction
 
 ETM is a hardware feature available on arm64 devices. It collects the instruction stream running on
@@ -7,10 +18,11 @@ each cpu. ARM uses ETM as an alternative for LBR (last branch record) on x86.
 Simpleperf supports collecting ETM data, and converting it to input files for AutoFDO, which can
 then be used for PGO (profile-guided optimization) during compilation.
 
-On ARMv8, ETM is considered as an external debug interface. So it needs to be enabled explicitly
-in the bootloader, and isn't available on user devices. For Pixel devices, it's available on EVT
-and DVT devices on Pixel 4, Pixel 4a (5G) and Pixel 5. To test if it's available on other devices,
-you can follow commands in this doc and see if you can record any ETM data.
+On ARMv8, ETM is considered as an external debug interface (unless ARMv8.4 Self-hosted Trace
+extension is impelemented). So it needs to be enabled explicitly in the bootloader, and isn't
+available on user devices. For Pixel devices, it's available on EVT and DVT devices on Pixel 4,
+Pixel 4a (5G) and Pixel 5. To test if it's available on other devices, you can follow commands in
+this doc and see if you can record any ETM data.
 
 ## Examples
 
@@ -92,3 +104,50 @@ Then we can use a.prof for PGO during compilation, via `-fprofile-sample-use=a.p
 
 Android also has a daemon collecting ETM data periodically. It only runs on userdebug and eng
 devices. The source code is in `<aosp-top>/system/extras/profcollectd`.
+
+## Support ETM in the kernel
+
+To let simpleperf use ETM function, we need to enable Coresight driver in the kernel, which lives in
+`<linux_kernel>/drivers/hwtracing/coresight`.
+
+The Coresight driver can be enabled by below kernel configs:
+
+```config
+	CONFIG_CORESIGHT=y
+	CONFIG_CORESIGHT_LINK_AND_SINK_TMC=y
+	CONFIG_CORESIGHT_SOURCE_ETM4X=y
+	CONFIG_CORESIGHT_DYNAMIC_REPLICATOR=y
+```
+
+On Kernel 5.10+, we can build Coresight driver as kernel modules instead.
+
+Android common kernel 5.10+ should have all the Coresight patches needed. And we have backported
+necessary Coresight patches to Android common kernel 4.14 and 4.19. Android common kernel 5.4
+misses a few patches. Please create an [ndk issue](https://github.com/android/ndk/issues) if you
+need ETM function on 5.4 kernel.
+
+Besides Coresight driver, we also need to add Coresight devices in device tree. An example is in
+https://github.com/torvalds/linux/blob/master/arch/arm64/boot/dts/arm/juno-base.dtsi. There should
+be a path flowing ETM data from ETM device through funnels, ETF and replicators, all the way to
+ETR, which writes ETM data to system memory.
+
+## Enable ETM in the bootloader
+
+Unless ARMv8.4 Self-hosted Trace extension is implemented, ETM is considered as an external debug
+interface. It may be disabled by fuse (like JTAG). So we need to check if ETM is disabled, and
+if bootloader provides a way to reenable it.
+
+We can tell if ETM is disable by checking its TRCAUTHSTATUS register, which is exposed in sysfs,
+like /sys/bus/coresight/devices/coresight-etm0/mgmt/trcauthstatus. To reenable ETM, we need to
+enable non-Secure non-invasive debug on ARM CPU. The method depends on chip vendors(SOCs).
+
+
+## Related docs
+
+* [Arm Architecture Reference Manual Armv8, D3 AArch64 Self-hosted Trace](https://developer.arm.com/documentation/ddi0487/latest)
+* [ARM ETM Architecture Specification](https://developer.arm.com/documentation/ihi0064/latest/)
+* [ARM CoreSight Architecture Specification](https://developer.arm.com/documentation/ihi0029/latest)
+* [CoreSight Components Technical Reference Manual](https://developer.arm.com/documentation/ddi0314/h/)
+* [CoreSight Trace Memory Controller Technical Reference Manual](https://developer.arm.com/documentation/ddi0461/b/)
+* [OpenCSD library for decoding ETM data](https://github.com/Linaro/OpenCSD)
+* [AutoFDO tool for converting profile data](https://github.com/google/autofdo)
