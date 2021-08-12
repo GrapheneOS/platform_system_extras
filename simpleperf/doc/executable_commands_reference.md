@@ -502,7 +502,7 @@ If trace-offcpu is supported, it will be shown in the feature list. Then we can 
 $ simpleperf record -g -p 11904 --duration 10 --trace-offcpu
 
 # Record with --trace-offcpu using app_profiler.py.
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .SleepActivity \
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .SleepActivity \
     -r "-g -e task-clock:u -f 1000 --duration 10 --trace-offcpu"
 ```
 
@@ -510,9 +510,9 @@ Below is an example comparing the profiling result with / without --trace-offcpu
 First we record without --trace-offcpu.
 
 ```sh
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .SleepActivity
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .SleepActivity
 
-$ python report_html.py --add_disassembly --add_source_code --source_dirs ../demo
+$ ./report_html.py --add_disassembly --add_source_code --source_dirs ../demo
 ```
 
 The result is [here](./without_trace_offcpu.html).
@@ -520,10 +520,10 @@ In the result, all time is taken by RunFunction(), and sleep time is ignored.
 But if we add --trace-offcpu, the result changes.
 
 ```sh
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .SleepActivity \
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .SleepActivity \
     -r "-g -e task-clock:u --trace-offcpu -f 1000 --duration 10"
 
-$ python report_html.py --add_disassembly --add_source_code --source_dirs ../demo
+$ ./report_html.py --add_disassembly --add_source_code --source_dirs ../demo
 ```
 
 The result is [here](./trace_offcpu.html).
