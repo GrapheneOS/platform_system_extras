@@ -145,7 +145,7 @@ We can use [app-profiler.py](scripts_reference.md#app_profilerpy) to profile And
 # Android >= P.
 # -a option selects the Activity to profile.
 # -lib option gives the directory to find debug native libraries.
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative --compile_java_code \
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative --compile_java_code \
     -a .MixActivity -lib path_of_SimpleperfExampleWithNative
 ```
 
@@ -157,7 +157,7 @@ case, the MixActivity starts a busy thread. So we don't need to use the app whil
 
 ```sh
 # Report perf.data in stdio interface.
-$ python report.py
+$ ./report.py
 Cmdline: /data/data/com.example.simpleperf.simpleperfexamplewithnative/simpleperf record ...
 Arch: arm64
 Event: task-clock:u (type 1, config 1)
@@ -175,10 +175,10 @@ are a lot of unknown symbols in the report, check [here](README.md#how-to-solve-
 
 ```sh
 # Report perf.data in html interface.
-$ python report_html.py
+$ ./report_html.py
 
 # Add source code and disassembly. Change the path of source_dirs if it not correct.
-$ python report_html.py --add_source_code --source_dirs path_of_SimpleperfExampleWithNative \
+$ ./report_html.py --add_source_code --source_dirs path_of_SimpleperfExampleWithNative \
       --add_disassembly
 ```
 
@@ -191,22 +191,22 @@ We can record and report [call graphs](executable_commands_reference.md#record-c
 
 ```sh
 # Record dwarf based call graphs: add "-g" in the -r option.
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
         -r "-e task-clock:u -f 1000 --duration 10 -g" -lib path_of_SimpleperfExampleWithNative
 
 # Record stack frame based call graphs: add "--call-graph fp" in the -r option.
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
         -r "-e task-clock:u -f 1000 --duration 10 --call-graph fp" \
         -lib path_of_SimpleperfExampleWithNative
 
 # Report call graphs in stdio interface.
-$ python report.py -g
+$ ./report.py -g
 
 # Report call graphs in python Tk interface.
-$ python report.py -g --gui
+$ ./report.py -g --gui
 
 # Report call graphs in html interface.
-$ python report_html.py
+$ ./report_html.py
 
 # Report call graphs in flamegraphs.
 # On Windows, use inferno.bat instead of ./inferno.sh.
@@ -220,7 +220,7 @@ report_html.py integrates chart statistics, sample table, flamegraphs, source co
 and disassembly annotation. It is the recommended way to show reports.
 
 ```sh
-$ python report_html.py
+$ ./report_html.py
 ```
 
 ## Show flamegraph
@@ -239,7 +239,7 @@ Please make sure you have perl installed.
 
 ```sh
 $ git clone https://github.com/brendangregg/FlameGraph.git
-$ python report_sample.py --symfs binary_cache >out.perf
+$ ./report_sample.py --symfs binary_cache >out.perf
 $ FlameGraph/stackcollapse-perf.pl out.perf >out.folded
 $ FlameGraph/flamegraph.pl out.folded >a.svg
 ```
@@ -262,7 +262,7 @@ We can [record both on CPU time and off CPU time](executable_commands_reference.
 First check if trace-offcpu feature is supported on the device.
 
 ```sh
-$ python run_simpleperf_on_device.py list --show-features
+$ ./run_simpleperf_on_device.py list --show-features
 dwarf-based-call-graph
 trace-offcpu
 ```
@@ -270,10 +270,10 @@ trace-offcpu
 If trace-offcpu is supported, it will be shown in the feature list. Then we can try it.
 
 ```sh
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .SleepActivity \
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .SleepActivity \
     -r "-g -e task-clock:u -f 1000 --duration 10 --trace-offcpu" \
     -lib path_of_SimpleperfExampleWithNative
-$ python report_html.py --add_disassembly --add_source_code \
+$ ./report_html.py --add_disassembly --add_source_code \
     --source_dirs path_of_SimpleperfExampleWithNative
 ```
 
@@ -283,12 +283,12 @@ We can [profile from launch of an application](scripts_reference.md#profile-from
 
 ```sh
 # Start simpleperf recording, then start the Activity to profile.
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .MainActivity
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .MainActivity
 
 # We can also start the Activity on the device manually.
 # 1. Make sure the application isn't running or one of the recent apps.
 # 2. Start simpleperf recording.
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative
 # 3. Start the app manually on the device.
 ```
 
