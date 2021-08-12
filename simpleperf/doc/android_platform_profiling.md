@@ -21,10 +21,10 @@ Below is an example.
 ```sh
 # Record surfaceflinger process for 10 seconds with dwarf based call graph. More examples are in
 # scripts reference in the doc.
-$ python app_profiler.py -np surfaceflinger -r "-g --duration 10"
+$ ./app_profiler.py -np surfaceflinger -r "-g --duration 10"
 
 # Generate html report.
-$ python report_html.py
+$ ./report_html.py
 ```
 
 4. Since Android >= O has symbols for system libraries on device, we don't need to use unstripped
@@ -33,14 +33,14 @@ source code and disassembly (with line numbers) in the report. Below is an examp
 
 ```sh
 # Doing recording with app_profiler.py or simpleperf on device, and generates perf.data on host.
-$ python app_profiler.py -np surfaceflinger -r "--call-graph fp --duration 10"
+$ ./app_profiler.py -np surfaceflinger -r "--call-graph fp --duration 10"
 
 # Collect unstripped binaries from $ANDROID_PRODUCT_OUT/symbols to binary_cache/.
-$ python binary_cache_builder.py -lib $ANDROID_PRODUCT_OUT/symbols
+$ ./binary_cache_builder.py -lib $ANDROID_PRODUCT_OUT/symbols
 
 # Report source code and disassembly. Disassembling all binaries is slow, so it's better to add
 # --binary_filter option to only disassemble selected binaries.
-$ python report_html.py --add_source_code --source_dirs $ANDROID_BUILD_TOP --add_disassembly \
+$ ./report_html.py --add_source_code --source_dirs $ANDROID_BUILD_TOP --add_disassembly \
   --binary_filter surfaceflinger.so
 ```
 
