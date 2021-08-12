@@ -29,6 +29,8 @@ use std::time::Duration;
 const PROFCOLLECT_CONFIG_NAMESPACE: &str = "profcollect_native_boot";
 const PROFCOLLECT_NODE_ID_PROPERTY: &str = "persist.profcollectd.node_id";
 
+pub const REPORT_RETENTION_SECS: u64 = 14 * 24 * 60 * 60; // 14 days.
+
 lazy_static! {
     pub static ref TRACE_OUTPUT_DIR: &'static Path = Path::new("/data/misc/profcollectd/trace/");
     pub static ref PROFILE_OUTPUT_DIR: &'static Path = Path::new("/data/misc/profcollectd/output/");
@@ -105,7 +107,7 @@ where
     T::Err: Error + Send + Sync + 'static,
 {
     let default_value = default_value.to_string();
-    let config = profcollect_libflags_rust::get_server_configurable_flag(
+    let config = profcollect_libflags_rust::GetServerConfigurableFlag(
         &PROFCOLLECT_CONFIG_NAMESPACE,
         &key,
         &default_value,
@@ -119,7 +121,7 @@ where
     T::Err: Error + Send + Sync + 'static,
 {
     let default_value = default_value.to_string();
-    let value = profcollect_libbase_rust::get_property(&key, &default_value);
+    let value = profcollect_libbase_rust::GetProperty(&key, &default_value);
     Ok(T::from_str(&value)?)
 }
 
@@ -128,7 +130,7 @@ where
     T: ToString,
 {
     let value = value.to_string();
-    profcollect_libbase_rust::set_property(&key, &value);
+    profcollect_libbase_rust::SetProperty(&key, &value);
 }
 
 fn generate_random_node_id() -> MacAddr6 {

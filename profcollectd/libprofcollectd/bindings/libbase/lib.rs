@@ -14,26 +14,21 @@
 // limitations under the License.
 //
 
-//! This module implements safe wrappers for GetProperty method from libbase.
+//! This module implements safe wrappers for GetProperty and SetProperty from libbase.
 
-use std::ffi::{CStr, CString};
+pub use ffi::{GetProperty, SetProperty};
 
-/// Returns the current value of the system property `key`,
-/// or `default_value` if the property is empty or doesn't exist.
-pub fn get_property<'a>(key: &str, default_value: &'a str) -> &'a str {
-    let key = CString::new(key).unwrap();
-    let default_value = CString::new(default_value).unwrap();
-    unsafe {
-        let cstr = profcollect_libbase_bindgen::GetProperty(key.as_ptr(), default_value.as_ptr());
-        CStr::from_ptr(cstr).to_str().unwrap()
-    }
-}
+/// Safe wrappers for the GetProperty and SetProperty methods from libbase.
+#[cxx::bridge]
+mod ffi {
+    unsafe extern "C++" {
+        include!("properties.hpp");
 
-/// Sets the system property `key` to `value`.
-pub fn set_property(key: &str, value: &str) {
-    let key = CString::new(key).unwrap();
-    let value = CString::new(value).unwrap();
-    unsafe {
-        profcollect_libbase_bindgen::SetProperty(key.as_ptr(), value.as_ptr());
+        /// Returns the current value of the system property `key`,
+        /// or `default_value` if the property is empty or doesn't exist.
+        fn GetProperty(key: &str, default_value: &str) -> String;
+
+        /// Sets the system property `key` to `value`.
+        fn SetProperty(key: &str, value: &str);
     }
 }

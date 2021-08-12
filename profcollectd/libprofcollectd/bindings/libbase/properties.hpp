@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
-// C declaration for bindgen.
-const char* GetProperty(const char*, const char*);
-void SetProperty(const char*, const char*);
+#pragma once
+
+#include "rust/cxx.h"
+
+rust::String GetProperty(rust::Str, rust::Str);
+void SetProperty(rust::Str, rust::Str);

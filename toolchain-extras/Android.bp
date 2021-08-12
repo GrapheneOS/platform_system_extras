@@ -129,11 +129,10 @@ cc_test {
     srcs: [
         "profile-clang-extras-test.cpp",
     ],
-    static_libs: [
+    whole_static_libs: [
         "libprofile-clang-extras",
     ],
     ldflags: [
-        "-uinit_profile_extras",
         "-Wl,--wrap,open",
     ],
     native_coverage: false,

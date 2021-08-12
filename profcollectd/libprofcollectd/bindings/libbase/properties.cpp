@@ -17,11 +17,10 @@
 #include "../../../../../libbase/include/android-base/properties.h"
 #include "properties.hpp"
 
-const char* GetProperty(const char* key, const char* default_value) {
-  auto v = android::base::GetProperty(std::string(key), std::string(default_value));
-  return strdup(v.c_str());
+rust::String GetProperty(rust::Str key, rust::Str default_value) {
+  return android::base::GetProperty(std::string(key), std::string(default_value));
 }
 
-void SetProperty(const char* key, const char* value) {
+void SetProperty(rust::Str key, rust::Str value) {
   android::base::SetProperty(std::string(key), std::string(value));
 }
