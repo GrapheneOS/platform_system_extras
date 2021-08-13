@@ -180,7 +180,7 @@ solution is to build binary_cache on host.
 
 ```sh
 # Collect binaries needed by perf.data in binary_cache/.
-$ python binary_cache_builder.py -lib NATIVE_LIB_DIR,...
+$ ./binary_cache_builder.py -lib NATIVE_LIB_DIR,...
 ```
 
 The NATIVE_LIB_DIRs passed in -lib option are the directories containing unstripped native
@@ -188,11 +188,11 @@ libraries on host. After running it, the native libraries containing symbol tabl
 in binary_cache/ for use when reporting.
 
 ```sh
-$ python report.py --symfs binary_cache
+$ ./report.py --symfs binary_cache
 
 # report_html.py searches binary_cache/ automatically, so you don't need to
 # pass it any argument.
-$ python report_html.py
+$ ./report_html.py
 ```
 
 ### Fix broken callchain stopped at C functions
@@ -215,7 +215,7 @@ $ adb shell simpleperf record xxx --symfs /data/local/tmp/native_libs
 To use app_profiler.py:
 
 ```sh
-$ python app_profiler.py -lib <unstripped_dir>
+$ ./app_profiler.py -lib <unstripped_dir>
 ```
 
 ### Show annotated source code and disassembly

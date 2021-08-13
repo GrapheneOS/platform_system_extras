@@ -19,8 +19,8 @@
     used by pprof.
 
   Example:
-    python app_profiler.py
-    python pprof_proto_generator.py
+    ./app_profiler.py
+    ./pprof_proto_generator.py
     pprof -text pprof.profile
 """
 
