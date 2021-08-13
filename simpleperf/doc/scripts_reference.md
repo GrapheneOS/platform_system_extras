@@ -25,34 +25,34 @@ app_profiler.py is used to record profiling data for Android applications and na
 
 ```sh
 # Record an Android application.
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative
 
 # Record an Android application with Java code compiled into native instructions.
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative --compile_java_code
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative --compile_java_code
 
 # Record the launch of an Activity of an Android application.
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .SleepActivity
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .SleepActivity
 
 # Record a native process.
-$ python app_profiler.py -np surfaceflinger
+$ ./app_profiler.py -np surfaceflinger
 
 # Record a native process given its pid.
-$ python app_profiler.py --pid 11324
+$ ./app_profiler.py --pid 11324
 
 # Record a command.
-$ python app_profiler.py -cmd \
+$ ./app_profiler.py -cmd \
     "dex2oat --dex-file=/data/local/tmp/app-profiling.apk --oat-file=/data/local/tmp/a.oat"
 
 # Record an Android application, and use -r to send custom options to the record command.
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
     -r "-e cpu-clock -g --duration 30"
 
 # Record both on CPU time and off CPU time.
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
     -r "-e task-clock -g -f 1000 --duration 10 --trace-offcpu"
 
 # Save profiling data in a custom file (like perf_custom.data) instead of perf.data.
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -o perf_custom.data
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -o perf_custom.data
 ```
 
 ### Profile from launch of an application
@@ -64,7 +64,7 @@ an interval of 1ms. So to profile from launch of an application, we can first st
 command with --app, then start the app. Below is an example.
 
 ```sh
-$ python run_simpleperf_on_device.py record
+$ ./run_simpleperf_on_device.py record
     --app com.example.simpleperf.simpleperfexamplewithnative \
     -g --duration 1 -o /data/local/tmp/perf.data
 # Start the app manually or using the `am` command.
@@ -74,7 +74,7 @@ To make it convenient to use, app_profiler.py supports using the -a option to st
 after recording has started.
 
 ```sh
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .MainActivity
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .MainActivity
 ```
 
 ## api_profiler.py
@@ -91,11 +91,11 @@ connected. Maybe api_profiler.py is more suitable, which also don't need USB cab
 Below is an example.
 
 ```sh
-$ python run_simpleperf_without_usb_connection.py start \
+$ ./run_simpleperf_without_usb_connection.py start \
     -p com.example.simpleperf.simpleperfexamplewithnative
 # After the command finishes successfully, unplug the USB cable, run the
 # SimpleperfExampleWithNative app. After a few seconds, plug in the USB cable.
-$ python run_simpleperf_without_usb_connection.py stop
+$ ./run_simpleperf_without_usb_connection.py stop
 # It may take a while to stop recording. After that, the profiling data is collected in perf.data
 # on host.
 ```
@@ -117,11 +117,11 @@ directories on the host (via -lib).
 
 ```sh
 # Generate binary_cache for perf.data, by pulling binaries from the device.
-$ python binary_cache_builder.py
+$ ./binary_cache_builder.py
 
 # Generate binary_cache, by pulling binaries from the device and finding binaries in
 # SimpleperfExampleWithNative.
-$ python binary_cache_builder.py -lib path_of_SimpleperfExampleWithNative
+$ ./binary_cache_builder.py -lib path_of_SimpleperfExampleWithNative
 ```
 
 ## run_simpleperf_on_device.py
@@ -136,10 +136,10 @@ command.
 
 ```sh
 # Report call graph
-$ python report.py -g
+$ ./report.py -g
 
 # Report call graph in a GUI window implemented by Python Tk.
-$ python report.py -g --gui
+$ ./report.py -g --gui
 ```
 
 ## report_html.py
@@ -152,27 +152,27 @@ each function, annotated disassembly for each function.
 
 ```sh
 # Generate chart statistics, sample table and flamegraphs, based on perf.data.
-$ python report_html.py
+$ ./report_html.py
 
 # Add source code.
-$ python report_html.py --add_source_code --source_dirs path_of_SimpleperfExampleWithNative
+$ ./report_html.py --add_source_code --source_dirs path_of_SimpleperfExampleWithNative
 
 # Add disassembly.
-$ python report_html.py --add_disassembly
+$ ./report_html.py --add_disassembly
 
 # Adding disassembly for all binaries can cost a lot of time. So we can choose to only add
 # disassembly for selected binaries.
-$ python report_html.py --add_disassembly --binary_filter libgame.so
+$ ./report_html.py --add_disassembly --binary_filter libgame.so
 
 # report_html.py accepts more than one recording data file.
-$ python report_html.py -i perf1.data perf2.data
+$ ./report_html.py -i perf1.data perf2.data
 ```
 
 Below is an example of generating html profiling results for SimpleperfExampleWithNative.
 
 ```sh
-$ python app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative
-$ python report_html.py --add_source_code --source_dirs path_of_SimpleperfExampleWithNative \
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative
+$ ./report_html.py --add_source_code --source_dirs path_of_SimpleperfExampleWithNative \
     --add_disassembly
 ```
 
@@ -219,7 +219,7 @@ It converts a profiling data file into pprof.proto, a format used by [pprof](htt
 
 ```sh
 # Convert perf.data in the current directory to pprof.proto format.
-$ python pprof_proto_generator.py
+$ ./pprof_proto_generator.py
 # Show report in pdf format.
 $ pprof -pdf pprof.profile
 
@@ -236,7 +236,7 @@ It converts a profiling data file into a format used by [FlameGraph](https://git
 
 ```sh
 # Convert perf.data in the current directory to a format used by FlameGraph.
-$ python report_sample.py --symfs binary_cache >out.perf
+$ ./report_sample.py --symfs binary_cache >out.perf
 $ git clone https://github.com/brendangregg/FlameGraph.git
 $ FlameGraph/stackcollapse-perf.pl out.perf >out.folded
 $ FlameGraph/flamegraph.pl out.folded >a.svg
