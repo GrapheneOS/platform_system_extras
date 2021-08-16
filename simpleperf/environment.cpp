@@ -426,14 +426,14 @@ ArchType GetMachineArch() {
   utsname uname_buf;
   if (TEMP_FAILURE_RETRY(uname(&uname_buf)) != 0) {
     PLOG(WARNING) << "uname() failed";
-    return GetBuildArch();
+    return GetTargetArch();
   }
   ArchType arch = GetArchType(uname_buf.machine);
 #endif
   if (arch != ARCH_UNSUPPORTED) {
     return arch;
   }
-  return GetBuildArch();
+  return GetTargetArch();
 }
 
 void PrepareVdsoFile() {
