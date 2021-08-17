@@ -172,11 +172,12 @@ void CallChainReportBuilder::ConvertJITFrame(std::vector<CallChainReportEntry>& 
   CollectJavaMethods();
   for (size_t i = 0; i < callchain.size();) {
     auto& entry = callchain[i];
-    if (entry.dso->IsForJavaMethod() && entry.dso->type() == DSO_ELF_FILE) {
+    if (entry.execution_type == CallChainExecutionType::JIT_JVM_METHOD) {
       // This is a JIT java method, merge it with the interpreted java method having the same
       // name if possible. Otherwise, merge it with other JIT java methods having the same name
       // by assigning a common dso_name.
-      if (auto it = java_method_map_.find(entry.symbol->Name()); it != java_method_map_.end()) {
+      if (auto it = java_method_map_.find(std::string(entry.symbol->FunctionNameForJITSymbol()));
+          it != java_method_map_.end()) {
         entry.dso = it->second.dso;
         entry.symbol = it->second.symbol;
         // Not enough info to map an offset in a JIT method to an offset in a dex file. So just
@@ -220,7 +221,12 @@ void CallChainReportBuilder::DeObfuscateJavaMethods(std::vector<CallChainReportE
         entry.execution_type != CallChainExecutionType::INTERPRETED_JVM_METHOD) {
       continue;
     }
-    std::string_view name = entry.symbol->DemangledName();
+    std::string_view name;
+    if (entry.execution_type == CallChainExecutionType::JIT_JVM_METHOD) {
+      name = entry.symbol->FunctionNameForJITSymbol();
+    } else {
+      name = entry.symbol->DemangledName();
+    }
     if (auto split_pos = name.rfind('.'); split_pos != name.npos) {
       std::string obfuscated_classname(name.substr(0, split_pos));
       if (auto it = proguard_class_map_.find(obfuscated_classname);
