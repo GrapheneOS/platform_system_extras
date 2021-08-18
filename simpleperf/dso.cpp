@@ -229,6 +229,20 @@ void Symbol::SetDemangledName(std::string_view name) const {
   }
 }
 
+std::string_view Symbol::FunctionNameForJITSymbol() const {
+  // Name with signature is like "void ctep.v(cteo, ctgc, ctbn)".
+  std::string_view name = DemangledName();
+  auto brace_pos = name.find('(');
+  if (brace_pos != name.npos) {
+    name = name.substr(0, brace_pos);
+    auto space_pos = name.rfind(' ');
+    if (space_pos != name.npos) {
+      name = name.substr(space_pos + 1);
+    }
+  }
+  return name;
+}
+
 static bool CompareSymbolToAddr(const Symbol& s, uint64_t addr) {
   return s.addr < addr;
 }
