@@ -24,12 +24,11 @@
     pprof -text pprof.profile
 """
 
-import argparse
 import os
 import os.path
 
 from simpleperf_report_lib import ReportLib
-from simpleperf_utils import (Addr2Nearestline, BinaryFinder, extant_dir,
+from simpleperf_utils import (Addr2Nearestline, BaseArgumentParser, BinaryFinder, extant_dir,
                               flatten_arg_list, log_info, log_exit, ReadElf, ToolFinder)
 try:
     import profile_pb2
@@ -591,7 +590,7 @@ class PprofProfileGenerator(object):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate pprof profile data in pprof.profile.')
+    parser = BaseArgumentParser(description='Generate pprof profile data in pprof.profile.')
     parser.add_argument('--show', nargs='?', action='append', help='print existing pprof.profile.')
     parser.add_argument('-i', '--record_file', nargs='+', default=['perf.data'], help="""
         Set profiling data file to report. Default is perf.data""")

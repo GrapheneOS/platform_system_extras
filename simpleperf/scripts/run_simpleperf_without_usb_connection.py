@@ -26,13 +26,11 @@
     during profiling time, simpleperf only records the first running.
 """
 
-from __future__ import print_function
-import argparse
 import subprocess
 import sys
 import time
 
-from simpleperf_utils import AdbHelper, get_target_binary_path, log_warning
+from simpleperf_utils import AdbHelper, BaseArgumentParser, get_target_binary_path, log_warning
 
 
 def start_recording(args):
@@ -77,8 +75,7 @@ def stop_recording(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = BaseArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers()
     start_parser = subparsers.add_parser('start', help='Start recording.')
     start_parser.add_argument('-r', '--record_options',

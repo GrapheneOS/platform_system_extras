@@ -19,8 +19,6 @@
     it, and put them in binary_cache.
 """
 
-from __future__ import print_function
-import argparse
 from dataclasses import dataclass
 import os
 import os.path
@@ -29,8 +27,9 @@ import shutil
 from typing import List, Optional, Union
 
 from simpleperf_report_lib import ReportLib
-from simpleperf_utils import (AdbHelper, extant_dir, extant_file, flatten_arg_list, log_info,
-                              log_warning, ReadElf, set_log_level, str_to_bytes)
+from simpleperf_utils import (
+    AdbHelper, BaseArgumentParser, extant_dir, extant_file, flatten_arg_list, log_info, log_warning,
+    ReadElf, str_to_bytes)
 
 
 def is_jit_symfile(dso_name):
@@ -225,7 +224,7 @@ class BinaryCacheBuilder(object):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="""
+    parser = BaseArgumentParser(description="""
         Pull binaries needed by perf.data from device to binary_cache directory.""")
     parser.add_argument('-i', '--perf_data_path', default='perf.data', type=extant_file, help="""
         The path of profiling data.""")
@@ -234,10 +233,7 @@ def main():
     parser.add_argument('--disable_adb_root', action='store_true', help="""
         Force adb to run in non root mode.""")
     parser.add_argument('--ndk_path', nargs=1, help='Find tools in the ndk path.')
-    parser.add_argument(
-        '--log', choices=['debug', 'info', 'warning'], default='info', help='set log level')
     args = parser.parse_args()
-    set_log_level(args.log)
     ndk_path = None if not args.ndk_path else args.ndk_path[0]
     builder = BinaryCacheBuilder(ndk_path, args.disable_adb_root)
     symfs_dirs = flatten_arg_list(args.native_lib_dir)

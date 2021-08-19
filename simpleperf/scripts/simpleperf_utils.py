@@ -57,42 +57,6 @@ def is_python3() -> str:
     return sys.version_info >= (3, 0)
 
 
-def log_debug(msg: str):
-    logging.debug(msg)
-
-
-def log_info(msg: str):
-    logging.info(msg)
-
-
-def log_warning(msg: str):
-    logging.warning(msg)
-
-
-def log_fatal(msg: str):
-    raise Exception(msg)
-
-
-def log_exit(msg: str):
-    sys.exit(msg)
-
-
-def disable_debug_log():
-    logging.getLogger().setLevel(logging.WARN)
-
-
-def set_log_level(level_name: str):
-    if level_name == 'debug':
-        level = logging.DEBUG
-    elif level_name == 'info':
-        level = logging.INFO
-    elif level_name == 'warning':
-        level = logging.WARNING
-    else:
-        log_fatal('unknown log level: %s' % level_name)
-    logging.getLogger().setLevel(level)
-
-
 def str_to_bytes(str_value: str) -> bytes:
     if not is_python3():
         return str_value
@@ -968,9 +932,65 @@ def extant_file(arg: str) -> str:
     return path
 
 
+def log_debug(msg: str):
+    logging.debug(msg)
+
+
+def log_info(msg: str):
+    logging.info(msg)
+
+
+def log_warning(msg: str):
+    logging.warning(msg)
+
+
+def log_fatal(msg: str):
+    raise Exception(msg)
+
+
+def log_exit(msg: str):
+    sys.exit(msg)
+
+
+class LogFormatter(logging.Formatter):
+    """ Use custom logging format. """
+
+    def __init__(self):
+        super().__init__('%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)d) %(message)s')
+
+    def formatTime(self, record, datefmt):
+        return super().formatTime(record, '%H:%M:%S') + ',%03d' % record.msecs
+
+
+class Log:
+    initialized = False
+
+    @classmethod
+    def init(cls, log_level: str = 'info'):
+        assert not cls.initialized
+        cls.initialized = True
+        cls.logger = logging.root
+        cls.logger.setLevel(log_level.upper())
+        handler = logging.StreamHandler()
+        handler.setFormatter(LogFormatter())
+        cls.logger.addHandler(handler)
+
+
 class ArgParseFormatter(
         argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
     pass
 
 
-logging.getLogger().setLevel(logging.DEBUG)
+class BaseArgumentParser(argparse.ArgumentParser):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs, formatter_class=ArgParseFormatter)
+
+    def parse_known_args(self, *args, **kwargs):
+        self.add_argument(
+            '--log', choices=['debug', 'info', 'warning'],
+            default='info', help='set log level')
+        namespace, left_args = super().parse_known_args(*args, **kwargs)
+
+        if not Log.initialized:
+            Log.init(namespace.log)
+        return namespace, left_args

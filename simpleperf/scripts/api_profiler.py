@@ -26,14 +26,13 @@
     4. Run `api_profiler.py collect` to collect recording data on host.
 """
 
-from __future__ import print_function
-import argparse
 import os
 import os.path
 import shutil
 import zipfile
 
-from simpleperf_utils import AdbHelper, get_target_binary_path, log_exit, log_info, remove
+from simpleperf_utils import (AdbHelper, BaseArgumentParser,
+                              get_target_binary_path, log_exit, log_info, remove)
 
 
 def prepare_recording(args):
@@ -91,17 +90,10 @@ def unzip_recording_data(args):
     remove(zip_file_path)
 
 
-class ArgumentHelpFormatter(argparse.ArgumentDefaultsHelpFormatter,
-                            argparse.RawDescriptionHelpFormatter):
-    pass
-
-
 def main():
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=ArgumentHelpFormatter)
+    parser = BaseArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers()
-    prepare_parser = subparsers.add_parser('prepare', help='Prepare recording on device.',
-                                           formatter_class=ArgumentHelpFormatter)
+    prepare_parser = subparsers.add_parser('prepare', help='Prepare recording on device.')
     prepare_parser.add_argument('--max-sample-rate', nargs=1, type=int, default=[100000], help="""
                                 Set max sample rate (only on Android >= Q).""")
     prepare_parser.add_argument('--max-cpu-percent', nargs=1, type=int, default=[25], help="""
@@ -111,8 +103,7 @@ def main():
                                 Set max kernel buffer size for recording (only on Android >= Q).
                                 """)
     prepare_parser.set_defaults(func=prepare_recording)
-    collect_parser = subparsers.add_parser('collect', help='Collect recording data.',
-                                           formatter_class=ArgumentHelpFormatter)
+    collect_parser = subparsers.add_parser('collect', help='Collect recording data.')
     collect_parser.add_argument('-p', '--app', nargs=1, required=True, help="""
                                 The app package name of the app profiled.""")
     collect_parser.add_argument('-o', '--out-dir', default='simpleperf_data', help="""
