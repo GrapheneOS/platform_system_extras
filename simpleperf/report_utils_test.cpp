@@ -333,6 +333,38 @@ TEST_F(CallChainReportBuilderTest, add_proguard_mapping_file_for_jit_method_with
   ASSERT_EQ(entries[0].execution_type, CallChainExecutionType::JIT_JVM_METHOD);
 }
 
+TEST_F(CallChainReportBuilderTest,
+       add_proguard_mapping_file_for_compiled_java_method_with_signature) {
+  TemporaryFile tmpfile;
+  close(tmpfile.release());
+  ASSERT_TRUE(android::base::WriteStringToFile(
+      "android.support.v4.app.RemoteActionCompatParcelizer -> ctep:\n"
+      "    13:13:androidx.core.app.RemoteActionCompat read(androidx.versionedparcelable.Versioned"
+      "Parcel) -> v\n",
+      tmpfile.path));
+
+  for (const char* suffix : {".odex", ".oat", ".dex"}) {
+    std::string compiled_java_path = "compiled_java" + std::string(suffix);
+    SetSymbols(compiled_java_path, DSO_ELF_FILE,
+               {Symbol("void ctep.v(cteo, ctgc, ctbn)", 0x0, 0x100)});
+    thread_tree.AddThreadMap(1, 1, 0x4000, 0x1000, 0x0, compiled_java_path);
+    std::vector<uint64_t> fake_ips = {
+        0x4000,  // 4000,  // void ctep.v(cteo, ctgc, ctbn)
+    };
+
+    CallChainReportBuilder builder(thread_tree);
+    builder.AddProguardMappingFile(tmpfile.path);
+    std::vector<CallChainReportEntry> entries = builder.Build(thread, fake_ips, 0);
+    ASSERT_EQ(entries.size(), 1);
+    ASSERT_EQ(entries[0].ip, 0x4000);
+    ASSERT_STREQ(entries[0].symbol->DemangledName(),
+                 "android.support.v4.app.RemoteActionCompatParcelizer.read");
+    ASSERT_EQ(entries[0].dso->Path(), compiled_java_path);
+    ASSERT_EQ(entries[0].vaddr_in_file, 0x0);
+    ASSERT_EQ(entries[0].execution_type, CallChainExecutionType::NATIVE_METHOD);
+  }
+}
+
 TEST_F(CallChainReportBuilderTest, convert_jit_frame_for_jit_method_with_signature) {
   std::vector<uint64_t> fake_ips = {
       0x2200,  // 2200,  // ctep.v

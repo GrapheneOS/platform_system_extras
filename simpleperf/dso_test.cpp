@@ -302,9 +302,11 @@ TEST(dso, symbol_map_file) {
   ASSERT_EQ(0x12345678, dso->IpToVaddrInFile(0x12345678, 0xe9201000, 0xa5000));
 }
 
-TEST(dso, FunctionNameForJITSymbol) {
+TEST(dso, FunctionName) {
   Symbol symbol = Symbol("void ctep.v(cteo, ctgc, ctbn)", 0x0, 0x1);
-  ASSERT_EQ(symbol.FunctionNameForJITSymbol(), "ctep.v");
+  ASSERT_EQ(symbol.FunctionName(), "ctep.v");
+  symbol = Symbol("ctep.v(cteo, ctgc, ctbn)", 0x0, 0x1);
+  ASSERT_EQ(symbol.FunctionName(), "ctep.v");
   symbol = Symbol("ctep.v", 0x0, 0x1);
-  ASSERT_EQ(symbol.FunctionNameForJITSymbol(), "ctep.v");
+  ASSERT_EQ(symbol.FunctionName(), "ctep.v");
 }
