@@ -124,7 +124,7 @@ TEST_F(RecordTest, SampleRecord_AdjustCallChainGeneratedByKernel) {
   SampleRecord r(event_attr, 0, 1, 2, 3, 4, 5, 6, {1, 5, 0, PERF_CONTEXT_USER, 6, 0}, {}, 0);
   r.header.misc = PERF_RECORD_MISC_KERNEL;
   r.AdjustCallChainGeneratedByKernel();
-  uint64_t adjustValue = (GetBuildArch() == ARCH_ARM || GetBuildArch() == ARCH_ARM64) ? 2 : 1;
+  uint64_t adjustValue = (GetTargetArch() == ARCH_ARM || GetTargetArch() == ARCH_ARM64) ? 2 : 1;
   SampleRecord expected(event_attr, 0, 1, 2, 3, 4, 5, 6,
                         {1, 5 - adjustValue, PERF_CONTEXT_KERNEL, PERF_CONTEXT_USER,
                          6 - adjustValue, PERF_CONTEXT_USER},
