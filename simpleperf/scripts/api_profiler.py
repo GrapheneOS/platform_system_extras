@@ -26,13 +26,14 @@
     4. Run `api_profiler.py collect` to collect recording data on host.
 """
 
+import logging
 import os
 import os.path
 import shutil
 import zipfile
 
 from simpleperf_utils import (AdbHelper, BaseArgumentParser,
-                              get_target_binary_path, log_exit, log_info, remove)
+                              get_target_binary_path, log_exit, remove)
 
 
 def prepare_recording(args):
@@ -83,9 +84,9 @@ def unzip_recording_data(args):
     zip_file_path = os.path.join(args.out_dir, 'simpleperf_data.zip')
     with zipfile.ZipFile(zip_file_path, 'r') as zip_fh:
         names = zip_fh.namelist()
-        log_info('There are %d recording data files.' % len(names))
+        logging.info('There are %d recording data files.' % len(names))
         for name in names:
-            log_info('recording file: %s' % os.path.join(args.out_dir, name))
+            logging.info('recording file: %s' % os.path.join(args.out_dir, name))
             zip_fh.extract(name, args.out_dir)
     remove(zip_file_path)
 

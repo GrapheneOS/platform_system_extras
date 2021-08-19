@@ -290,7 +290,7 @@ class AdbHelper(object):
     def run_and_return_output(self, adb_args: List[str], log_output: bool = False,
                               log_stderr: bool = False) -> Tuple[bool, str]:
         adb_args = [self.adb_path] + adb_args
-        log_debug('run adb cmd: %s' % adb_args)
+        logging.debug('run adb cmd: %s' % adb_args)
         env = None
         if self.serial_number:
             env = os.environ.copy()
@@ -303,10 +303,10 @@ class AdbHelper(object):
         returncode = subproc.returncode
         result = (returncode == 0)
         if log_output and stdout_data:
-            log_debug(stdout_data)
+            logging.debug(stdout_data)
         if log_stderr and stderr_data:
-            log_warning(stderr_data)
-        log_debug('run adb cmd: %s  [result %s]' % (adb_args, result))
+            logging.warning(stderr_data)
+        logging.debug('run adb cmd: %s  [result %s]' % (adb_args, result))
         return (result, stdout_data)
 
     def check_run(self, adb_args: List[str], log_output: bool = False):
@@ -325,7 +325,7 @@ class AdbHelper(object):
             return
         if 'root' not in stdoutdata:
             return
-        log_info('unroot adb')
+        logging.info('unroot adb')
         self.run(['unroot'])
         self.run(['wait-for-device'])
         time.sleep(1)
@@ -564,11 +564,11 @@ class Addr2Nearestline(object):
         real_path = self.binary_finder.find_binary(dso_path, dso.build_id)
         if not real_path:
             if dso_path not in ['//anon', 'unknown', '[kernel.kallsyms]']:
-                log_debug("Can't find dso %s" % dso_path)
+                logging.debug("Can't find dso %s" % dso_path)
             return
 
         if not self._check_debug_line_section(real_path):
-            log_debug("file %s doesn't contain .debug_line section." % real_path)
+            logging.debug("file %s doesn't contain .debug_line section." % real_path)
             return
 
         addr_step = self._get_addr_step(real_path)
@@ -930,18 +930,6 @@ def extant_file(arg: str) -> str:
     if not os.path.isfile(path):
         raise argparse.ArgumentTypeError('{} is not a file.'.format(path))
     return path
-
-
-def log_debug(msg: str):
-    logging.debug(msg)
-
-
-def log_info(msg: str):
-    logging.info(msg)
-
-
-def log_warning(msg: str):
-    logging.warning(msg)
 
 
 def log_fatal(msg: str):

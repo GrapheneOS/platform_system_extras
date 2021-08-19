@@ -18,7 +18,7 @@
 """annotate.py: annotate source files based on perf.data.
 """
 
-
+import logging
 import os
 import os.path
 import shutil
@@ -26,7 +26,7 @@ import shutil
 from simpleperf_report_lib import ReportLib
 from simpleperf_utils import (
     Addr2Nearestline, BaseArgumentParser, BinaryFinder, extant_dir, flatten_arg_list, is_windows,
-    log_exit, log_info, log_warning, ReadElf, SourceFileSearcher)
+    log_exit, ReadElf, SourceFileSearcher)
 
 
 class SourceLine(object):
@@ -385,7 +385,7 @@ class SourceFileAnnotator(object):
         for key in self.file_periods:
             from_path = key
             if not os.path.isfile(from_path):
-                log_warning("can't find source file for path %s" % from_path)
+                logging.warning("can't find source file for path %s" % from_path)
                 continue
             if from_path.startswith('/'):
                 to_path = os.path.join(dest_dir, from_path[1:])
@@ -405,7 +405,7 @@ class SourceFileAnnotator(object):
           3. For each line not hitting the same line as functions, show
              line periods.
         """
-        log_info('annotate file %s' % from_path)
+        logging.info('annotate file %s' % from_path)
         with open(from_path, 'r') as rf:
             lines = rf.readlines()
 
@@ -477,7 +477,7 @@ def main():
 
     annotator = SourceFileAnnotator(config)
     annotator.annotate()
-    log_info('annotate finish successfully, please check result in annotated_files/.')
+    logging.info('annotate finish successfully, please check result in annotated_files/.')
 
 
 if __name__ == '__main__':

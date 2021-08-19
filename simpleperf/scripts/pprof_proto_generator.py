@@ -24,12 +24,13 @@
     pprof -text pprof.profile
 """
 
+import logging
 import os
 import os.path
 
 from simpleperf_report_lib import ReportLib
 from simpleperf_utils import (Addr2Nearestline, BaseArgumentParser, BinaryFinder, extant_dir,
-                              flatten_arg_list, log_info, log_exit, ReadElf, ToolFinder)
+                              flatten_arg_list, log_exit, ReadElf, ToolFinder)
 try:
     import profile_pb2
 except ImportError:
@@ -478,10 +479,10 @@ class PprofProfileGenerator(object):
     def gen_source_lines(self, jobs: int):
         # 1. Create Addr2line instance
         if not self.config.get('binary_cache_dir'):
-            log_info("Can't generate line information because binary_cache is missing.")
+            logging.info("Can't generate line information because binary_cache is missing.")
             return
         if not ToolFinder.find_tool_path('llvm-symbolizer', self.config['ndk_path']):
-            log_info("Can't generate line information because can't find llvm-symbolizer.")
+            logging.info("Can't generate line information because can't find llvm-symbolizer.")
             return
         # We have changed dso names to paths in binary_cache in self.get_binary(). So no need to
         # pass binary_cache_dir to BinaryFinder.

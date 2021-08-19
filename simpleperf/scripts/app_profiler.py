@@ -21,6 +21,7 @@
     and pulls profiling data and related binaries on host.
 """
 
+import logging
 import os
 import os.path
 import subprocess
@@ -29,7 +30,7 @@ import time
 
 from simpleperf_utils import (
     AdbHelper, BaseArgumentParser, bytes_to_str, extant_dir, get_script_dir, get_target_binary_path,
-    log_debug, log_info, log_exit, ReadElf, remove, str_to_bytes)
+    log_exit, ReadElf, remove, str_to_bytes)
 
 NATIVE_LIBS_DIR_ON_DEVICE = '/data/local/tmp/native_libs/'
 
@@ -199,14 +200,14 @@ class ProfilerBase(object):
         self.record_subproc = None
 
     def profile(self):
-        log_info('prepare profiling')
+        logging.info('prepare profiling')
         self.prepare()
-        log_info('start profiling')
+        logging.info('start profiling')
         self.start()
         self.wait_profiling()
-        log_info('collect profiling data')
+        logging.info('collect profiling data')
         self.collect_profiling_data()
-        log_info('profiling is finished.')
+        logging.info('profiling is finished.')
 
     def prepare(self):
         """Prepare recording. """
@@ -237,7 +238,7 @@ class ProfilerBase(object):
         args += ['--log', self.args.log]
         args += target_args
         adb_args = [self.adb.adb_path, 'shell'] + args
-        log_info('run adb cmd: %s' % adb_args)
+        logging.info('run adb cmd: %s' % adb_args)
         self.record_subproc = subprocess.Popen(adb_args)
 
     def wait_profiling(self):
@@ -251,7 +252,7 @@ class ProfilerBase(object):
             # Don't check return value of record_subproc. Because record_subproc also
             # receives Ctrl-C, and always returns non-zero.
             returncode = 0
-        log_debug('profiling result [%s]' % (returncode == 0))
+        logging.debug('profiling result [%s]' % (returncode == 0))
         if returncode != 0:
             log_exit('Failed to record profiling data.')
 
@@ -355,7 +356,7 @@ class NativeProgramProfiler(ProfilerBase):
     """Profile a native program."""
 
     def start(self):
-        log_info('Waiting for native process %s' % self.args.native_program)
+        logging.info('Waiting for native process %s' % self.args.native_program)
         while True:
             (result, pid) = self.adb.run_and_return_output(['shell', 'pidof',
                                                             self.args.native_program])
