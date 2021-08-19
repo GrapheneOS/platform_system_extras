@@ -229,7 +229,7 @@ void Symbol::SetDemangledName(std::string_view name) const {
   }
 }
 
-std::string_view Symbol::FunctionNameForJITSymbol() const {
+std::string_view Symbol::FunctionName() const {
   // Name with signature is like "void ctep.v(cteo, ctgc, ctbn)".
   std::string_view name = DemangledName();
   auto brace_pos = name.find('(');
