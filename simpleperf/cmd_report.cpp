@@ -418,7 +418,7 @@ class ReportCommand : public Command {
                 // clang-format on
                 ),
         record_filename_("perf.data"),
-        record_file_arch_(GetBuildArch()),
+        record_file_arch_(GetTargetArch()),
         use_branch_address_(false),
         system_wide_collection_(false),
         accumulate_callchain_(false),
