@@ -301,7 +301,7 @@ class KmemCommand : public Command {
         print_callgraph_(false),
         callgraph_show_callee_(false),
         record_filename_("perf.data"),
-        record_file_arch_(GetBuildArch()) {}
+        record_file_arch_(GetTargetArch()) {}
 
   bool Run(const std::vector<std::string>& args);
 
