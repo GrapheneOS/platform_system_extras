@@ -67,7 +67,7 @@ struct Symbol {
   const char* DemangledName() const;
   void SetDemangledName(std::string_view name) const;
   // Return function name without signature.
-  std::string_view FunctionNameForJITSymbol() const;
+  std::string_view FunctionName() const;
 
   bool HasDumpId() const { return dump_id_ != UINT_MAX; }
 
