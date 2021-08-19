@@ -500,8 +500,17 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
 
   // 2. Add default event type.
   if (event_selection_set_.empty()) {
+    std::string event_type = default_measured_event_type;
+    if (GetTargetArch() == ARCH_X86_32 || GetTargetArch() == ARCH_X86_64) {
+      // Emulators may not support hardware events. So switch to cpu-clock when cpu-cycles isn't
+      // available.
+      if (!IsHardwareEventSupported()) {
+        event_type = "cpu-clock";
+        LOG(INFO) << "Hardware events are not available, switch to cpu-clock.";
+      }
+    }
     size_t group_id;
-    if (!event_selection_set_.AddEventType(default_measured_event_type, &group_id)) {
+    if (!event_selection_set_.AddEventType(event_type, &group_id)) {
       return false;
     }
     if (sample_speed_) {
@@ -1110,7 +1119,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   }
 
   if (fp_callchain_sampling_) {
-    if (GetBuildArch() == ARCH_ARM) {
+    if (GetTargetArch() == ARCH_ARM) {
       LOG(WARNING) << "`--callgraph fp` option doesn't work well on arm architecture, "
                    << "consider using `-g` option or profiling on aarch64 architecture.";
     }

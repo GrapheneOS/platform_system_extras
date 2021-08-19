@@ -58,7 +58,7 @@ bool IsDwarfCallChainSamplingSupported() {
   perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
   attr.sample_type |= PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER;
   attr.exclude_callchain_user = 1;
-  attr.sample_regs_user = GetSupportedRegMask(GetBuildArch());
+  attr.sample_regs_user = GetSupportedRegMask(GetTargetArch());
   attr.sample_stack_user = 8192;
   return IsEventAttrSupported(attr, type->name);
 }
@@ -142,6 +142,15 @@ bool IsMmap2Supported() {
   }
   perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
   attr.mmap2 = 1;
+  return IsEventAttrSupported(attr, type->name);
+}
+
+bool IsHardwareEventSupported() {
+  const EventType* type = FindEventTypeByName("cpu-cycles");
+  if (type == nullptr) {
+    return false;
+  }
+  perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
   return IsEventAttrSupported(attr, type->name);
 }
 

@@ -272,7 +272,7 @@ std::string CounterSummaries::GetRateComment(const CounterSummary& s, char sep) 
     event_name = it->second.first;
     rate_desc = it->second.second;
   }
-  if (event_name.empty() && (GetBuildArch() == ARCH_ARM || GetBuildArch() == ARCH_ARM64)) {
+  if (event_name.empty() && (GetTargetArch() == ARCH_ARM || GetTargetArch() == ARCH_ARM64)) {
     if (auto it = ARM_EVENT_RATE_MAP.find(miss_event_name); it != ARM_EVENT_RATE_MAP.end()) {
       event_name = it->second.first;
       rate_desc = it->second.second;

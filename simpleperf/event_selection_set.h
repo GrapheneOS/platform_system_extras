@@ -222,6 +222,7 @@ bool IsDwarfCallChainSamplingSupported();
 bool IsDumpingRegsForTracepointEventsSupported();
 bool IsSettingClockIdSupported();
 bool IsMmap2Supported();
+bool IsHardwareEventSupported();
 
 }  // namespace simpleperf
 
