@@ -35,11 +35,11 @@ bool IsInNativeAbi() {
     pclose(fp);
     std::string s = buf;
     in_native_abi = 1;
-    if (GetBuildArch() == ARCH_X86_32 || GetBuildArch() == ARCH_X86_64) {
+    if (GetTargetArch() == ARCH_X86_32 || GetTargetArch() == ARCH_X86_64) {
       if (s.find("86") == std::string::npos) {
         in_native_abi = 0;
       }
-    } else if (GetBuildArch() == ARCH_ARM || GetBuildArch() == ARCH_ARM64) {
+    } else if (GetTargetArch() == ARCH_ARM || GetTargetArch() == ARCH_ARM64) {
       if (s.find("arm") == std::string::npos && s.find("aarch64") == std::string::npos) {
         in_native_abi = 0;
       }

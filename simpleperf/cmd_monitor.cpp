@@ -427,7 +427,7 @@ bool MonitorCommand::ParseOptions(const std::vector<std::string>& args) {
   }
 
   if (fp_callchain_sampling_) {
-    if (GetBuildArch() == ARCH_ARM) {
+    if (GetTargetArch() == ARCH_ARM) {
       LOG(WARNING) << "`--callgraph fp` option doesn't work well on arm architecture, "
                    << "consider using `-g` option or profiling on aarch64 architecture.";
     }
