@@ -39,7 +39,7 @@ import types
 from typing import List, Optional
 import unittest
 
-from simpleperf_utils import extant_dir, log_exit, remove, ArgParseFormatter
+from simpleperf_utils import BaseArgumentParser, extant_dir, log_exit, remove
 
 from . api_profiler_test import *
 from . annotate_test import *
@@ -61,7 +61,7 @@ from . test_utils import TestHelper
 
 
 def get_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=ArgParseFormatter)
+    parser = BaseArgumentParser(description=__doc__)
     parser.add_argument('--browser', action='store_true', help='open report html file in browser.')
     parser.add_argument(
         '-d', '--device', nargs='+',

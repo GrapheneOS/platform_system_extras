@@ -32,6 +32,7 @@
 
 import argparse
 import datetime
+import logging
 import os
 import subprocess
 import sys
@@ -41,7 +42,7 @@ import sys
 SCRIPTS_PATH = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.append(SCRIPTS_PATH)
 from simpleperf_report_lib import ReportLib
-from simpleperf_utils import log_exit, log_fatal, log_info, AdbHelper, open_report_in_browser
+from simpleperf_utils import log_exit, log_fatal, AdbHelper, open_report_in_browser
 
 from data_types import Process
 from svg_renderer import get_proper_scaled_time_string, render_svg
@@ -78,10 +79,10 @@ def collect_data(args):
             record_arg_str += "-c %s -e %s " % (num_events, event_name)
         else:
             log_exit("Event format string of -e option cann't be recognized.")
-        log_info("Using event sampling (-c %s -e %s)." % (num_events, event_name))
+        logging.info("Using event sampling (-c %s -e %s)." % (num_events, event_name))
     else:
         record_arg_str += "-f %d " % args.sample_frequency
-        log_info("Using frequency sampling (-f %d)." % args.sample_frequency)
+        logging.info("Using frequency sampling (-f %d)." % args.sample_frequency)
     record_arg_str += "--duration %d " % args.capture_duration
     app_profiler_args += ["-r", record_arg_str]
     returncode = subprocess.call(app_profiler_args)
@@ -149,7 +150,7 @@ def parse_samples(process, args, sample_filter_fn):
         min_event_count = thread.num_events * args.min_callchain_percentage * 0.01
         thread.flamegraph.trim_callchain(min_event_count, args.max_callchain_depth)
 
-    log_info("Parsed %s callchains." % process.num_samples)
+    logging.info("Parsed %s callchains." % process.num_samples)
 
 
 def get_local_asset_content(local_path):
@@ -330,7 +331,7 @@ def main():
             process.name = 'system_wide'
         else:
             process.name = args.app or args.native_program or ('Process %d' % args.pid)
-        log_info("Starting data collection stage for '%s'." % process.name)
+        logging.info("Starting data collection stage for '%s'." % process.name)
         if not collect_data(args):
             log_exit("Unable to collect data.")
         if process.pid == 0:
@@ -365,7 +366,7 @@ def main():
             log_fatal("Recursion limit exceeded (%s), try --max_callchain_depth." % r)
         raise r
 
-    log_info("Flamegraph generated at '%s'." % report_path)
+    logging.info("Flamegraph generated at '%s'." % report_path)
 
 
 if __name__ == "__main__":

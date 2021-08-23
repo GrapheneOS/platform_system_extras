@@ -14,10 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
 import time
 
-from simpleperf_utils import log_info, remove
+from simpleperf_utils import remove
 from . test_utils import TestBase, TestHelper
 
 
@@ -25,7 +26,7 @@ class TestApiProfiler(TestBase):
     def run_api_test(self, package_name, apk_name, expected_reports, min_android_version):
         adb = TestHelper.adb
         if TestHelper.android_version < ord(min_android_version) - ord('L') + 5:
-            log_info('skip this test on Android < %s.' % min_android_version)
+            logging.info('skip this test on Android < %s.' % min_android_version)
             return
         # step 1: Prepare profiling.
         self.run_cmd(['api_profiler.py', 'prepare'])
