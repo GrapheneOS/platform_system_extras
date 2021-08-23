@@ -22,6 +22,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 import datetime
 import json
+import logging
 import os
 from pathlib import Path
 import sys
@@ -29,7 +30,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Un
 
 from simpleperf_report_lib import ReportLib, SymbolStruct
 from simpleperf_utils import (
-    Addr2Nearestline, ArgParseFormatter, BinaryFinder, get_script_dir, log_exit, log_info, Objdump,
+    Addr2Nearestline, BaseArgumentParser, BinaryFinder, get_script_dir, log_exit, Objdump,
     open_report_in_browser, ReadElf, SourceFileSearcher)
 
 MAX_CALLSTACK_LENGTH = 750
@@ -801,7 +802,7 @@ class RecordData(object):
                 dso_info = objdump.get_dso_info(lib.name, lib.build_id)
                 if not dso_info:
                     continue
-                log_info('Disassemble %s' % dso_info[0])
+                logging.info('Disassemble %s' % dso_info[0])
                 futures: List[Future] = []
                 for function in functions:
                     futures.append(
@@ -955,8 +956,7 @@ class ReportGenerator(object):
 
 
 def get_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description='report profiling data', formatter_class=ArgParseFormatter)
+    parser = BaseArgumentParser(description='report profiling data')
     parser.add_argument('-i', '--record_file', nargs='+', default=['perf.data'], help="""
                         Set profiling data file to report.""")
     parser.add_argument('-o', '--report_path', default='report.html', help='Set output html file')
@@ -1041,7 +1041,7 @@ def main():
 
     if not args.no_browser:
         open_report_in_browser(args.report_path)
-    log_info("Report generated at '%s'." % args.report_path)
+    logging.info("Report generated at '%s'." % args.report_path)
 
 
 if __name__ == '__main__':
