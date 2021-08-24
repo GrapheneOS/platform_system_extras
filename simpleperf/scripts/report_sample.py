@@ -19,8 +19,8 @@
 """
 
 from __future__ import print_function
-import argparse
 from simpleperf_report_lib import ReportLib
+from simpleperf_utils import BaseArgumentParser
 
 
 def report_sample(record_file, symfs_dir, kallsyms_file, show_tracing_data):
@@ -63,7 +63,7 @@ def report_sample(record_file, symfs_dir, kallsyms_file, show_tracing_data):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Report samples in perf.data.')
+    parser = BaseArgumentParser(description='Report samples in perf.data.')
     parser.add_argument('--symfs',
                         help='Set the path to find binaries with symbols and debug info.')
     parser.add_argument('--kallsyms', help='Set the path to find kernel symbols.')

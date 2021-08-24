@@ -26,13 +26,12 @@
     during profiling time, simpleperf only records the first running.
 """
 
-from __future__ import print_function
-import argparse
+import logging
 import subprocess
 import sys
 import time
 
-from simpleperf_utils import AdbHelper, get_target_binary_path, log_warning
+from simpleperf_utils import AdbHelper, BaseArgumentParser, get_target_binary_path
 
 
 def start_recording(args):
@@ -65,7 +64,7 @@ def stop_recording(args):
     adb = AdbHelper()
     result = adb.run(['shell', 'pidof', 'simpleperf'])
     if not result:
-        log_warning('No simpleperf process on device. The recording has ended.')
+        logging.warning('No simpleperf process on device. The recording has ended.')
     else:
         adb.run(['shell', 'pkill', '-l', '2', 'simpleperf'])
         print('Waiting for simpleperf process to finish...')
@@ -77,8 +76,7 @@ def stop_recording(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = BaseArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers()
     start_parser = subparsers.add_parser('start', help='Start recording.')
     start_parser.add_argument('-r', '--record_options',
