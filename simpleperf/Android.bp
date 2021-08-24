@@ -336,6 +336,16 @@ rust_library {
     visibility: ["//system/extras/profcollectd:__subpackages__"],
 }
 
+rust_test {
+    name: "libsimpleperf_profcollect_bindgen_test",
+    srcs: [":libsimpleperf_profcollect_bindgen"],
+    crate_name: "simpleperf_profcollect_bindgen_test",
+    test_suites: ["general-tests"],
+    auto_gen_config: true,
+    clippy_lints: "none",
+    lints: "none",
+}
+
 // simpleperf released in ndk
 cc_binary {
     name: "simpleperf_ndk",
