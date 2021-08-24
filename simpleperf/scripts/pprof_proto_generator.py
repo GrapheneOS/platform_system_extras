@@ -515,14 +515,18 @@ class PprofProfileGenerator(object):
             sources = addr2line.get_addr_source(dso, location.vaddr_in_dso)
             if not sources:
                 continue
-            for (source_id, source) in enumerate(sources):
+            for i, source in enumerate(sources):
                 source_file, source_line, function_name = source
-                function_id = self.get_function_id(function_name, dso_name, 0)
+                if i == 0:
+                    # Don't override original function name from report library, which is more
+                    # accurate when proguard mapping file is given.
+                    function_id = location.lines[0].function_id
+                    # Clear default line info.
+                    location.lines.clear()
+                else:
+                    function_id = self.get_function_id(function_name, dso_name, 0)
                 if function_id == 0:
                     continue
-                if source_id == 0:
-                    # Clear default line info
-                    location.lines = []
                 location.lines.append(self.add_line(source_file, source_line, function_id))
 
         for function in self.function_list:
