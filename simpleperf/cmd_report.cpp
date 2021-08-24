@@ -389,7 +389,7 @@ class ReportCommand : public Command {
 "--no-demangle         Don't demangle symbol names.\n"
 "--no-show-ip          Don't show vaddr in file for unknown symbols.\n"
 "-o report_file_name   Set report file name, default is stdout.\n"
-"--percent-limit <percent>  Set min percentage shown when printing call graph.\n"
+"--percent-limit <percent>  Set min percentage in report entries and call graphs.\n"
 "--pids pid1,pid2,...  Report only for selected pids.\n"
 "--raw-period          Report period count instead of period percentage.\n"
 "--sort key1,key2,...  Select keys used to sort and print the report. The\n"
@@ -425,7 +425,7 @@ class ReportCommand : public Command {
         print_callgraph_(false),
         callgraph_show_callee_(false),
         callgraph_max_stack_(UINT32_MAX),
-        callgraph_percent_limit_(0),
+        percent_limit_(0),
         raw_period_(false),
         brief_callgraph_(true),
         trace_offcpu_(false),
@@ -466,7 +466,7 @@ class ReportCommand : public Command {
   bool print_callgraph_;
   bool callgraph_show_callee_;
   uint32_t callgraph_max_stack_;
-  double callgraph_percent_limit_;
+  double percent_limit_;
   bool raw_period_;
   bool brief_callgraph_;
   bool trace_offcpu_;
@@ -597,7 +597,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   }
 
   options.PullStringValue("-o", &report_filename_);
-  if (!options.PullDoubleValue("--percent-limit", &callgraph_percent_limit_, 0)) {
+  if (!options.PullDoubleValue("--percent-limit", &percent_limit_, 0)) {
     return false;
   }
 
@@ -729,10 +729,17 @@ bool ReportCommand::BuildSampleComparatorAndDisplayer(bool print_sample_count,
       if (has_vaddr_in_file_key) {
         displayer.AddExclusiveDisplayFunction(ReportCmdCallgraphDisplayerWithVaddrInFile());
       } else {
-        displayer.AddExclusiveDisplayFunction(ReportCmdCallgraphDisplayer(
-            callgraph_max_stack_, callgraph_percent_limit_, brief_callgraph_));
+        displayer.AddExclusiveDisplayFunction(
+            ReportCmdCallgraphDisplayer(callgraph_max_stack_, percent_limit_, brief_callgraph_));
       }
     }
+  }
+
+  if (percent_limit_ != 0.0) {
+    displayer.SetFilterFunction([this](const SampleEntry* sample, const SampleTree* sample_tree) {
+      uint64_t total_period = sample->period + sample->accumulated_period;
+      return total_period >= sample_tree->total_period * percent_limit_ / 100.0;
+    });
   }
 
   sample_tree_builder_options_.comparator = comparator;
