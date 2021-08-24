@@ -20,6 +20,7 @@
 #include <inttypes.h>
 
 #include <functional>
+#include <optional>
 #include <string>
 
 #include <android-base/logging.h>
@@ -199,6 +200,9 @@ class SampleDisplayer {
  public:
   void SetInfo(const InfoT* info) { info_ = info; }
   void SetReportFormat(bool report_csv) { report_csv_ = report_csv; }
+  void SetFilterFunction(const std::function<bool(const EntryT*, const InfoT*)>& filter) {
+    filter_func_ = filter;
+  }
 
   void AddDisplayFunction(const std::string& name, display_sample_func_t func) {
     Item item;
@@ -226,6 +230,9 @@ class SampleDisplayer {
     if (report_csv_) {
       return;
     }
+    if (filter_func_ && !filter_func_.value()(sample, info_)) {
+      return;
+    }
     for (auto& item : display_v_) {
       std::string data =
           (item.func != nullptr) ? item.func(sample) : item.func_with_info(sample, info_);
@@ -249,6 +256,9 @@ class SampleDisplayer {
   }
 
   void PrintSample(FILE* fp, const EntryT* sample) {
+    if (filter_func_ && !filter_func_.value()(sample, info_)) {
+      return;
+    }
     for (size_t i = 0; i < display_v_.size(); ++i) {
       auto& item = display_v_[i];
       std::string data =
@@ -277,6 +287,7 @@ class SampleDisplayer {
   const InfoT* info_;
   std::vector<Item> display_v_;
   std::vector<exclusive_display_sample_func_t> exclusive_display_v_;
+  std::optional<std::function<bool(const EntryT*, const InfoT*)>> filter_func_;
   bool report_csv_ = false;
 };
 
