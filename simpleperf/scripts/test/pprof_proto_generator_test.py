@@ -19,7 +19,7 @@ import google.protobuf
 from typing import List, Optional
 
 from binary_cache_builder import BinaryCacheBuilder
-from pprof_proto_generator import load_pprof_profile
+from pprof_proto_generator import load_pprof_profile, PprofProfileGenerator
 from . test_utils import TestBase, TestHelper
 
 
@@ -172,3 +172,44 @@ class TestPprofProtoGenerator(TestBase):
                     self.assertEqual(function.start_line, check_item.func_start_line)
                     break
             self.assertTrue(found, check_item)
+
+    def test_function_name_not_changed_by_line_info(self):
+        """ Adding line info shouldn't override function names from report library, which are more
+            accurate when proguard mapping file is given.
+        """
+        testdata_file = TestHelper.testdata_path('runtest_two_functions_arm64_perf.data')
+
+        # Build binary_cache.
+        binary_cache_builder = BinaryCacheBuilder(TestHelper.ndk_path, False)
+        binary_cache_builder.build_binary_cache(testdata_file, [TestHelper.testdata_dir])
+
+        # Read recording file.
+        config = {'ndk_path': None, 'max_chain_length': 1000000, 'proguard_mapping_file': None}
+        generator = PprofProfileGenerator(config)
+        generator.load_record_file(testdata_file)
+
+        # Change function name.
+        sample = generator.sample_list[0]
+        self.assertGreaterEqual(len(sample.location_ids), 1)
+        location = generator.location_list[sample.location_ids[0] - 1]
+        self.assertGreaterEqual(len(location.lines), 1)
+        function = generator.get_function(location.lines[0].function_id)
+        function_name = generator.get_string(function.name_id)
+        self.assertEqual(function_name, 'Function1()')
+        location.lines[0].function_id = generator.get_function_id(
+            'NewFunction1()', generator.get_string(function.dso_name_id), function.vaddr_in_dso)
+
+        # Add line info.
+        generator.gen_source_lines(1)
+
+        # Check function name and line info.
+        sample = generator.sample_list[0]
+        self.assertGreaterEqual(len(sample.location_ids), 1)
+        location = generator.location_list[sample.location_ids[0] - 1]
+        self.assertGreaterEqual(len(location.lines), 1)
+        function = generator.get_function(location.lines[0].function_id)
+        function_name = generator.get_string(function.name_id)
+        self.assertEqual(function_name, 'NewFunction1()')
+        self.assertNotEqual(function.source_filename_id, 0)
+        source_filename = generator.get_string(function.source_filename_id)
+        self.assertIn('two_functions.cpp', source_filename)
