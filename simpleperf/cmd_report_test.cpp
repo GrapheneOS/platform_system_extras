@@ -443,6 +443,17 @@ TEST_F(ReportCommandTest, max_stack_and_percent_limit_option) {
   ASSERT_NE(content.find("89.03"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, percent_limit_option) {
+  Report(PERF_DATA);
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("7.70%"), std::string::npos);
+  ASSERT_NE(content.find("3.23%"), std::string::npos);
+  Report(PERF_DATA, {"--percent-limit", "3.24"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("7.70%"), std::string::npos);
+  ASSERT_EQ(content.find("3.23%"), std::string::npos);
+}
+
 TEST_F(ReportCommandTest, kallsyms_option) {
   Report(PERF_DATA, {"--kallsyms", GetTestData("kallsyms")});
   ASSERT_TRUE(success);

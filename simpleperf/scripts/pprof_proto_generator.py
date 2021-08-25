@@ -107,7 +107,8 @@ class PprofProfilePrinter(object):
         for i in range(len(sample.value)):
             print('%svalue[%d] = %d' % (space, i, sample.value[i]))
         for i in range(len(sample.label)):
-            print('%slabel[%d] = ', (space, i))
+          print('%slabel[%d] = %s:%s' % (space, i, self.string(sample.label[i].key),
+                                         self.string(sample.label[i].str)))
 
     def show_location_id(self, location_id, space=''):
         location = self.profile.location[location_id - 1]
@@ -162,11 +163,19 @@ class PprofProfilePrinter(object):
         return self.string_table[string_id]
 
 
+class Label(object):
+    def __init__(self, key_id: int, str_id: int):
+      # See profile.Label.key
+      self.key_id = key_id
+      # See profile.Label.str
+      self.str_id = str_id
+
 class Sample(object):
 
     def __init__(self):
         self.location_ids = []
         self.values = {}
+        self.labels = []
 
     def add_location_id(self, location_id):
         self.location_ids.append(location_id)
@@ -311,6 +320,9 @@ class PprofProfileGenerator(object):
             sample = Sample()
             sample.add_value(sample_type_id, 1)
             sample.add_value(sample_type_id + 1, report_sample.period)
+            label = Label(self.get_string_id("thread"),
+                          self.get_string_id(report_sample.thread_comm))
+            sample.labels.append(label)
             if self._filter_symbol(symbol):
                 location_id = self.get_location_id(report_sample.ip, symbol)
                 sample.add_location_id(location_id)
@@ -553,6 +565,11 @@ class PprofProfileGenerator(object):
         for sample_type_id in sample.values:
             values[sample_type_id] = sample.values[sample_type_id]
         profile_sample.value.extend(values)
+
+        for l in sample.labels:
+          label = profile_sample.label.add()
+          label.key = l.key_id
+          label.str = l.str_id
 
     def gen_profile_mapping(self, mapping):
         profile_mapping = self.profile.mapping.add()
