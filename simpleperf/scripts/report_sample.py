@@ -44,8 +44,8 @@ def report_sample(record_file, symfs_dir, kallsyms_file, show_tracing_data):
         symbol = lib.GetSymbolOfCurrentSample()
         callchain = lib.GetCallChainOfCurrentSample()
 
-        sec = sample.time / 1000000000
-        usec = (sample.time - sec * 1000000000) / 1000
+        sec = sample.time // 1000000000
+        usec = (sample.time - sec * 1000000000) // 1000
         print('%s\t%d [%03d] %d.%06d:\t\t%d %s:' % (sample.thread_comm,
                                                     sample.tid, sample.cpu, sec,
                                                     usec, sample.period, event.name))
