@@ -33,6 +33,9 @@ import time
 from typing import Dict, Iterator, List, Optional, Set, Union
 
 
+NDK_ERROR_MESSAGE = "Please install the Android NDK (https://developer.android.com/studio/projects/install-ndk), then set NDK path with --ndk_path option."
+
+
 def get_script_dir() -> str:
     return os.path.dirname(os.path.realpath(__file__))
 
@@ -538,7 +541,7 @@ class Addr2Nearestline(object):
             binary_finder: BinaryFinder, with_function_name: bool):
         self.symbolizer_path = ToolFinder.find_tool_path('llvm-symbolizer', ndk_path)
         if not self.symbolizer_path:
-            log_exit("Can't find llvm-symbolizer. Please set ndk path with --ndk_path option.")
+            log_exit("Can't find llvm-symbolizer. " + NDK_ERROR_MESSAGE)
         self.readelf = ReadElf(ndk_path)
         self.dso_map: Dict[str, Addr2Nearestline.Dso] = {}  # map from dso_path to Dso.
         self.binary_finder = binary_finder
@@ -794,7 +797,7 @@ class Objdump(object):
             if not objdump_path:
                 objdump_path = ToolFinder.find_tool_path('llvm-objdump', self.ndk_path, arch)
             if not objdump_path:
-                log_exit("Can't find llvm-objdump. Please set ndk path with --ndk_path option.")
+                log_exit("Can't find llvm-objdump." + NDK_ERROR_MESSAGE)
             self.objdump_paths[arch] = objdump_path
 
         # 3. Run objdump.
@@ -831,7 +834,7 @@ class ReadElf(object):
     def __init__(self, ndk_path: Optional[str]):
         self.readelf_path = ToolFinder.find_tool_path('llvm-readelf', ndk_path)
         if not self.readelf_path:
-            log_exit("Can't find llvm-readelf. Please set ndk path with --ndk_path option.")
+            log_exit("Can't find llvm-readelf. " + NDK_ERROR_MESSAGE)
 
     @staticmethod
     def is_elf_file(path: Union[Path, str]) -> bool:
