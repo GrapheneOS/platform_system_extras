@@ -24,6 +24,7 @@
 import logging
 import os
 import os.path
+import re
 import subprocess
 import sys
 import time
@@ -33,6 +34,8 @@ from simpleperf_utils import (
     log_exit, ReadElf, remove, str_to_bytes)
 
 NATIVE_LIBS_DIR_ON_DEVICE = '/data/local/tmp/native_libs/'
+
+SHELL_PS_UID_PATTERN = re.compile(r'USER.*\nu(\d+)_.*')
 
 
 class HostElfEntry(object):
@@ -316,8 +319,24 @@ class AppProfiler(ProfilerBase):
                     self.run_in_app_dir(['kill', '-9', str(pid)])
 
     def find_app_process(self):
-        result, output = self.adb.run_and_return_output(['shell', 'pidof', self.args.app])
-        return int(output) if result else None
+        result, pidof_output = self.adb.run_and_return_output(
+            ['shell', 'pidof', self.args.app])
+        if not result:
+            return None
+        result, current_user = self.adb.run_and_return_output(
+            ['shell', 'am', 'get-current-user'])
+        if not result:
+            return None
+        pids = pidof_output.split()
+        for pid in pids:
+            result, ps_output = self.adb.run_and_return_output(
+                ['shell', 'ps', '-p', pid, '-o', 'USER'])
+            if not result:
+              return None
+            uid = SHELL_PS_UID_PATTERN.search(ps_output).group(1)
+            if uid == current_user.strip():
+              return int(pid)
+        return None
 
     def run_in_app_dir(self, args):
         if self.is_root_device:
