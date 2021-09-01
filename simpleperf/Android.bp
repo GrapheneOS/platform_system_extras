@@ -167,9 +167,6 @@ cc_defaults {
                 "libc++fs",
                 "libdexfile_support",
             ],
-            runtime_libs: [
-                "libdexfile", // libdexfile_support dependency
-            ],
         },
         host: {
             static_libs: [
@@ -290,7 +287,6 @@ cc_library_static {
         linux: {
             // See note for libdexfile_static in simpleperf_ndk.
             static_libs: ["libdexfile_support"],
-            runtime_libs: ["libdexfile"], // libdexfile_support dependency
         },
     },
 }
