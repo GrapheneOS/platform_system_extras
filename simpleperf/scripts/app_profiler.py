@@ -312,9 +312,12 @@ class AppProfiler(ProfilerBase):
                 pid = self.find_app_process()
                 if not pid:
                     break
+                count += 1
+                if count >= 5:
+                    logging.info('unable to kill %s, skipping...' % self.args.app)
+                    break
                 # When testing on Android N, `am force-stop` sometimes can't kill
                 # com.example.simpleperf.simpleperfexampleofkotlin. So use kill when this happens.
-                count += 1
                 if count >= 3:
                     self.run_in_app_dir(['kill', '-9', str(pid)])
 
