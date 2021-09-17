@@ -24,12 +24,18 @@ from simpleperf_utils import BaseArgumentParser
 from typing import List
 
 
-def report_sample(record_file, symfs_dir, kallsyms_file, show_tracing_data, proguard_mapping_file : List[str] = None):
+def report_sample(
+    record_file : str,
+    symfs_dir : str,
+    kallsyms_file: str,
+    show_tracing_data : bool,
+    proguard_mapping_file : List[str],
+    header : bool):
     """ read record_file, and print each sample"""
     lib = ReportLib()
 
     lib.ShowIpForUnknownSymbol()
-    for file_path in proguard_mapping_file or []:
+    for file_path in proguard_mapping_file:
       lib.AddProguardMappingFile(file_path)
     if symfs_dir is not None:
         lib.SetSymfs(symfs_dir)
@@ -37,6 +43,15 @@ def report_sample(record_file, symfs_dir, kallsyms_file, show_tracing_data, prog
         lib.SetRecordFile(record_file)
     if kallsyms_file is not None:
         lib.SetKallsymsFile(kallsyms_file)
+
+    if header:
+        print("# ========")
+        print("# cmdline : %s" % lib.GetRecordCmd())
+        print("# arch : %s" % lib.GetArch())
+        for k, v in lib.MetaInfo().items():
+            print('# %s : %s' % (k, v.replace('\n', ' ')))
+        print("# ========")
+        print("#")
 
     while True:
         sample = lib.GetNextSample()
@@ -75,9 +90,18 @@ def main():
     parser.add_argument('--show_tracing_data', action='store_true', help='print tracing data.')
     parser.add_argument(
         '--proguard-mapping-file', nargs='+',
-        help='Add proguard mapping file to de-obfuscate symbols')
+        help='Add proguard mapping file to de-obfuscate symbols',
+        default=[])
+    parser.add_argument('--header', action='store_true',
+                        help='Show metadata header, like perf script --header')
     args = parser.parse_args()
-    report_sample(args.record_file, args.symfs, args.kallsyms, args.show_tracing_data, args.proguard_mapping_file)
+    report_sample(
+        record_file=args.record_file,
+        symfs_dir=args.symfs,
+        kallsyms_file=args.kallsyms,
+        show_tracing_data=args.show_tracing_data,
+        proguard_mapping_file=args.proguard_mapping_file,
+        header=args.header)
 
 
 if __name__ == '__main__':
