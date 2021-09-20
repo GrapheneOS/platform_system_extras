@@ -1,23 +1,6 @@
 # Scripts reference
 
-## Table of Contents
-
-- [Scripts reference](#scripts-reference)
-  - [Table of Contents](#table-of-contents)
-  - [app_profiler.py](#appprofilerpy)
-    - [Profile from launch of an application](#profile-from-launch-of-an-application)
-  - [api_profiler.py](#apiprofilerpy)
-  - [run_simpleperf_without_usb_connection.py](#runsimpleperfwithoutusbconnectionpy)
-  - [binary_cache_builder.py](#binarycachebuilderpy)
-  - [run_simpleperf_on_device.py](#runsimpleperfondevicepy)
-  - [report.py](#reportpy)
-  - [report_html.py](#reporthtmlpy)
-  - [inferno](#inferno)
-  - [purgatorio](#purgatorio)
-  - [pprof_proto_generator.py](#pprofprotogeneratorpy)
-  - [report_sample.py](#reportsamplepy)
-  - [simpleperf_report_lib.py](#simpleperfreportlibpy)
-
+[TOC]
 
 ## app_profiler.py
 
@@ -230,9 +213,46 @@ $ pprof -pdf pprof.profile
 $ pprof -http=:8080 pprof.profile
 ```
 
+## gecko_profile_generator.py
+
+Converts `perf.data` to [Gecko Profile
+Format](https://github.com/firefox-devtools/profiler/blob/main/docs-developer/gecko-profile-format.md),
+the format read by https://profiler.firefox.com/.
+
+Firefox Profiler is a powerful general-purpose profiler UI which runs locally in
+any browser (not just Firefox), with:
+
+- Per-thread tracks
+- Flamegraphs
+- Search, focus for specific stacks
+- A time series view for seeing your samples in timestamp order
+- Filtering by thread and duration
+
+Usage:
+
+```
+# Record a profile of your application
+$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative
+
+# Convert and gzip.
+$ ./gecko_profile_generator.py -i perf.data | gzip > gecko-profile.json.gz
+```
+
+Then open `gecko-profile.json.gz` in https://profiler.firefox.com/.
+
 ## report_sample.py
 
-It converts a profiling data file into a format used by [FlameGraph](https://github.com/brendangregg/FlameGraph).
+It converts a profiling data file into the `perf script` text format output by
+`linux-perf-tool`.
+
+This format can be imported into:
+
+- [FlameGraph](https://github.com/brendangregg/FlameGraph)
+- [Flamescope](https://github.com/Netflix/flamescope)
+- [Firefox
+  Profiler](https://github.com/firefox-devtools/profiler/blob/main/docs-user/guide-perf-profiling.md),
+  but prefer using `gecko_profile_generator.py`.
+- [Speedscope](https://github.com/jlfwong/speedscope/wiki/Importing-from-perf-(linux))
 
 ```sh
 # Convert perf.data in the current directory to a format used by FlameGraph.
