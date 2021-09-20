@@ -67,10 +67,10 @@ def report_sample(
         print('%s\t%d/%d [%03d] %d.%06d: %d %s:' % (sample.thread_comm,
                                                        sample.pid, sample.tid, sample.cpu, sec,
                                                        usec, sample.period, event.name))
-        print('%16x %s (%s)' % (sample.ip, symbol.symbol_name, symbol.dso_name))
+        print('\t%16x %s (%s)' % (sample.ip, symbol.symbol_name, symbol.dso_name))
         for i in range(callchain.nr):
             entry = callchain.entries[i]
-            print('%16x %s (%s)' % (entry.ip, entry.symbol.symbol_name, entry.symbol.dso_name))
+            print('\t%16x %s (%s)' % (entry.ip, entry.symbol.symbol_name, entry.symbol.dso_name))
         if show_tracing_data:
             data = lib.GetTracingDataOfCurrentSample()
             if data:
