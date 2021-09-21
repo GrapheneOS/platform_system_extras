@@ -115,16 +115,15 @@ See [scripts_reference.md](./scripts_reference.md).
 ## Answers to common issues
 
 ### Why we suggest profiling on Android >= N devices?
-```
+
 1. Running on a device reflects a real running situation, so we suggest
-profiling on real devices instead of emulators.
+   profiling on real devices instead of emulators.
 2. To profile Java code, we need ART running in oat mode, which is only
-available >= L for rooted devices, and >= N for non-rooted devices.
+   available >= L for rooted devices, and >= N for non-rooted devices.
 3. Old Android versions are likely to be shipped with old kernels (< 3.18),
-which may not support profiling features like recording dwarf based call graphs.
+   which may not support profiling features like recording dwarf based call graphs.
 4. Old Android versions are likely to be shipped with Arm32 chips. In Arm32
-mode, recording stack frame based call graphs doesn't work well.
-```
+   mode, recording stack frame based call graphs doesn't work well.
 
 ### Suggestions about recording call graphs
 
