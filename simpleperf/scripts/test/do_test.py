@@ -55,6 +55,7 @@ from . pprof_proto_generator_test import *
 from . purgatorio_test import *
 from . report_html_test import *
 from . report_lib_test import *
+from . report_sample_test import *
 from . run_simpleperf_on_device_test import *
 from . tools_test import *
 from . test_utils import TestHelper
@@ -123,7 +124,7 @@ def get_test_type(test: str) -> Optional[str]:
         return 'device_test'
     if testcase_name in ('TestAnnotate', 'TestBinaryCacheBuilder', 'TestDebugUnwindReporter',
                          'TestInferno', 'TestPprofProtoGenerator', 'TestPurgatorio',
-                         'TestReportHtml', 'TestReportLib', 'TestTools'):
+                         'TestReportHtml', 'TestReportLib', 'TestReportSample', 'TestTools'):
         return 'host_test'
     return None
 
