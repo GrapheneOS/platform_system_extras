@@ -173,7 +173,7 @@ class TestExampleBase(TestBase):
     def common_test_report_sample(self, check_strings):
         self.run_cmd(["report_sample.py", "-h"])
         self.run_cmd(["report_sample.py"])
-        output = self.run_cmd(["report_sample.py", "perf.data"], return_output=True)
+        output = self.run_cmd(["report_sample.py", "-i", "perf.data"], return_output=True)
         self.check_strings_in_content(output, check_strings)
 
     def common_test_pprof_proto_generator(self, check_strings_with_lines,
