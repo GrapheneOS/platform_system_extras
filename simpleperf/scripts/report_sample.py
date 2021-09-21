@@ -20,8 +20,8 @@
 
 from __future__ import print_function
 from simpleperf_report_lib import ReportLib
-from simpleperf_utils import BaseArgumentParser
-from typing import List
+from simpleperf_utils import BaseArgumentParser, flatten_arg_list
+from typing import List, Set
 
 
 def report_sample(
@@ -30,7 +30,8 @@ def report_sample(
     kallsyms_file: str,
     show_tracing_data : bool,
     proguard_mapping_file : List[str],
-    header : bool):
+    header : bool,
+    comm_filter : Set[str]):
     """ read record_file, and print each sample"""
     lib = ReportLib()
 
@@ -58,6 +59,9 @@ def report_sample(
         if sample is None:
             lib.Close()
             break
+        if comm_filter:
+          if sample.thread_comm not in comm_filter:
+            continue
         event = lib.GetEventOfCurrentSample()
         symbol = lib.GetSymbolOfCurrentSample()
         callchain = lib.GetCallChainOfCurrentSample()
@@ -85,7 +89,7 @@ def main():
     parser.add_argument('--symfs',
                         help='Set the path to find binaries with symbols and debug info.')
     parser.add_argument('--kallsyms', help='Set the path to find kernel symbols.')
-    parser.add_argument('record_file', nargs='?', default='perf.data',
+    parser.add_argument('-i', '--record_file', nargs='?', default='perf.data',
                         help='Default is perf.data.')
     parser.add_argument('--show_tracing_data', action='store_true', help='print tracing data.')
     parser.add_argument(
@@ -94,6 +98,8 @@ def main():
         default=[])
     parser.add_argument('--header', action='store_true',
                         help='Show metadata header, like perf script --header')
+    parser.add_argument('--comm', nargs='+', action='append', help="""
+        Use samples only in threads with selected names.""")
     args = parser.parse_args()
     report_sample(
         record_file=args.record_file,
@@ -101,7 +107,8 @@ def main():
         kallsyms_file=args.kallsyms,
         show_tracing_data=args.show_tracing_data,
         proguard_mapping_file=args.proguard_mapping_file,
-        header=args.header)
+        header=args.header,
+        comm_filter=set(flatten_arg_list(args.comm)))
 
 
 if __name__ == '__main__':
