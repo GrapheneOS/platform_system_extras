@@ -30,7 +30,7 @@ import shutil
 import subprocess
 import sys
 import time
-from typing import Dict, Iterator, List, Optional, Set, Union
+from typing import Dict, Iterator, List, Optional, Set, Tuple, Union
 
 
 NDK_ERROR_MESSAGE = "Please install the Android NDK (https://developer.android.com/studio/projects/install-ndk), then set NDK path with --ndk_path option."
@@ -56,13 +56,7 @@ def get_platform() -> str:
     return 'linux'
 
 
-def is_python3() -> str:
-    return sys.version_info >= (3, 0)
-
-
 def str_to_bytes(str_value: str) -> bytes:
-    if not is_python3():
-        return str_value
     # In python 3, str are wide strings whereas the C api expects 8 bit strings,
     # hence we have to convert. For now using utf-8 as the encoding.
     return str_value.encode('utf-8')
@@ -71,8 +65,6 @@ def str_to_bytes(str_value: str) -> bytes:
 def bytes_to_str(bytes_value: Optional[bytes]) -> str:
     if not bytes_value:
         return ''
-    if not is_python3():
-        return bytes_value
     return bytes_value.decode('utf-8')
 
 
