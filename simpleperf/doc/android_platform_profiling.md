@@ -1,11 +1,6 @@
 # Android platform profiling
 
-## Table of Contents
-- [Android platform profiling](#android-platform-profiling)
-  - [Table of Contents](#table-of-contents)
-  - [General Tips](#general-tips)
-  - [Start simpleperf from system_server process](#start-simpleperf-from-system_server-process)
-  - [Hardware PMU counter limit](#hardware-pmu-counter-limit)
+[TOC]
 
 ## General Tips
 
