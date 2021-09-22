@@ -1,35 +1,6 @@
 # Executable commands reference
 
-## Table of Contents
-
-- [Executable commands reference](#executable-commands-reference)
-  - [Table of Contents](#table-of-contents)
-  - [How simpleperf works](#how-simpleperf-works)
-  - [Commands](#commands)
-  - [The list command](#the-list-command)
-  - [The stat command](#the-stat-command)
-    - [Select events to stat](#select-events-to-stat)
-    - [Select target to stat](#select-target-to-stat)
-    - [Decide how long to stat](#decide-how-long-to-stat)
-    - [Decide the print interval](#decide-the-print-interval)
-    - [Display counters in systrace](#display-counters-in-systrace)
-    - [Show event count per thread](#show-event-count-per-thread)
-    - [Show event count per core](#show-event-count-per-core)
-  - [The record command](#the-record-command)
-    - [Select events to record](#select-events-to-record)
-    - [Select target to record](#select-target-to-record)
-    - [Set the frequency to record](#set-the-frequency-to-record)
-    - [Decide how long to record](#decide-how-long-to-record)
-    - [Set the path to store profiling data](#set-the-path-to-store-profiling-data)
-      - [Record call graphs](#record-call-graphs)
-    - [Record both on CPU time and off CPU time](#record-both-on-cpu-time-and-off-cpu-time)
-  - [The report command](#the-report-command)
-    - [Set the path to read profiling data](#set-the-path-to-read-profiling-data)
-    - [Set the path to find binaries](#set-the-path-to-find-binaries)
-    - [Filter samples](#filter-samples)
-    - [Group samples into sample entries](#group-samples-into-sample-entries)
-      - [Report call graphs](#report-call-graphs)
-
+[TOC]
 
 ## How simpleperf works
 
