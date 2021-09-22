@@ -9,25 +9,7 @@ Simpleperf is part of the Android Open Source Project.
 The source code is [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/).
 The latest document is [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/README.md).
 
-## Table of Contents
-
-- [Simpleperf](#simpleperf)
-  - [Table of Contents](#table-of-contents)
-  - [Introduction](#introduction)
-  - [Tools in simpleperf](#tools-in-simpleperf)
-  - [Android application profiling](#android-application-profiling)
-  - [Android platform profiling](#android-platform-profiling)
-  - [Executable commands reference](#executable-commands-reference)
-  - [Scripts reference](#scripts-reference)
-  - [Answers to common issues](#answers-to-common-issues)
-    - [Why we suggest profiling on Android >= N devices?](#why-we-suggest-profiling-on-android--n-devices)
-    - [Suggestions about recording call graphs](#suggestions-about-recording-call-graphs)
-    - [Why we can't always get complete DWARF-based call graphs?](#why-we-cant-always-get-complete-dwarf-based-call-graphs)
-    - [How to solve missing symbols in report?](#how-to-solve-missing-symbols-in-report)
-    - [Fix broken callchain stopped at C functions](#fix-broken-callchain-stopped-at-c-functions)
-    - [Show annotated source code and disassembly](#show-annotated-source-code-and-disassembly)
-  - [Bugs and contribution](#bugs-and-contribution)
-
+[TOC]
 
 ## Introduction
 
