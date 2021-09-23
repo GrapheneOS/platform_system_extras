@@ -1,15 +1,6 @@
 # Collect ETM data for AutoFDO
 
-## Table of Contents
-
-- [Collect ETM data for AutoFDO](#collect-etm-data-for-autofdo)
-	- [Table of Contents](#table-of-contents)
-	- [Introduction](#introduction)
-	- [Examples](#examples)
-	- [Collect ETM data with a daemon](#collect-etm-data-with-a-daemon)
-	- [Support ETM in the kernel](#support-etm-in-the-kernel)
-	- [Enable ETM in the bootloader](#enable-etm-in-the-bootloader)
-	- [Related docs](#related-docs)
+[TOC]
 
 ## Introduction
 

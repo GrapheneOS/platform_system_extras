@@ -8,22 +8,7 @@ Profiling an Android application involves three steps:
 2. Record profiling data.
 3. Report profiling data.
 
-
-## Table of Contents
-
-- [Android application profiling](#android-application-profiling)
-  - [Table of Contents](#table-of-contents)
-  - [Prepare an Android application](#prepare-an-android-application)
-  - [Record and report profiling data](#record-and-report-profiling-data)
-  - [Record and report call graph](#record-and-report-call-graph)
-  - [Report in html interface](#report-in-html-interface)
-  - [Show flamegraph](#show-flamegraph)
-  - [Report in Android Studio](#report-in-android-studio)
-  - [Record both on CPU time and off CPU time](#record-both-on-cpu-time-and-off-cpu-time)
-  - [Profile from launch](#profile-from-launch)
-  - [Control recording in application code](#control-recording-in-application-code)
-  - [Parse profiling data manually](#parse-profiling-data-manually)
-
+[TOC]
 
 ## Prepare an Android application
 
