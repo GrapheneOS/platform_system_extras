@@ -332,6 +332,12 @@ class PprofProfileGenerator(object):
                 self.get_string_id("threadpool"),
                 self.get_string_id(
                     numbers_re.sub("%d", report_sample.thread_comm))))
+            sample.labels.append(Label(
+                self.get_string_id("pid"),
+                self.get_string_id(str(report_sample.pid))))
+            sample.labels.append(Label(
+                self.get_string_id("tid"),
+                self.get_string_id(str(report_sample.tid))))
             if self._filter_symbol(symbol):
                 location_id = self.get_location_id(report_sample.ip, symbol)
                 sample.add_location_id(location_id)
