@@ -67,13 +67,17 @@ class SampleStruct(ct.Structure):
                 ('tid', ct.c_uint32),
                 ('_thread_comm', ct.c_char_p),
                 ('time', ct.c_uint64),
-                ('in_kernel', ct.c_uint32),
+                ('_in_kernel', ct.c_uint32),
                 ('cpu', ct.c_uint32),
                 ('period', ct.c_uint64)]
 
     @property
     def thread_comm(self) -> str:
         return _char_pt_to_str(self._thread_comm)
+
+    @property
+    def in_kernel(self) -> bool:
+        return bool(self._in_kernel)
 
 
 class TracingFieldFormatStruct(ct.Structure):
