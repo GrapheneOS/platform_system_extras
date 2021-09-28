@@ -2,9 +2,11 @@
 
 [TOC]
 
-## app_profiler.py
+## Record a profile
 
-app_profiler.py is used to record profiling data for Android applications and native executables.
+### app_profiler.py
+
+`app_profiler.py` is used to record profiling data for Android applications and native executables.
 
 ```sh
 # Record an Android application.
@@ -40,11 +42,11 @@ $ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -o per
 
 ### Profile from launch of an application
 
-Sometimes we want to profile the launch-time of an application. To support this, we added --app in
-the record command. The --app option sets the package name of the Android application to profile.
+Sometimes we want to profile the launch-time of an application. To support this, we added `--app` in
+the record command. The `--app` option sets the package name of the Android application to profile.
 If the app is not already running, the record command will poll for the app process in a loop with
 an interval of 1ms. So to profile from launch of an application, we can first start the record
-command with --app, then start the app. Below is an example.
+command with `--app`, then start the app. Below is an example.
 
 ```sh
 $ ./run_simpleperf_on_device.py record
@@ -53,24 +55,24 @@ $ ./run_simpleperf_on_device.py record
 # Start the app manually or using the `am` command.
 ```
 
-To make it convenient to use, app_profiler.py supports using the -a option to start an Activity
+To make it convenient to use, `app_profiler.py` supports using the `-a` option to start an Activity
 after recording has started.
 
 ```sh
 $ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .MainActivity
 ```
 
-## api_profiler.py
+### api_profiler.py
 
-api_profiler.py is used to control recording in application code. It does preparation work
+`api_profiler.py` is used to control recording in application code. It does preparation work
 before recording, and collects profiling data files after recording.
 
 [Here](./android_application_profiling.md#control-recording-in-application-code) are the details.
 
-## run_simpleperf_without_usb_connection.py
+### run_simpleperf_without_usb_connection.py
 
-run_simpleperf_without_usb_connection.py records profiling data while the USB cable isn't
-connected. Maybe api_profiler.py is more suitable, which also don't need USB cable when recording.
+`run_simpleperf_without_usb_connection.py` records profiling data while the USB cable isn't
+connected. Maybe `api_profiler.py` is more suitable, which also don't need USB cable when recording.
 Below is an example.
 
 ```sh
@@ -83,20 +85,20 @@ $ ./run_simpleperf_without_usb_connection.py stop
 # on host.
 ```
 
-## binary_cache_builder.py
+### binary_cache_builder.py
 
-The binary_cache directory is a directory holding binaries needed by a profiling data file. The
+The `binary_cache` directory is a directory holding binaries needed by a profiling data file. The
 binaries are expected to be unstripped, having debug information and symbol tables. The
-binary_cache directory is used by report scripts to read symbols of binaries. It is also used by
-report_html.py to generate annotated source code and disassembly.
+`binary_cache` directory is used by report scripts to read symbols of binaries. It is also used by
+`report_html.py` to generate annotated source code and disassembly.
 
-By default, app_profiler.py builds the binary_cache directory after recording. But we can also
-build binary_cache for existing profiling data files using binary_cache_builder.py. It is useful
+By default, `app_profiler.py` builds the binary_cache directory after recording. But we can also
+build `binary_cache` for existing profiling data files using `binary_cache_builder.py`. It is useful
 when you record profiling data using `simpleperf record` directly, to do system wide profiling or
 record without the USB cable connected.
 
-binary_cache_builder.py can either pull binaries from an Android device, or find binaries in
-directories on the host (via -lib).
+`binary_cache_builder.py` can either pull binaries from an Android device, or find binaries in
+directories on the host (via `-lib`).
 
 ```sh
 # Generate binary_cache for perf.data, by pulling binaries from the device.
@@ -107,14 +109,16 @@ $ ./binary_cache_builder.py
 $ ./binary_cache_builder.py -lib path_of_SimpleperfExampleWithNative
 ```
 
-## run_simpleperf_on_device.py
+### run_simpleperf_on_device.py
 
-This script pushes the simpleperf executable on the device, and run a simpleperf command on the
+This script pushes the `simpleperf` executable on the device, and run a simpleperf command on the
 device. It is more convenient than running adb commands manually.
 
-## report.py
+## Viewing the profile
 
-report.py is a wrapper of the report command on the host. It accepts all options of the report
+### report.py
+
+report.py is a wrapper of the `report` command on the host. It accepts all options of the `report`
 command.
 
 ```sh
@@ -125,12 +129,12 @@ $ ./report.py -g
 $ ./report.py -g --gui
 ```
 
-## report_html.py
+### report_html.py
 
-report_html.py generates report.html based on the profiling data. Then the report.html can show
+`report_html.py` generates `report.html` based on the profiling data. Then the `report.html` can show
 the profiling result without depending on other files. So it can be shown in local browsers or
 passed to other machines. Depending on which command-line options are used, the content of the
-report.html can include: chart statistics, sample table, flamegraphs, annotated source code for
+`report.html` can include: chart statistics, sample table, flamegraphs, annotated source code for
 each function, annotated disassembly for each function.
 
 ```sh
@@ -159,7 +163,7 @@ $ ./report_html.py --add_source_code --source_dirs path_of_SimpleperfExampleWith
     --add_disassembly
 ```
 
-After opening the generated [report.html](./report_html.html) in a browser, there are several tabs:
+After opening the generated [`report.html`](./report_html.html) in a browser, there are several tabs:
 
 The first tab is "Chart Statistics". You can click the pie chart to show the time consumed by each
 process, thread, library and function.
@@ -167,7 +171,7 @@ process, thread, library and function.
 The second tab is "Sample Table". It shows the time taken by each function. By clicking one row in
 the table, we can jump to a new tab called "Function".
 
-The third tab is "Flamegraph". It shows the graphs generated by [inferno](./inferno.md).
+The third tab is "Flamegraph". It shows the graphs generated by [`inferno`](./inferno.md).
 
 The fourth tab is "Function". It only appears when users click a row in the "Sample Table" tab.
 It shows information of a function, including:
@@ -179,9 +183,9 @@ It shows information of a function, including:
 4. Annotated disassembly of that function. It only appears when there are binaries containing that
    function.
 
-## inferno
+### inferno
 
-[inferno](./inferno.md) is a tool used to generate flamegraph in a html file.
+[`inferno`](./inferno.md) is a tool used to generate flamegraph in a html file.
 
 ```sh
 # Generate flamegraph based on perf.data.
@@ -192,13 +196,13 @@ $ ./inferno.sh -sc --record_file perf.data
 $ ./inferno.sh -np surfaceflinger
 ```
 
-## purgatorio
+### purgatorio
 
-[purgatorio](../scripts/purgatorio/README.md) is a visualization tool to show samples in time order.
+[`purgatorio`](../scripts/purgatorio/README.md) is a visualization tool to show samples in time order.
 
-## pprof_proto_generator.py
+### pprof_proto_generator.py
 
-It converts a profiling data file into pprof.proto, a format used by [pprof](https://github.com/google/pprof).
+It converts a profiling data file into `pprof.proto`, a format used by [pprof](https://github.com/google/pprof).
 
 ```sh
 # Convert perf.data in the current directory to pprof.proto format.
@@ -213,7 +217,7 @@ $ pprof -pdf pprof.profile
 $ pprof -http=:8080 pprof.profile
 ```
 
-## gecko_profile_generator.py
+### gecko_profile_generator.py
 
 Converts `perf.data` to [Gecko Profile
 Format](https://github.com/firefox-devtools/profiler/blob/main/docs-developer/gecko-profile-format.md),
@@ -240,9 +244,9 @@ $ ./gecko_profile_generator.py -i perf.data | gzip > gecko-profile.json.gz
 
 Then open `gecko-profile.json.gz` in https://profiler.firefox.com/.
 
-## report_sample.py
+### report_sample.py
 
-It converts a profiling data file into the `perf script` text format output by
+`report_sample.py` converts a profiling data file into the `perf script` text format output by
 `linux-perf-tool`.
 
 This format can be imported into:
@@ -264,7 +268,7 @@ $ FlameGraph/flamegraph.pl out.folded >a.svg
 
 ## simpleperf_report_lib.py
 
-simpleperf_report_lib.py is a Python library used to parse profiling data files generated by the
+`simpleperf_report_lib.py` is a Python library used to parse profiling data files generated by the
 record command. Internally, it uses libsimpleperf_report.so to do the work. Generally, for each
 profiling data file, we create an instance of ReportLib, pass it the file path (via SetRecordFile).
 Then we can read all samples through GetNextSample(). For each sample, we can read its event info
@@ -272,5 +276,5 @@ Then we can read all samples through GetNextSample(). For each sample, we can re
 (via GetCallChainOfCurrentSample). We can also get some global information, like record options
 (via GetRecordCmd), the arch of the device (via GetArch) and meta strings (via MetaInfo).
 
-Examples of using simpleperf_report_lib.py are in report_sample.py, report_html.py,
-pprof_proto_generator.py and inferno/inferno.py.
+Examples of using `simpleperf_report_lib.py` are in `report_sample.py`, `report_html.py`,
+`pprof_proto_generator.py` and `inferno/inferno.py`.
