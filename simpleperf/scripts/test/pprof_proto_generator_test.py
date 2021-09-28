@@ -104,8 +104,8 @@ class TestPprofProtoGenerator(TestBase):
     def test_sample_type(self):
         """Test sample types have the right units."""
         output = self.run_generator()
-        self.assertIn('sample_type[0] = ValueType(typeID=1, unitID=2, type=event_cpu-cycles_samples, unit=samples)', output)
-        self.assertIn('sample_type[1] = ValueType(typeID=3, unitID=4, type=event_cpu-cycles_count, unit=cpu-cycles)', output)
+        self.assertIn('type=cpu-cycles_samples, unit=samples', output)
+        self.assertIn('type=cpu-cycles, unit=cpu-cycles', output)
 
     def test_multiple_perf_data(self):
         """ Test reporting multiple recording file. """
