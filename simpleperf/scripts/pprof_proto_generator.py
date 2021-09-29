@@ -27,6 +27,7 @@
 import logging
 import os
 import os.path
+import re
 
 from simpleperf_report_lib import ReportLib
 from simpleperf_utils import (Addr2Nearestline, BaseArgumentParser, BinaryFinder, extant_dir,
@@ -301,6 +302,7 @@ class PprofProfileGenerator(object):
             self.lib.ShowArtFrames()
         for file_path in self.config['proguard_mapping_file'] or []:
             self.lib.AddProguardMappingFile(file_path)
+        numbers_re = re.compile(r"\d+")
 
         # Process all samples in perf.data, aggregate samples.
         while True:
@@ -320,9 +322,16 @@ class PprofProfileGenerator(object):
             sample = Sample()
             sample.add_value(sample_type_id, 1)
             sample.add_value(sample_type_id + 1, report_sample.period)
-            label = Label(self.get_string_id("thread"),
-                          self.get_string_id(report_sample.thread_comm))
-            sample.labels.append(label)
+            sample.labels.append(Label(
+                self.get_string_id("thread"),
+                self.get_string_id(report_sample.thread_comm)))
+            # Heuristic: threadpools doing similar work are often named as
+            # name-1, name-2, name-3. Combine threadpools into one label
+            # "name-%d" if they only differ by a number.
+            sample.labels.append(Label(
+                self.get_string_id("threadpool"),
+                self.get_string_id(
+                    numbers_re.sub("%d", report_sample.thread_comm))))
             if self._filter_symbol(symbol):
                 location_id = self.get_location_id(report_sample.ip, symbol)
                 sample.add_location_id(location_id)
