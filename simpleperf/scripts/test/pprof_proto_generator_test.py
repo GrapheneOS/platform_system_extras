@@ -103,6 +103,12 @@ class TestPprofProtoGenerator(TestBase):
             self.assertLessEqual(mapping.memory_start, location.address)
             self.assertGreaterEqual(mapping.memory_limit, location.address)
 
+    def test_sample_type(self):
+        """Test sample types have the right units."""
+        output = self.run_generator()
+        self.assertIn('type=cpu-cycles_samples, unit=samples', output)
+        self.assertIn('type=cpu-cycles, unit=cpu-cycles', output)
+
     def test_multiple_perf_data(self):
         """ Test reporting multiple recording file. """
         profile1 = self.generate_profile(None, ['aggregatable_perf1.data'])
