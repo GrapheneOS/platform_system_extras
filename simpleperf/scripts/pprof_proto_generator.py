@@ -38,6 +38,15 @@ except ImportError:
     log_exit('google.protobuf module is missing. Please install it first.')
 
 
+# Some units of common event names
+EVENT_UNITS = {
+    'cpu-clock': 'nanoseconds',
+    'cpu-cycles': 'cpu-cycles',
+    'instructions': 'instructions',
+    'task-clock': 'nanoseconds',
+}
+
+
 def load_pprof_profile(filename):
     profile = profile_pb2.Profile()
     with open(filename, "rb") as f:
@@ -332,6 +341,12 @@ class PprofProfileGenerator(object):
                 self.get_string_id("threadpool"),
                 self.get_string_id(
                     numbers_re.sub("%d", report_sample.thread_comm))))
+            sample.labels.append(Label(
+                self.get_string_id("pid"),
+                self.get_string_id(str(report_sample.pid))))
+            sample.labels.append(Label(
+                self.get_string_id("tid"),
+                self.get_string_id(str(report_sample.tid))))
             if self._filter_symbol(symbol):
                 location_id = self.get_location_id(report_sample.ip, symbol)
                 sample.add_location_id(location_id)
@@ -397,11 +412,12 @@ class PprofProfileGenerator(object):
             return sample_type_id
         sample_type_id = len(self.profile.sample_type)
         sample_type = self.profile.sample_type.add()
-        sample_type.type = self.get_string_id('event_' + name + '_samples')
-        sample_type.unit = self.get_string_id('count')
+        sample_type.type = self.get_string_id(name + '_samples')
+        sample_type.unit = self.get_string_id('samples')
         sample_type = self.profile.sample_type.add()
-        sample_type.type = self.get_string_id('event_' + name + '_count')
-        sample_type.unit = self.get_string_id('count')
+        sample_type.type = self.get_string_id(name)
+        units = EVENT_UNITS.get(name, 'count')
+        sample_type.unit = self.get_string_id(units)
         self.sample_types[name] = sample_type_id
         return sample_type_id
 
