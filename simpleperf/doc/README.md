@@ -13,6 +13,8 @@ The latest document is [here](https://android.googlesource.com/platform/system/e
 
 ## Introduction
 
+An introduction slide deck is [here](./introduction.pdf).
+
 Simpleperf contains two parts: the simpleperf executable and Python scripts.
 
 The simpleperf executable works similar to linux-tools-perf, but has some specific features for
