@@ -26,7 +26,5 @@ LIBNATIVEHELPER_PLATFORM { # platform-only
     jniGetNioBufferPointer;
     jniGetNioBufferFields;
 
-    jniRegisterNativeMethods;
     jniUninitializeConstants;
-    jniLogException;
 };
