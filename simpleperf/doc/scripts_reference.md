@@ -259,11 +259,52 @@ This format can be imported into:
 - [Speedscope](https://github.com/jlfwong/speedscope/wiki/Importing-from-perf-(linux))
 
 ```sh
+# Record a profile to perf.data
+$ ./app_profiler.py <args>
+
 # Convert perf.data in the current directory to a format used by FlameGraph.
 $ ./report_sample.py --symfs binary_cache >out.perf
+
 $ git clone https://github.com/brendangregg/FlameGraph.git
 $ FlameGraph/stackcollapse-perf.pl out.perf >out.folded
 $ FlameGraph/flamegraph.pl out.folded >a.svg
+```
+
+### stackcollapse.py
+
+`stackcollapse.py` converts a profiling data file (`perf.data`) to [Brendan
+Gregg's "Folded Stacks"
+format](https://queue.acm.org/detail.cfm?id=2927301#:~:text=The%20folded%20stack%2Dtrace%20format,trace%2C%20followed%20by%20a%20semicolon).
+
+Folded Stacks are lines of semicolon-delimited stack frames, root to leaf,
+followed by a count of events sampled in that stack, e.g.:
+
+```
+BusyThread;__start_thread;__pthread_start(void*);java.lang.Thread.run 17889729
+```
+
+All similar stacks are aggregated and sample timestamps are unused.
+
+Folded Stacks format is readable by:
+
+- The [FlameGraph](https://github.com/brendangregg/FlameGraph) toolkit
+- [Inferno](https://github.com/jonhoo/inferno) (Rust port of FlameGraph)
+- [Speedscope](https://speedscope.app/)
+
+Example:
+
+```sh
+# Record a profile to perf.data
+$ ./app_profiler.py <args>
+
+# Convert to Folded Stacks format
+$ ./stackcollapse.py --kernel --jit | gzip > profile.folded.gz
+
+# Visualise with FlameGraph with Java Stacks and nanosecond times
+$ git clone https://github.com/brendangregg/FlameGraph.git
+$ gunzip -c profile.folded.gz \
+    | FlameGraph/flamegraph.pl --color=java --countname=ns \
+    > profile.svg
 ```
 
 ## simpleperf_report_lib.py
