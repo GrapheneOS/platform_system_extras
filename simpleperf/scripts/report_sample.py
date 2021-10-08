@@ -18,7 +18,6 @@
 """report_sample.py: report samples in the same format as `perf script`.
 """
 
-from __future__ import print_function
 from simpleperf_report_lib import ReportLib
 from simpleperf_utils import BaseArgumentParser, flatten_arg_list
 from typing import List, Set
