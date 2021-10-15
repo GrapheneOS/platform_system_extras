@@ -154,6 +154,10 @@ bool ETMRecorder::ReadEtmInfo() {
                      ReadValueInEtmDir(name + "/trcidr/trcidr4", &cpu_info.trcidr4) &&
                      ReadValueInEtmDir(name + "/trcidr/trcidr8", &cpu_info.trcidr8) &&
                      ReadValueInEtmDir(name + "/mgmt/trcauthstatus", &cpu_info.trcauthstatus);
+
+      if (!ReadValueInEtmDir(name + "/mgmt/trcdevarch", &cpu_info.trcdevarch, false)) {
+        cpu_info.trcdevarch = 0;
+      }
       if (!success) {
         return false;
       }
@@ -219,13 +223,20 @@ AuxTraceInfoRecord ETMRecorder::CreateAuxTraceInfoRecord() {
   AuxTraceInfoRecord::DataType data;
   memset(&data, 0, sizeof(data));
   data.aux_type = AuxTraceInfoRecord::AUX_TYPE_ETM;
+  data.version = 1;
   data.nr_cpu = etm_info_.size();
   data.pmu_type = GetEtmEventType();
-  std::vector<AuxTraceInfoRecord::ETM4Info> etm4_v(etm_info_.size());
+  std::vector<AuxTraceInfoRecord::ETEInfo> ete(etm_info_.size());
   size_t pos = 0;
   for (auto& p : etm_info_) {
-    auto& e = etm4_v[pos++];
-    e.magic = AuxTraceInfoRecord::MAGIC_ETM4;
+    auto& e = ete[pos++];
+    if (p.second.trcdevarch == 0) {
+      e.magic = AuxTraceInfoRecord::MAGIC_ETM4;
+      e.nrtrcparams = sizeof(AuxTraceInfoRecord::ETM4Info) / sizeof(uint64_t) - 3;
+    } else {
+      e.magic = AuxTraceInfoRecord::MAGIC_ETE;
+      e.nrtrcparams = sizeof(AuxTraceInfoRecord::ETEInfo) / sizeof(uint64_t) - 3;
+    }
     e.cpu = p.first;
     e.trcconfigr = etm_config_reg_;
     e.trctraceidr = GetTraceId(p.first);
@@ -234,8 +245,9 @@ AuxTraceInfoRecord ETMRecorder::CreateAuxTraceInfoRecord() {
     e.trcidr2 = p.second.trcidr2;
     e.trcidr8 = p.second.trcidr8;
     e.trcauthstatus = p.second.trcauthstatus;
+    e.trcdevarch = p.second.trcdevarch;
   }
-  return AuxTraceInfoRecord(data, etm4_v);
+  return AuxTraceInfoRecord(data, ete);
 }
 
 size_t ETMRecorder::GetAddrFilterPairs() {
