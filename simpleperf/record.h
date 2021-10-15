@@ -452,10 +452,12 @@ struct AuxTraceInfoRecord : public Record {
   // magic values to be compatible with linux perf
   static const uint32_t AUX_TYPE_ETM = 3;
   static const uint64_t MAGIC_ETM4 = 0x4040404040404040ULL;
+  static const uint64_t MAGIC_ETE = 0x5050505050505050ULL;
 
   struct ETM4Info {
     uint64_t magic;
     uint64_t cpu;
+    uint64_t nrtrcparams;
     uint64_t trcconfigr;
     uint64_t trctraceidr;
     uint64_t trcidr0;
@@ -465,6 +467,20 @@ struct AuxTraceInfoRecord : public Record {
     uint64_t trcauthstatus;
   };
 
+  struct ETEInfo {
+    uint64_t magic;
+    uint64_t cpu;
+    uint64_t nrtrcparams;
+    uint64_t trcconfigr;
+    uint64_t trctraceidr;
+    uint64_t trcidr0;
+    uint64_t trcidr1;
+    uint64_t trcidr2;
+    uint64_t trcidr8;
+    uint64_t trcauthstatus;
+    uint64_t trcdevarch;
+  };
+
   struct DataType {
     uint32_t aux_type;
     uint32_t reserved;
@@ -472,11 +488,11 @@ struct AuxTraceInfoRecord : public Record {
     uint32_t nr_cpu;
     uint32_t pmu_type;
     uint64_t snapshot;
-    ETM4Info etm4_info[0];
+    uint64_t info[0];
   } * data;
 
   explicit AuxTraceInfoRecord(char* p);
-  AuxTraceInfoRecord(const DataType& data, const std::vector<ETM4Info>& etm4_info);
+  AuxTraceInfoRecord(const DataType& data, const std::vector<ETEInfo>& ete_info);
 
  protected:
   void DumpData(size_t indent) const override;
