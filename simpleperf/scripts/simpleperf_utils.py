@@ -782,12 +782,7 @@ class Objdump(object):
         real_path, arch = dso_info
         objdump_path = self.objdump_paths.get(arch)
         if not objdump_path:
-            if arch == 'arm':
-                # llvm-objdump for arm is not good at showing branch targets.
-                # So still prefer objdump.
-                objdump_path = ToolFinder.find_tool_path('objdump', self.ndk_path, arch)
-            if not objdump_path:
-                objdump_path = ToolFinder.find_tool_path('llvm-objdump', self.ndk_path, arch)
+            objdump_path = ToolFinder.find_tool_path('llvm-objdump', self.ndk_path, arch)
             if not objdump_path:
                 log_exit("Can't find llvm-objdump." + NDK_ERROR_MESSAGE)
             self.objdump_paths[arch] = objdump_path
