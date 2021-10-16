@@ -101,6 +101,7 @@ filegroup {
         "mke2fs.conf",
     ],
     visibility: [
+        "//development/build",
         "//system/apex/apexer",
     ],
 }
