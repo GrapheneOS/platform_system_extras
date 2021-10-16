@@ -46,17 +46,17 @@ class TestTools(TestBase):
             ],
             '/simpleperf_runtest_two_functions_arm': [
                 {
-                    'func_addr': 0x784,
-                    'addr': 0x7b0,
-                    'source': """system/extras/simpleperf/runtest/two_functions.cpp:14
-                                 system/extras/simpleperf/runtest/two_functions.cpp:23""",
-                    'function': """Function2()
+                    'func_addr': 0x1304,
+                    'addr': 0x131a,
+                    'source': """system/extras/simpleperf/runtest/two_functions.cpp:8
+                                 system/extras/simpleperf/runtest/two_functions.cpp:22""",
+                    'function': """Function1()
                                    main""",
                 },
                 {
-                    'func_addr': 0x784,
-                    'addr': 0x7d0,
-                    'source': """system/extras/simpleperf/runtest/two_functions.cpp:15
+                    'func_addr': 0x1304,
+                    'addr': 0x131c,
+                    'source': """system/extras/simpleperf/runtest/two_functions.cpp:16
                                  system/extras/simpleperf/runtest/two_functions.cpp:23""",
                     'function': """Function2()
                                    main""",
@@ -64,37 +64,42 @@ class TestTools(TestBase):
             ],
             '/simpleperf_runtest_two_functions_x86_64': [
                 {
-                    'func_addr': 0x840,
-                    'addr': 0x840,
-                    'source': 'system/extras/simpleperf/runtest/two_functions.cpp:7',
-                    'function': 'Function1()',
-                },
-                {
-                    'func_addr': 0x920,
-                    'addr': 0x94a,
-                    'source': """system/extras/simpleperf/runtest/two_functions.cpp:7
+                    'func_addr': 0x19e0,
+                    'addr': 0x19f6,
+                    'source': """system/extras/simpleperf/runtest/two_functions.cpp:8
                                  system/extras/simpleperf/runtest/two_functions.cpp:22""",
                     'function': """Function1()
+                                   main""",
+                },
+                {
+                    'func_addr': 0x19e0,
+                    'addr': 0x1a19,
+                    'source': """system/extras/simpleperf/runtest/two_functions.cpp:16
+                                 system/extras/simpleperf/runtest/two_functions.cpp:23""",
+                    'function': """Function2()
                                    main""",
                 }
             ],
             '/simpleperf_runtest_two_functions_x86': [
                 {
-                    'func_addr': 0x6d0,
-                    'addr': 0x6da,
-                    'source': 'system/extras/simpleperf/runtest/two_functions.cpp:14',
-                    'function': 'Function2()',
-                },
-                {
-                    'func_addr': 0x710,
-                    'addr': 0x749,
+                    'func_addr': 0x16e0,
+                    'addr': 0x16f6,
                     'source': """system/extras/simpleperf/runtest/two_functions.cpp:8
                                  system/extras/simpleperf/runtest/two_functions.cpp:22""",
                     'function': """Function1()
                                    main""",
+                },
+                {
+                    'func_addr': 0x16e0,
+                    'addr': 0x1710,
+                    'source': """system/extras/simpleperf/runtest/two_functions.cpp:16
+                                 system/extras/simpleperf/runtest/two_functions.cpp:23""",
+                    'function': """Function2()
+                                   main""",
                 }
             ],
         }
+
         binary_finder = BinaryFinder(TestHelper.testdata_dir, ReadElf(TestHelper.ndk_path))
         addr2line = Addr2Nearestline(TestHelper.ndk_path, binary_finder, with_function_name)
         for dso_path in test_map:
@@ -148,30 +153,30 @@ class TestTools(TestBase):
                 ],
             },
             '/simpleperf_runtest_two_functions_arm': {
-                'start_addr': 0x784,
-                'len': 80,
+                'start_addr': 0x1304,
+                'len': 40,
                 'expected_items': [
                     ('main', 0),
                     ('two_functions.cpp:20', 0),
-                    ('7ae:	bne.n	7a6 <main+0x22>', 0x7ae),
+                    ('1318:      	bne	0x1312 <main+0xe>', 0x1318),
                 ],
             },
             '/simpleperf_runtest_two_functions_x86_64': {
-                'start_addr': 0x920,
-                'len': 201,
+                'start_addr': 0x19e0,
+                'len': 151,
                 'expected_items': [
                     ('main', 0),
                     ('two_functions.cpp:20', 0),
-                    ('96e:      	movl	%edx, (%rbx,%rax,4)', 0x96e),
+                    (r'19f0:      	movl	%eax, 9314(%rip)', 0x19f0),
                 ],
             },
             '/simpleperf_runtest_two_functions_x86': {
-                'start_addr': 0x710,
-                'len': 98,
+                'start_addr': 0x16e0,
+                'len': 65,
                 'expected_items': [
                     ('main', 0),
                     ('two_functions.cpp:20', 0),
-                    ('748:      	cmpl	$100000000, %ebp', 0x748),
+                    (r'16f7:      	cmpl	$100000000, %ecx', 0x16f7),
                 ],
             },
         }
@@ -208,7 +213,7 @@ class TestTools(TestBase):
             },
             'simpleperf_runtest_two_functions_arm': {
                 'arch': 'arm',
-                'build_id': '0x718f5b36c4148ee1bd3f51af89ed2be600000000',
+                'build_id': '0x6b5c2ee980465d306b580c5a8bc9767f00000000',
             },
             'simpleperf_runtest_two_functions_x86_64': {
                 'arch': 'x86_64',
