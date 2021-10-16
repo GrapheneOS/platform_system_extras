@@ -87,10 +87,7 @@ TEST(cmd_inject, binary_option) {
 }
 
 TEST(cmd_inject, exclude_perf_option) {
-  ASSERT_FALSE(RunInjectCmd({"--exclude-perf"}, nullptr));
-  std::string perf_with_recording_process =
-      GetTestData(std::string("etm") + OS_PATH_SEPARATOR + "perf_with_recording_process.data");
-  ASSERT_TRUE(RunInjectCmd({"--exclude-perf", "-i", perf_with_recording_process}, nullptr));
+  ASSERT_TRUE(RunInjectCmd({"--exclude-perf"}, nullptr));
 }
 
 TEST(cmd_inject, output_option) {

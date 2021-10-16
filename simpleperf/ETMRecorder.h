@@ -34,6 +34,7 @@ struct ETMPerCpu {
   uint32_t trcidr4;
   uint32_t trcidr8;
   uint32_t trcauthstatus;
+  uint32_t trcdevarch;
 
   int GetMajorVersion() const;
   bool IsContextIDSupported() const;
