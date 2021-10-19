@@ -139,9 +139,7 @@ reasonable results when given unstripped binaries properly. If it doesn't work w
 try stack frame based call graphs instead.
 
 Simpleperf may need unstripped native binaries on the device to generate good dwarf based call
-graphs. It can be supported in two ways:
-1. Use unstripped native binaries when building the apk, as [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo/SimpleperfExampleWithNative/app/profiling.gradle).
-2. Download unstripped native libraries on device, as [here](#fix-broken-callchain-stopped-at-c-functions).
+graphs. It can be supported by downloading unstripped native libraries on device, as [here](#fix-broken-callchain-stopped-at-c-functions).
 
 ### Why we can't always get complete DWARF-based call graphs?
 
