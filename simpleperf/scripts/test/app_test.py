@@ -14,10 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import glob
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
+import time
 
 from simpleperf_utils import remove
 from . test_utils import TestBase, TestHelper, AdbHelper, INFERNO_SCRIPT
@@ -30,12 +33,12 @@ class TestExampleBase(TestBase):
         cls.example_path = TestHelper.testdata_path(example_name)
         if not os.path.isdir(cls.example_path):
             log_fatal("can't find " + cls.example_path)
-        for root, _, files in os.walk(cls.example_path):
-            if 'app-profiling.apk' in files:
-                cls.apk_path = os.path.join(root, 'app-profiling.apk')
-                break
-        if not hasattr(cls, 'apk_path'):
-            log_fatal("can't find app-profiling.apk under " + cls.example_path)
+        apk_files = list(Path(cls.example_path).glob('**/app-profiling.apk'))
+        if not apk_files:
+            apk_files = list(Path(cls.example_path).glob('**/app-debug.apk'))
+        if not apk_files:
+            log_fatal("can't find apk under " + cls.example_path)
+        cls.apk_path = apk_files[0]
         cls.package_name = package_name
         cls.activity_name = activity_name
         args = ["install", "-r"]
