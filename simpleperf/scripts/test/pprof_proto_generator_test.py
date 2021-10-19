@@ -229,3 +229,13 @@ class TestPprofProtoGenerator(TestBase):
         self.assertNotEqual(function.source_filename_id, 0)
         source_filename = generator.get_string(function.source_filename_id)
         self.assertIn('two_functions.cpp', source_filename)
+
+    def test_comments(self):
+        profile = self.generate_profile(None, ['perf_with_interpreter_frames.data'])
+        comments = "\n".join([profile.string_table[i] for i in profile.comment])
+        self.assertIn('Simpleperf Record Command:\n/data/data/com.google.sample.tunnel/simpleperf record --in-app --tracepoint-events /data/local/tmp/tracepoint_events --app com.google.sample.tunnel -g --no-post-unwind --duration 30', comments)
+        self.assertIn('Converted to pprof with:', comments)
+        # The full path changes per-machine, so only assert on a subset of the
+        # path.
+        self.assertIn('testdata/perf_with_interpreter_frames.data', comments)
+        self.assertIn('Architecture:\naarch64', comments)
