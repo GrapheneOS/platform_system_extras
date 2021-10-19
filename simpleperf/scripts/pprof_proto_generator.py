@@ -28,6 +28,7 @@ import logging
 import os
 import os.path
 import re
+import sys
 
 from simpleperf_report_lib import ReportLib
 from simpleperf_utils import (Addr2Nearestline, BaseArgumentParser, BinaryFinder, extant_dir,
@@ -311,6 +312,15 @@ class PprofProfileGenerator(object):
             self.lib.ShowArtFrames()
         for file_path in self.config['proguard_mapping_file'] or []:
             self.lib.AddProguardMappingFile(file_path)
+
+        comments = [
+          "Simpleperf Record Command:\n" + self.lib.GetRecordCmd(),
+          "Converted to pprof with:\n" + " ".join(sys.argv),
+          "Architecture:\n" + self.lib.GetArch(),
+        ]
+        for comment in comments:
+            self.profile.comment.append(self.get_string_id(comment))
+
         numbers_re = re.compile(r"\d+")
 
         # Process all samples in perf.data, aggregate samples.
