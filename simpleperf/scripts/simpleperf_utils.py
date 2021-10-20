@@ -322,8 +322,8 @@ class AdbHelper(object):
             return
         logging.info('unroot adb')
         self.run(['unroot'])
-        self.run(['wait-for-device'])
         time.sleep(1)
+        self.run(['wait-for-device'])
 
     def switch_to_root(self) -> bool:
         if not self.enable_switch_to_root:
@@ -610,38 +610,7 @@ class Addr2Nearestline(object):
             stdoutdata = bytes_to_str(stdoutdata)
         except OSError:
             return
-        addr_map: Dict[int, List[Tuple[int]]] = {}
-        cur_line_list: Optional[List[Tuple[int]]] = None
-        need_function_name = self.with_function_name
-        cur_function_name: Optional[str] = None
-        for line in stdoutdata.strip().split('\n'):
-            line = line.strip()
-            if not line:
-                continue
-            if line[:2] == '0x':
-                # a new address
-                cur_line_list = addr_map[int(line, 16)] = []
-            elif need_function_name:
-                cur_function_name = line.strip()
-                need_function_name = False
-            else:
-                need_function_name = self.with_function_name
-                if cur_line_list is None:
-                    continue
-                file_path, line_number = self._parse_source_location(line)
-                if not file_path or not line_number:
-                    # An addr can have a list of (file, line), when the addr belongs to an inlined
-                    # function. Sometimes only part of the list has ? mark. In this case, we think
-                    # the line info is valid if the first line doesn't have ? mark.
-                    if not cur_line_list:
-                        cur_line_list = None
-                    continue
-                file_id = dso.get_file_id(file_path)
-                if self.with_function_name:
-                    func_id = dso.get_func_id(cur_function_name)
-                    cur_line_list.append((file_id, line_number, func_id))
-                else:
-                    cur_line_list.append((file_id, line_number))
+        addr_map = self._parse_line_output(stdoutdata, dso)
 
         # 3. Fill line info in dso.addrs.
         for addr in dso.addrs:
@@ -665,7 +634,62 @@ class Addr2Nearestline(object):
             args.append('--functions=none')
         return args
 
-    def _parse_source_location(self, line: str) -> Tuple[Optional[str], Optional[int]]:
+    def _parse_line_output(self, output: str, dso: Addr2Nearestline.Dso) -> Dict[int,
+                                                                                 List[Tuple[int]]]:
+        """
+        The output is a list of lines.
+            address1
+            function_name1 (the function name can be empty)
+            source_location1
+            function_name2
+            source_location2
+            ...
+            (end with empty line)
+        """
+
+        addr_map: Dict[int, List[Tuple[int]]] = {}
+        lines = output.strip().split('\n')
+        i = 0
+        while i < len(lines):
+            address = self._parse_line_output_address(lines[i])
+            i += 1
+            if address is None:
+                continue
+            info = []
+            while i < len(lines):
+                if self.with_function_name:
+                    if i + 1 == len(lines):
+                        break
+                    function_name = lines[i].strip()
+                    if not function_name and (':' not in lines[i+1]):
+                        # no more frames
+                        break
+                    i += 1
+                file_path, line_number = self._parse_line_output_source_location(lines[i])
+                i += 1
+                if not file_path or not line_number:
+                    # An addr can have a list of (file, line), when the addr belongs to an inlined
+                    # function. Sometimes only part of the list has ? mark. In this case, we think
+                    # the line info is valid if the first line doesn't have ? mark.
+                    if not info:
+                        break
+                    continue
+                file_id = dso.get_file_id(file_path)
+                if self.with_function_name:
+                    func_id = dso.get_func_id(function_name)
+                    info.append((file_id, line_number, func_id))
+                else:
+                    info.append((file_id, line_number))
+            if info:
+                addr_map[address] = info
+        return addr_map
+
+    def _parse_line_output_address(self, output: str) -> Optional[int]:
+        if output.startswith('0x'):
+            return int(output, 16)
+        return None
+
+    def _parse_line_output_source_location(self, line: str) -> Tuple[Optional[str], Optional[int]]:
         file_path, line_number = None, None
         # Handle lines in format filename:line:column, like "runtest/two_functions.cpp:14:25".
         # Filename may contain ':' like "C:\Users\...\file".

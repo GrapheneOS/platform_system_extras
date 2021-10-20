@@ -104,19 +104,19 @@ To compile java code, we can pass app_profiler.py the --compile_java_code option
 On Android <= M, simpleperf doesn't support profiling Java code.
 
 
-Below I use application [SimpleperfExampleWithNative](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo/SimpleperfExampleWithNative).
-It builds an app-profiling.apk for profiling.
+Below I use application [SimpleperfExampleCpp](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo/SimpleperfExampleCpp).
+It builds an app-debug.apk for profiling.
 
 ```sh
 $ git clone https://android.googlesource.com/platform/system/extras
 $ cd extras/simpleperf/demo
-# Open SimpleperfExamplesWithNative project with Android studio, and build this project
+# Open SimpleperfExampleCpp project with Android studio, and build this project
 # successfully, otherwise the `./gradlew` command below will fail.
-$ cd SimpleperfExampleWithNative
+$ cd SimpleperfExampleCpp
 
 # On windows, use "gradlew" instead.
 $ ./gradlew clean assemble
-$ adb install -r app/build/outputs/apk/profiling/app-profiling.apk
+$ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ## Record and report profiling data
@@ -130,8 +130,7 @@ We can use [app-profiler.py](scripts_reference.md#app_profilerpy) to profile And
 # Android >= P.
 # -a option selects the Activity to profile.
 # -lib option gives the directory to find debug native libraries.
-$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative --compile_java_code \
-    -a .MixActivity -lib path_of_SimpleperfExampleWithNative
+$ ./app_profiler.py -p simpleperf.example.cpp -a .MixActivity -lib path_of_SimpleperfExampleCpp
 ```
 
 This will collect profiling data in perf.data in the current directory, and related native
@@ -143,7 +142,7 @@ case, the MixActivity starts a busy thread. So we don't need to use the app whil
 ```sh
 # Report perf.data in stdio interface.
 $ ./report.py
-Cmdline: /data/data/com.example.simpleperf.simpleperfexamplewithnative/simpleperf record ...
+Cmdline: /data/data/simpleperf.example.cpp/simpleperf record ...
 Arch: arm64
 Event: task-clock:u (type 1, config 1)
 Samples: 10023
@@ -163,7 +162,7 @@ are a lot of unknown symbols in the report, check [here](README.md#how-to-solve-
 $ ./report_html.py
 
 # Add source code and disassembly. Change the path of source_dirs if it not correct.
-$ ./report_html.py --add_source_code --source_dirs path_of_SimpleperfExampleWithNative \
+$ ./report_html.py --add_source_code --source_dirs path_of_SimpleperfExampleCpp \
       --add_disassembly
 ```
 
@@ -176,13 +175,13 @@ We can record and report [call graphs](executable_commands_reference.md#record-c
 
 ```sh
 # Record dwarf based call graphs: add "-g" in the -r option.
-$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
-        -r "-e task-clock:u -f 1000 --duration 10 -g" -lib path_of_SimpleperfExampleWithNative
+$ ./app_profiler.py -p simpleperf.example.cpp \
+        -r "-e task-clock:u -f 1000 --duration 10 -g" -lib path_of_SimpleperfExampleCpp
 
 # Record stack frame based call graphs: add "--call-graph fp" in the -r option.
-$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative \
+$ ./app_profiler.py -p simpleperf.example.cpp \
         -r "-e task-clock:u -f 1000 --duration 10 --call-graph fp" \
-        -lib path_of_SimpleperfExampleWithNative
+        -lib path_of_SimpleperfExampleCpp
 
 # Report call graphs in stdio interface.
 $ ./report.py -g
@@ -255,11 +254,11 @@ trace-offcpu
 If trace-offcpu is supported, it will be shown in the feature list. Then we can try it.
 
 ```sh
-$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .SleepActivity \
+$ ./app_profiler.py -p simpleperf.example.cpp -a .SleepActivity \
     -r "-g -e task-clock:u -f 1000 --duration 10 --trace-offcpu" \
-    -lib path_of_SimpleperfExampleWithNative
+    -lib path_of_SimpleperfExampleCpp
 $ ./report_html.py --add_disassembly --add_source_code \
-    --source_dirs path_of_SimpleperfExampleWithNative
+    --source_dirs path_of_SimpleperfExampleCpp
 ```
 
 ## Profile from launch
@@ -268,12 +267,12 @@ We can [profile from launch of an application](scripts_reference.md#profile-from
 
 ```sh
 # Start simpleperf recording, then start the Activity to profile.
-$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative -a .MainActivity
+$ ./app_profiler.py -p simpleperf.example.cpp -a .MainActivity
 
 # We can also start the Activity on the device manually.
 # 1. Make sure the application isn't running or one of the recent apps.
 # 2. Start simpleperf recording.
-$ ./app_profiler.py -p com.example.simpleperf.simpleperfexamplewithnative
+$ ./app_profiler.py -p simpleperf.example.cpp
 # 3. Start the app manually on the device.
 ```
 
