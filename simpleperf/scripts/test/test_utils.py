@@ -21,11 +21,12 @@ import logging
 from multiprocessing.connection import Connection
 import os
 from pathlib import Path
+import re
 import shutil
 import sys
 import subprocess
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import unittest
 
 from simpleperf_utils import remove, get_script_dir, AdbHelper, is_windows, bytes_to_str
@@ -106,6 +107,13 @@ class TestHelper:
     @classmethod
     def get_32bit_abi(cls):
         return cls.adb.get_property('ro.product.cpu.abilist32').strip().split(',')[0]
+
+    @classmethod
+    def get_kernel_version(cls) -> Tuple[int]:
+        output = cls.adb.check_run_and_return_output(['shell', 'uname', '-r'])
+        m = re.search(r'^(\d+)\.(\d+)', output)
+        assert m
+        return (int(m.group(1)), int(m.group(2)))
 
     @classmethod
     def write_progress(cls, progress: str):
