@@ -141,6 +141,64 @@ class TestTools(TestBase):
                                  'for %s:0x%x, expected source %s, actual source %s' %
                                  (dso_path, test_addr['addr'], expected_source, actual_source))
 
+    def test_addr2nearestline_parse_output(self):
+        output = """
+0x104c
+system/extras/simpleperf/runtest/two_functions.cpp:6:0
+
+0x1094
+system/extras/simpleperf/runtest/two_functions.cpp:9:10
+
+0x10bb
+system/extras/simpleperf/runtest/two_functions.cpp:11:1
+
+0x10bc
+system/extras/simpleperf/runtest/two_functions.cpp:13:0
+
+0x1104
+system/extras/simpleperf/runtest/two_functions.cpp:16:10
+
+0x112b
+system/extras/simpleperf/runtest/two_functions.cpp:18:1
+
+0x112c
+system/extras/simpleperf/runtest/two_functions.cpp:20:0
+
+0x113c
+system/extras/simpleperf/runtest/two_functions.cpp:22:5
+
+0x1140
+system/extras/simpleperf/runtest/two_functions.cpp:23:5
+
+0x1147
+system/extras/simpleperf/runtest/two_functions.cpp:21:3
+        """
+        dso = Addr2Nearestline.Dso(None)
+        binary_finder = BinaryFinder(TestHelper.testdata_dir, ReadElf(TestHelper.ndk_path))
+        addr2line = Addr2Nearestline(TestHelper.ndk_path, binary_finder, False)
+        addr_map = addr2line.parse_line_output(output, dso)
+        expected_addr_map = {
+            0x104c: [('system/extras/simpleperf/runtest/two_functions.cpp', 6)],
+            0x1094: [('system/extras/simpleperf/runtest/two_functions.cpp', 9)],
+            0x10bb: [('system/extras/simpleperf/runtest/two_functions.cpp', 11)],
+            0x10bc: [('system/extras/simpleperf/runtest/two_functions.cpp', 13)],
+            0x1104: [('system/extras/simpleperf/runtest/two_functions.cpp', 16)],
+            0x112b: [('system/extras/simpleperf/runtest/two_functions.cpp', 18)],
+            0x112c: [('system/extras/simpleperf/runtest/two_functions.cpp', 20)],
+            0x113c: [('system/extras/simpleperf/runtest/two_functions.cpp', 22)],
+            0x1140: [('system/extras/simpleperf/runtest/two_functions.cpp', 23)],
+            0x1147: [('system/extras/simpleperf/runtest/two_functions.cpp', 21)],
+        }
+        self.assertEqual(len(expected_addr_map), len(addr_map))
+        for addr in expected_addr_map:
+            expected_source_list = expected_addr_map[addr]
+            source_list = addr_map[addr]
+            self.assertEqual(len(expected_source_list), len(source_list))
+            for expected_source, source in zip(expected_source_list, source_list):
+                file_path = dso.file_id_to_name[source[0]]
+                self.assertEqual(file_path, expected_source[0])
+                self.assertEqual(source[1], expected_source[1])
+
     def test_objdump(self):
         test_map = {
             '/simpleperf_runtest_two_functions_arm64': {
@@ -239,24 +297,24 @@ class TestTools(TestBase):
 
     def test_source_file_searcher(self):
         searcher = SourceFileSearcher(
-            [TestHelper.testdata_path('SimpleperfExampleWithNative'),
+            [TestHelper.testdata_path('SimpleperfExampleCpp'),
              TestHelper.testdata_path('SimpleperfExampleOfKotlin')])
 
         def format_path(path):
             return os.path.join(TestHelper.testdata_dir, path.replace('/', os.sep))
         # Find a C++ file with pure file name.
         self.assertEqual(
-            format_path('SimpleperfExampleWithNative/app/src/main/cpp/native-lib.cpp'),
+            format_path('SimpleperfExampleCpp/app/src/main/cpp/native-lib.cpp'),
             searcher.get_real_path('native-lib.cpp'))
         # Find a C++ file with an absolute file path.
         self.assertEqual(
-            format_path('SimpleperfExampleWithNative/app/src/main/cpp/native-lib.cpp'),
+            format_path('SimpleperfExampleCpp/app/src/main/cpp/native-lib.cpp'),
             searcher.get_real_path('/data/native-lib.cpp'))
         # Find a Java file.
         self.assertEqual(
-            format_path('SimpleperfExampleWithNative/app/src/main/java/com/example/' +
-                        'simpleperf/simpleperfexamplewithnative/MainActivity.java'),
-            searcher.get_real_path('simpleperfexamplewithnative/MainActivity.java'))
+            format_path(
+                'SimpleperfExampleCpp/app/src/main/java/simpleperf/example/cpp/MainActivity.java'),
+            searcher.get_real_path('cpp/MainActivity.java'))
         # Find a Kotlin file.
         self.assertEqual(
             format_path('SimpleperfExampleOfKotlin/app/src/main/java/com/example/' +
