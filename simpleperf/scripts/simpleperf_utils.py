@@ -141,11 +141,10 @@ class ToolFinder:
             'path_in_ndk':
                 lambda platform: 'toolchains/llvm/prebuilt/%s-x86_64/bin/llvm-symbolizer' % platform,
         },
-        'objdump': {
-            'is_binutils': True,
-        },
-        'strip': {
-            'is_binutils': True,
+        'llvm-strip': {
+            'is_binutils': False,
+            'path_in_ndk':
+                lambda platform: 'toolchains/llvm/prebuilt/%s-x86_64/bin/llvm-strip' % platform,
         },
     }
 
@@ -610,7 +609,7 @@ class Addr2Nearestline(object):
             stdoutdata = bytes_to_str(stdoutdata)
         except OSError:
             return
-        addr_map = self._parse_line_output(stdoutdata, dso)
+        addr_map = self.parse_line_output(stdoutdata, dso)
 
         # 3. Fill line info in dso.addrs.
         for addr in dso.addrs:
@@ -634,8 +633,8 @@ class Addr2Nearestline(object):
             args.append('--functions=none')
         return args
 
-    def _parse_line_output(self, output: str, dso: Addr2Nearestline.Dso) -> Dict[int,
-                                                                                 List[Tuple[int]]]:
+    def parse_line_output(self, output: str, dso: Addr2Nearestline.Dso) -> Dict[int,
+                                                                                List[Tuple[int]]]:
         """
         The output is a list of lines.
             address1
@@ -648,7 +647,7 @@ class Addr2Nearestline(object):
         """
 
         addr_map: Dict[int, List[Tuple[int]]] = {}
-        lines = output.strip().split('\n')
+        lines = output.strip().splitlines()
         i = 0
         while i < len(lines):
             address = self._parse_line_output_address(lines[i])
@@ -665,6 +664,10 @@ class Addr2Nearestline(object):
                         # no more frames
                         break
                     i += 1
+                elif not lines[i]:
+                    i += 1
+                    break
+
                 file_path, line_number = self._parse_line_output_source_location(lines[i])
                 i += 1
                 if not file_path or not line_number:
