@@ -142,7 +142,7 @@ unwindstack::Regs* OfflineUnwinderImpl::GetBacktraceRegs(const RegSet& regs) {
   }
 }
 
-static unwindstack::MapInfo* CreateMapInfo(const MapEntry* entry) {
+static std::shared_ptr<unwindstack::MapInfo> CreateMapInfo(const MapEntry* entry) {
   std::string name_holder;
   const char* name = entry->dso->GetDebugFilePath().data();
   uint64_t pgoff = entry->pgoff;
@@ -165,8 +165,8 @@ static unwindstack::MapInfo* CreateMapInfo(const MapEntry* entry) {
       name = name_holder.data();
     }
   }
-  return new unwindstack::MapInfo(nullptr, nullptr, entry->start_addr, entry->get_end_addr(), pgoff,
-                                  PROT_READ | entry->flags, name);
+  return unwindstack::MapInfo::Create(entry->start_addr, entry->get_end_addr(), pgoff,
+                                      PROT_READ | entry->flags, name);
 }
 
 void UnwindMaps::UpdateMaps(const MapSet& map_set) {
@@ -202,7 +202,7 @@ void UnwindMaps::UpdateMaps(const MapSet& map_set) {
 
   if (has_removed_entry) {
     entries_.resize(std::remove(entries_.begin(), entries_.end(), nullptr) - entries_.begin());
-    maps_.resize(std::remove(maps_.begin(), maps_.end(), std::unique_ptr<unwindstack::MapInfo>()) -
+    maps_.resize(std::remove(maps_.begin(), maps_.end(), std::shared_ptr<unwindstack::MapInfo>()) -
                  maps_.begin());
   }
 
