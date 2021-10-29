@@ -747,6 +747,10 @@ static void TestRecordingApps(const std::string& app_name, const std::string& ap
   it = meta_info.find("app_type");
   ASSERT_NE(it, meta_info.end());
   ASSERT_EQ(it->second, app_type);
+  reader.reset(nullptr);
+
+  // Check that simpleperf can't execute child command in app uid.
+  ASSERT_FALSE(helper.RecordData("--app " + app_name + " -e " + GetDefaultEvent() + " sleep 1"));
 }
 
 TEST(record_cmd, app_option_for_debuggable_app) {
