@@ -40,6 +40,7 @@
 
 #if defined(__ANDROID__)
 #include <android-base/properties.h>
+#include <cutils/android_filesystem_config.h>
 #endif
 
 #include "IOEventLoop.h"
@@ -970,6 +971,12 @@ std::optional<std::pair<int, int>> GetKernelVersion() {
   }
   return std::make_pair(major, minor);
 }
+
+#if defined(__ANDROID__)
+bool IsInAppUid() {
+  return getuid() % AID_USER_OFFSET >= AID_APP_START;
+}
+#endif
 
 std::optional<uid_t> GetProcessUid(pid_t pid) {
   std::string status_file = "/proc/" + std::to_string(pid) + "/status";
