@@ -675,3 +675,29 @@ filegroup {
     name: "system-extras-simpleperf-testdata",
     srcs: ["CtsSimpleperfTestCases_testdata/**/*"],
 }
+
+cc_fuzz {
+    name: "libsimpleperf_report_fuzzer",
+    defaults: [
+        "simpleperf_shared_libs",
+    ],
+    host_supported: true,
+    srcs: [
+        "libsimpleperf_report_fuzzer.cpp",
+    ],
+    static_libs: [
+        "libsimpleperf",
+        "libLLVMObject",
+        "libLLVMBitReader",
+        "libLLVMMC",
+        "libLLVMMCParser",
+        "libLLVMCore",
+        "libLLVMSupport",
+    ],
+    target: {
+        windows: {
+            enabled: false,
+        },
+    },
+    corpus: ["testdata/*.data"],
+}
