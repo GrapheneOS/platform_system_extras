@@ -51,6 +51,10 @@ bool IsBranchSamplingSupported() {
 }
 
 bool IsDwarfCallChainSamplingSupported() {
+  if (auto version = GetKernelVersion(); version && version.value() >= std::make_pair(3, 18)) {
+    // Skip test on kernel >= 3.18, which has all patches needed to support dwarf callchain.
+    return true;
+  }
   const EventType* type = FindEventTypeByName("cpu-clock");
   if (type == nullptr) {
     return false;
@@ -120,10 +124,11 @@ bool IsSettingClockIdSupported() {
   // Do the real check only once and keep the result in a static variable.
   static int is_supported = -1;
   if (is_supported == -1) {
-    const EventType* type = FindEventTypeByName("cpu-clock");
-    if (type == nullptr) {
-      is_supported = 0;
-    } else {
+    is_supported = 0;
+    if (auto version = GetKernelVersion(); version && version.value() >= std::make_pair(4, 1)) {
+      // Kernel >= 4.1 has patch "34f43927 perf: Add per event clockid support". So no need to test.
+      is_supported = 1;
+    } else if (const EventType* type = FindEventTypeByName("cpu-clock"); type != nullptr) {
       // Check if the kernel supports setting clockid, which was added in kernel 4.0. Just check
       // with one clockid is enough. Because all needed clockids were supported before kernel 4.0.
       perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
@@ -136,6 +141,11 @@ bool IsSettingClockIdSupported() {
 }
 
 bool IsMmap2Supported() {
+  if (auto version = GetKernelVersion(); version && version.value() >= std::make_pair(3, 12)) {
+    // Kernel >= 3.12 has patch "13d7a2410 perf: Add attr->mmap2 attribute to an event". So no need
+    // to test.
+    return true;
+  }
   const EventType* type = FindEventTypeByName("cpu-clock");
   if (type == nullptr) {
     return false;
