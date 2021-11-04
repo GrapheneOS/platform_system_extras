@@ -289,6 +289,20 @@ TEST_F(ReportCommandTest, symbol_filter_option) {
   ASSERT_TRUE(AllItemsWithString(lines, {"main", "func2(int, int)"}));
 }
 
+TEST_F(ReportCommandTest, dso_symbol_filter_with_children_option) {
+  // dso and symbol filter should filter different layers of the callchain separately.
+  Report("perf_display_bitmaps.data", {"--dsos", "/apex/com.android.runtime/lib64/libart.so",
+                                       "--children", "--raw-period", "--sort", "dso"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("63500000  43250000  /apex/com.android.runtime/lib64/libart.so"),
+            std::string::npos);
+
+  Report("perf_display_bitmaps.data",
+         {"--symbols", "MterpInvokeVirtual", "--children", "--raw-period", "--sort", "symbol"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("51500000  2500000  MterpInvokeVirtual"), std::string::npos);
+}
+
 TEST_F(ReportCommandTest, use_branch_address) {
   Report(BRANCH_PERF_DATA, {"-b", "--sort", "symbol_from,symbol_to"});
   std::set<std::pair<std::string, std::string>> hit_set;
