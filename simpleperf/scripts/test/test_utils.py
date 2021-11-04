@@ -26,7 +26,7 @@ import shutil
 import sys
 import subprocess
 import time
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 import unittest
 
 from simpleperf_utils import remove, get_script_dir, AdbHelper, is_windows, bytes_to_str
@@ -189,7 +189,7 @@ class TestBase(unittest.TestCase):
             return output_data
         return ''
 
-    def check_strings_in_file(self, filename, strings):
+    def check_strings_in_file(self, filename, strings: List[Union[str, re.Pattern]]):
         self.check_exist(filename=filename)
         with open(filename, 'r') as fh:
             self.check_strings_in_content(fh.read(), strings)
@@ -200,8 +200,13 @@ class TestBase(unittest.TestCase):
         if dirname:
             self.assertTrue(os.path.isdir(dirname), dirname)
 
-    def check_strings_in_content(self, content, strings):
-        fulfilled = [content.find(s) != -1 for s in strings]
+    def check_strings_in_content(self, content: str, strings: List[Union[str, re.Pattern]]):
+        fulfilled = []
+        for s in strings:
+            if isinstance(s, re.Pattern):
+                fulfilled.append(s.search(content))
+            else:
+                fulfilled.append(s in content)
         self.check_fulfilled_entries(fulfilled, strings)
 
     def check_fulfilled_entries(self, fulfilled, entries):
