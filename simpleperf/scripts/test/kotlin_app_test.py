@@ -116,7 +116,7 @@ class TestExampleOfKotlinTraceOffCpu(TestExampleBase):
         ])
         if self.use_compiled_java_code:
             remove("annotated_files")
-            self.run_cmd(["annotate.py", "-s", self.example_path])
+            self.run_cmd(["annotate.py", "-s", self.example_path, '--summary-width', '1000'])
             self.check_exist(dirname="annotated_files")
             self.check_file_under_dir("annotated_files", "SleepActivity.kt")
             summary_file = os.path.join("annotated_files", "summary")

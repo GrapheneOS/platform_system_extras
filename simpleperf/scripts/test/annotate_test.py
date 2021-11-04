@@ -15,6 +15,7 @@
 # limitations under the License.
 
 from pathlib import Path
+import re
 
 from binary_cache_builder import BinaryCacheBuilder
 from . test_utils import TestBase, TestHelper
@@ -30,15 +31,16 @@ class TestAnnotate(TestBase):
 
         # Generate annotated files.
         source_dir = TestHelper.testdata_dir
-        self.run_cmd(['annotate.py', '-i', testdata_file, '-s', str(source_dir)])
+        self.run_cmd(['annotate.py', '-i', testdata_file, '-s',
+                      str(source_dir), '--summary-width', '1000'])
 
         # Check annotated files.
         annotate_dir = Path('annotated_files')
         summary_file = annotate_dir / 'summary'
         check_items = [
-            'two_functions.cpp: accumulated_period: 100.000000%, period: 100.000000%',
-            'function (main): line 20, accumulated_period: 100.000000%, period: 0.000000%',
-            'line 16: accumulated_period: 50.058937%, period: 50.058937%',
+            re.compile(r'100.00% \| 100.00% \| .+two_functions.cpp'),
+            '100.00% | 0.00%  | main (line 20)',
+            '50.06%  | 50.06% | line 16',
         ]
         self.check_strings_in_file(summary_file, check_items)
 
@@ -46,5 +48,5 @@ class TestAnnotate(TestBase):
         self.assertEqual(len(source_files), 1)
         source_file = source_files[0]
         self.assertEqual(source_file.name, 'two_functions.cpp')
-        check_items = ['/* acc_p: 49.941063%, p: 49.941063%          */    *p = i;']
+        check_items = ['/* Total 50.06%, Self 50.06%          */    *p = i;']
         self.check_strings_in_file(source_file, check_items)
