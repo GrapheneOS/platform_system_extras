@@ -482,6 +482,12 @@ class DexFileDso : public Dso {
   std::vector<Symbol> LoadSymbolsImpl() override {
     std::vector<Symbol> symbols;
     auto tuple = SplitUrlInApk(debug_file_path_);
+    // Symbols of dex files are collected on device. If the dex file doesn't exist, probably
+    // we are reporting on host, and there is no need to report warning of missing dex files.
+    if (!IsRegularFile(std::get<0>(tuple) ? std::get<1>(tuple) : debug_file_path_)) {
+      LOG(DEBUG) << "skip reading symbols from non-exist dex_file " << debug_file_path_;
+      return symbols;
+    }
     bool status = false;
     auto symbol_callback = [&](DexFileSymbol* symbol) {
       symbols.emplace_back(symbol->name, symbol->addr, symbol->size);
