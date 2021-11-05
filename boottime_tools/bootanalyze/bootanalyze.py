@@ -367,11 +367,12 @@ def iterate(args, search_events_pattern, timings_pattern, shutdown_events_patter
       v = v + time_correction_delta
       debug("correcting event to event[{0}, {1}]".format(k, v))
 
-  if logcat_event_time.get(KERNEL_TIME_KEY) is None:
-    print("kernel time not captured in logcat, cannot get time diff")
-    return None, None, None, None, None, None
   diffs = []
-  diffs.append((logcat_event_time[KERNEL_TIME_KEY], logcat_event_time[KERNEL_TIME_KEY]))
+  if logcat_event_time.get(KERNEL_TIME_KEY) is None:
+    print("kernel time not captured in logcat")
+  else:
+    diffs.append((logcat_event_time[KERNEL_TIME_KEY], logcat_event_time[KERNEL_TIME_KEY]))
+
   if logcat_event_time.get(BOOT_ANIM_END_TIME_KEY) and dmesg_event_time.get(BOOT_ANIM_END_TIME_KEY):
       diffs.append((logcat_event_time[BOOT_ANIM_END_TIME_KEY],\
                     logcat_event_time[BOOT_ANIM_END_TIME_KEY] -\
@@ -785,7 +786,7 @@ def do_reboot(serial, use_adb_reboot):
   # do not update time
   run_adb_cmd('shell settings put global auto_time 0')
   run_adb_cmd('shell settings put global auto_time_zone 0')
-  original_devices = subprocess.check_output("adb devices", shell=True)
+  original_devices = subprocess.check_output("adb devices", shell=True).decode('utf-8', 'ignore')
   if use_adb_reboot:
     print('Rebooting the device using adb reboot')
     run_adb_cmd('reboot')
