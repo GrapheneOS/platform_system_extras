@@ -22,6 +22,8 @@ import logging
 import os
 import os.path
 import shutil
+from texttable import Texttable
+from typing import Dict, Union
 
 from simpleperf_report_lib import ReportLib
 from simpleperf_utils import (
@@ -305,7 +307,7 @@ class SourceFileAnnotator(object):
         if is_sample_used:
             self.period += sample.period
 
-    def _add_dso_period(self, dso_name, period, used_dso_dict):
+    def _add_dso_period(self, dso_name: str, period: Period, used_dso_dict: Dict[str, bool]):
         if dso_name not in used_dso_dict:
             used_dso_dict[dso_name] = True
             dso_period = self.dso_periods.get(dso_name)
@@ -337,44 +339,72 @@ class SourceFileAnnotator(object):
         summary = os.path.join(self.config['annotate_dest_dir'], 'summary')
         with open(summary, 'w') as f:
             f.write('total period: %d\n\n' % self.period)
-            dso_periods = sorted(self.dso_periods.values(),
-                                 key=lambda x: x.period.acc_period, reverse=True)
-            for dso_period in dso_periods:
-                f.write('dso %s: %s\n' % (dso_period.dso_name,
-                                          self._get_percentage_str(dso_period.period)))
-            f.write('\n')
+            self._write_dso_summary(f)
+            self._write_file_summary(f)
 
             file_periods = sorted(self.file_periods.values(),
                                   key=lambda x: x.period.acc_period, reverse=True)
             for file_period in file_periods:
-                f.write('file %s: %s\n' % (file_period.file,
-                                           self._get_percentage_str(file_period.period)))
-            for file_period in file_periods:
-                f.write('\n\n%s: %s\n' % (file_period.file,
-                                          self._get_percentage_str(file_period.period)))
-                values = []
-                for func_name in file_period.function_dict.keys():
-                    func_start_line, period = file_period.function_dict[func_name]
-                    values.append((func_name, func_start_line, period))
-                values = sorted(values, key=lambda x: x[2].acc_period, reverse=True)
-                for value in values:
-                    f.write('\tfunction (%s): line %d, %s\n' % (
-                        value[0], value[1], self._get_percentage_str(value[2])))
-                f.write('\n')
-                for line in sorted(file_period.line_dict.keys()):
-                    f.write('\tline %d: %s\n' % (
-                        line, self._get_percentage_str(file_period.line_dict[line])))
+                self._write_function_line_summary(f, file_period)
 
-    def _get_percentage_str(self, period, short=False):
-        s = 'acc_p: %f%%, p: %f%%' if short else 'accumulated_period: %f%%, period: %f%%'
-        return s % self._get_percentage(period)
+    def _write_dso_summary(self, summary_fh):
+        dso_periods = sorted(self.dso_periods.values(),
+                             key=lambda x: x.period.acc_period, reverse=True)
+        table = Texttable(max_width=self.config['summary_width'])
+        table.set_cols_align(['l', 'l', 'l'])
+        table.add_row(['Total', 'Self', 'DSO'])
+        for dso_period in dso_periods:
+            total_str = self._get_period_str(dso_period.period.acc_period)
+            self_str = self._get_period_str(dso_period.period.period)
+            table.add_row([total_str, self_str, dso_period.dso_name])
+        print(table.draw(), file=summary_fh)
+        print(file=summary_fh)
 
-    def _get_percentage(self, period):
-        if self.period == 0:
-            return (0, 0)
-        acc_p = 100.0 * period.acc_period / self.period
-        p = 100.0 * period.period / self.period
-        return (acc_p, p)
+    def _write_file_summary(self, summary_fh):
+        file_periods = sorted(self.file_periods.values(),
+                              key=lambda x: x.period.acc_period, reverse=True)
+        table = Texttable(max_width=self.config['summary_width'])
+        table.set_cols_align(['l', 'l', 'l'])
+        table.add_row(['Total', 'Self', 'Source File'])
+        for file_period in file_periods:
+            total_str = self._get_period_str(file_period.period.acc_period)
+            self_str = self._get_period_str(file_period.period.period)
+            table.add_row([total_str, self_str, file_period.file])
+        print(table.draw(), file=summary_fh)
+        print(file=summary_fh)
+
+    def _write_function_line_summary(self, summary_fh, file_period: FilePeriod):
+        table = Texttable(max_width=self.config['summary_width'])
+        table.set_cols_align(['l', 'l', 'l'])
+        table.add_row(['Total', 'Self', 'Function/Line in ' + file_period.file])
+        values = []
+        for func_name in file_period.function_dict.keys():
+            func_start_line, period = file_period.function_dict[func_name]
+            values.append((func_name, func_start_line, period))
+        values.sort(key=lambda x: x[2].acc_period, reverse=True)
+        for func_name, func_start_line, period in values:
+            total_str = self._get_period_str(period.acc_period)
+            self_str = self._get_period_str(period.period)
+            name = func_name + ' (line %d)' % func_start_line
+            table.add_row([total_str, self_str, name])
+        for line in sorted(file_period.line_dict.keys()):
+            period = file_period.line_dict[line]
+            total_str = self._get_period_str(period.acc_period)
+            self_str = self._get_period_str(period.period)
+            name = 'line %d' % line
+            table.add_row([total_str, self_str, name])
+
+        print(table.draw(), file=summary_fh)
+        print(file=summary_fh)
+
+    def _get_period_str(self, period: Union[Period, int]) -> str:
+        if isinstance(period, Period):
+            return 'Total %s, Self %s' % (
+                self._get_period_str(period.acc_period),
+                self._get_period_str(period.period))
+        if self.config['raw_period'] or self.period == 0:
+            return str(period)
+        return '%.2f%%' % (100.0 * period / self.period)
 
     def _annotate_files(self):
         """Annotate Source files: add acc_period/period for each source file.
@@ -411,14 +441,14 @@ class SourceFileAnnotator(object):
 
         annotates = {}
         for line in file_period.line_dict.keys():
-            annotates[line] = self._get_percentage_str(file_period.line_dict[line], True)
+            annotates[line] = self._get_period_str(file_period.line_dict[line])
         for func_name in file_period.function_dict.keys():
             func_start_line, period = file_period.function_dict[func_name]
             if func_start_line == -1:
                 continue
             line = func_start_line - 1 if is_java else func_start_line
-            annotates[line] = '[func] ' + self._get_percentage_str(period, True)
-        annotates[1] = '[file] ' + self._get_percentage_str(file_period.period, True)
+            annotates[line] = '[func] ' + self._get_period_str(period)
+        annotates[1] = '[file] ' + self._get_period_str(file_period.period)
 
         max_annotate_cols = 0
         for key in annotates:
@@ -462,6 +492,9 @@ def main():
     parser.add_argument('--dso', nargs='+', action='append', help="""
         Use samples only in selected binaries.""")
     parser.add_argument('--ndk_path', type=extant_dir, help='Set the path of a ndk release.')
+    parser.add_argument('--raw-period', action='store_true',
+                        help='show raw period instead of percentage')
+    parser.add_argument('--summary-width', type=int, default=80, help='max width of summary file')
 
     args = parser.parse_args()
     config = {}
@@ -474,6 +507,8 @@ def main():
     config['tid_filters'] = flatten_arg_list(args.tid)
     config['dso_filters'] = flatten_arg_list(args.dso)
     config['ndk_path'] = args.ndk_path
+    config['raw_period'] = args.raw_period
+    config['summary_width'] = args.summary_width
 
     annotator = SourceFileAnnotator(config)
     annotator.annotate()
