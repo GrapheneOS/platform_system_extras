@@ -962,14 +962,18 @@ const char* GetTraceFsDir() {
 }
 
 std::optional<std::pair<int, int>> GetKernelVersion() {
-  utsname uname_buf;
-  int major;
-  int minor;
-  if (TEMP_FAILURE_RETRY(uname(&uname_buf)) != 0 ||
-      sscanf(uname_buf.release, "%d.%d", &major, &minor) != 2) {
-    return std::nullopt;
+  static std::optional<std::pair<int, int>> kernel_version;
+  if (!kernel_version.has_value()) {
+    utsname uname_buf;
+    int major;
+    int minor;
+    if (TEMP_FAILURE_RETRY(uname(&uname_buf)) != 0 ||
+        sscanf(uname_buf.release, "%d.%d", &major, &minor) != 2) {
+      return std::nullopt;
+    }
+    kernel_version = std::make_pair(major, minor);
   }
-  return std::make_pair(major, minor);
+  return kernel_version;
 }
 
 #if defined(__ANDROID__)
