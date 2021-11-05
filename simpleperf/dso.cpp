@@ -165,6 +165,9 @@ std::string DebugElfFileFinder::FindDebugFile(const std::string& dso_path, bool 
     if (CheckDebugFilePath(path, build_id, true)) {
       return path;
     }
+    if (EndsWith(dso_path, ".apk") && IsRegularFile(path)) {
+      return path;
+    }
     // 3. Try concatenating symfs_dir and basename of dso_path.
     path = symfs_dir_ + OS_PATH_SEPARATOR + android::base::Basename(dso_path);
     if (CheckDebugFilePath(path, build_id, false)) {
