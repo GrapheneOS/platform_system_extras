@@ -409,7 +409,7 @@ class TestManager:
         devices = []
         if args.device:
             for s in args.device:
-                name, serial_number = s.split(':')
+                name, serial_number = s.split(':', 1)
                 devices.append(Device(name, serial_number))
         else:
             devices.append(Device('default', ''))
