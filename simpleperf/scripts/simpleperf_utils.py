@@ -344,7 +344,7 @@ class AdbHelper(object):
 
     def get_property(self, name: str) -> Optional[str]:
         result, stdoutdata = self.run_and_return_output(['shell', 'getprop', name])
-        return stdoutdata if result else None
+        return stdoutdata.strip() if result else None
 
     def set_property(self, name: str, value: str) -> bool:
         return self.run(['shell', 'setprop', name, value])
@@ -364,7 +364,9 @@ class AdbHelper(object):
 
     def get_android_version(self) -> int:
         """ Get Android version on device, like 7 is for Android N, 8 is for Android O."""
-        build_version = self.get_property('ro.build.version.release')
+        build_version = self.get_property('ro.build.version.codename')
+        if not build_version or build_version == 'REL':
+            build_version = self.get_property('ro.build.version.release')
         android_version = 0
         if build_version:
             if not build_version[0].isdigit():
