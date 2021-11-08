@@ -3,7 +3,7 @@ service profcollectd /system/bin/profcollectd
     disabled
     oneshot
     user root
-    group root wakelock
+    group root shell wakelock
     task_profiles ServiceCapacityLow
 
 on property:persist.device_config.profcollect_native_boot.enabled=true
