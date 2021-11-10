@@ -433,6 +433,21 @@ struct AuxRecord : public Record {
   void DumpData(size_t indent) const override;
 };
 
+struct SwitchRecord : public Record {
+  SwitchRecord(const perf_event_attr& attr, char* p);
+
+ protected:
+  void DumpData(size_t) const override {}
+};
+
+struct SwitchCpuWideRecord : public Record {
+  PerfSampleTidType tid_data;
+  SwitchCpuWideRecord(const perf_event_attr& attr, char* p);
+
+ protected:
+  void DumpData(size_t indent) const override;
+};
+
 // BuildIdRecord is defined in user-space, stored in BuildId feature section in
 // record file.
 struct BuildIdRecord : public Record {
