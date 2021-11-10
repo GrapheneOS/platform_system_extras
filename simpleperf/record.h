@@ -450,9 +450,9 @@ struct BuildIdRecord : public Record {
 
 struct AuxTraceInfoRecord : public Record {
   // magic values to be compatible with linux perf
-  static const uint32_t AUX_TYPE_ETM = 3;
-  static const uint64_t MAGIC_ETM4 = 0x4040404040404040ULL;
-  static const uint64_t MAGIC_ETE = 0x5050505050505050ULL;
+  static constexpr uint32_t AUX_TYPE_ETM = 3;
+  static constexpr uint64_t MAGIC_ETM4 = 0x4040404040404040ULL;
+  static constexpr uint64_t MAGIC_ETE = 0x5050505050505050ULL;
 
   struct ETM4Info {
     uint64_t magic;
