@@ -700,8 +700,4 @@ cc_fuzz {
         },
     },
     corpus: ["testdata/*.data"],
-    fuzz_config: {
-        fuzz_on_haiku_host: false,
-        fuzz_on_haiku_device: false,
-    },
 }
