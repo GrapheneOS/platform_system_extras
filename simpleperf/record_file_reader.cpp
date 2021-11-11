@@ -192,9 +192,18 @@ bool RecordFileReader::ReadFeatureSectionDescriptors() {
     PLOG(ERROR) << "fseek() failed";
     return false;
   }
+  uint64_t min_section_data_pos = feature_section_offset + sizeof(SectionDesc) * features.size();
+  uint64_t max_section_data_pos = GetFileSize(filename_);
   for (const auto& id : features) {
     SectionDesc desc;
     if (!Read(&desc, sizeof(desc))) {
+      return false;
+    }
+    uint64_t desc_end;
+    if (desc.offset < min_section_data_pos ||
+        __builtin_add_overflow(desc.offset, desc.size, &desc_end) ||
+        desc_end > max_section_data_pos) {
+      LOG(ERROR) << "invalid feature section descriptor";
       return false;
     }
     feature_section_descriptors_.emplace(id, desc);
