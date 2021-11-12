@@ -545,6 +545,9 @@ TEST(record_cmd, trace_offcpu_option) {
   ASSERT_TRUE(reader);
   auto info_map = reader->GetMetaInfoFeature();
   ASSERT_EQ(info_map["trace_offcpu"], "true");
+  if (IsSwitchRecordSupported()) {
+    ASSERT_EQ(reader->AttrSection()[0].attr->context_switch, 1);
+  }
   // Release recording environment in perf.data, to avoid affecting tests below.
   reader.reset();
 
