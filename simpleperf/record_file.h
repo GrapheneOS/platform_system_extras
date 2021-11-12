@@ -203,6 +203,7 @@ class RecordFileReader {
  private:
   RecordFileReader(const std::string& filename, FILE* fp);
   bool ReadHeader();
+  bool CheckSectionDesc(const PerfFileFormat::SectionDesc& desc, uint64_t min_offset);
   bool ReadAttrSection();
   bool ReadIdsForAttr(const PerfFileFormat::FileAttr& attr, std::vector<uint64_t>* ids);
   bool ReadFeatureSectionDescriptors();
@@ -217,6 +218,7 @@ class RecordFileReader {
 
   const std::string filename_;
   FILE* record_fp_;
+  uint64_t file_size_;
 
   PerfFileFormat::FileHeader header_;
   std::vector<PerfFileFormat::FileAttr> file_attrs_;
