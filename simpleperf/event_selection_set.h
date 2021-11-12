@@ -128,6 +128,7 @@ class EventSelectionSet {
   bool NeedKernelSymbol() const;
   void SetRecordNotExecutableMaps(bool record);
   bool RecordNotExecutableMaps() const;
+  void EnableSwitchRecord();
   void WakeupPerSample();
   void SetAddrFilters(std::vector<AddrFilter>&& filters) { addr_filters_ = std::move(filters); }
   bool SetTracepointFilter(const std::string& filter);
@@ -223,6 +224,7 @@ bool IsDumpingRegsForTracepointEventsSupported();
 bool IsSettingClockIdSupported();
 bool IsMmap2Supported();
 bool IsHardwareEventSupported();
+bool IsSwitchRecordSupported();
 
 }  // namespace simpleperf
 
