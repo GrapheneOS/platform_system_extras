@@ -97,7 +97,9 @@ RecordFileReader::RecordFileReader(const std::string& filename, FILE* fp)
       record_fp_(fp),
       event_id_pos_in_sample_records_(0),
       event_id_reverse_pos_in_non_sample_records_(0),
-      read_record_size_(0) {}
+      read_record_size_(0) {
+  file_size_ = GetFileSize(filename_);
+}
 
 RecordFileReader::~RecordFileReader() {
   if (record_fp_ != nullptr) {
@@ -121,6 +123,20 @@ bool RecordFileReader::ReadHeader() {
   }
   if (memcmp(header_.magic, PERF_MAGIC, sizeof(header_.magic)) != 0) {
     LOG(ERROR) << filename_ << " is not a valid profiling record file.";
+    return false;
+  }
+  if (header_.attr_size == 0 || !CheckSectionDesc(header_.attrs, sizeof(header_)) ||
+      !CheckSectionDesc(header_.data, sizeof(header_))) {
+    LOG(ERROR) << "invalid header in " << filename_;
+    return false;
+  }
+  return true;
+}
+
+bool RecordFileReader::CheckSectionDesc(const SectionDesc& desc, uint64_t min_offset) {
+  uint64_t desc_end;
+  if (desc.offset < min_offset || __builtin_add_overflow(desc.offset, desc.size, &desc_end) ||
+      desc_end > file_size_) {
     return false;
   }
   return true;
@@ -153,6 +169,10 @@ bool RecordFileReader::ReadAttrSection() {
     size_t perf_event_attr_size = header_.attr_size - section_desc_size;
     memcpy(&attr.attr, &buf[0], std::min(sizeof(attr.attr), perf_event_attr_size));
     memcpy(&attr.ids, &buf[perf_event_attr_size], section_desc_size);
+    if (!CheckSectionDesc(attr.ids, 0)) {
+      LOG(ERROR) << "invalid attr section in " << filename_;
+      return false;
+    }
     file_attrs_.push_back(attr);
   }
   if (file_attrs_.size() > 1) {
@@ -193,17 +213,13 @@ bool RecordFileReader::ReadFeatureSectionDescriptors() {
     return false;
   }
   uint64_t min_section_data_pos = feature_section_offset + sizeof(SectionDesc) * features.size();
-  uint64_t max_section_data_pos = GetFileSize(filename_);
   for (const auto& id : features) {
     SectionDesc desc;
     if (!Read(&desc, sizeof(desc))) {
       return false;
     }
-    uint64_t desc_end;
-    if (desc.offset < min_section_data_pos ||
-        __builtin_add_overflow(desc.offset, desc.size, &desc_end) ||
-        desc_end > max_section_data_pos) {
-      LOG(ERROR) << "invalid feature section descriptor";
+    if (!CheckSectionDesc(desc, min_section_data_pos)) {
+      LOG(ERROR) << "invalid feature section descriptor in " << filename_;
       return false;
     }
     feature_section_descriptors_.emplace(id, desc);
