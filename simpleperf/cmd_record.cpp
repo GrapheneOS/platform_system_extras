@@ -1203,7 +1203,13 @@ bool RecordCommand::TraceOffCpu() {
                << android::base::Join(accepted_events, ' ');
     return false;
   }
-  return event_selection_set_.AddEventType("sched:sched_switch");
+  if (!event_selection_set_.AddEventType("sched:sched_switch")) {
+    return false;
+  }
+  if (IsSwitchRecordSupported()) {
+    event_selection_set_.EnableSwitchRecord();
+  }
+  return true;
 }
 
 bool RecordCommand::SetEventSelectionFlags() {
