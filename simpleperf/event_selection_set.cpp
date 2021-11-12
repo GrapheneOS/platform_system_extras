@@ -164,6 +164,12 @@ bool IsHardwareEventSupported() {
   return IsEventAttrSupported(attr, type->name);
 }
 
+bool IsSwitchRecordSupported() {
+  // Kernel >= 4.3 has patch "45ac1403f perf: Add PERF_RECORD_SWITCH to indicate context switches".
+  auto version = GetKernelVersion();
+  return version && version.value() >= std::make_pair(4, 3);
+}
+
 std::string AddrFilter::ToString() const {
   switch (type) {
     case FILE_RANGE:
@@ -507,6 +513,10 @@ void EventSelectionSet::SetRecordNotExecutableMaps(bool record) {
 
 bool EventSelectionSet::RecordNotExecutableMaps() const {
   return groups_[0][0].event_attr.mmap_data == 1;
+}
+
+void EventSelectionSet::EnableSwitchRecord() {
+  groups_[0][0].event_attr.context_switch = 1;
 }
 
 void EventSelectionSet::WakeupPerSample() {
