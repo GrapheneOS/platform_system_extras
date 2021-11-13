@@ -303,7 +303,8 @@ std::unique_ptr<Record> RecordReadThread::GetRecord() {
   record_buffer_.MoveToNextRecord();
   char* p = record_buffer_.GetCurrentRecord();
   if (p != nullptr) {
-    std::unique_ptr<Record> r = ReadRecordFromBuffer(attr_, p);
+    std::unique_ptr<Record> r = ReadRecordFromBuffer(attr_, p, record_buffer_.BufferEnd());
+    CHECK(r);
     if (r->type() == PERF_RECORD_AUXTRACE) {
       auto auxtrace = static_cast<AuxTraceRecord*>(r.get());
       record_buffer_.AddCurrentRecordSize(auxtrace->data->aux_size);
@@ -576,8 +577,8 @@ void RecordReadThread::PushRecordToRecordBuffer(KernelRecordReader* kernel_recor
   if (p != nullptr) {
     kernel_record_reader->ReadRecord(0, header.size, p);
     if (header.type == PERF_RECORD_AUX) {
-      AuxRecord r{attr_, p};
-      if (r.data->flags & PERF_AUX_FLAG_TRUNCATED) {
+      AuxRecord r;
+      if (r.Parse(attr_, p, p + header.size) && (r.data->flags & PERF_AUX_FLAG_TRUNCATED)) {
         // When the kernel sees aux output flagged with PERF_AUX_FLAG_TRUNCATED,
         // it sets a pending disable on the event:
         // https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/kernel/events/ring_buffer.c?h=v5.13#n516
