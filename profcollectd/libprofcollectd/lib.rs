@@ -82,7 +82,7 @@ pub fn trace_once(tag: &str) -> Result<()> {
 
 /// Process traces.
 pub fn process() -> Result<()> {
-    get_profcollectd_service()?.process(true)?;
+    get_profcollectd_service()?.process()?;
     Ok(())
 }
 
