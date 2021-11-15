@@ -25,17 +25,11 @@ namespace simpleperf {
 
 static bool IsArtEntry(const CallChainReportEntry& entry, bool* is_jni_trampoline) {
   if (entry.execution_type == CallChainExecutionType::NATIVE_METHOD) {
-    if (android::base::EndsWith(entry.dso->Path(), "/libart.so") ||
-        android::base::EndsWith(entry.dso->Path(), "/libartd.so")) {
-      *is_jni_trampoline = false;
-      return true;
-    }
-    if (strcmp(entry.symbol->Name(), "art_jni_trampoline") == 0) {
-      // art_jni_trampoline is a trampoline used to call jni methods in art runtime.
-      // We want to hide it when hiding art frames.
-      *is_jni_trampoline = true;
-      return true;
-    }
+    // art_jni_trampoline/art_quick_generic_jni_trampoline are trampolines used to call jni
+    // methods in art runtime. We want to hide them when hiding art frames.
+    *is_jni_trampoline = android::base::EndsWith(entry.symbol->Name(), "jni_trampoline");
+    return *is_jni_trampoline || android::base::EndsWith(entry.dso->Path(), "/libart.so") ||
+           android::base::EndsWith(entry.dso->Path(), "/libartd.so");
   }
   return false;
 };
