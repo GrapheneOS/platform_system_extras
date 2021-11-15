@@ -87,7 +87,7 @@ impl Scheduler {
         Ok(())
     }
 
-    pub fn process(&self, blocking: bool) -> Result<()> {
+    pub fn process(&self) -> Result<()> {
         let trace_provider = self.trace_provider.clone();
         let handle = thread::spawn(move || {
             trace_provider
@@ -96,9 +96,8 @@ impl Scheduler {
                 .process(&TRACE_OUTPUT_DIR, &PROFILE_OUTPUT_DIR)
                 .expect("Failed to process profiles.");
         });
-        if blocking {
-            handle.join().map_err(|_| anyhow!("Profile process thread panicked."))?;
-        }
+
+        handle.join().map_err(|_| anyhow!("Profile process thread panicked."))?;
         Ok(())
     }
 
