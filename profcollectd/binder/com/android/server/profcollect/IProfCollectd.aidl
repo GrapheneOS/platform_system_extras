@@ -21,7 +21,7 @@ interface IProfCollectd {
     void schedule();
     void terminate();
     void trace_once(@utf8InCpp String tag);
-    void process(boolean blocking);
+    void process();
     @utf8InCpp String report();
     void copy_report_to_bb(int bb_profile_id, @utf8InCpp String report);
     void delete_report(@utf8InCpp String report);

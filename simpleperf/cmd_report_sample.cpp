@@ -816,7 +816,7 @@ bool ReportSampleCommand::PrintSampleRecord(const SampleRecord& r,
       FprintIndented(report_fp_, 2, "file: %s\n", entries[i].dso->GetReportPath().data());
       FprintIndented(report_fp_, 2, "symbol: %s\n", entries[i].symbol->DemangledName());
       if (show_execution_type_) {
-        FprintIndented(report_fp_, 1, "execution_type: %s\n",
+        FprintIndented(report_fp_, 2, "execution_type: %s\n",
                        ProtoExecutionTypeToString(ToProtoExecutionType(entries[i].execution_type)));
       }
     }
