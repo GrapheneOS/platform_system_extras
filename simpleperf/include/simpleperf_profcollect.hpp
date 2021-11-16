@@ -18,5 +18,5 @@ extern "C" {
 
 bool HasSupport();
 bool Record(const char* event_name, const char* output, float duration);
-bool Inject(const char* traceInput, const char* profileOutput);
+bool Inject(const char* traceInput, const char* profileOutput, const char* binary_filter);
 }
