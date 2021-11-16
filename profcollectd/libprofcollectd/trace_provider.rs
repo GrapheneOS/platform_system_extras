@@ -30,7 +30,7 @@ use crate::logging_trace_provider::LoggingTraceProvider;
 pub trait TraceProvider {
     fn get_name(&self) -> &'static str;
     fn trace(&self, trace_dir: &Path, tag: &str, sampling_period: &Duration);
-    fn process(&self, trace_dir: &Path, profile_dir: &Path) -> Result<()>;
+    fn process(&self, trace_dir: &Path, profile_dir: &Path, binary_filter: &str) -> Result<()>;
 }
 
 pub fn get_trace_provider() -> Result<Arc<Mutex<dyn TraceProvider + Send>>> {

@@ -45,11 +45,14 @@ bool Record(const char* event_name, const char* output, float duration) {
   return recordCmd->Run(args);
 }
 
-bool Inject(const char* traceInput, const char* profileOutput) {
+bool Inject(const char* traceInput, const char* profileOutput, const char* binary_filter) {
   auto injectCmd = CreateCommandInstance("inject");
   std::vector<std::string> args;
   args.insert(args.end(), {"-i", traceInput});
   args.insert(args.end(), {"-o", profileOutput});
+  if (binary_filter) {
+    args.insert(args.end(), {"--binary", binary_filter});
+  }
   args.insert(args.end(), {"--output", "branch-list"});
   args.emplace_back("--exclude-perf");
   return injectCmd->Run(args);
