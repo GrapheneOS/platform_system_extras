@@ -44,7 +44,7 @@ impl TraceProvider for SimpleperfEtmTraceProvider {
         );
     }
 
-    fn process(&self, trace_dir: &Path, profile_dir: &Path) -> Result<()> {
+    fn process(&self, trace_dir: &Path, profile_dir: &Path, binary_filter: &str) -> Result<()> {
         read_dir(trace_dir)?
             .filter_map(|e| e.ok())
             .map(|e| e.path())
@@ -63,7 +63,7 @@ impl TraceProvider for SimpleperfEtmTraceProvider {
                         .ok_or_else(|| anyhow!("Malformed trace path: {}", trace_file.display()))?,
                 );
                 profile_file.set_extension(ETM_PROFILE_EXTENSION);
-                simpleperf_profcollect::process(&trace_file, &profile_file);
+                simpleperf_profcollect::process(&trace_file, &profile_file, binary_filter);
                 remove_file(&trace_file)?;
                 Ok(())
             })
