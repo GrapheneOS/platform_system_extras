@@ -593,8 +593,8 @@ TEST_F(ReportCommandTest, exclude_kernel_callchain) {
   CreateProcesses(1, &workloads);
   std::string pid = std::to_string(workloads[0]->GetPid());
   TemporaryFile tmpfile;
-  ASSERT_TRUE(RecordCmd()->Run({"--trace-offcpu", "-e", "cpu-cycles:u", "-p", pid, "--duration",
-                                "2", "-o", tmpfile.path, "-g"}));
+  ASSERT_TRUE(RecordCmd()->Run({"--trace-offcpu", "-e", "cpu-clock:u", "-p", pid, "--duration", "2",
+                                "-o", tmpfile.path, "-g"}));
   ReportRaw(tmpfile.path, {"-g"});
   ASSERT_TRUE(success);
   ASSERT_EQ(content.find("[kernel.kallsyms]"), std::string::npos);
