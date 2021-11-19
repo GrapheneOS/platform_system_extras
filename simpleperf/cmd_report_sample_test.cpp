@@ -17,6 +17,8 @@
 #include <gtest/gtest.h>
 
 #include <android-base/file.h>
+#include <android-base/strings.h>
+#include <regex>
 
 #include "command.h"
 #include "get_test_data.h"
@@ -86,13 +88,22 @@ TEST(cmd_report_sample, has_thread_record) {
 
 TEST(cmd_report_sample, trace_offcpu) {
   std::string data;
-  GetProtobufReport(PERF_DATA_WITH_TRACE_OFFCPU, &data);
+  GetProtobufReport("perf_with_trace_offcpu_v2.data", &data);
   ASSERT_NE(data.find("event_type: sched:sched_switch"), std::string::npos);
+  ASSERT_NE(data.find("trace_offcpu: true"), std::string::npos);
+  std::vector<std::vector<std::string>> cases = {
+      {"context_switch:", "switch_on: true", "time: 676374949239318", "thread_id: 6525"},
+      {"context_switch:", "switch_on: false", "time: 676374953363850", "thread_id: 6525"},
+  };
+  for (auto& test_case : cases) {
+    auto pattern = std::regex(android::base::Join(test_case, R"((\s|\n|\r)+)"));
+    ASSERT_TRUE(std::regex_search(data, pattern));
+  }
 }
 
 TEST(cmd_report_sample, have_clear_callchain_end_in_protobuf_output) {
   std::string data;
-  GetProtobufReport(PERF_DATA_WITH_TRACE_OFFCPU, &data, {"--show-callchain"});
+  GetProtobufReport("perf_with_trace_offcpu_v2.data", &data, {"--show-callchain"});
   ASSERT_NE(data.find("__libc_init"), std::string::npos);
   ASSERT_EQ(data.find("_start_main"), std::string::npos);
 }
