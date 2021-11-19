@@ -170,6 +170,7 @@ class ReportSampleCommand : public Command {
   bool PrintSampleRecordInProtobuf(const SampleRecord& record,
                                    const std::vector<CallChainReportEntry>& entries);
   void AddUnwindingResultInProtobuf(proto::Sample_UnwindingResult* proto_unwinding_result);
+  bool ProcessSwitchRecord(Record* r);
   bool WriteRecordInProtobuf(proto::Record& proto_record);
   bool PrintLostSituationInProtobuf();
   bool PrintFileInfoInProtobuf();
@@ -455,20 +456,31 @@ bool ReportSampleCommand::DumpProtobufReport(const std::string& filename) {
         FprintIndented(report_fp_, 1, "event_type: %s\n", meta_info.event_type(i).c_str());
       }
       if (meta_info.has_app_package_name()) {
-        FprintIndented(report_fp_, 0, "app_package_name: %s\n",
+        FprintIndented(report_fp_, 1, "app_package_name: %s\n",
                        meta_info.app_package_name().c_str());
       }
       if (meta_info.has_app_type()) {
-        FprintIndented(report_fp_, 0, "app_type: %s\n", meta_info.app_type().c_str());
+        FprintIndented(report_fp_, 1, "app_type: %s\n", meta_info.app_type().c_str());
       }
       if (meta_info.has_android_sdk_version()) {
-        FprintIndented(report_fp_, 0, "android_sdk_version: %s\n",
+        FprintIndented(report_fp_, 1, "android_sdk_version: %s\n",
                        meta_info.android_sdk_version().c_str());
       }
       if (meta_info.has_android_build_type()) {
-        FprintIndented(report_fp_, 0, "android_build_type: %s\n",
+        FprintIndented(report_fp_, 1, "android_build_type: %s\n",
                        meta_info.android_build_type().c_str());
       }
+      if (meta_info.has_trace_offcpu()) {
+        FprintIndented(report_fp_, 1, "trace_offcpu: %s\n",
+                       meta_info.trace_offcpu() ? "true" : "false");
+      }
+    } else if (proto_record.has_context_switch()) {
+      auto& context_switch = proto_record.context_switch();
+      FprintIndented(report_fp_, 0, "context_switch:\n");
+      FprintIndented(report_fp_, 1, "switch_on: %s\n",
+                     context_switch.switch_on() ? "true" : "false");
+      FprintIndented(report_fp_, 1, "time: %" PRIu64 "\n", context_switch.time());
+      FprintIndented(report_fp_, 1, "thread_id: %u\n", context_switch.thread_id());
     } else {
       LOG(ERROR) << "unexpected record type ";
       return false;
@@ -497,6 +509,15 @@ bool ReportSampleCommand::OpenRecordFile() {
   auto& meta_info = record_file_reader_->GetMetaInfoFeature();
   if (auto it = meta_info.find("trace_offcpu"); it != meta_info.end()) {
     trace_offcpu_ = it->second == "true";
+    if (trace_offcpu_) {
+      std::string event_name = GetEventNameByAttr(*record_file_reader_->AttrSection()[0].attr);
+      if (!android::base::StartsWith(event_name, "cpu-clock") &&
+          !android::base::StartsWith(event_name, "task-clock")) {
+        LOG(ERROR) << "Recording file " << record_filename_ << " is no longer supported. "
+                   << "--trace-offcpu must be used with `-e cpu-clock` or `-e task-clock`.";
+        return false;
+      }
+    }
   }
   if (auto it = meta_info.find("kernel_symbols_available"); it != meta_info.end()) {
     kernel_symbols_available_ = it->second == "true";
@@ -540,6 +561,7 @@ bool ReportSampleCommand::PrintMetaInfo() {
     if (!android_build_type.empty()) {
       proto_meta_info->set_android_build_type(android_build_type);
     }
+    proto_meta_info->set_trace_offcpu(trace_offcpu_);
     return WriteRecordInProtobuf(proto_record);
   }
   FprintIndented(report_fp_, 0, "meta_info:\n");
@@ -577,6 +599,12 @@ bool ReportSampleCommand::ProcessRecord(std::unique_ptr<Record> record) {
     }
     case PERF_RECORD_LOST: {
       lost_count_ += static_cast<const LostRecord*>(record.get())->lost;
+      break;
+    }
+    case PERF_RECORD_SWITCH:
+      [[fallthrough]];
+    case PERF_RECORD_SWITCH_CPU_WIDE: {
+      result = ProcessSwitchRecord(record.get());
       break;
     }
   }
@@ -715,6 +743,25 @@ void ReportSampleCommand::AddUnwindingResultInProtobuf(
       break;
   }
   proto_unwinding_result->set_error_code(error_code);
+}
+
+bool ReportSampleCommand::ProcessSwitchRecord(Record* r) {
+  bool switch_on = !(r->header.misc & PERF_RECORD_MISC_SWITCH_OUT);
+  uint64_t time = r->Timestamp();
+  uint32_t tid = r->sample_id.tid_data.tid;
+  if (use_protobuf_) {
+    proto::Record proto_record;
+    proto::ContextSwitch* proto_switch = proto_record.mutable_context_switch();
+    proto_switch->set_switch_on(switch_on);
+    proto_switch->set_time(time);
+    proto_switch->set_thread_id(tid);
+    return WriteRecordInProtobuf(proto_record);
+  }
+  FprintIndented(report_fp_, 0, "context_switch:\n");
+  FprintIndented(report_fp_, 1, "switch_on: %s\n", switch_on ? "true" : "false");
+  FprintIndented(report_fp_, 1, "time: %" PRIu64 "\n", time);
+  FprintIndented(report_fp_, 1, "thread_id: %u\n", tid);
+  return true;
 }
 
 bool ReportSampleCommand::WriteRecordInProtobuf(proto::Record& proto_record) {
