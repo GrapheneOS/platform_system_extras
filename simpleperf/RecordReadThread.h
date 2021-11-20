@@ -41,6 +41,7 @@ class RecordBuffer {
  public:
   RecordBuffer(size_t buffer_size);
   size_t size() const { return buffer_size_; }
+  char* BufferEnd() const { return buffer_.get() + buffer_size_; }
 
   // Return the size of writable space in the buffer.
   size_t GetFreeSize() const;
