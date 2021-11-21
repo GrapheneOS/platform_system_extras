@@ -354,7 +354,12 @@ std::unique_ptr<Record> RecordFileReader::ReadRecord() {
       }
     }
   }
-  auto r = ReadRecordFromOwnedBuffer(*attr, header.type, p.release());
+  auto r = ReadRecordFromBuffer(*attr, header.type, p.get(), p.get() + header.size);
+  if (!r) {
+    return nullptr;
+  }
+  p.release();
+  r->OwnBinary();
   if (r->type() == PERF_RECORD_AUXTRACE) {
     auto auxtrace = static_cast<AuxTraceRecord*>(r.get());
     auxtrace->location.file_offset = header_.data.offset + read_record_size_;
@@ -456,18 +461,24 @@ std::vector<std::string> RecordFileReader::ReadCmdlineFeature() {
 std::vector<BuildIdRecord> RecordFileReader::ReadBuildIdFeature() {
   std::vector<char> buf;
   if (!ReadFeatureSection(FEAT_BUILD_ID, &buf)) {
-    return std::vector<BuildIdRecord>();
+    return {};
   }
   const char* p = buf.data();
   const char* end = buf.data() + buf.size();
   std::vector<BuildIdRecord> result;
   while (p < end) {
     auto header = reinterpret_cast<const perf_event_header*>(p);
-    CHECK_LE(p + header->size, end);
-    char* binary = new char[header->size];
-    memcpy(binary, p, header->size);
+    if (p + header->size > end) {
+      return {};
+    }
+    std::unique_ptr<char[]> binary(new char[header->size]);
+    memcpy(binary.get(), p, header->size);
     p += header->size;
-    BuildIdRecord record(binary);
+    BuildIdRecord record;
+    if (!record.Parse(file_attrs_[0].attr, binary.get(), binary.get() + header->size)) {
+      return {};
+    }
+    binary.release();
     record.OwnBinary();
     // Set type explicitly as the perf.data produced by perf doesn't set it.
     record.SetTypeAndMisc(PERF_RECORD_BUILD_ID, record.misc());
@@ -739,7 +750,10 @@ bool RecordFileReader::BuildAuxDataLocation() {
     if (!ReadAtOffset(offset, buf.get(), AuxTraceRecord::Size())) {
       return false;
     }
-    AuxTraceRecord auxtrace(buf.get());
+    AuxTraceRecord auxtrace;
+    if (!auxtrace.Parse(file_attrs_[0].attr, buf.get(), buf.get() + AuxTraceRecord::Size())) {
+      return false;
+    }
     aux_data_location_[auxtrace.data->cpu].emplace_back(
         auxtrace.data->offset, auxtrace.data->aux_size, offset + auxtrace.size());
   }
