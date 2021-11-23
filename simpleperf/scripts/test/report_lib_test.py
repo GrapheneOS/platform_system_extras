@@ -22,17 +22,18 @@ class TestReportLib(TestBase):
     def setUp(self):
         super(TestReportLib, self).setUp()
         self.report_lib = ReportLib()
-        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_symbols.data'))
 
     def tearDown(self):
         self.report_lib.Close()
         super(TestReportLib, self).tearDown()
 
     def test_build_id(self):
+        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_symbols.data'))
         build_id = self.report_lib.GetBuildIdForPath('/data/t2')
         self.assertEqual(build_id, '0x70f1fe24500fc8b0d9eb477199ca1ca21acca4de')
 
     def test_symbol(self):
+        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_symbols.data'))
         found_func2 = False
         while self.report_lib.GetNextSample():
             symbol = self.report_lib.GetSymbolOfCurrentSample()
@@ -43,6 +44,7 @@ class TestReportLib(TestBase):
         self.assertTrue(found_func2)
 
     def test_sample(self):
+        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_symbols.data'))
         found_sample = False
         while self.report_lib.GetNextSample():
             sample = self.report_lib.GetCurrentSample()
@@ -60,12 +62,12 @@ class TestReportLib(TestBase):
         self.assertTrue(found_sample)
 
     def test_meta_info(self):
-        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_trace_offcpu.data'))
+        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_trace_offcpu_v2.data'))
         meta_info = self.report_lib.MetaInfo()
         self.assertTrue("simpleperf_version" in meta_info)
         self.assertEqual(meta_info["system_wide_collection"], "false")
         self.assertEqual(meta_info["trace_offcpu"], "true")
-        self.assertEqual(meta_info["event_type_info"], "cpu-cycles,0,0\nsched:sched_switch,2,47")
+        self.assertEqual(meta_info["event_type_info"], "cpu-clock,1,0\nsched:sched_switch,2,91")
         self.assertTrue("product_props" in meta_info)
 
     def test_event_name_from_meta_info(self):
@@ -77,16 +79,19 @@ class TestReportLib(TestBase):
         self.assertTrue('cpu-cycles' in event_names)
 
     def test_record_cmd(self):
-        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_trace_offcpu.data'))
+        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_trace_offcpu_v2.data'))
         self.assertEqual(self.report_lib.GetRecordCmd(),
-                         "/data/local/tmp/simpleperf record --trace-offcpu --duration 2 -g " +
-                         "./simpleperf_runtest_run_and_sleep64")
+                         '/data/user/0/com.google.samples.apps.sunflower/simpleperf record ' +
+                         '--app com.google.samples.apps.sunflower --add-meta-info ' +
+                         'app_type=debuggable --in-app --tracepoint-events ' +
+                         '/data/local/tmp/tracepoint_events --out-fd 3 --stop-signal-fd 4 -g ' +
+                         '--size-limit 500k --trace-offcpu -e cpu-clock:u')
 
     def test_offcpu(self):
-        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_trace_offcpu.data'))
+        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_trace_offcpu_v2.data'))
         total_period = 0
         sleep_function_period = 0
-        sleep_function_name = "SleepFunction(unsigned long long)"
+        sleep_function_name = "__epoll_pwait"
         while self.report_lib.GetNextSample():
             sample = self.report_lib.GetCurrentSample()
             total_period += sample.period
@@ -98,7 +103,7 @@ class TestReportLib(TestBase):
                 if callchain.entries[i].symbol.symbol_name == sleep_function_name:
                     sleep_function_period += sample.period
                     break
-            self.assertEqual(self.report_lib.GetEventOfCurrentSample().name, 'cpu-cycles')
+            self.assertEqual(self.report_lib.GetEventOfCurrentSample().name, 'cpu-clock:u')
         sleep_percentage = float(sleep_function_period) / total_period
         self.assertGreater(sleep_percentage, 0.30)
 
@@ -200,3 +205,66 @@ class TestReportLib(TestBase):
             self.report_lib.AddProguardMappingFile('non_exist_file')
         proguard_mapping_file = TestHelper.testdata_path('proguard_mapping.txt')
         self.report_lib.AddProguardMappingFile(proguard_mapping_file)
+
+    def test_set_trace_offcpu_mode(self):
+        # GetSupportedTraceOffCpuModes() before SetRecordFile() triggers RuntimeError.
+        with self.assertRaises(RuntimeError):
+            self.report_lib.GetSupportedTraceOffCpuModes()
+        # SetTraceOffCpuModes() before SetRecordFile() triggers RuntimeError.
+        with self.assertRaises(RuntimeError):
+            self.report_lib.SetTraceOffCpuMode('on-cpu')
+
+        mode_dict = {
+            'on-cpu': {
+                'cpu-clock:u': (208, 52000000),
+                'sched:sched_switch': (0, 0),
+            },
+            'off-cpu': {
+                'cpu-clock:u': (0, 0),
+                'sched:sched_switch': (91, 344124304),
+            },
+            'on-off-cpu': {
+                'cpu-clock:u': (208, 52000000),
+                'sched:sched_switch': (91, 344124304),
+            },
+            'mixed-on-off-cpu': {
+                'cpu-clock:u': (299, 396124304),
+                'sched:sched_switch': (0, 0),
+            },
+        }
+
+        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_with_trace_offcpu_v2.data'))
+        self.assertEqual(set(self.report_lib.GetSupportedTraceOffCpuModes()), set(mode_dict.keys()))
+        for mode, expected_values in mode_dict.items():
+            self.report_lib.Close()
+            self.report_lib = ReportLib()
+            self.report_lib.SetRecordFile(
+                TestHelper.testdata_path('perf_with_trace_offcpu_v2.data'))
+            self.report_lib.SetTraceOffCpuMode(mode)
+
+            cpu_clock_period = 0
+            cpu_clock_samples = 0
+            sched_switch_period = 0
+            sched_switch_samples = 0
+            while self.report_lib.GetNextSample():
+                sample = self.report_lib.GetCurrentSample()
+                event = self.report_lib.GetEventOfCurrentSample()
+                if event.name == 'cpu-clock:u':
+                    cpu_clock_period += sample.period
+                    cpu_clock_samples += 1
+                else:
+                    self.assertEqual(event.name, 'sched:sched_switch')
+                    sched_switch_period += sample.period
+                    sched_switch_samples += 1
+            self.assertEqual(cpu_clock_samples, expected_values['cpu-clock:u'][0])
+            self.assertEqual(cpu_clock_period, expected_values['cpu-clock:u'][1])
+            self.assertEqual(sched_switch_samples, expected_values['sched:sched_switch'][0])
+            self.assertEqual(sched_switch_period, expected_values['sched:sched_switch'][1])
+
+        # Check trace-offcpu modes on a profile not recorded with --trace-offcpu.
+        self.report_lib.Close()
+        self.report_lib = ReportLib()
+        self.report_lib.SetRecordFile(TestHelper.testdata_path('perf.data'))
+        self.assertEqual(self.report_lib.GetSupportedTraceOffCpuModes(), [])
+        with self.assertRaises(RuntimeError):
+            self.report_lib.SetTraceOffCpuMode('on-cpu')
