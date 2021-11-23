@@ -34,10 +34,10 @@ class TestStackCollapse(TestBase):
     def test_kernel_annotations(self):
         got = self.run_cmd([
             'stackcollapse.py',
-            '-i', TestHelper.testdata_path('perf_with_trace_offcpu.data'),
+            '-i', TestHelper.testdata_path('perf_with_jit_symbol.data'),
             '--kernel',
         ], return_output=True)
-        golden_path = TestHelper.testdata_path('perf_with_trace_offcpu.foldedstack')
+        golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack_with_kernel')
         self.assertEqual(got, Path(golden_path).read_text())
 
     def test_with_pid(self):
