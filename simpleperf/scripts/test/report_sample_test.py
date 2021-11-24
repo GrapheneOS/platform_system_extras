@@ -16,52 +16,60 @@
 
 from . test_utils import TestBase, TestHelper
 
+
 class TestReportSample(TestBase):
 
-  def test_no_flags(self):
-    got = self.run_cmd(
-        ['report_sample.py',
-         '-i',
-         TestHelper.testdata_path('perf_display_bitmaps.data')],
-        return_output=True)
-    with open(TestHelper.testdata_path('perf_display_bitmaps.perf-script')) as f:
-      want = f.read()
-    self.assertEqual(got, want)
+    def test_no_flags(self):
+        got = self.run_cmd(
+            ['report_sample.py',
+             '-i',
+             TestHelper.testdata_path('perf_display_bitmaps.data')],
+            return_output=True)
+        with open(TestHelper.testdata_path('perf_display_bitmaps.perf-script')) as f:
+            want = f.read()
+        self.assertEqual(got, want)
 
-  def test_comm_filter_to_renderthread(self):
-    got = self.run_cmd(
-        ['report_sample.py',
-         '-i',
-         TestHelper.testdata_path('perf_display_bitmaps.data'),
-         '--comm', 'RenderThread'],
-        return_output=True)
-    self.assertIn('RenderThread', got)
-    self.assertNotIn('com.example.android.displayingbitmaps', got)
+    def test_comm_filter_to_renderthread(self):
+        got = self.run_cmd(
+            ['report_sample.py',
+             '-i',
+             TestHelper.testdata_path('perf_display_bitmaps.data'),
+             '--comm', 'RenderThread'],
+            return_output=True)
+        self.assertIn('RenderThread', got)
+        self.assertNotIn('com.example.android.displayingbitmaps', got)
 
-    with open(TestHelper.testdata_path('perf_display_bitmaps.RenderThread.perf-script')) as f:
-      want = f.read()
-    self.assertEqual(got, want)
+        with open(TestHelper.testdata_path('perf_display_bitmaps.RenderThread.perf-script')) as f:
+            want = f.read()
+        self.assertEqual(got, want)
 
-  def test_comm_filter_to_ui_thread(self):
-    got = self.run_cmd(
-        ['report_sample.py',
-         '-i',
-         TestHelper.testdata_path('perf_display_bitmaps.data'),
-         '--comm', 'com.example.android.displayingbitmaps'],
-        return_output=True)
-    self.assertIn('com.example.android.displayingbitmaps', got)
-    self.assertNotIn('RenderThread', got)
-    with open(TestHelper.testdata_path('perf_display_bitmaps.UiThread.perf-script')) as f:
-      want = f.read()
-    self.assertEqual(got, want)
+    def test_comm_filter_to_ui_thread(self):
+        got = self.run_cmd(
+            ['report_sample.py',
+             '-i',
+             TestHelper.testdata_path('perf_display_bitmaps.data'),
+             '--comm', 'com.example.android.displayingbitmaps'],
+            return_output=True)
+        self.assertIn('com.example.android.displayingbitmaps', got)
+        self.assertNotIn('RenderThread', got)
+        with open(TestHelper.testdata_path('perf_display_bitmaps.UiThread.perf-script')) as f:
+            want = f.read()
+        self.assertEqual(got, want)
 
-  def test_header(self):
-    got = self.run_cmd(
-        ['report_sample.py',
-         '-i',
-         TestHelper.testdata_path('perf_display_bitmaps.data'),
-         '--header'],
-        return_output=True)
-    with open(TestHelper.testdata_path('perf_display_bitmaps.header.perf-script')) as f:
-      want = f.read()
-    self.assertEqual(got, want)
+    def test_header(self):
+        got = self.run_cmd(
+            ['report_sample.py',
+             '-i',
+             TestHelper.testdata_path('perf_display_bitmaps.data'),
+             '--header'],
+            return_output=True)
+        with open(TestHelper.testdata_path('perf_display_bitmaps.header.perf-script')) as f:
+            want = f.read()
+        self.assertEqual(got, want)
+
+    def test_trace_offcpu(self):
+        got = self.run_cmd(
+            ['report_sample.py', '-i', TestHelper.testdata_path('perf_with_trace_offcpu_v2.data'),
+             '--trace-offcpu', 'on-cpu'], return_output=True)
+        self.assertIn('cpu-clock:u', got)
+        self.assertNotIn('sched:sched_switch', got)
