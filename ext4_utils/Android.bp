@@ -72,13 +72,9 @@ python_binary_host {
     ],
 
     version: {
-        py2: {
+        py3: {
             enabled: true,
             embedded_launcher: true,
-        },
-        py3: {
-            enabled: false,
-            embedded_launcher: false,
         },
     },
 
