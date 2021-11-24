@@ -180,3 +180,29 @@ class TestReportHtml(TestBase):
                     found = True
                     break
             self.assertTrue(found, item)
+
+    def test_trace_offcpu(self):
+        """ Test --trace-offcpu option. """
+        testdata_file = TestHelper.testdata_path('perf_with_trace_offcpu_v2.data')
+        record_data = self.get_record_data(['-i', testdata_file, '--trace-offcpu', 'on-cpu'])
+        self.assertEqual(len(record_data['sampleInfo']), 1)
+        self.assertEqual(record_data['sampleInfo'][0]['eventName'], 'cpu-clock:u')
+        self.assertEqual(record_data['sampleInfo'][0]['eventCount'], 52000000)
+
+        record_data = self.get_record_data(['-i', testdata_file, '--trace-offcpu', 'off-cpu'])
+        self.assertEqual(len(record_data['sampleInfo']), 1)
+        self.assertEqual(record_data['sampleInfo'][0]['eventName'], 'sched:sched_switch')
+        self.assertEqual(record_data['sampleInfo'][0]['eventCount'], 344124304)
+
+        record_data = self.get_record_data(['-i', testdata_file, '--trace-offcpu', 'on-off-cpu'])
+        self.assertEqual(len(record_data['sampleInfo']), 2)
+        self.assertEqual(record_data['sampleInfo'][0]['eventName'], 'cpu-clock:u')
+        self.assertEqual(record_data['sampleInfo'][0]['eventCount'], 52000000)
+        self.assertEqual(record_data['sampleInfo'][1]['eventName'], 'sched:sched_switch')
+        self.assertEqual(record_data['sampleInfo'][1]['eventCount'], 344124304)
+
+        record_data = self.get_record_data(
+            ['-i', testdata_file, '--trace-offcpu', 'mixed-on-off-cpu'])
+        self.assertEqual(len(record_data['sampleInfo']), 1)
+        self.assertEqual(record_data['sampleInfo'][0]['eventName'], 'cpu-clock:u')
+        self.assertEqual(record_data['sampleInfo'][0]['eventCount'], 396124304)
