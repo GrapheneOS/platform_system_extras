@@ -38,3 +38,10 @@ class TestInferno(TestBase):
         # Show original method name with proguard mapping file.
         self.assertIn(original_methodname, self.get_report(
             ['--record_file', testdata_file, '-sc', '--proguard-mapping-file', proguard_mapping_file]))
+
+    def test_trace_offcpu(self):
+        """ Test --trace-offcpu option. """
+        testdata_file = TestHelper.testdata_path('perf_with_trace_offcpu_v2.data')
+        report = self.get_report(['--record_file', testdata_file,
+                                  '-sc', '--trace-offcpu', 'off-cpu'])
+        self.assertIn('Thread 6525 (com.google.samples.apps.sunflower) (42 samples)', report)

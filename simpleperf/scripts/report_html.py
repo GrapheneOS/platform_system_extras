@@ -137,7 +137,8 @@ class ProcessScope(object):
         result = {}
         result['pid'] = self.pid
         result['eventCount'] = self.event_count
-        threads = sorted(self.threads.values(), key=lambda a: a.event_count, reverse=True)
+        # Sorting threads by sample count is better for profiles recorded with --trace-offcpu.
+        threads = sorted(self.threads.values(), key=lambda a: a.sample_count, reverse=True)
         result['threads'] = [thread.get_sample_info(gen_addr_hit_map)
                              for thread in threads]
         return result
@@ -604,11 +605,13 @@ class RecordData(object):
     def __init__(
             self, binary_cache_path: Optional[str],
             ndk_path: Optional[str],
-            build_addr_hit_map: bool, proguard_mapping_files: Optional[List[str]] = None):
+            build_addr_hit_map: bool, proguard_mapping_files: Optional[List[str]],
+            trace_offcpu: Optional[str]):
         self.binary_cache_path = binary_cache_path
         self.ndk_path = ndk_path
         self.build_addr_hit_map = build_addr_hit_map
         self.proguard_mapping_files = proguard_mapping_files
+        self.trace_offcpu = trace_offcpu
         self.meta_info: Optional[Dict[str, str]] = None
         self.cmdline: Optional[str] = None
         self.arch: Optional[str] = None
@@ -632,6 +635,8 @@ class RecordData(object):
             lib.SetSymfs(self.binary_cache_path)
         for file_path in self.proguard_mapping_files or []:
             lib.AddProguardMappingFile(file_path)
+        if self.trace_offcpu:
+            lib.SetTraceOffCpuMode(self.trace_offcpu)
         self.meta_info = lib.MetaInfo()
         self.cmdline = lib.GetRecordCmd()
         self.arch = lib.GetArch()
@@ -987,6 +992,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         '--proguard-mapping-file', nargs='+',
         help='Add proguard mapping file to de-obfuscate symbols')
+    parser.add_trace_offcpu_option()
     return parser.parse_args()
 
 
@@ -1013,7 +1019,7 @@ def main():
 
     # 2. Produce record data.
     record_data = RecordData(binary_cache_path, ndk_path,
-                             build_addr_hit_map, args.proguard_mapping_file)
+                             build_addr_hit_map, args.proguard_mapping_file, args.trace_offcpu)
     for record_file in args.record_file:
         record_data.load_record_file(record_file, args.show_art_frames)
     if args.aggregate_by_thread_name:
