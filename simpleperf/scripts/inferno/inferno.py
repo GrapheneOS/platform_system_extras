@@ -42,7 +42,8 @@ import sys
 SCRIPTS_PATH = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.append(SCRIPTS_PATH)
 from simpleperf_report_lib import ReportLib
-from simpleperf_utils import log_exit, log_fatal, AdbHelper, open_report_in_browser
+from simpleperf_utils import (log_exit, log_fatal, AdbHelper, open_report_in_browser,
+                              BaseArgumentParser)
 
 from data_types import Process
 from svg_renderer import get_proper_scaled_time_string, render_svg
@@ -114,6 +115,8 @@ def parse_samples(process, args, sample_filter_fn):
         lib.ShowArtFrames(True)
     for file_path in args.proguard_mapping_file or []:
         lib.AddProguardMappingFile(file_path)
+    if args.trace_offcpu:
+        lib.SetTraceOffCpuMode(args.trace_offcpu)
     process.cmd = lib.GetRecordCmd()
     product_props = lib.MetaInfo().get("product_props")
     if product_props:
@@ -251,8 +254,8 @@ def collect_machine_info(process):
 def main():
     # Allow deep callchain with length >1000.
     sys.setrecursionlimit(1500)
-    parser = argparse.ArgumentParser(description="""Report samples in perf.data. Default option
-                                                    is: "-np surfaceflinger -f 6000 -t 10".""")
+    parser = BaseArgumentParser(description="""Report samples in perf.data. Default option
+                                               is: "-np surfaceflinger -f 6000 -t 10".""")
     record_group = parser.add_argument_group('Record options')
     record_group.add_argument('-du', '--dwarf_unwinding', action='store_true', help="""Perform
                               unwinding using dwarf instead of fp.""")
@@ -312,6 +315,7 @@ def main():
                               help='Show frames of internal methods in the ART Java interpreter.')
     report_group.add_argument('--proguard-mapping-file', nargs='+',
                               help='Add proguard mapping file to de-obfuscate symbols')
+    parser.add_trace_offcpu_option(report_group)
 
     debug_group = parser.add_argument_group('Debug options')
     debug_group.add_argument('--disable_adb_root', action='store_true', help="""Force adb to run
