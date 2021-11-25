@@ -56,6 +56,8 @@ pub struct Config {
     pub sampling_period: Duration,
     /// An optional filter to limit which binaries to or not to profile.
     pub binary_filter: String,
+    /// Maximum size of the trace directory.
+    pub max_trace_limit: u64,
 }
 
 impl Config {
@@ -70,6 +72,10 @@ impl Config {
             )?),
             sampling_period: Duration::from_millis(get_device_config("sampling_period", 500)?),
             binary_filter: get_device_config("binary_filter", "".to_string())?,
+            max_trace_limit: get_device_config(
+                "max_trace_limit",
+                /* 512MB */ 512 * 1024 * 1024,
+            )?,
         })
     }
 }
