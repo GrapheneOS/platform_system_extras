@@ -20,29 +20,32 @@
 
 from simpleperf_report_lib import ReportLib
 from simpleperf_utils import BaseArgumentParser, flatten_arg_list
-from typing import List, Set
+from typing import List, Set, Optional
 
 
 def report_sample(
-    record_file : str,
-    symfs_dir : str,
-    kallsyms_file: str,
-    show_tracing_data : bool,
-    proguard_mapping_file : List[str],
-    header : bool,
-    comm_filter : Set[str]):
+        record_file: str,
+        symfs_dir: str,
+        kallsyms_file: str,
+        show_tracing_data: bool,
+        proguard_mapping_file: List[str],
+        header: bool,
+        comm_filter: Set[str],
+        trace_offcpu: Optional[str]):
     """ read record_file, and print each sample"""
     lib = ReportLib()
 
     lib.ShowIpForUnknownSymbol()
     for file_path in proguard_mapping_file:
-      lib.AddProguardMappingFile(file_path)
+        lib.AddProguardMappingFile(file_path)
     if symfs_dir is not None:
         lib.SetSymfs(symfs_dir)
     if record_file is not None:
         lib.SetRecordFile(record_file)
     if kallsyms_file is not None:
         lib.SetKallsymsFile(kallsyms_file)
+    if trace_offcpu:
+        lib.SetTraceOffCpuMode(trace_offcpu)
 
     if header:
         print("# ========")
@@ -59,8 +62,8 @@ def report_sample(
             lib.Close()
             break
         if comm_filter:
-          if sample.thread_comm not in comm_filter:
-            continue
+            if sample.thread_comm not in comm_filter:
+                continue
         event = lib.GetEventOfCurrentSample()
         symbol = lib.GetSymbolOfCurrentSample()
         callchain = lib.GetCallChainOfCurrentSample()
@@ -68,8 +71,8 @@ def report_sample(
         sec = sample.time // 1000000000
         usec = (sample.time - sec * 1000000000) // 1000
         print('%s\t%d/%d [%03d] %d.%06d: %d %s:' % (sample.thread_comm,
-                                                       sample.pid, sample.tid, sample.cpu, sec,
-                                                       usec, sample.period, event.name))
+                                                    sample.pid, sample.tid, sample.cpu, sec,
+                                                    usec, sample.period, event.name))
         print('\t%16x %s (%s)' % (sample.ip, symbol.symbol_name, symbol.dso_name))
         for i in range(callchain.nr):
             entry = callchain.entries[i]
@@ -99,6 +102,7 @@ def main():
                         help='Show metadata header, like perf script --header')
     parser.add_argument('--comm', nargs='+', action='append', help="""
         Use samples only in threads with selected names.""")
+    parser.add_trace_offcpu_option()
     args = parser.parse_args()
     report_sample(
         record_file=args.record_file,
@@ -107,7 +111,8 @@ def main():
         show_tracing_data=args.show_tracing_data,
         proguard_mapping_file=args.proguard_mapping_file,
         header=args.header,
-        comm_filter=set(flatten_arg_list(args.comm)))
+        comm_filter=set(flatten_arg_list(args.comm)),
+        trace_offcpu=args.trace_offcpu)
 
 
 if __name__ == '__main__':

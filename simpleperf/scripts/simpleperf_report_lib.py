@@ -257,6 +257,10 @@ class ReportLib(object):
         self._MergeJavaMethodsFunc = self._lib.MergeJavaMethods
         self._AddProguardMappingFileFunc = self._lib.AddProguardMappingFile
         self._AddProguardMappingFileFunc.restype = ct.c_bool
+        self._GetSupportedTraceOffCpuModesFunc = self._lib.GetSupportedTraceOffCpuModes
+        self._GetSupportedTraceOffCpuModesFunc.restype = ct.c_char_p
+        self._SetTraceOffCpuModeFunc = self._lib.SetTraceOffCpuMode
+        self._SetTraceOffCpuModeFunc.restype = ct.c_bool
         self._GetNextSampleFunc = self._lib.GetNextSample
         self._GetNextSampleFunc.restype = ct.POINTER(SampleStruct)
         self._GetEventOfCurrentSampleFunc = self._lib.GetEventOfCurrentSample
@@ -333,6 +337,28 @@ class ReportLib(object):
         """ Set the file path to a copy of the /proc/kallsyms file (for off device decoding) """
         cond: bool = self._SetKallsymsFileFunc(self.getInstance(), _char_pt(kallsym_file))
         _check(cond, 'Failed to set kallsyms file')
+
+    def GetSupportedTraceOffCpuModes(self) -> List[str]:
+        """ Get trace-offcpu modes supported by the recording file. It should be called after
+            SetRecordFile(). The modes are only available for profiles recorded with --trace-offcpu
+            option. All possible modes are:
+              on-cpu:           report on-cpu samples with period representing time spent on cpu
+              off-cpu:          report off-cpu samples with period representing time spent off cpu
+              on-off-cpu:       report both on-cpu samples and off-cpu samples, which can be split
+                                by event name.
+              mixed-on-off-cpu: report on-cpu and off-cpu samples under the same event name.
+        """
+        modes_str = self._GetSupportedTraceOffCpuModesFunc(self.getInstance())
+        _check(not _is_null(modes_str), 'Failed to call GetSupportedTraceOffCpuModes()')
+        modes_str = _char_pt_to_str(modes_str)
+        return modes_str.split(',') if modes_str else []
+
+    def SetTraceOffCpuMode(self, mode: str):
+        """ Set trace-offcpu mode. It should be called after SetRecordFile(). The mode should be
+            one of the modes returned by GetSupportedTraceOffCpuModes().
+        """
+        res: bool = self._SetTraceOffCpuModeFunc(self.getInstance(), _char_pt(mode))
+        _check(res, f'Failed to call SetTraceOffCpuMode({mode})')
 
     def GetNextSample(self) -> Optional[SampleStruct]:
         """ Return the next sample. If no more samples, return None. """
