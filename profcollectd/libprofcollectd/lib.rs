@@ -91,6 +91,12 @@ pub fn report() -> Result<String> {
     Ok(get_profcollectd_service()?.report()?)
 }
 
+/// Clear all local data.
+pub fn reset() -> Result<()> {
+    config::clear_data()?;
+    Ok(())
+}
+
 /// Inits logging for Android
 pub fn init_logging() {
     let min_log_level = if cfg!(feature = "test") { log::Level::Info } else { log::Level::Error };
