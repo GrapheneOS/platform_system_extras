@@ -442,64 +442,74 @@ $ simpleperf record -p 11904 --call-graph fp --duration 10
 
 ### Record both on CPU time and off CPU time
 
-Simpleperf is a CPU profiler, it generates samples for a thread only when it is running on a CPU.
-However, sometimes we want to figure out where the time of a thread is spent, whether it is running
-on a CPU, or staying in the kernel's ready queue, or waiting for something like I/O events.
+Simpleperf is a CPU profiler, which generates samples for a thread only when it is running on a
+CPU. But sometimes we want to know where the thread time is spent off-cpu (like preempted by other
+threads, blocked in IO or waiting for some events). To support this, simpleperf added a
+--trace-offcpu option to the record command. When --trace-offcpu is used, simpleperf does the
+following things:
 
-To support this, the record command uses --trace-offcpu to trace both on CPU time and off CPU time.
-When --trace-offcpu is used, simpleperf generates a sample when a running thread is scheduled out,
-so we know the callstack of a thread when it is scheduled out. And when reporting a perf.data
-generated with --trace-offcpu, we use time to the next sample (instead of event counts from the
-previous sample) as the weight of the current sample. As a result, we can get a call graph based
-on timestamps, including both on CPU time and off CPU time.
+1) Only cpu-clock/task-clock event is allowed to be used with --trace-offcpu. This let simpleperf
+   generate on-cpu samples for cpu-clock event.
+2) Simpleperf also monitors sched:sched_switch event, which will generate a sched_switch sample
+   each time the monitored thread is scheduled off cpu.
+3) Simpleperf also records context switch records. So it knows when the thread is scheduled back on
+   a cpu.
 
-trace-offcpu is implemented using sched:sched_switch tracepoint event, which may not be supported
-on old kernels. But it is guaranteed to be supported on devices >= Android O MR1. We can check
-whether trace-offcpu is supported as below.
+The samples and context switch records collected by simpleperf for a thread are shown below:
 
-trace-offcpu only works with recording one of events: cpu-cycles, cpu-clock, task-clock. Using it
-with other events or multiple events doesn't make much sense and makes the report confusing.
+![simpleperf_trace_offcpu_sample_mode](simpleperf_trace_offcpu_sample_mode.png)
+
+Here we have two types of samples:
+1) on-cpu samples generated for cpu-clock event. The period value in each sample means how many
+   nanoseconds are spent on cpu (for the callchain of this sample).
+2) off-cpu (sched_switch) samples generated for sched:sched_switch event. The period value is
+   calculated as **Timestamp of the next switch on record** minus **Timestamp of the current sample**
+   by simpleperf. So the period value in each sample means how many nanoseconds are spent off cpu
+   (for the callchain of this sample).
+
+* note: In reality, switch on records and samples may lost. To mitigate the loss of accuracy, we
+* calculate the period of an off-cpu sample as **Timestamp of the next switch on record or sample**
+* minus **Timestamp of the current sample**.
+
+When reporting via python scripts, simpleperf_report_lib.py provides SetTraceOffCpuMode() method
+to control how to report the samples:
+1) on-cpu mode: only report on-cpu samples.
+2) off-cpu mode: only report off-cpu samples.
+3) on-off-cpu mode: report both on-cpu and off-cpu samples, which can be split by event name.
+4) mixed-on-off-cpu mode: report on-cpu and off-cpu samples under the same event name.
+
+If not set, mixed-on-off-cpu mode will be used to report.
+
+When using report_html.py, inferno and report_sample.py, the report mode can be set by
+--trace-offcpu option.
+
+Below are some examples recording and reporting trace offcpu profiles.
 
 ```sh
+# Check if --trace-offcpu is supported by the kernel (should be available on kernel >= 4.2).
 $ simpleperf list --show-features
-dwarf-based-call-graph
 trace-offcpu
-```
+...
 
-If trace-offcpu is supported, it will be shown in the feature list. Then we can try it.
-
-```sh
 # Record with --trace-offcpu.
-$ simpleperf record -g -p 11904 --duration 10 --trace-offcpu
+$ simpleperf record -g -p 11904 --duration 10 --trace-offcpu -e cpu-clock
+
+# Record system wide with --trace-offcpu.
+$ simpleperf record -a -g --duration 3 --trace-offcpu -e cpu-clock
 
 # Record with --trace-offcpu using app_profiler.py.
-$ ./app_profiler.py -p simpleperf.example.cpp -a .SleepActivity \
-    -r "-g -e task-clock:u -f 1000 --duration 10 --trace-offcpu"
+$ ./app_profiler.py -p com.google.samples.apps.sunflower \
+    -r "-g -e cpu-clock:u --duration 10 --trace-offcpu"
+
+# Report on-cpu samples.
+$ ./report_html.py --trace-offcpu on-cpu
+# Report off-cpu samples.
+$ ./report_html.py --trace-offcpu off-cpu
+# Report on-cpu and off-cpu samples under different event names.
+$ ./report_html.py --trace-offcpu on-off-cpu
+# Report on-cpu and off-cpu samples under the same event name.
+$ ./report_html.py --trace-offcpu mixed-on-off-cpu
 ```
-
-Below is an example comparing the profiling result with / without --trace-offcpu.
-First we record without --trace-offcpu.
-
-```sh
-$ ./app_profiler.py -p simpleperf.example.cpp -a .SleepActivity
-
-$ ./report_html.py --add_disassembly --add_source_code --source_dirs ../demo
-```
-
-The result is [here](./without_trace_offcpu.html).
-In the result, all time is taken by RunFunction(), and sleep time is ignored.
-But if we add --trace-offcpu, the result changes.
-
-```sh
-$ ./app_profiler.py -p simpleperf.example.cpp -a .SleepActivity \
-    -r "-g -e task-clock:u --trace-offcpu -f 1000 --duration 10"
-
-$ ./report_html.py --add_disassembly --add_source_code --source_dirs ../demo
-```
-
-The result is [here](./trace_offcpu.html).
-In the result, half of the time is taken by RunFunction(), and the other half is taken by
-SleepFunction(). So it traces both on CPU time and off CPU time.
 
 ## The report command
 
