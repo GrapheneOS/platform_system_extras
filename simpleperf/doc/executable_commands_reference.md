@@ -467,9 +467,9 @@ Here we have two types of samples:
    by simpleperf. So the period value in each sample means how many nanoseconds are spent off cpu
    (for the callchain of this sample).
 
-* note: In reality, switch on records and samples may lost. To mitigate the loss of accuracy, we
-* calculate the period of an off-cpu sample as **Timestamp of the next switch on record or sample**
-* minus **Timestamp of the current sample**.
+**note**: In reality, switch on records and samples may lost. To mitigate the loss of accuracy, we
+calculate the period of an off-cpu sample as **Timestamp of the next switch on record or sample**
+minus **Timestamp of the current sample**.
 
 When reporting via python scripts, simpleperf_report_lib.py provides SetTraceOffCpuMode() method
 to control how to report the samples:
