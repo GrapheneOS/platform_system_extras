@@ -22,6 +22,16 @@ cc_binary {
         "-Wall",
         "-Werror",
     ],
+    srcs: ["setuclamp.cpp"],
+}
 
+cc_binary {
+    name: "setuclamp_vendor",
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    stem: "setuclamp",
+    vendor: true,
     srcs: ["setuclamp.cpp"],
 }
