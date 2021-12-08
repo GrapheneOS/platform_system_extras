@@ -92,6 +92,19 @@ class TestPprofProtoGenerator(TestBase):
         """ Test the build ids generated are not padded with zeros. """
         self.assertIn('build_id: e3e938cc9e40de2cfe1a5ac7595897de(', self.run_generator())
 
+    def test_build_id_with_binary_cache(self):
+        """ Test the build ids for elf files in binary_cache are not padded with zero. """
+        # Test with binary_cache.
+        testdata_file = TestHelper.testdata_path('runtest_two_functions_arm64_perf.data')
+
+        # Build binary_cache.
+        binary_cache_builder = BinaryCacheBuilder(TestHelper.ndk_path, False)
+        binary_cache_builder.build_binary_cache(testdata_file, [TestHelper.testdata_dir])
+
+        # Generate profile.
+        output = self.run_generator(testdata_file=testdata_file)
+        self.assertIn('build_id: b4f1b49b0fe9e34e78fb14e5374c930c(', output)
+
     def test_location_address(self):
         """ Test if the address of a location is within the memory range of the corresponding
             mapping.
