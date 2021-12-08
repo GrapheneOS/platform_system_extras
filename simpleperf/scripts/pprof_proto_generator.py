@@ -118,8 +118,8 @@ class PprofProfilePrinter(object):
         for i in range(len(sample.value)):
             print('%svalue[%d] = %d' % (space, i, sample.value[i]))
         for i in range(len(sample.label)):
-          print('%slabel[%d] = %s:%s' % (space, i, self.string(sample.label[i].key),
-                                         self.string(sample.label[i].str)))
+            print('%slabel[%d] = %s:%s' % (space, i, self.string(sample.label[i].key),
+                                           self.string(sample.label[i].str)))
 
     def show_location_id(self, location_id, space=''):
         location = self.profile.location[location_id - 1]
@@ -176,10 +176,11 @@ class PprofProfilePrinter(object):
 
 class Label(object):
     def __init__(self, key_id: int, str_id: int):
-      # See profile.Label.key
-      self.key_id = key_id
-      # See profile.Label.str
-      self.str_id = str_id
+        # See profile.Label.key
+        self.key_id = key_id
+        # See profile.Label.str
+        self.str_id = str_id
+
 
 class Sample(object):
 
@@ -314,9 +315,9 @@ class PprofProfileGenerator(object):
             self.lib.AddProguardMappingFile(file_path)
 
         comments = [
-          "Simpleperf Record Command:\n" + self.lib.GetRecordCmd(),
-          "Converted to pprof with:\n" + " ".join(sys.argv),
-          "Architecture:\n" + self.lib.GetArch(),
+            "Simpleperf Record Command:\n" + self.lib.GetRecordCmd(),
+            "Converted to pprof with:\n" + " ".join(sys.argv),
+            "Architecture:\n" + self.lib.GetArch(),
         ]
         for comment in comments:
             self.profile.comment.append(self.get_string_id(comment))
@@ -473,26 +474,14 @@ class PprofProfileGenerator(object):
             return value
 
         binary_path = dso_name
-        build_id = ''
-
-        # The build ids in perf.data are padded to 20 bytes, but pprof needs without padding.
-        # So read build id from the binary in binary_cache, and check it with build id in
-        # perf.data.
-        build_id_in_perf_data = self.lib.GetBuildIdForPath(dso_name)
+        build_id = self.lib.GetBuildIdForPath(dso_name)
         # Try elf_path in binary cache.
-        elf_path = self.binary_finder.find_binary(dso_name, build_id_in_perf_data)
+        elf_path = self.binary_finder.find_binary(dso_name, build_id)
         if elf_path:
-            build_id = build_id_in_perf_data
             binary_path = str(elf_path)
 
-        # When there is no matching elf_path, try converting build_id in perf.data.
-        if not build_id and build_id_in_perf_data.startswith('0x'):
-            # Fallback to the way used by TrimZeroesFromBuildIDString() in quipper.
-            build_id = build_id_in_perf_data[2:]  # remove '0x'
-            padding = '0' * 8
-            while build_id.endswith(padding):
-                build_id = build_id[:-len(padding)]
-
+        # The build ids in perf.data are padded to 20 bytes, but pprof needs without padding.
+        build_id = ReadElf.unpad_build_id(build_id)
         self.binary_map[dso_name] = (binary_path, build_id)
         return (binary_path, build_id)
 
@@ -606,9 +595,9 @@ class PprofProfileGenerator(object):
         profile_sample.value.extend(values)
 
         for l in sample.labels:
-          label = profile_sample.label.add()
-          label.key = l.key_id
-          label.str = l.str_id
+            label = profile_sample.label.add()
+            label.key = l.key_id
+            label.str = l.str_id
 
     def gen_profile_mapping(self, mapping):
         profile_mapping = self.profile.mapping.add()
