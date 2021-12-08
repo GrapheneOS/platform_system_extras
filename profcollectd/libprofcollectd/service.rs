@@ -74,7 +74,7 @@ impl IProfCollectd for ProfcollectdBinderService {
     fn process(&self) -> BinderResult<()> {
         let lock = &mut *self.lock();
         lock.scheduler
-            .process()
+            .process(&lock.config)
             .context("Failed to process profiles.")
             .map_err(err_to_binder_status)
     }
