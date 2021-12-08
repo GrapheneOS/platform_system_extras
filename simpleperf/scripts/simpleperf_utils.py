@@ -903,6 +903,16 @@ class ReadElf(object):
             build_id = build_id[:40]
         return '0x' + build_id
 
+    @staticmethod
+    def unpad_build_id(build_id: str) -> str:
+        if build_id.startswith('0x'):
+            build_id = build_id[2:]
+            # Unpad build id as TrimZeroesFromBuildIDString() in quipper.
+            padding = '0' * 8
+            while build_id.endswith(padding):
+                build_id = build_id[:-len(padding)]
+        return build_id
+
     def get_sections(self, elf_file_path: Union[Path, str]) -> List[str]:
         """ Get sections of an elf file. """
         section_names: List[str] = []
