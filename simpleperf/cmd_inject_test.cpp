@@ -155,3 +155,26 @@ TEST(cmd_inject, unformatted_trace) {
   ASSERT_NE(data.find("etm_test_loop"), std::string::npos);
   CheckMatchingExpectedData(data);
 }
+
+TEST(cmd_inject, multiple_input_files) {
+  std::string data;
+  std::string perf_data = GetTestData(std::string("etm") + OS_PATH_SEPARATOR + "perf.data");
+  std::string perf_with_unformatted_trace =
+      GetTestData(std::string("etm") + OS_PATH_SEPARATOR + "perf_with_unformatted_trace.data");
+
+  // Test input files separated by comma.
+  ASSERT_TRUE(RunInjectCmd({"-i", perf_with_unformatted_trace + "," + perf_data}, &data));
+  ASSERT_NE(data.find("106c->1074:200"), std::string::npos);
+
+  // Test input files from different -i options.
+  ASSERT_TRUE(RunInjectCmd({"-i", perf_with_unformatted_trace, "-i", perf_data}, &data));
+  ASSERT_NE(data.find("106c->1074:200"), std::string::npos);
+
+  // Test input files provided by input_file_list.
+  TemporaryFile tmpfile;
+  std::string input_file_list = perf_data + "\n" + perf_with_unformatted_trace + "\n";
+  ASSERT_TRUE(android::base::WriteStringToFd(input_file_list, tmpfile.fd));
+  close(tmpfile.release());
+  ASSERT_TRUE(RunInjectCmd({"-i", std::string("@") + tmpfile.path}, &data));
+  ASSERT_NE(data.find("106c->1074:200"), std::string::npos);
+}
