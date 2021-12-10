@@ -110,6 +110,12 @@ struct BinaryKeyHash {
   }
 };
 
+static void OverflowSafeAdd(uint64_t& dest, uint64_t add) {
+  if (__builtin_add_overflow(dest, add, &dest)) {
+    dest = UINT64_MAX;
+  }
+}
+
 struct AutoFDOBinaryInfo {
   uint64_t first_load_segment_addr = 0;
   std::unordered_map<AddrPair, uint64_t, AddrPairHash> range_count_map;
@@ -119,13 +125,13 @@ struct AutoFDOBinaryInfo {
     for (const auto& p : other.range_count_map) {
       auto res = range_count_map.emplace(p.first, p.second);
       if (!res.second) {
-        res.first->second += p.second;
+        OverflowSafeAdd(res.first->second, p.second);
       }
     }
     for (const auto& p : other.branch_count_map) {
       auto res = branch_count_map.emplace(p.first, p.second);
       if (!res.second) {
-        res.first->second += p.second;
+        OverflowSafeAdd(res.first->second, p.second);
       }
     }
   }
@@ -150,9 +156,7 @@ struct BranchListBinaryInfo {
           if (it2 == map2.end()) {
             map2[other_p2.first] = other_p2.second;
           } else {
-            if (__builtin_add_overflow(it2->second, other_p2.second, &it2->second)) {
-              it2->second = UINT64_MAX;
-            }
+            OverflowSafeAdd(it2->second, other_p2.second);
           }
         }
       }
@@ -599,11 +603,12 @@ class InjectCommand : public Command {
     }
 
     auto& binary = autofdo_binary_map_[instr_range.dso];
-    binary.range_count_map[AddrPair(instr_range.start_addr, instr_range.end_addr)] +=
-        instr_range.branch_taken_count + instr_range.branch_not_taken_count;
+    OverflowSafeAdd(binary.range_count_map[AddrPair(instr_range.start_addr, instr_range.end_addr)],
+                    instr_range.branch_taken_count + instr_range.branch_not_taken_count);
     if (instr_range.branch_taken_count > 0) {
-      binary.branch_count_map[AddrPair(instr_range.end_addr, instr_range.branch_to_addr)] +=
-          instr_range.branch_taken_count;
+      OverflowSafeAdd(
+          binary.branch_count_map[AddrPair(instr_range.end_addr, instr_range.branch_to_addr)],
+          instr_range.branch_taken_count);
     }
   }
 
