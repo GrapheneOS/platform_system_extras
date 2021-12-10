@@ -58,6 +58,8 @@ std::vector<bool> ProtoStringToBranch(const std::string& s, size_t bit_size) {
 
 namespace {
 
+constexpr const char* ETM_BRANCH_LIST_PROTO_MAGIC = "simpleperf:EtmBranchList";
+
 using AddrPair = std::pair<uint64_t, uint64_t>;
 
 struct AddrPairHash {
@@ -129,8 +131,34 @@ struct AutoFDOBinaryInfo {
   }
 };
 
-using BranchListBinaryInfo =
+using UnorderedBranchMap =
     std::unordered_map<uint64_t, std::unordered_map<std::vector<bool>, uint64_t>>;
+
+struct BranchListBinaryInfo {
+  DsoType dso_type;
+  UnorderedBranchMap branch_map;
+
+  void Merge(const BranchListBinaryInfo& other) {
+    for (auto& other_p : other.branch_map) {
+      auto it = branch_map.find(other_p.first);
+      if (it == branch_map.end()) {
+        branch_map[other_p.first] = std::move(other_p.second);
+      } else {
+        auto& map2 = it->second;
+        for (auto& other_p2 : other_p.second) {
+          auto it2 = map2.find(other_p2.first);
+          if (it2 == map2.end()) {
+            map2[other_p2.first] = other_p2.second;
+          } else {
+            if (__builtin_add_overflow(it2->second, other_p2.second, &it2->second)) {
+              it2->second = UINT64_MAX;
+            }
+          }
+        }
+      }
+    }
+  }
+};
 
 class ThreadTreeWithFilter : public ThreadTree {
  public:
@@ -231,7 +259,92 @@ class AutoFDOWriter {
   std::unordered_map<BinaryKey, AutoFDOBinaryInfo, BinaryKeyHash> binary_map_;
 };
 
-constexpr const char* ETM_BRANCH_LIST_PROTO_MAGIC = "simpleperf:EtmBranchList";
+// Write branch lists to a protobuf file specified by etm_branch_list.proto.
+class BranchListWriter {
+ public:
+  void AddBranchListBinary(const BinaryKey& key, BranchListBinaryInfo& binary) {
+    auto it = binary_map_.find(key);
+    if (it == binary_map_.end()) {
+      binary_map_[key] = std::move(binary);
+    } else {
+      it->second.Merge(binary);
+    }
+  }
+
+  bool Write(const std::string& output_filename) {
+    // Don't produce empty output file.
+    if (binary_map_.empty()) {
+      LOG(INFO) << "Skip empty output file.";
+      unlink(output_filename.c_str());
+      return true;
+    }
+    std::unique_ptr<FILE, decltype(&fclose)> output_fp(fopen(output_filename.c_str(), "wb"),
+                                                       fclose);
+    if (!output_fp) {
+      PLOG(ERROR) << "failed to write to " << output_filename;
+      return false;
+    }
+
+    proto::ETMBranchList branch_list_proto;
+    branch_list_proto.set_magic(ETM_BRANCH_LIST_PROTO_MAGIC);
+    std::vector<char> branch_buf;
+    for (const auto& p : binary_map_) {
+      const BinaryKey& key = p.first;
+      const BranchListBinaryInfo& binary = p.second;
+      auto binary_proto = branch_list_proto.add_binaries();
+
+      binary_proto->set_path(key.path);
+      if (!key.build_id.IsEmpty()) {
+        binary_proto->set_build_id(key.build_id.ToString().substr(2));
+      }
+      auto opt_binary_type = ToProtoBinaryType(binary.dso_type);
+      if (!opt_binary_type.has_value()) {
+        return false;
+      }
+      binary_proto->set_type(opt_binary_type.value());
+
+      for (const auto& addr_p : binary.branch_map) {
+        auto addr_proto = binary_proto->add_addrs();
+        addr_proto->set_addr(addr_p.first);
+
+        for (const auto& branch_p : addr_p.second) {
+          const std::vector<bool>& branch = branch_p.first;
+          auto branch_proto = addr_proto->add_branches();
+
+          branch_proto->set_branch(BranchToProtoString(branch));
+          branch_proto->set_branch_size(branch.size());
+          branch_proto->set_count(branch_p.second);
+        }
+      }
+
+      if (binary.dso_type == DSO_KERNEL) {
+        binary_proto->mutable_kernel_info()->set_kernel_start_addr(key.kernel_start_addr);
+      }
+    }
+    if (!branch_list_proto.SerializeToFileDescriptor(fileno(output_fp.get()))) {
+      PLOG(ERROR) << "failed to write to " << output_filename;
+      return false;
+    }
+    return true;
+  }
+
+ private:
+  std::optional<proto::ETMBranchList_Binary::BinaryType> ToProtoBinaryType(DsoType dso_type) {
+    switch (dso_type) {
+      case DSO_ELF_FILE:
+        return proto::ETMBranchList_Binary::ELF_FILE;
+      case DSO_KERNEL:
+        return proto::ETMBranchList_Binary::KERNEL;
+      case DSO_KERNEL_MODULE:
+        return proto::ETMBranchList_Binary::KERNEL_MODULE;
+      default:
+        LOG(ERROR) << "unexpected dso type " << dso_type;
+        return std::nullopt;
+    }
+  }
+
+  std::unordered_map<BinaryKey, BranchListBinaryInfo, BinaryKeyHash> binary_map_;
+};  // namespace
 
 class InjectCommand : public Command {
  public:
@@ -404,7 +517,30 @@ class InjectCommand : public Command {
         autofdo_writer_.AddAutoFDOBinary(BinaryKey(dso, 0), binary);
       }
       autofdo_binary_map_.clear();
+      return;
     }
+    CHECK(output_format_ == OutputFormat::BranchList);
+    for (auto& p : branch_list_binary_map_) {
+      Dso* dso = p.first;
+      BranchListBinaryInfo& binary = p.second;
+      binary.dso_type = dso->type();
+      BinaryKey key(dso, 0);
+      if (binary.dso_type == DSO_KERNEL) {
+        if (kernel_map_start_addr_ == 0) {
+          LOG(WARNING) << "Can't convert kernel ip addresses without kernel start addr. So remove "
+                          "branches for the kernel.";
+          continue;
+        }
+        if (dso->GetDebugFilePath() == dso->Path()) {
+          // vmlinux isn't available. We still use kernel ip addr. Put kernel start addr in proto
+          // for address conversion later.
+          key.kernel_start_addr = kernel_map_start_addr_;
+        }
+      }
+      branch_list_writer_.AddBranchListBinary(key, binary);
+    }
+    kernel_map_start_addr_ = 0;
+    branch_list_binary_map_.clear();
   }
 
   bool ProcessRecord(Record* r) {
@@ -476,7 +612,8 @@ class InjectCommand : public Command {
       return;
     }
 
-    ++branch_list_binary_map_[branch_list.dso][branch_list.addr][branch_list.branch];
+    auto& branch_map = branch_list_binary_map_[branch_list.dso].branch_map;
+    ++branch_map[branch_list.addr][branch_list.branch];
   }
 
   bool ProcessBranchListFile(const std::string& input_filename) {
@@ -583,7 +720,7 @@ class InjectCommand : public Command {
     }
 
     CHECK(output_format_ == OutputFormat::BranchList);
-    return GenerateBranchList(output_filename_);
+    return branch_list_writer_.Write(output_filename_);
   }
 
   uint64_t GetFirstLoadSegmentVaddr(Dso* dso) {
@@ -596,92 +733,6 @@ class InjectCommand : public Command {
       }
     }
     return 0;
-  }
-
-  bool GenerateBranchList(const std::string& output_filename) {
-    // Don't produce empty output file.
-    if (branch_list_binary_map_.empty()) {
-      LOG(INFO) << "Skip empty output file.";
-      unlink(output_filename.c_str());
-      return true;
-    }
-    std::unique_ptr<FILE, decltype(&fclose)> output_fp(fopen(output_filename.c_str(), "wb"),
-                                                       fclose);
-    if (!output_fp) {
-      PLOG(ERROR) << "failed to write to " << output_filename;
-      return false;
-    }
-
-    proto::ETMBranchList branch_list_proto;
-    branch_list_proto.set_magic(ETM_BRANCH_LIST_PROTO_MAGIC);
-    std::vector<char> branch_buf;
-    for (const auto& dso_p : branch_list_binary_map_) {
-      Dso* dso = dso_p.first;
-      auto& addr_map = dso_p.second;
-      auto binary_proto = branch_list_proto.add_binaries();
-
-      binary_proto->set_path(dso->Path());
-      BuildId build_id = Dso::FindExpectedBuildIdForPath(dso->Path());
-      if (!build_id.IsEmpty()) {
-        binary_proto->set_build_id(build_id.ToString().substr(2));
-      }
-      auto opt_binary_type = ToProtoBinaryType(dso->type());
-      if (!opt_binary_type.has_value()) {
-        return false;
-      }
-      binary_proto->set_type(opt_binary_type.value());
-
-      for (const auto& addr_p : addr_map) {
-        auto addr_proto = binary_proto->add_addrs();
-        addr_proto->set_addr(addr_p.first);
-
-        for (const auto& branch_p : addr_p.second) {
-          const std::vector<bool>& branch = branch_p.first;
-          auto branch_proto = addr_proto->add_branches();
-
-          branch_proto->set_branch(BranchToProtoString(branch));
-          branch_proto->set_branch_size(branch.size());
-          branch_proto->set_count(branch_p.second);
-        }
-      }
-
-      if (dso->type() == DSO_KERNEL) {
-        if (kernel_map_start_addr_ == 0) {
-          LOG(WARNING) << "Can't convert kernel ip addresses without kernel start addr. So remove "
-                          "branches for the kernel.";
-          branch_list_proto.mutable_binaries()->RemoveLast();
-          continue;
-        }
-        if (dso->GetDebugFilePath() == dso->Path()) {
-          // vmlinux isn't available. We still use kernel ip addr. Put kernel start addr in proto
-          // for address conversion later.
-          binary_proto->mutable_kernel_info()->set_kernel_start_addr(kernel_map_start_addr_);
-        } else {
-          // vmlinux is available. We have converted kernel ip addr to vaddr in vmlinux. So no need
-          // to put kernel start addr in proto.
-          binary_proto->mutable_kernel_info()->set_kernel_start_addr(0);
-        }
-      }
-    }
-    if (!branch_list_proto.SerializeToFileDescriptor(fileno(output_fp.get()))) {
-      PLOG(ERROR) << "failed to write to " << output_filename;
-      return false;
-    }
-    return true;
-  }
-
-  std::optional<proto::ETMBranchList_Binary::BinaryType> ToProtoBinaryType(DsoType dso_type) {
-    switch (dso_type) {
-      case DSO_ELF_FILE:
-        return proto::ETMBranchList_Binary::ELF_FILE;
-      case DSO_KERNEL:
-        return proto::ETMBranchList_Binary::KERNEL;
-      case DSO_KERNEL_MODULE:
-        return proto::ETMBranchList_Binary::KERNEL_MODULE;
-      default:
-        LOG(ERROR) << "unexpected dso type " << dso_type;
-        return std::nullopt;
-    }
   }
 
   std::optional<DsoType> ToDsoType(proto::ETMBranchList_Binary::BinaryType binary_type) {
@@ -714,6 +765,7 @@ class InjectCommand : public Command {
   AutoFDOWriter autofdo_writer_;
   // Store results for BranchList.
   std::unordered_map<Dso*, BranchListBinaryInfo> branch_list_binary_map_;
+  BranchListWriter branch_list_writer_;
   std::vector<std::unique_ptr<Dso>> branch_list_dso_v_;
   uint64_t kernel_map_start_addr_ = 0;
 };
