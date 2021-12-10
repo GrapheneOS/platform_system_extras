@@ -27,8 +27,6 @@ use crate::config::{Config, PROFILE_OUTPUT_DIR, TRACE_OUTPUT_DIR};
 use crate::trace_provider::{self, TraceProvider};
 use anyhow::{anyhow, ensure, Context, Result};
 
-static BINARY_FILTER: &str = "^(/system/bin/|/system/lib/|/system/lib64/).+";
-
 pub struct Scheduler {
     /// Signal to terminate the periodic collection worker thread, None if periodic collection is
     /// not scheduled.
@@ -95,12 +93,12 @@ impl Scheduler {
         Ok(())
     }
 
-    pub fn process(&self) -> Result<()> {
+    pub fn process(&self, config: &Config) -> Result<()> {
         let trace_provider = self.trace_provider.clone();
         trace_provider
             .lock()
             .unwrap()
-            .process(&TRACE_OUTPUT_DIR, &PROFILE_OUTPUT_DIR, BINARY_FILTER)
+            .process(&TRACE_OUTPUT_DIR, &PROFILE_OUTPUT_DIR, &config.binary_filter)
             .context("Failed to process profiles.")?;
         Ok(())
     }

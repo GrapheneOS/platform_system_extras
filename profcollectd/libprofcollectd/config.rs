@@ -30,6 +30,7 @@ use std::time::Duration;
 const PROFCOLLECT_CONFIG_NAMESPACE: &str = "profcollect_native_boot";
 const PROFCOLLECT_NODE_ID_PROPERTY: &str = "persist.profcollectd.node_id";
 
+const DEFAULT_BINARY_FILTER: &str = "^/(system|apex/.+)/(bin|lib|lib64)/.+";
 pub const REPORT_RETENTION_SECS: u64 = 14 * 24 * 60 * 60; // 14 days.
 
 // Static configs that cannot be changed.
@@ -71,7 +72,7 @@ impl Config {
                 600,
             )?),
             sampling_period: Duration::from_millis(get_device_config("sampling_period", 500)?),
-            binary_filter: get_device_config("binary_filter", "".to_string())?,
+            binary_filter: get_device_config("binary_filter", DEFAULT_BINARY_FILTER.to_string())?,
             max_trace_limit: get_device_config(
                 "max_trace_limit",
                 /* 512MB */ 512 * 1024 * 1024,
