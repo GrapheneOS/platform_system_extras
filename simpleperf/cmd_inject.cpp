@@ -76,8 +76,12 @@ enum class OutputFormat {
   BranchList,
 };
 
-// We identify a binary by its path and build_id. kernel_start_addr is also used for vmlinux.
-// Because it affects how addresses in BranchListBinaryInfo are interpreted.
+// When processing binary info in an input file, the binaries are identified by their path.
+// But this isn't sufficient when merging binary info from multiple input files. Because
+// binaries for the same path may be changed between generating input files. So after processing
+// each input file, we create BinaryKeys to identify binaries, which consider path, build_id and
+// kernel_start_addr (for vmlinux). kernel_start_addr affects how addresses in BranchListBinaryInfo
+// are interpreted for vmlinux.
 struct BinaryKey {
   std::string path;
   BuildId build_id;
@@ -164,6 +168,9 @@ struct BranchListBinaryInfo {
   }
 };
 
+using AutoFDOBinaryCallback = std::function<void(const BinaryKey&, AutoFDOBinaryInfo&)>;
+using BranchListBinaryCallback = std::function<void(const BinaryKey&, BranchListBinaryInfo&)>;
+
 class ThreadTreeWithFilter : public ThreadTree {
  public:
   void ExcludePid(pid_t pid) { exclude_pid_ = pid; }
@@ -178,6 +185,200 @@ class ThreadTreeWithFilter : public ThreadTree {
 
  private:
   std::optional<pid_t> exclude_pid_;
+};
+
+class DsoFilter {
+ public:
+  DsoFilter(const std::regex& binary_name_regex) : binary_name_regex_(binary_name_regex) {}
+
+  bool FilterDso(Dso* dso) {
+    auto lookup = dso_filter_cache_.find(dso);
+    if (lookup != dso_filter_cache_.end()) {
+      return lookup->second;
+    }
+    bool match = std::regex_search(dso->Path(), binary_name_regex_);
+    dso_filter_cache_.insert({dso, match});
+    return match;
+  }
+
+ private:
+  std::regex binary_name_regex_;
+  std::unordered_map<Dso*, bool> dso_filter_cache_;
+};
+
+static uint64_t GetFirstLoadSegmentVaddr(Dso* dso) {
+  ElfStatus status;
+  if (auto elf = ElfFile::Open(dso->GetDebugFilePath(), &status); elf) {
+    for (const auto& segment : elf->GetProgramHeader()) {
+      if (segment.is_load) {
+        return segment.vaddr;
+      }
+    }
+  }
+  return 0;
+}
+
+// Read perf.data, and generate AutoFDOBinaryInfo or BranchListBinaryInfo.
+// To avoid resetting data, it only processes one input file per instance.
+class PerfDataReader {
+ public:
+  PerfDataReader(const std::string& filename, bool exclude_perf, ETMDumpOption etm_dump_option,
+                 const std::regex& binary_name_regex)
+      : filename_(filename),
+        exclude_perf_(exclude_perf),
+        etm_dump_option_(etm_dump_option),
+        dso_filter_(binary_name_regex) {}
+
+  void SetCallback(const AutoFDOBinaryCallback& callback) { autofdo_callback_ = callback; }
+  void SetCallback(const BranchListBinaryCallback& callback) { branch_list_callback_ = callback; }
+
+  bool Read() {
+    record_file_reader_ = RecordFileReader::CreateInstance(filename_);
+    if (!record_file_reader_) {
+      return false;
+    }
+    if (exclude_perf_) {
+      const auto& info_map = record_file_reader_->GetMetaInfoFeature();
+      if (auto it = info_map.find("recording_process"); it == info_map.end()) {
+        LOG(ERROR) << filename_ << " doesn't support --exclude-perf";
+        return false;
+      } else {
+        int pid;
+        if (!android::base::ParseInt(it->second, &pid, 0)) {
+          LOG(ERROR) << "invalid recording_process " << it->second << " in " << filename_;
+          return false;
+        }
+        thread_tree_.ExcludePid(pid);
+      }
+    }
+    record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
+    if (!record_file_reader_->ReadDataSection([this](auto r) { return ProcessRecord(r.get()); })) {
+      return false;
+    }
+    if (etm_decoder_ && !etm_decoder_->FinishData()) {
+      return false;
+    }
+    if (autofdo_callback_) {
+      ProcessAutoFDOBinaryInfo();
+    } else if (branch_list_callback_) {
+      ProcessBranchListBinaryInfo();
+    }
+    return true;
+  }
+
+ private:
+  bool ProcessRecord(Record* r) {
+    thread_tree_.Update(*r);
+    if (r->type() == PERF_RECORD_AUXTRACE_INFO) {
+      etm_decoder_ = ETMDecoder::Create(*static_cast<AuxTraceInfoRecord*>(r), thread_tree_);
+      if (!etm_decoder_) {
+        return false;
+      }
+      etm_decoder_->EnableDump(etm_dump_option_);
+      if (autofdo_callback_) {
+        etm_decoder_->RegisterCallback(
+            [this](const ETMInstrRange& range) { ProcessInstrRange(range); });
+      } else if (branch_list_callback_) {
+        etm_decoder_->RegisterCallback(
+            [this](const ETMBranchList& branch) { ProcessBranchList(branch); });
+      }
+    } else if (r->type() == PERF_RECORD_AUX) {
+      AuxRecord* aux = static_cast<AuxRecord*>(r);
+      uint64_t aux_size = aux->data->aux_size;
+      if (aux_size > 0) {
+        if (aux_data_buffer_.size() < aux_size) {
+          aux_data_buffer_.resize(aux_size);
+        }
+        if (!record_file_reader_->ReadAuxData(aux->Cpu(), aux->data->aux_offset,
+                                              aux_data_buffer_.data(), aux_size)) {
+          LOG(ERROR) << "failed to read aux data in " << filename_;
+          return false;
+        }
+        return etm_decoder_->ProcessData(aux_data_buffer_.data(), aux_size, !aux->Unformatted(),
+                                         aux->Cpu());
+      }
+    } else if (r->type() == PERF_RECORD_MMAP && r->InKernel()) {
+      auto& mmap_r = *static_cast<MmapRecord*>(r);
+      if (android::base::StartsWith(mmap_r.filename, DEFAULT_KERNEL_MMAP_NAME)) {
+        kernel_map_start_addr_ = mmap_r.data->addr;
+      }
+    }
+    return true;
+  }
+
+  void ProcessInstrRange(const ETMInstrRange& instr_range) {
+    if (!dso_filter_.FilterDso(instr_range.dso)) {
+      return;
+    }
+
+    auto& binary = autofdo_binary_map_[instr_range.dso];
+    uint64_t total_count = instr_range.branch_taken_count;
+    OverflowSafeAdd(total_count, instr_range.branch_not_taken_count);
+    OverflowSafeAdd(binary.range_count_map[AddrPair(instr_range.start_addr, instr_range.end_addr)],
+                    total_count);
+    if (instr_range.branch_taken_count > 0) {
+      OverflowSafeAdd(
+          binary.branch_count_map[AddrPair(instr_range.end_addr, instr_range.branch_to_addr)],
+          instr_range.branch_taken_count);
+    }
+  }
+
+  void ProcessBranchList(const ETMBranchList& branch_list) {
+    if (!dso_filter_.FilterDso(branch_list.dso)) {
+      return;
+    }
+
+    auto& branch_map = branch_list_binary_map_[branch_list.dso].branch_map;
+    ++branch_map[branch_list.addr][branch_list.branch];
+  }
+
+  void ProcessAutoFDOBinaryInfo() {
+    for (auto& p : autofdo_binary_map_) {
+      Dso* dso = p.first;
+      AutoFDOBinaryInfo& binary = p.second;
+      binary.first_load_segment_addr = GetFirstLoadSegmentVaddr(dso);
+      autofdo_callback_(BinaryKey(dso, 0), binary);
+    }
+  }
+
+  void ProcessBranchListBinaryInfo() {
+    for (auto& p : branch_list_binary_map_) {
+      Dso* dso = p.first;
+      BranchListBinaryInfo& binary = p.second;
+      binary.dso_type = dso->type();
+      BinaryKey key(dso, 0);
+      if (binary.dso_type == DSO_KERNEL) {
+        if (kernel_map_start_addr_ == 0) {
+          LOG(WARNING) << "Can't convert kernel ip addresses without kernel start addr. So remove "
+                          "branches for the kernel.";
+          continue;
+        }
+        if (dso->GetDebugFilePath() == dso->Path()) {
+          // vmlinux isn't available. We still use kernel ip addr. Put kernel start addr in proto
+          // for address conversion later.
+          key.kernel_start_addr = kernel_map_start_addr_;
+        }
+      }
+      branch_list_callback_(key, binary);
+    }
+  }
+
+  const std::string filename_;
+  bool exclude_perf_;
+  ETMDumpOption etm_dump_option_;
+  DsoFilter dso_filter_;
+  AutoFDOBinaryCallback autofdo_callback_;
+  BranchListBinaryCallback branch_list_callback_;
+
+  std::vector<uint8_t> aux_data_buffer_;
+  std::unique_ptr<ETMDecoder> etm_decoder_;
+  std::unique_ptr<RecordFileReader> record_file_reader_;
+  ThreadTreeWithFilter thread_tree_;
+  uint64_t kernel_map_start_addr_ = 0;
+  // Store results for AutoFDO.
+  std::unordered_map<Dso*, AutoFDOBinaryInfo> autofdo_binary_map_;
+  // Store results for BranchList.
+  std::unordered_map<Dso*, BranchListBinaryInfo> branch_list_binary_map_;
 };
 
 // Write instruction ranges to a file in AutoFDO text format.
@@ -454,6 +655,10 @@ class InjectCommand : public Command {
       if (!Dso::AddSymbolDir(*value->str_value)) {
         return false;
       }
+      // Symbol dirs are cleaned when Dso count is decreased to zero, which can happen between
+      // processing input files. To make symbol dirs always available, create a placeholder dso to
+      // prevent cleaning from happening.
+      placeholder_dso_ = Dso::CreateDso(DSO_UNKNOWN_FILE, "unknown");
     }
     CHECK(options.values.empty());
     return true;
@@ -472,117 +677,29 @@ class InjectCommand : public Command {
 
   bool ProcessInputFile(const std::string& input_filename) {
     if (IsPerfDataFile(input_filename)) {
-      record_file_reader_ = RecordFileReader::CreateInstance(input_filename);
-      if (!record_file_reader_) {
-        return false;
-      }
-      if (exclude_perf_) {
-        const auto& info_map = record_file_reader_->GetMetaInfoFeature();
-        if (auto it = info_map.find("recording_process"); it == info_map.end()) {
-          LOG(ERROR) << input_filename << " doesn't support --exclude-perf";
-          return false;
-        } else {
-          int pid;
-          if (!android::base::ParseInt(it->second, &pid, 0)) {
-            LOG(ERROR) << "invalid recording_process " << it->second;
-            return false;
-          }
-          thread_tree_.ExcludePid(pid);
-        }
-      }
-      record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
-      if (!record_file_reader_->ReadDataSection(
-              [this](auto r) { return ProcessRecord(r.get()); })) {
-        return false;
-      }
-      if (etm_decoder_ && !etm_decoder_->FinishData()) {
-        return false;
-      }
-    } else {
-      if (!ProcessBranchListFile(input_filename)) {
-        return false;
-      }
-    }
-    PostProcessInputFile();
-    return true;
-  }
-
-  void PostProcessInputFile() {
-    // When processing binary info in an input file, the binaries are identified by their path.
-    // But this isn't sufficient when merging binary info from multiple input files. Because
-    // binaries for the same path may be changed between generating input files. So after processing
-    // each input file, we create BinaryKeys to identify binaries, which consider path, build_id and
-    // kernel_start_addr (for vmlinux).
-    if (output_format_ == OutputFormat::AutoFDO) {
-      for (auto& p : autofdo_binary_map_) {
-        Dso* dso = p.first;
-        AutoFDOBinaryInfo& binary = p.second;
-        binary.first_load_segment_addr = GetFirstLoadSegmentVaddr(dso);
-        autofdo_writer_.AddAutoFDOBinary(BinaryKey(dso, 0), binary);
-      }
-      autofdo_binary_map_.clear();
-      return;
-    }
-    CHECK(output_format_ == OutputFormat::BranchList);
-    for (auto& p : branch_list_binary_map_) {
-      Dso* dso = p.first;
-      BranchListBinaryInfo& binary = p.second;
-      binary.dso_type = dso->type();
-      BinaryKey key(dso, 0);
-      if (binary.dso_type == DSO_KERNEL) {
-        if (kernel_map_start_addr_ == 0) {
-          LOG(WARNING) << "Can't convert kernel ip addresses without kernel start addr. So remove "
-                          "branches for the kernel.";
-          continue;
-        }
-        if (dso->GetDebugFilePath() == dso->Path()) {
-          // vmlinux isn't available. We still use kernel ip addr. Put kernel start addr in proto
-          // for address conversion later.
-          key.kernel_start_addr = kernel_map_start_addr_;
-        }
-      }
-      branch_list_writer_.AddBranchListBinary(key, binary);
-    }
-    kernel_map_start_addr_ = 0;
-    branch_list_binary_map_.clear();
-  }
-
-  bool ProcessRecord(Record* r) {
-    thread_tree_.Update(*r);
-    if (r->type() == PERF_RECORD_AUXTRACE_INFO) {
-      etm_decoder_ = ETMDecoder::Create(*static_cast<AuxTraceInfoRecord*>(r), thread_tree_);
-      if (!etm_decoder_) {
-        return false;
-      }
-      etm_decoder_->EnableDump(etm_dump_option_);
+      PerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_, binary_name_regex_);
       if (output_format_ == OutputFormat::AutoFDO) {
-        etm_decoder_->RegisterCallback(
-            [this](const ETMInstrRange& range) { ProcessInstrRange(range); });
+        reader.SetCallback([this](const BinaryKey& key, AutoFDOBinaryInfo& binary) {
+          autofdo_writer_.AddAutoFDOBinary(key, binary);
+        });
       } else if (output_format_ == OutputFormat::BranchList) {
-        etm_decoder_->RegisterCallback(
-            [this](const ETMBranchList& branch) { ProcessBranchList(branch); });
+        reader.SetCallback([this](const BinaryKey& key, BranchListBinaryInfo& binary) {
+          branch_list_writer_.AddBranchListBinary(key, binary);
+        });
       }
-    } else if (r->type() == PERF_RECORD_AUX) {
-      AuxRecord* aux = static_cast<AuxRecord*>(r);
-      uint64_t aux_size = aux->data->aux_size;
-      if (aux_size > 0) {
-        if (aux_data_buffer_.size() < aux_size) {
-          aux_data_buffer_.resize(aux_size);
-        }
-        if (!record_file_reader_->ReadAuxData(aux->Cpu(), aux->data->aux_offset,
-                                              aux_data_buffer_.data(), aux_size)) {
-          LOG(ERROR) << "failed to read aux data";
-          return false;
-        }
-        return etm_decoder_->ProcessData(aux_data_buffer_.data(), aux_size, !aux->Unformatted(),
-                                         aux->Cpu());
-      }
-    } else if (r->type() == PERF_RECORD_MMAP && r->InKernel()) {
-      auto& mmap_r = *static_cast<MmapRecord*>(r);
-      if (android::base::StartsWith(mmap_r.filename, DEFAULT_KERNEL_MMAP_NAME)) {
-        kernel_map_start_addr_ = mmap_r.data->addr;
-      }
+      return reader.Read();
     }
+    if (!ProcessBranchListFile(input_filename)) {
+      return false;
+    }
+    CHECK(output_format_ == OutputFormat::AutoFDO);
+    for (auto& p : autofdo_binary_map_) {
+      Dso* dso = p.first;
+      AutoFDOBinaryInfo& binary = p.second;
+      binary.first_load_segment_addr = GetFirstLoadSegmentVaddr(dso);
+      autofdo_writer_.AddAutoFDOBinary(BinaryKey(dso, 0), binary);
+    }
+    autofdo_binary_map_.clear();
     return true;
   }
 
@@ -603,22 +720,15 @@ class InjectCommand : public Command {
     }
 
     auto& binary = autofdo_binary_map_[instr_range.dso];
+    uint64_t total_count = instr_range.branch_taken_count;
+    OverflowSafeAdd(total_count, instr_range.branch_not_taken_count);
     OverflowSafeAdd(binary.range_count_map[AddrPair(instr_range.start_addr, instr_range.end_addr)],
-                    instr_range.branch_taken_count + instr_range.branch_not_taken_count);
+                    total_count);
     if (instr_range.branch_taken_count > 0) {
       OverflowSafeAdd(
           binary.branch_count_map[AddrPair(instr_range.end_addr, instr_range.branch_to_addr)],
           instr_range.branch_taken_count);
     }
-  }
-
-  void ProcessBranchList(const ETMBranchList& branch_list) {
-    if (!FilterDso(branch_list.dso)) {
-      return;
-    }
-
-    auto& branch_map = branch_list_binary_map_[branch_list.dso].branch_map;
-    ++branch_map[branch_list.addr][branch_list.branch];
   }
 
   bool ProcessBranchListFile(const std::string& input_filename) {
@@ -728,18 +838,6 @@ class InjectCommand : public Command {
     return branch_list_writer_.Write(output_filename_);
   }
 
-  uint64_t GetFirstLoadSegmentVaddr(Dso* dso) {
-    ElfStatus status;
-    if (auto elf = ElfFile::Open(dso->GetDebugFilePath(), &status); elf) {
-      for (const auto& segment : elf->GetProgramHeader()) {
-        if (segment.is_load) {
-          return segment.vaddr;
-        }
-      }
-    }
-    return 0;
-  }
-
   std::optional<DsoType> ToDsoType(proto::ETMBranchList_Binary::BinaryType binary_type) {
     switch (binary_type) {
       case proto::ETMBranchList_Binary::ELF_FILE:
@@ -759,20 +857,15 @@ class InjectCommand : public Command {
   std::vector<std::string> input_filenames_;
   std::string output_filename_ = "perf_inject.data";
   OutputFormat output_format_ = OutputFormat::AutoFDO;
-  ThreadTreeWithFilter thread_tree_;
-  std::unique_ptr<RecordFileReader> record_file_reader_;
   ETMDumpOption etm_dump_option_;
-  std::unique_ptr<ETMDecoder> etm_decoder_;
-  std::vector<uint8_t> aux_data_buffer_;
 
+  std::unique_ptr<Dso> placeholder_dso_;
   // Store results for AutoFDO.
   std::unordered_map<Dso*, AutoFDOBinaryInfo> autofdo_binary_map_;
   AutoFDOWriter autofdo_writer_;
   // Store results for BranchList.
-  std::unordered_map<Dso*, BranchListBinaryInfo> branch_list_binary_map_;
   BranchListWriter branch_list_writer_;
   std::vector<std::unique_ptr<Dso>> branch_list_dso_v_;
-  uint64_t kernel_map_start_addr_ = 0;
 };
 
 }  // namespace
