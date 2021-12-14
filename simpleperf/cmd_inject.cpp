@@ -89,6 +89,8 @@ struct BinaryKey {
 
   BinaryKey() {}
 
+  BinaryKey(const std::string& path, BuildId build_id) : path(path), build_id(build_id) {}
+
   BinaryKey(Dso* dso, uint64_t kernel_start_addr) : path(dso->Path()) {
     build_id = Dso::FindExpectedBuildIdForPath(dso->Path());
     if (dso->type() == DSO_KERNEL) {
@@ -165,6 +167,16 @@ struct BranchListBinaryInfo {
         }
       }
     }
+  }
+
+  BranchMap GetOrderedBranchMap() const {
+    BranchMap result;
+    for (const auto& p : branch_map) {
+      uint64_t addr = p.first;
+      const auto& b_map = p.second;
+      result[addr] = std::map<std::vector<bool>, uint64_t>(b_map.begin(), b_map.end());
+    }
+    return result;
   }
 };
 
@@ -379,6 +391,88 @@ class PerfDataReader {
   std::unordered_map<Dso*, AutoFDOBinaryInfo> autofdo_binary_map_;
   // Store results for BranchList.
   std::unordered_map<Dso*, BranchListBinaryInfo> branch_list_binary_map_;
+};
+
+// Read a protobuf file specified by etm_branch_list.proto, and generate BranchListBinaryInfo.
+class BranchListReader {
+ public:
+  BranchListReader(const std::string& filename, const std::regex binary_name_regex)
+      : filename_(filename), binary_name_regex_(binary_name_regex) {}
+
+  void SetCallback(const BranchListBinaryCallback& callback) { callback_ = callback; }
+
+  bool Read() {
+    auto fd = FileHelper::OpenReadOnly(filename_);
+    if (!fd.ok()) {
+      PLOG(ERROR) << "failed to open " << filename_;
+      return false;
+    }
+
+    proto::ETMBranchList branch_list_proto;
+    if (!branch_list_proto.ParseFromFileDescriptor(fd)) {
+      PLOG(ERROR) << "failed to read msg from " << filename_;
+      return false;
+    }
+    if (branch_list_proto.magic() != ETM_BRANCH_LIST_PROTO_MAGIC) {
+      PLOG(ERROR) << "file not in format etm_branch_list.proto: " << filename_;
+      return false;
+    }
+
+    for (size_t i = 0; i < branch_list_proto.binaries_size(); i++) {
+      const auto& binary_proto = branch_list_proto.binaries(i);
+      if (!std::regex_search(binary_proto.path(), binary_name_regex_)) {
+        continue;
+      }
+      BinaryKey key(binary_proto.path(), BuildId(binary_proto.build_id()));
+      if (binary_proto.has_kernel_info()) {
+        key.kernel_start_addr = binary_proto.kernel_info().kernel_start_addr();
+      }
+      BranchListBinaryInfo binary;
+      auto dso_type = ToDsoType(binary_proto.type());
+      if (!dso_type) {
+        LOG(ERROR) << "invalid binary type in " << filename_;
+        return false;
+      }
+      binary.dso_type = dso_type.value();
+      binary.branch_map = BuildUnorderedBranchMap(binary_proto);
+      callback_(key, binary);
+    }
+    return true;
+  }
+
+ private:
+  std::optional<DsoType> ToDsoType(proto::ETMBranchList_Binary::BinaryType binary_type) {
+    switch (binary_type) {
+      case proto::ETMBranchList_Binary::ELF_FILE:
+        return DSO_ELF_FILE;
+      case proto::ETMBranchList_Binary::KERNEL:
+        return DSO_KERNEL;
+      case proto::ETMBranchList_Binary::KERNEL_MODULE:
+        return DSO_KERNEL_MODULE;
+      default:
+        LOG(ERROR) << "unexpected binary type " << binary_type;
+        return std::nullopt;
+    }
+  }
+
+  UnorderedBranchMap BuildUnorderedBranchMap(const proto::ETMBranchList_Binary& binary_proto) {
+    UnorderedBranchMap branch_map;
+    for (size_t i = 0; i < binary_proto.addrs_size(); i++) {
+      const auto& addr_proto = binary_proto.addrs(i);
+      auto& b_map = branch_map[addr_proto.addr()];
+      for (size_t j = 0; j < addr_proto.branches_size(); j++) {
+        const auto& branch_proto = addr_proto.branches(j);
+        std::vector<bool> branch =
+            ProtoStringToBranch(branch_proto.branch(), branch_proto.branch_size());
+        b_map[branch] = branch_proto.count();
+      }
+    }
+    return branch_map;
+  }
+
+  const std::string filename_;
+  const std::regex binary_name_regex_;
+  BranchListBinaryCallback callback_;
 };
 
 // Write instruction ranges to a file in AutoFDO text format.
@@ -703,22 +797,7 @@ class InjectCommand : public Command {
     return true;
   }
 
-  std::unordered_map<Dso*, bool> dso_filter_cache;
-  bool FilterDso(Dso* dso) {
-    auto lookup = dso_filter_cache.find(dso);
-    if (lookup != dso_filter_cache.end()) {
-      return lookup->second;
-    }
-    bool match = std::regex_search(dso->Path(), binary_name_regex_);
-    dso_filter_cache.insert({dso, match});
-    return match;
-  }
-
   void ProcessInstrRange(const ETMInstrRange& instr_range) {
-    if (!FilterDso(instr_range.dso)) {
-      return;
-    }
-
     auto& binary = autofdo_binary_map_[instr_range.dso];
     uint64_t total_count = instr_range.branch_taken_count;
     OverflowSafeAdd(total_count, instr_range.branch_not_taken_count);
@@ -736,24 +815,6 @@ class InjectCommand : public Command {
       LOG(ERROR) << "Only support autofdo output when given a branch list file.";
       return false;
     }
-    // 1. Load EtmBranchList msg from proto file.
-    auto fd = FileHelper::OpenReadOnly(input_filename);
-    if (!fd.ok()) {
-      PLOG(ERROR) << "failed to open " << input_filename;
-      return false;
-    }
-    proto::ETMBranchList branch_list_proto;
-    if (!branch_list_proto.ParseFromFileDescriptor(fd)) {
-      PLOG(ERROR) << "failed to read msg from " << input_filename;
-      return false;
-    }
-    if (branch_list_proto.magic() != ETM_BRANCH_LIST_PROTO_MAGIC) {
-      PLOG(ERROR) << "file not in format etm_branch_list.proto: " << input_filename;
-      return false;
-    }
-
-    // 2. Build branch map for each binary, convert them to instr ranges.
-    auto callback = [this](const ETMInstrRange& range) { ProcessInstrRange(range); };
     auto check_build_id = [](Dso* dso, const BuildId& expected_build_id) {
       if (expected_build_id.IsEmpty()) {
         return true;
@@ -763,70 +824,49 @@ class InjectCommand : public Command {
              build_id == expected_build_id;
     };
 
-    for (size_t i = 0; i < branch_list_proto.binaries_size(); i++) {
-      const auto& binary_proto = branch_list_proto.binaries(i);
-      BuildId build_id(binary_proto.build_id());
-      std::optional<DsoType> dso_type = ToDsoType(binary_proto.type());
-      if (!dso_type.has_value()) {
-        return false;
-      }
-      std::unique_ptr<Dso> dso =
-          Dso::CreateDsoWithBuildId(dso_type.value(), binary_proto.path(), build_id);
-      if (!dso || !FilterDso(dso.get()) || !check_build_id(dso.get(), build_id)) {
-        continue;
+    auto process_instr_callback = [this](const ETMInstrRange& range) { ProcessInstrRange(range); };
+
+    auto callback = [&](const BinaryKey& key, BranchListBinaryInfo& binary) {
+      BuildId build_id = key.build_id;
+      std::unique_ptr<Dso> dso = Dso::CreateDsoWithBuildId(binary.dso_type, key.path, build_id);
+      if (!dso || !check_build_id(dso.get(), key.build_id)) {
+        return;
       }
       // Dso is used in ETMInstrRange in post process, so need to extend its lifetime.
       Dso* dso_p = dso.get();
       branch_list_dso_v_.emplace_back(dso.release());
-      auto branch_map = BuildBranchMap(binary_proto);
 
       if (dso_p->type() == DSO_KERNEL) {
-        if (!ModifyBranchMapForKernel(binary_proto, dso_p, branch_map)) {
-          return false;
-        }
+        ModifyBranchMapForKernel(dso_p, key.kernel_start_addr, binary);
       }
 
-      if (auto result = ConvertBranchMapToInstrRanges(dso_p, branch_map, callback); !result.ok()) {
+      auto result = ConvertBranchMapToInstrRanges(dso_p, binary.GetOrderedBranchMap(),
+                                                  process_instr_callback);
+      if (!result.ok()) {
         LOG(WARNING) << "failed to build instr ranges for binary " << dso_p->Path() << ": "
                      << result.error();
       }
-    }
-    return true;
+    };
+
+    BranchListReader reader(input_filename, binary_name_regex_);
+    reader.SetCallback(callback);
+    return reader.Read();
   }
 
-  BranchMap BuildBranchMap(const proto::ETMBranchList_Binary& binary_proto) {
-    BranchMap branch_map;
-    for (size_t i = 0; i < binary_proto.addrs_size(); i++) {
-      const auto& addr_proto = binary_proto.addrs(i);
-      auto& b_map = branch_map[addr_proto.addr()];
-      for (size_t j = 0; j < addr_proto.branches_size(); j++) {
-        const auto& branch_proto = addr_proto.branches(j);
-        std::vector<bool> branch =
-            ProtoStringToBranch(branch_proto.branch(), branch_proto.branch_size());
-        b_map[branch] = branch_proto.count();
-      }
-    }
-    return branch_map;
-  }
-
-  bool ModifyBranchMapForKernel(const proto::ETMBranchList_Binary& binary_proto, Dso* dso,
-                                BranchMap& branch_map) {
-    if (!binary_proto.has_kernel_info()) {
-      LOG(ERROR) << "no kernel info";
-      return false;
-    }
-    uint64_t kernel_map_start_addr = binary_proto.kernel_info().kernel_start_addr();
-    if (kernel_map_start_addr == 0) {
-      return true;
+  void ModifyBranchMapForKernel(Dso* dso, uint64_t kernel_start_addr,
+                                BranchListBinaryInfo& binary) {
+    if (kernel_start_addr == 0) {
+      // vmlinux has been provided when generating branch lists. Addresses in branch lists are
+      // already vaddrs in vmlinux.
+      return;
     }
     // Addresses are still kernel ip addrs in memory. Need to convert them to vaddrs in vmlinux.
-    BranchMap new_branch_map;
-    for (auto& p : branch_map) {
-      uint64_t vaddr_in_file = dso->IpToVaddrInFile(p.first, kernel_map_start_addr, 0);
+    UnorderedBranchMap new_branch_map;
+    for (auto& p : binary.branch_map) {
+      uint64_t vaddr_in_file = dso->IpToVaddrInFile(p.first, kernel_start_addr, 0);
       new_branch_map[vaddr_in_file] = std::move(p.second);
     }
-    branch_map = std::move(new_branch_map);
-    return true;
+    binary.branch_map = std::move(new_branch_map);
   }
 
   bool WriteOutput() {
@@ -836,20 +876,6 @@ class InjectCommand : public Command {
 
     CHECK(output_format_ == OutputFormat::BranchList);
     return branch_list_writer_.Write(output_filename_);
-  }
-
-  std::optional<DsoType> ToDsoType(proto::ETMBranchList_Binary::BinaryType binary_type) {
-    switch (binary_type) {
-      case proto::ETMBranchList_Binary::ELF_FILE:
-        return DSO_ELF_FILE;
-      case proto::ETMBranchList_Binary::KERNEL:
-        return DSO_KERNEL;
-      case proto::ETMBranchList_Binary::KERNEL_MODULE:
-        return DSO_KERNEL_MODULE;
-      default:
-        LOG(ERROR) << "unexpected binary type " << binary_type;
-        return std::nullopt;
-    }
   }
 
   std::regex binary_name_regex_{""};  // Default to match everything.
