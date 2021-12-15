@@ -110,18 +110,18 @@ impl Scheduler {
 
 /// Run if space usage is under limit.
 fn check_space_limit(path: &Path, config: &Config) -> Result<bool> {
-    let ret = dir_size(path)? <= config.max_trace_limit;
-    if !ret {
-        log::error!("trace storage exhausted.");
-    }
-    Ok(ret)
-}
+    // Returns the size of a directory, non-recursive.
+    let dir_size = |path| -> Result<u64> {
+        fs::read_dir(path)?.try_fold(0, |acc, file| {
+            let metadata = file?.metadata()?;
+            let size = if metadata.is_file() { metadata.len() } else { 0 };
+            Ok(acc + size)
+        })
+    };
 
-/// Returns the size of a directory, non-recursive.
-fn dir_size(path: &Path) -> Result<u64> {
-    fs::read_dir(path)?.try_fold(0, |acc, file| {
-        let metadata = file?.metadata()?;
-        let size = if metadata.is_file() { metadata.len() } else { 0 };
-        Ok(acc + size)
-    })
+    if dir_size(path)? > config.max_trace_limit {
+        log::error!("trace storage exhausted.");
+        return Ok(false);
+    }
+    Ok(true)
 }
