@@ -742,13 +742,21 @@ class InjectCommand : public Command {
       return false;
     }
 
-    for (const auto& filename : input_filenames_) {
-      if (!ProcessInputFile(filename)) {
+    CHECK(!input_filenames_.empty());
+    if (IsPerfDataFile(input_filenames_[0])) {
+      switch (output_format_) {
+        case OutputFormat::AutoFDO:
+          return ConvertPerfDataToAutoFDO();
+        case OutputFormat::BranchList:
+          return ConvertPerfDataToBranchList();
+      }
+    } else {
+      if (output_format_ != OutputFormat::AutoFDO) {
+        LOG(ERROR) << "Only support autofdo output when given a branch list file.";
         return false;
       }
+      return ConvertBranchListToAutoFDO();
     }
-
-    return WriteOutput();
   }
 
  private:
@@ -829,50 +837,55 @@ class InjectCommand : public Command {
     return true;
   }
 
-  bool ProcessInputFile(const std::string& input_filename) {
-    if (IsPerfDataFile(input_filename)) {
+  bool ConvertPerfDataToAutoFDO() {
+    AutoFDOWriter autofdo_writer;
+    auto callback = [&](const BinaryKey& key, AutoFDOBinaryInfo& binary) {
+      autofdo_writer.AddAutoFDOBinary(key, binary);
+    };
+    for (const auto& input_filename : input_filenames_) {
       PerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_, binary_name_regex_);
-      if (output_format_ == OutputFormat::AutoFDO) {
-        reader.SetCallback([this](const BinaryKey& key, AutoFDOBinaryInfo& binary) {
-          autofdo_writer_.AddAutoFDOBinary(key, binary);
-        });
-      } else if (output_format_ == OutputFormat::BranchList) {
-        reader.SetCallback([this](const BinaryKey& key, BranchListBinaryInfo& binary) {
-          branch_list_writer_.AddBranchListBinary(key, binary);
-        });
+      reader.SetCallback(callback);
+      if (!reader.Read()) {
+        return false;
       }
-      return reader.Read();
     }
-    return ProcessBranchListFile(input_filename);
+    return autofdo_writer.Write(output_filename_);
   }
 
-  bool ProcessBranchListFile(const std::string& input_filename) {
-    if (output_format_ != OutputFormat::AutoFDO) {
-      LOG(ERROR) << "Only support autofdo output when given a branch list file.";
-      return false;
+  bool ConvertPerfDataToBranchList() {
+    BranchListWriter branch_list_writer;
+    auto callback = [&](const BinaryKey& key, BranchListBinaryInfo& binary) {
+      branch_list_writer.AddBranchListBinary(key, binary);
+    };
+    for (const auto& input_filename : input_filenames_) {
+      PerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_, binary_name_regex_);
+      reader.SetCallback(callback);
+      if (!reader.Read()) {
+        return false;
+      }
     }
+    return branch_list_writer.Write(output_filename_);
+  }
+
+  bool ConvertBranchListToAutoFDO() {
+    AutoFDOWriter autofdo_writer;
     BranchListToAutoFDOConverter converter;
     auto callback = [&](const BinaryKey& key, BranchListBinaryInfo& binary) {
       std::unique_ptr<AutoFDOBinaryInfo> autofdo_binary = converter.Convert(key, binary);
       if (autofdo_binary) {
         // Create new BinaryKey with kernel_start_addr = 0. Because AutoFDO output doesn't care
         // kernel_start_addr.
-        autofdo_writer_.AddAutoFDOBinary(BinaryKey(key.path, key.build_id), *autofdo_binary);
+        autofdo_writer.AddAutoFDOBinary(BinaryKey(key.path, key.build_id), *autofdo_binary);
       }
     };
-
-    BranchListReader reader(input_filename, binary_name_regex_);
-    reader.SetCallback(callback);
-    return reader.Read();
-  }
-
-  bool WriteOutput() {
-    if (output_format_ == OutputFormat::AutoFDO) {
-      return autofdo_writer_.Write(output_filename_);
+    for (const auto& input_filename : input_filenames_) {
+      BranchListReader reader(input_filename, binary_name_regex_);
+      reader.SetCallback(callback);
+      if (!reader.Read()) {
+        return false;
+      }
     }
-
-    CHECK(output_format_ == OutputFormat::BranchList);
-    return branch_list_writer_.Write(output_filename_);
+    return autofdo_writer.Write(output_filename_);
   }
 
   std::regex binary_name_regex_{""};  // Default to match everything.
@@ -883,8 +896,6 @@ class InjectCommand : public Command {
   ETMDumpOption etm_dump_option_;
 
   std::unique_ptr<Dso> placeholder_dso_;
-  AutoFDOWriter autofdo_writer_;
-  BranchListWriter branch_list_writer_;
 };
 
 }  // namespace
