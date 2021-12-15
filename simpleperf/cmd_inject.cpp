@@ -618,21 +618,27 @@ class AutoFDOWriter {
   std::unordered_map<BinaryKey, AutoFDOBinaryInfo, BinaryKeyHash> binary_map_;
 };
 
-// Write branch lists to a protobuf file specified by etm_branch_list.proto.
-class BranchListWriter {
- public:
+// Merge BranchListBinaryInfo.
+struct BranchListMerger {
   void AddBranchListBinary(const BinaryKey& key, BranchListBinaryInfo& binary) {
-    auto it = binary_map_.find(key);
-    if (it == binary_map_.end()) {
-      binary_map_[key] = std::move(binary);
+    auto it = binary_map.find(key);
+    if (it == binary_map.end()) {
+      binary_map[key] = std::move(binary);
     } else {
       it->second.Merge(binary);
     }
   }
 
-  bool Write(const std::string& output_filename) {
+  std::unordered_map<BinaryKey, BranchListBinaryInfo, BinaryKeyHash> binary_map;
+};
+
+// Write branch lists to a protobuf file specified by etm_branch_list.proto.
+class BranchListWriter {
+ public:
+  bool Write(const std::string& output_filename,
+             const std::unordered_map<BinaryKey, BranchListBinaryInfo, BinaryKeyHash>& binary_map) {
     // Don't produce empty output file.
-    if (binary_map_.empty()) {
+    if (binary_map.empty()) {
       LOG(INFO) << "Skip empty output file.";
       unlink(output_filename.c_str());
       return true;
@@ -647,7 +653,7 @@ class BranchListWriter {
     proto::ETMBranchList branch_list_proto;
     branch_list_proto.set_magic(ETM_BRANCH_LIST_PROTO_MAGIC);
     std::vector<char> branch_buf;
-    for (const auto& p : binary_map_) {
+    for (const auto& p : binary_map) {
       const BinaryKey& key = p.first;
       const BranchListBinaryInfo& binary = p.second;
       auto binary_proto = branch_list_proto.add_binaries();
@@ -701,9 +707,7 @@ class BranchListWriter {
         return std::nullopt;
     }
   }
-
-  std::unordered_map<BinaryKey, BranchListBinaryInfo, BinaryKeyHash> binary_map_;
-};  // namespace
+};
 
 class InjectCommand : public Command {
  public:
@@ -853,9 +857,9 @@ class InjectCommand : public Command {
   }
 
   bool ConvertPerfDataToBranchList() {
-    BranchListWriter branch_list_writer;
+    BranchListMerger branch_list_merger;
     auto callback = [&](const BinaryKey& key, BranchListBinaryInfo& binary) {
-      branch_list_writer.AddBranchListBinary(key, binary);
+      branch_list_merger.AddBranchListBinary(key, binary);
     };
     for (const auto& input_filename : input_filenames_) {
       PerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_, binary_name_regex_);
@@ -864,19 +868,15 @@ class InjectCommand : public Command {
         return false;
       }
     }
-    return branch_list_writer.Write(output_filename_);
+    BranchListWriter branch_list_writer;
+    return branch_list_writer.Write(output_filename_, branch_list_merger.binary_map);
   }
 
   bool ConvertBranchListToAutoFDO() {
-    AutoFDOWriter autofdo_writer;
-    BranchListToAutoFDOConverter converter;
+    // Step1 : Merge branch lists from all input files.
+    BranchListMerger branch_list_merger;
     auto callback = [&](const BinaryKey& key, BranchListBinaryInfo& binary) {
-      std::unique_ptr<AutoFDOBinaryInfo> autofdo_binary = converter.Convert(key, binary);
-      if (autofdo_binary) {
-        // Create new BinaryKey with kernel_start_addr = 0. Because AutoFDO output doesn't care
-        // kernel_start_addr.
-        autofdo_writer.AddAutoFDOBinary(BinaryKey(key.path, key.build_id), *autofdo_binary);
-      }
+      branch_list_merger.AddBranchListBinary(key, binary);
     };
     for (const auto& input_filename : input_filenames_) {
       BranchListReader reader(input_filename, binary_name_regex_);
@@ -885,6 +885,22 @@ class InjectCommand : public Command {
         return false;
       }
     }
+
+    // Step2: Convert BranchListBinaryInfo to AutoFDOBinaryInfo.
+    AutoFDOWriter autofdo_writer;
+    BranchListToAutoFDOConverter converter;
+    for (auto& p : branch_list_merger.binary_map) {
+      const BinaryKey& key = p.first;
+      BranchListBinaryInfo& binary = p.second;
+      std::unique_ptr<AutoFDOBinaryInfo> autofdo_binary = converter.Convert(key, binary);
+      if (autofdo_binary) {
+        // Create new BinaryKey with kernel_start_addr = 0. Because AutoFDO output doesn't care
+        // kernel_start_addr.
+        autofdo_writer.AddAutoFDOBinary(BinaryKey(key.path, key.build_id), *autofdo_binary);
+      }
+    }
+
+    // Step3: Write AutoFDOBinaryInfo.
     return autofdo_writer.Write(output_filename_);
   }
 
