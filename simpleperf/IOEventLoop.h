@@ -18,6 +18,7 @@
 #define SIMPLE_PERF_IOEVENT_LOOP_H_
 
 #include <stdint.h>
+#include <sys/time.h>
 #include <time.h>
 
 #include <functional>
