@@ -118,6 +118,7 @@ struct BinaryKeyHash {
 
 static void OverflowSafeAdd(uint64_t& dest, uint64_t add) {
   if (__builtin_add_overflow(dest, add, &dest)) {
+    LOG(WARNING) << "Branch count overflow happened.";
     dest = UINT64_MAX;
   }
 }
