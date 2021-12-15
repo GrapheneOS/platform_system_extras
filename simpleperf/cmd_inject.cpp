@@ -755,11 +755,12 @@ class InjectCommand : public Command {
           return ConvertPerfDataToBranchList();
       }
     } else {
-      if (output_format_ != OutputFormat::AutoFDO) {
-        LOG(ERROR) << "Only support autofdo output when given a branch list file.";
-        return false;
+      switch (output_format_) {
+        case OutputFormat::AutoFDO:
+          return ConvertBranchListToAutoFDO();
+        case OutputFormat::BranchList:
+          return ConvertBranchListToBranchList();
       }
-      return ConvertBranchListToAutoFDO();
     }
   }
 
@@ -902,6 +903,24 @@ class InjectCommand : public Command {
 
     // Step3: Write AutoFDOBinaryInfo.
     return autofdo_writer.Write(output_filename_);
+  }
+
+  bool ConvertBranchListToBranchList() {
+    // Step1 : Merge branch lists from all input files.
+    BranchListMerger branch_list_merger;
+    auto callback = [&](const BinaryKey& key, BranchListBinaryInfo& binary) {
+      branch_list_merger.AddBranchListBinary(key, binary);
+    };
+    for (const auto& input_filename : input_filenames_) {
+      BranchListReader reader(input_filename, binary_name_regex_);
+      reader.SetCallback(callback);
+      if (!reader.Read()) {
+        return false;
+      }
+    }
+    // Step2: Write BranchListBinaryInfo.
+    BranchListWriter branch_list_writer;
+    return branch_list_writer.Write(output_filename_, branch_list_merger.binary_map);
   }
 
   std::regex binary_name_regex_{""};  // Default to match everything.

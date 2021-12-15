@@ -178,3 +178,16 @@ TEST(cmd_inject, multiple_input_files) {
   ASSERT_TRUE(RunInjectCmd({"-i", std::string("@") + tmpfile.path}, &data));
   ASSERT_NE(data.find("106c->1074:200"), std::string::npos);
 }
+
+TEST(cmd_inject, merge_branch_list_files) {
+  TemporaryFile tmpfile;
+  close(tmpfile.release());
+  ASSERT_TRUE(RunInjectCmd({"--output", "branch-list", "-o", tmpfile.path}));
+  TemporaryFile tmpfile2;
+  close(tmpfile2.release());
+  ASSERT_TRUE(RunInjectCmd({"-i", std::string(tmpfile.path) + "," + tmpfile.path, "--output",
+                            "branch-list", "-o", tmpfile2.path}));
+  std::string autofdo_data;
+  ASSERT_TRUE(RunInjectCmd({"-i", tmpfile2.path, "--output", "autofdo"}, &autofdo_data));
+  ASSERT_NE(autofdo_data.find("106c->1074:200"), std::string::npos);
+}
