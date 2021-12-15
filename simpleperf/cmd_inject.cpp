@@ -58,6 +58,8 @@ std::vector<bool> ProtoStringToBranch(const std::string& s, size_t bit_size) {
 
 namespace {
 
+constexpr const char* ETM_BRANCH_LIST_PROTO_MAGIC = "simpleperf:EtmBranchList";
+
 using AddrPair = std::pair<uint64_t, uint64_t>;
 
 struct AddrPairHash {
@@ -74,13 +76,93 @@ enum class OutputFormat {
   BranchList,
 };
 
-struct AutoFDOBinaryInfo {
-  std::unordered_map<AddrPair, uint64_t, AddrPairHash> range_count_map;
-  std::unordered_map<AddrPair, uint64_t, AddrPairHash> branch_count_map;
+// We identify a binary by its path and build_id. kernel_start_addr is also used for vmlinux.
+// Because it affects how addresses in BranchListBinaryInfo are interpreted.
+struct BinaryKey {
+  std::string path;
+  BuildId build_id;
+  uint64_t kernel_start_addr = 0;
+
+  BinaryKey() {}
+
+  BinaryKey(Dso* dso, uint64_t kernel_start_addr) : path(dso->Path()) {
+    build_id = Dso::FindExpectedBuildIdForPath(dso->Path());
+    if (dso->type() == DSO_KERNEL) {
+      this->kernel_start_addr = kernel_start_addr;
+    }
+  }
+
+  bool operator==(const BinaryKey& other) const {
+    return path == other.path && build_id == other.build_id &&
+           kernel_start_addr == other.kernel_start_addr;
+  }
 };
 
-using BranchListBinaryInfo =
+struct BinaryKeyHash {
+  size_t operator()(const BinaryKey& key) const noexcept {
+    size_t seed = 0;
+    HashCombine(seed, key.path);
+    HashCombine(seed, key.build_id);
+    if (key.kernel_start_addr != 0) {
+      HashCombine(seed, key.kernel_start_addr);
+    }
+    return seed;
+  }
+};
+
+static void OverflowSafeAdd(uint64_t& dest, uint64_t add) {
+  if (__builtin_add_overflow(dest, add, &dest)) {
+    dest = UINT64_MAX;
+  }
+}
+
+struct AutoFDOBinaryInfo {
+  uint64_t first_load_segment_addr = 0;
+  std::unordered_map<AddrPair, uint64_t, AddrPairHash> range_count_map;
+  std::unordered_map<AddrPair, uint64_t, AddrPairHash> branch_count_map;
+
+  void Merge(const AutoFDOBinaryInfo& other) {
+    for (const auto& p : other.range_count_map) {
+      auto res = range_count_map.emplace(p.first, p.second);
+      if (!res.second) {
+        OverflowSafeAdd(res.first->second, p.second);
+      }
+    }
+    for (const auto& p : other.branch_count_map) {
+      auto res = branch_count_map.emplace(p.first, p.second);
+      if (!res.second) {
+        OverflowSafeAdd(res.first->second, p.second);
+      }
+    }
+  }
+};
+
+using UnorderedBranchMap =
     std::unordered_map<uint64_t, std::unordered_map<std::vector<bool>, uint64_t>>;
+
+struct BranchListBinaryInfo {
+  DsoType dso_type;
+  UnorderedBranchMap branch_map;
+
+  void Merge(const BranchListBinaryInfo& other) {
+    for (auto& other_p : other.branch_map) {
+      auto it = branch_map.find(other_p.first);
+      if (it == branch_map.end()) {
+        branch_map[other_p.first] = std::move(other_p.second);
+      } else {
+        auto& map2 = it->second;
+        for (auto& other_p2 : other_p.second) {
+          auto it2 = map2.find(other_p2.first);
+          if (it2 == map2.end()) {
+            map2[other_p2.first] = other_p2.second;
+          } else {
+            OverflowSafeAdd(it2->second, other_p2.second);
+          }
+        }
+      }
+    }
+  }
+};
 
 class ThreadTreeWithFilter : public ThreadTree {
  public:
@@ -98,7 +180,175 @@ class ThreadTreeWithFilter : public ThreadTree {
   std::optional<pid_t> exclude_pid_;
 };
 
-constexpr const char* ETM_BRANCH_LIST_PROTO_MAGIC = "simpleperf:EtmBranchList";
+// Write instruction ranges to a file in AutoFDO text format.
+class AutoFDOWriter {
+ public:
+  void AddAutoFDOBinary(const BinaryKey& key, AutoFDOBinaryInfo& binary) {
+    auto it = binary_map_.find(key);
+    if (it == binary_map_.end()) {
+      binary_map_[key] = std::move(binary);
+    } else {
+      it->second.Merge(binary);
+    }
+  }
+
+  bool Write(const std::string& output_filename) {
+    std::unique_ptr<FILE, decltype(&fclose)> output_fp(fopen(output_filename.c_str(), "w"), fclose);
+    if (!output_fp) {
+      PLOG(ERROR) << "failed to write to " << output_filename;
+      return false;
+    }
+    // autofdo_binary_map is used to store instruction ranges, which can have a large amount. And
+    // it has a larger access time (instruction ranges * executed time). So it's better to use
+    // unorder_maps to speed up access time. But we also want a stable output here, to compare
+    // output changes result from code changes. So generate a sorted output here.
+    std::vector<BinaryKey> keys;
+    for (auto& p : binary_map_) {
+      keys.emplace_back(p.first);
+    }
+    std::sort(keys.begin(), keys.end(),
+              [](const BinaryKey& key1, const BinaryKey& key2) { return key1.path < key2.path; });
+    if (keys.size() > 1) {
+      fprintf(output_fp.get(),
+              "// Please split this file. AutoFDO only accepts profile for one binary.\n");
+    }
+    for (const auto& key : keys) {
+      const AutoFDOBinaryInfo& binary = binary_map_[key];
+      // AutoFDO text format needs file_offsets instead of virtual addrs in a binary. And it uses
+      // below formula: vaddr = file_offset + GetFirstLoadSegmentVaddr().
+      uint64_t first_load_segment_addr = binary.first_load_segment_addr;
+
+      auto to_offset = [&](uint64_t vaddr) -> uint64_t {
+        if (vaddr == 0) {
+          return 0;
+        }
+        CHECK_GE(vaddr, first_load_segment_addr);
+        return vaddr - first_load_segment_addr;
+      };
+
+      // Write range_count_map.
+      std::map<AddrPair, uint64_t> range_count_map(binary.range_count_map.begin(),
+                                                   binary.range_count_map.end());
+      fprintf(output_fp.get(), "%zu\n", range_count_map.size());
+      for (const auto& pair2 : range_count_map) {
+        const AddrPair& addr_range = pair2.first;
+        uint64_t count = pair2.second;
+
+        fprintf(output_fp.get(), "%" PRIx64 "-%" PRIx64 ":%" PRIu64 "\n",
+                to_offset(addr_range.first), to_offset(addr_range.second), count);
+      }
+
+      // Write addr_count_map.
+      fprintf(output_fp.get(), "0\n");
+
+      // Write branch_count_map.
+      std::map<AddrPair, uint64_t> branch_count_map(binary.branch_count_map.begin(),
+                                                    binary.branch_count_map.end());
+      fprintf(output_fp.get(), "%zu\n", branch_count_map.size());
+      for (const auto& pair2 : branch_count_map) {
+        const AddrPair& branch = pair2.first;
+        uint64_t count = pair2.second;
+
+        fprintf(output_fp.get(), "%" PRIx64 "->%" PRIx64 ":%" PRIu64 "\n", to_offset(branch.first),
+                to_offset(branch.second), count);
+      }
+
+      // Write the binary path in comment.
+      fprintf(output_fp.get(), "// %s\n\n", key.path.c_str());
+    }
+    return true;
+  }
+
+ private:
+  std::unordered_map<BinaryKey, AutoFDOBinaryInfo, BinaryKeyHash> binary_map_;
+};
+
+// Write branch lists to a protobuf file specified by etm_branch_list.proto.
+class BranchListWriter {
+ public:
+  void AddBranchListBinary(const BinaryKey& key, BranchListBinaryInfo& binary) {
+    auto it = binary_map_.find(key);
+    if (it == binary_map_.end()) {
+      binary_map_[key] = std::move(binary);
+    } else {
+      it->second.Merge(binary);
+    }
+  }
+
+  bool Write(const std::string& output_filename) {
+    // Don't produce empty output file.
+    if (binary_map_.empty()) {
+      LOG(INFO) << "Skip empty output file.";
+      unlink(output_filename.c_str());
+      return true;
+    }
+    std::unique_ptr<FILE, decltype(&fclose)> output_fp(fopen(output_filename.c_str(), "wb"),
+                                                       fclose);
+    if (!output_fp) {
+      PLOG(ERROR) << "failed to write to " << output_filename;
+      return false;
+    }
+
+    proto::ETMBranchList branch_list_proto;
+    branch_list_proto.set_magic(ETM_BRANCH_LIST_PROTO_MAGIC);
+    std::vector<char> branch_buf;
+    for (const auto& p : binary_map_) {
+      const BinaryKey& key = p.first;
+      const BranchListBinaryInfo& binary = p.second;
+      auto binary_proto = branch_list_proto.add_binaries();
+
+      binary_proto->set_path(key.path);
+      if (!key.build_id.IsEmpty()) {
+        binary_proto->set_build_id(key.build_id.ToString().substr(2));
+      }
+      auto opt_binary_type = ToProtoBinaryType(binary.dso_type);
+      if (!opt_binary_type.has_value()) {
+        return false;
+      }
+      binary_proto->set_type(opt_binary_type.value());
+
+      for (const auto& addr_p : binary.branch_map) {
+        auto addr_proto = binary_proto->add_addrs();
+        addr_proto->set_addr(addr_p.first);
+
+        for (const auto& branch_p : addr_p.second) {
+          const std::vector<bool>& branch = branch_p.first;
+          auto branch_proto = addr_proto->add_branches();
+
+          branch_proto->set_branch(BranchToProtoString(branch));
+          branch_proto->set_branch_size(branch.size());
+          branch_proto->set_count(branch_p.second);
+        }
+      }
+
+      if (binary.dso_type == DSO_KERNEL) {
+        binary_proto->mutable_kernel_info()->set_kernel_start_addr(key.kernel_start_addr);
+      }
+    }
+    if (!branch_list_proto.SerializeToFileDescriptor(fileno(output_fp.get()))) {
+      PLOG(ERROR) << "failed to write to " << output_filename;
+      return false;
+    }
+    return true;
+  }
+
+ private:
+  std::optional<proto::ETMBranchList_Binary::BinaryType> ToProtoBinaryType(DsoType dso_type) {
+    switch (dso_type) {
+      case DSO_ELF_FILE:
+        return proto::ETMBranchList_Binary::ELF_FILE;
+      case DSO_KERNEL:
+        return proto::ETMBranchList_Binary::KERNEL;
+      case DSO_KERNEL_MODULE:
+        return proto::ETMBranchList_Binary::KERNEL_MODULE;
+      default:
+        LOG(ERROR) << "unexpected dso type " << dso_type;
+        return std::nullopt;
+    }
+  }
+
+  std::unordered_map<BinaryKey, BranchListBinaryInfo, BinaryKeyHash> binary_map_;
+};  // namespace
 
 class InjectCommand : public Command {
  public:
@@ -129,37 +379,21 @@ class InjectCommand : public Command {
 "$ simpleperf inject -i perf.data -o branch_list.data --output branch-list\n"
 "$ simpleperf inject -i branch_list.data -o autofdo.txt --output autofdo\n"
                 // clang-format on
-                ),
-        output_fp_(nullptr, fclose) {}
+        ) {}
 
   bool Run(const std::vector<std::string>& args) override {
     GOOGLE_PROTOBUF_VERIFY_VERSION;
-    // 1. Parse options.
     if (!ParseOptions(args)) {
       return false;
     }
 
-    // 2. Open output file.
-    const char* open_mode = (output_format_ == OutputFormat::AutoFDO) ? "w" : "wb";
-    output_fp_.reset(fopen(output_filename_.c_str(), open_mode));
-    if (!output_fp_) {
-      PLOG(ERROR) << "failed to write to " << output_filename_;
-      return false;
-    }
-
-    // 3. Process input files.
     for (const auto& filename : input_filenames_) {
       if (!ProcessInputFile(filename)) {
         return false;
       }
     }
 
-    // 4. Write output file.
-    if (!WriteOutput()) {
-      return false;
-    }
-    output_fp_.reset(nullptr);
-    return true;
+    return WriteOutput();
   }
 
  private:
@@ -264,9 +498,53 @@ class InjectCommand : public Command {
       if (etm_decoder_ && !etm_decoder_->FinishData()) {
         return false;
       }
-      return true;
+    } else {
+      if (!ProcessBranchListFile(input_filename)) {
+        return false;
+      }
     }
-    return ProcessBranchListFile(input_filename);
+    PostProcessInputFile();
+    return true;
+  }
+
+  void PostProcessInputFile() {
+    // When processing binary info in an input file, the binaries are identified by their path.
+    // But this isn't sufficient when merging binary info from multiple input files. Because
+    // binaries for the same path may be changed between generating input files. So after processing
+    // each input file, we create BinaryKeys to identify binaries, which consider path, build_id and
+    // kernel_start_addr (for vmlinux).
+    if (output_format_ == OutputFormat::AutoFDO) {
+      for (auto& p : autofdo_binary_map_) {
+        Dso* dso = p.first;
+        AutoFDOBinaryInfo& binary = p.second;
+        binary.first_load_segment_addr = GetFirstLoadSegmentVaddr(dso);
+        autofdo_writer_.AddAutoFDOBinary(BinaryKey(dso, 0), binary);
+      }
+      autofdo_binary_map_.clear();
+      return;
+    }
+    CHECK(output_format_ == OutputFormat::BranchList);
+    for (auto& p : branch_list_binary_map_) {
+      Dso* dso = p.first;
+      BranchListBinaryInfo& binary = p.second;
+      binary.dso_type = dso->type();
+      BinaryKey key(dso, 0);
+      if (binary.dso_type == DSO_KERNEL) {
+        if (kernel_map_start_addr_ == 0) {
+          LOG(WARNING) << "Can't convert kernel ip addresses without kernel start addr. So remove "
+                          "branches for the kernel.";
+          continue;
+        }
+        if (dso->GetDebugFilePath() == dso->Path()) {
+          // vmlinux isn't available. We still use kernel ip addr. Put kernel start addr in proto
+          // for address conversion later.
+          key.kernel_start_addr = kernel_map_start_addr_;
+        }
+      }
+      branch_list_writer_.AddBranchListBinary(key, binary);
+    }
+    kernel_map_start_addr_ = 0;
+    branch_list_binary_map_.clear();
   }
 
   bool ProcessRecord(Record* r) {
@@ -325,11 +603,12 @@ class InjectCommand : public Command {
     }
 
     auto& binary = autofdo_binary_map_[instr_range.dso];
-    binary.range_count_map[AddrPair(instr_range.start_addr, instr_range.end_addr)] +=
-        instr_range.branch_taken_count + instr_range.branch_not_taken_count;
+    OverflowSafeAdd(binary.range_count_map[AddrPair(instr_range.start_addr, instr_range.end_addr)],
+                    instr_range.branch_taken_count + instr_range.branch_not_taken_count);
     if (instr_range.branch_taken_count > 0) {
-      binary.branch_count_map[AddrPair(instr_range.end_addr, instr_range.branch_to_addr)] +=
-          instr_range.branch_taken_count;
+      OverflowSafeAdd(
+          binary.branch_count_map[AddrPair(instr_range.end_addr, instr_range.branch_to_addr)],
+          instr_range.branch_taken_count);
     }
   }
 
@@ -338,7 +617,8 @@ class InjectCommand : public Command {
       return;
     }
 
-    ++branch_list_binary_map_[branch_list.dso][branch_list.addr][branch_list.branch];
+    auto& branch_map = branch_list_binary_map_[branch_list.dso].branch_map;
+    ++branch_map[branch_list.addr][branch_list.branch];
   }
 
   bool ProcessBranchListFile(const std::string& input_filename) {
@@ -441,71 +721,11 @@ class InjectCommand : public Command {
 
   bool WriteOutput() {
     if (output_format_ == OutputFormat::AutoFDO) {
-      GenerateInstrRange();
-      return true;
+      return autofdo_writer_.Write(output_filename_);
     }
+
     CHECK(output_format_ == OutputFormat::BranchList);
-    return GenerateBranchList();
-  }
-
-  void GenerateInstrRange() {
-    // autofdo_binary_map is used to store instruction ranges, which can have a large amount. And it
-    // has a larger access time (instruction ranges * executed time). So it's better to use
-    // unorder_maps to speed up access time. But we also want a stable output here, to compare
-    // output changes result from code changes. So generate a sorted output here.
-    std::vector<Dso*> dso_v;
-    for (auto& p : autofdo_binary_map_) {
-      dso_v.emplace_back(p.first);
-    }
-    std::sort(dso_v.begin(), dso_v.end(), [](Dso* d1, Dso* d2) { return d1->Path() < d2->Path(); });
-    if (dso_v.size() > 1) {
-      fprintf(output_fp_.get(),
-              "// Please split this file. AutoFDO only accepts profile for one binary.\n");
-    }
-    for (auto dso : dso_v) {
-      const AutoFDOBinaryInfo& binary = autofdo_binary_map_[dso];
-      // AutoFDO text format needs file_offsets instead of virtual addrs in a binary. And it uses
-      // below formula: vaddr = file_offset + GetFirstLoadSegmentVaddr().
-      uint64_t first_load_segment_addr = GetFirstLoadSegmentVaddr(dso);
-
-      auto to_offset = [&](uint64_t vaddr) -> uint64_t {
-        if (vaddr == 0) {
-          return 0;
-        }
-        CHECK_GE(vaddr, first_load_segment_addr);
-        return vaddr - first_load_segment_addr;
-      };
-
-      // Write range_count_map.
-      std::map<AddrPair, uint64_t> range_count_map(binary.range_count_map.begin(),
-                                                   binary.range_count_map.end());
-      fprintf(output_fp_.get(), "%zu\n", range_count_map.size());
-      for (const auto& pair2 : range_count_map) {
-        const AddrPair& addr_range = pair2.first;
-        uint64_t count = pair2.second;
-
-        fprintf(output_fp_.get(), "%" PRIx64 "-%" PRIx64 ":%" PRIu64 "\n",
-                to_offset(addr_range.first), to_offset(addr_range.second), count);
-      }
-
-      // Write addr_count_map.
-      fprintf(output_fp_.get(), "0\n");
-
-      // Write branch_count_map.
-      std::map<AddrPair, uint64_t> branch_count_map(binary.branch_count_map.begin(),
-                                                    binary.branch_count_map.end());
-      fprintf(output_fp_.get(), "%zu\n", branch_count_map.size());
-      for (const auto& pair2 : branch_count_map) {
-        const AddrPair& branch = pair2.first;
-        uint64_t count = pair2.second;
-
-        fprintf(output_fp_.get(), "%" PRIx64 "->%" PRIx64 ":%" PRIu64 "\n", to_offset(branch.first),
-                to_offset(branch.second), count);
-      }
-
-      // Write the binary path in comment.
-      fprintf(output_fp_.get(), "// %s\n\n", dso->Path().c_str());
-    }
+    return branch_list_writer_.Write(output_filename_);
   }
 
   uint64_t GetFirstLoadSegmentVaddr(Dso* dso) {
@@ -518,87 +738,6 @@ class InjectCommand : public Command {
       }
     }
     return 0;
-  }
-
-  bool GenerateBranchList() {
-    // Don't produce empty output file.
-    if (branch_list_binary_map_.empty()) {
-      LOG(INFO) << "Skip empty output file.";
-      output_fp_.reset(nullptr);
-      unlink(output_filename_.c_str());
-      return true;
-    }
-
-    proto::ETMBranchList branch_list_proto;
-    branch_list_proto.set_magic(ETM_BRANCH_LIST_PROTO_MAGIC);
-    std::vector<char> branch_buf;
-    for (const auto& dso_p : branch_list_binary_map_) {
-      Dso* dso = dso_p.first;
-      auto& addr_map = dso_p.second;
-      auto binary_proto = branch_list_proto.add_binaries();
-
-      binary_proto->set_path(dso->Path());
-      BuildId build_id = Dso::FindExpectedBuildIdForPath(dso->Path());
-      if (!build_id.IsEmpty()) {
-        binary_proto->set_build_id(build_id.ToString().substr(2));
-      }
-      auto opt_binary_type = ToProtoBinaryType(dso->type());
-      if (!opt_binary_type.has_value()) {
-        return false;
-      }
-      binary_proto->set_type(opt_binary_type.value());
-
-      for (const auto& addr_p : addr_map) {
-        auto addr_proto = binary_proto->add_addrs();
-        addr_proto->set_addr(addr_p.first);
-
-        for (const auto& branch_p : addr_p.second) {
-          const std::vector<bool>& branch = branch_p.first;
-          auto branch_proto = addr_proto->add_branches();
-
-          branch_proto->set_branch(BranchToProtoString(branch));
-          branch_proto->set_branch_size(branch.size());
-          branch_proto->set_count(branch_p.second);
-        }
-      }
-
-      if (dso->type() == DSO_KERNEL) {
-        if (kernel_map_start_addr_ == 0) {
-          LOG(WARNING) << "Can't convert kernel ip addresses without kernel start addr. So remove "
-                          "branches for the kernel.";
-          branch_list_proto.mutable_binaries()->RemoveLast();
-          continue;
-        }
-        if (dso->GetDebugFilePath() == dso->Path()) {
-          // vmlinux isn't available. We still use kernel ip addr. Put kernel start addr in proto
-          // for address conversion later.
-          binary_proto->mutable_kernel_info()->set_kernel_start_addr(kernel_map_start_addr_);
-        } else {
-          // vmlinux is available. We have converted kernel ip addr to vaddr in vmlinux. So no need
-          // to put kernel start addr in proto.
-          binary_proto->mutable_kernel_info()->set_kernel_start_addr(0);
-        }
-      }
-    }
-    if (!branch_list_proto.SerializeToFileDescriptor(fileno(output_fp_.get()))) {
-      PLOG(ERROR) << "failed to write to output file";
-      return false;
-    }
-    return true;
-  }
-
-  std::optional<proto::ETMBranchList_Binary::BinaryType> ToProtoBinaryType(DsoType dso_type) {
-    switch (dso_type) {
-      case DSO_ELF_FILE:
-        return proto::ETMBranchList_Binary::ELF_FILE;
-      case DSO_KERNEL:
-        return proto::ETMBranchList_Binary::KERNEL;
-      case DSO_KERNEL_MODULE:
-        return proto::ETMBranchList_Binary::KERNEL_MODULE;
-      default:
-        LOG(ERROR) << "unexpected dso type " << dso_type;
-        return std::nullopt;
-    }
   }
 
   std::optional<DsoType> ToDsoType(proto::ETMBranchList_Binary::BinaryType binary_type) {
@@ -625,12 +764,13 @@ class InjectCommand : public Command {
   ETMDumpOption etm_dump_option_;
   std::unique_ptr<ETMDecoder> etm_decoder_;
   std::vector<uint8_t> aux_data_buffer_;
-  std::unique_ptr<FILE, decltype(&fclose)> output_fp_;
 
   // Store results for AutoFDO.
   std::unordered_map<Dso*, AutoFDOBinaryInfo> autofdo_binary_map_;
+  AutoFDOWriter autofdo_writer_;
   // Store results for BranchList.
   std::unordered_map<Dso*, BranchListBinaryInfo> branch_list_binary_map_;
+  BranchListWriter branch_list_writer_;
   std::vector<std::unique_ptr<Dso>> branch_list_dso_v_;
   uint64_t kernel_map_start_addr_ = 0;
 };
