@@ -15,6 +15,7 @@
  */
 
 #include <android-base/file.h>
+#include <android-base/test_utils.h>
 #include <gtest/gtest.h>
 
 #include "cmd_inject_impl.h"
@@ -177,4 +178,57 @@ TEST(cmd_inject, multiple_input_files) {
   close(tmpfile.release());
   ASSERT_TRUE(RunInjectCmd({"-i", std::string("@") + tmpfile.path}, &data));
   ASSERT_NE(data.find("106c->1074:200"), std::string::npos);
+}
+
+TEST(cmd_inject, merge_branch_list_files) {
+  TemporaryFile tmpfile;
+  close(tmpfile.release());
+  ASSERT_TRUE(RunInjectCmd({"--output", "branch-list", "-o", tmpfile.path}));
+  TemporaryFile tmpfile2;
+  close(tmpfile2.release());
+  ASSERT_TRUE(RunInjectCmd({"-i", std::string(tmpfile.path) + "," + tmpfile.path, "--output",
+                            "branch-list", "-o", tmpfile2.path}));
+  std::string autofdo_data;
+  ASSERT_TRUE(RunInjectCmd({"-i", tmpfile2.path, "--output", "autofdo"}, &autofdo_data));
+  ASSERT_NE(autofdo_data.find("106c->1074:200"), std::string::npos);
+}
+
+TEST(cmd_inject, report_warning_when_overflow) {
+  CapturedStderr capture;
+  capture.Start();
+  std::vector<std::unique_ptr<TemporaryFile>> branch_list_files;
+  std::vector<std::unique_ptr<TemporaryFile>> input_files;
+
+  branch_list_files.emplace_back(new TemporaryFile);
+  close(branch_list_files.back()->release());
+  ASSERT_TRUE(RunInjectCmd({"--output", "branch-list", "-o", branch_list_files.back()->path}));
+  for (size_t i = 1; i <= 7; i++) {
+    // Create input file list, repeating branch list file for 1000 times.
+    std::string s;
+    for (size_t j = 0; j < 1000; j++) {
+      s += std::string(branch_list_files.back()->path) + "\n";
+    }
+    input_files.emplace_back(new TemporaryFile);
+    ASSERT_TRUE(android::base::WriteStringToFd(s, input_files.back()->fd));
+    close(input_files.back()->release());
+
+    // Merge branch list files.
+    branch_list_files.emplace_back(new TemporaryFile);
+    close(branch_list_files.back()->release());
+    ASSERT_TRUE(
+        RunInjectCmd({"--output", "branch-list", "-i", std::string("@") + input_files.back()->path,
+                      "-o", branch_list_files.back()->path}));
+  }
+  capture.Stop();
+  const std::string WARNING_MSG = "Branch count overflow happened.";
+  ASSERT_NE(capture.str().find(WARNING_MSG), std::string::npos);
+
+  // Warning also happens when converting branch lists to AutoFDO format.
+  capture.Reset();
+  capture.Start();
+  std::string autofdo_data;
+  ASSERT_TRUE(RunInjectCmd({"-i", branch_list_files.back()->path}, &autofdo_data));
+  capture.Stop();
+  ASSERT_NE(capture.str().find(WARNING_MSG), std::string::npos);
+  ASSERT_NE(autofdo_data.find("106c->1074:18446744073709551615"), std::string::npos);
 }
