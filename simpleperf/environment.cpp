@@ -658,7 +658,7 @@ bool InAppRunner::RunCmdInApp(const std::string& cmd, const std::vector<std::str
     stop_signal_wfd.reset();
   }
   int exit_code;
-  if (!workload->WaitChildProcess(&exit_code) || exit_code != 0) {
+  if (!workload->WaitChildProcess(true, &exit_code) || exit_code != 0) {
     return false;
   }
   return true;
