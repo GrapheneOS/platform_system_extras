@@ -278,14 +278,15 @@ bool RunSimpleperfCmd(int argc, char** argv) {
   args.erase(args.begin());
 
   LOG(DEBUG) << "command '" << command_name << "' starts running";
-  bool result = command->Run(args);
+  int exit_code;
+  command->Run(args, &exit_code);
   LOG(DEBUG) << "command '" << command_name << "' "
-             << (result ? "finished successfully" : "failed");
+             << (exit_code == 0 ? "finished successfully" : "failed");
   // Quick exit to avoid the cost of freeing memory and closing files.
   fflush(stdout);
   fflush(stderr);
-  _Exit(result ? 0 : 1);
-  return result;
+  _Exit(exit_code);
+  return exit_code == 0;
 }
 
 }  // namespace simpleperf

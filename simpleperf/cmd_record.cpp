@@ -284,8 +284,8 @@ RECORD_FILTER_OPTION_HELP_MSG
 "--add-meta-info key=value     Add extra meta info, which will be stored in the recording file.\n"
 "\n"
 "Other options:\n"
-"--exit-with-parent            Stop recording when the process starting\n"
-"                              simpleperf dies.\n"
+"--exit-with-parent            Stop recording when the thread starting simpleperf dies.\n"
+"--use-cmd-exit-code           Exit with the same exit code as the monitored cmdline.\n"
 "--start_profiling_fd fd_no    After starting profiling, write \"STARTED\" to\n"
 "                              <fd_no>, then close <fd_no>.\n"
 "--stdio-controls-profiling    Use stdin/stdout to pause/resume profiling.\n"
@@ -330,7 +330,12 @@ RECORD_FILTER_OPTION_HELP_MSG
     signal(SIGPIPE, SIG_IGN);
   }
 
-  bool Run(const std::vector<std::string>& args);
+  void Run(const std::vector<std::string>& args, int* exit_code) override;
+  bool Run(const std::vector<std::string>& args) override {
+    int exit_code;
+    Run(args, &exit_code);
+    return exit_code == 0;
+  }
 
  private:
   bool ParseOptions(const std::vector<std::string>& args, std::vector<std::string>* non_option_args,
@@ -435,14 +440,16 @@ RECORD_FILTER_OPTION_HELP_MSG
   std::optional<MapRecordThread> map_record_thread_;
 
   std::unordered_map<std::string, std::string> extra_meta_info_;
+  bool use_cmd_exit_code_ = false;
 };
 
-bool RecordCommand::Run(const std::vector<std::string>& args) {
+void RecordCommand::Run(const std::vector<std::string>& args, int* exit_code) {
+  *exit_code = 1;
   time_stat_.prepare_recording_time = GetSystemClock();
   ScopedCurrentArch scoped_arch(GetMachineArch());
 
   if (!CheckPerfEventLimit()) {
-    return false;
+    return;
   }
   AllowMoreOpenedFiles();
 
@@ -456,42 +463,51 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     }
   });
   if (!ParseOptions(args, &workload_args, &probe_events)) {
-    return false;
+    return;
   }
   if (!AdjustPerfEventLimit()) {
-    return false;
+    return;
   }
   std::unique_ptr<ScopedTempFiles> scoped_temp_files =
       ScopedTempFiles::Create(android::base::Dirname(record_filename_));
   if (!scoped_temp_files) {
     PLOG(ERROR) << "Can't create output file in directory "
                 << android::base::Dirname(record_filename_);
-    return false;
+    return;
   }
   if (!app_package_name_.empty() && !in_app_context_) {
     // Some users want to profile non debuggable apps on rooted devices. If we use run-as,
     // it will be impossible when using --app. So don't switch to app's context when we are
     // root.
     if (!IsRoot()) {
-      return RunInAppContext(app_package_name_, "record", args, workload_args.size(),
-                             record_filename_, true);
+      // Running simpleperf in app context doesn't allow running child command. So no need to
+      // consider exit code of child command here.
+      *exit_code = RunInAppContext(app_package_name_, "record", args, workload_args.size(),
+                                   record_filename_, true)
+                       ? 0
+                       : 1;
+      return;
     }
   }
   std::unique_ptr<Workload> workload;
   if (!workload_args.empty()) {
     workload = Workload::CreateWorkload(workload_args);
     if (workload == nullptr) {
-      return false;
+      return;
     }
   }
   if (!PrepareRecording(workload.get())) {
-    return false;
+    return;
   }
   time_stat_.start_recording_time = GetSystemClock();
-  if (!DoRecording(workload.get())) {
-    return false;
+  if (!DoRecording(workload.get()) || !PostProcessRecording(args)) {
+    return;
   }
-  return PostProcessRecording(args);
+  if (use_cmd_exit_code_ && workload) {
+    workload->WaitChildProcess(false, exit_code);
+  } else {
+    *exit_code = 0;
+  }
 }
 
 bool RecordCommand::PrepareRecording(Workload* workload) {
@@ -998,6 +1014,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       return false;
     }
   }
+  use_cmd_exit_code_ = options.PullBoolValue("--use-cmd-exit-code");
 
   CHECK(options.values.empty());
 

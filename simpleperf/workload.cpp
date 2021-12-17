@@ -182,8 +182,8 @@ bool Workload::Start() {
   return true;
 }
 
-bool Workload::WaitChildProcess(int* exit_code) {
-  return WaitChildProcess(true, false, exit_code);
+bool Workload::WaitChildProcess(bool wait_forever, int* exit_code) {
+  return WaitChildProcess(wait_forever, false, exit_code);
 }
 
 bool Workload::WaitChildProcess(bool wait_forever, bool is_child_killed, int* exit_code) {
