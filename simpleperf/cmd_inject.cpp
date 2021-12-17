@@ -118,6 +118,7 @@ struct BinaryKeyHash {
 
 static void OverflowSafeAdd(uint64_t& dest, uint64_t add) {
   if (__builtin_add_overflow(dest, add, &dest)) {
+    LOG(WARNING) << "Branch count overflow happened.";
     dest = UINT64_MAX;
   }
 }
@@ -618,21 +619,27 @@ class AutoFDOWriter {
   std::unordered_map<BinaryKey, AutoFDOBinaryInfo, BinaryKeyHash> binary_map_;
 };
 
-// Write branch lists to a protobuf file specified by etm_branch_list.proto.
-class BranchListWriter {
- public:
+// Merge BranchListBinaryInfo.
+struct BranchListMerger {
   void AddBranchListBinary(const BinaryKey& key, BranchListBinaryInfo& binary) {
-    auto it = binary_map_.find(key);
-    if (it == binary_map_.end()) {
-      binary_map_[key] = std::move(binary);
+    auto it = binary_map.find(key);
+    if (it == binary_map.end()) {
+      binary_map[key] = std::move(binary);
     } else {
       it->second.Merge(binary);
     }
   }
 
-  bool Write(const std::string& output_filename) {
+  std::unordered_map<BinaryKey, BranchListBinaryInfo, BinaryKeyHash> binary_map;
+};
+
+// Write branch lists to a protobuf file specified by etm_branch_list.proto.
+class BranchListWriter {
+ public:
+  bool Write(const std::string& output_filename,
+             const std::unordered_map<BinaryKey, BranchListBinaryInfo, BinaryKeyHash>& binary_map) {
     // Don't produce empty output file.
-    if (binary_map_.empty()) {
+    if (binary_map.empty()) {
       LOG(INFO) << "Skip empty output file.";
       unlink(output_filename.c_str());
       return true;
@@ -647,7 +654,7 @@ class BranchListWriter {
     proto::ETMBranchList branch_list_proto;
     branch_list_proto.set_magic(ETM_BRANCH_LIST_PROTO_MAGIC);
     std::vector<char> branch_buf;
-    for (const auto& p : binary_map_) {
+    for (const auto& p : binary_map) {
       const BinaryKey& key = p.first;
       const BranchListBinaryInfo& binary = p.second;
       auto binary_proto = branch_list_proto.add_binaries();
@@ -701,9 +708,7 @@ class BranchListWriter {
         return std::nullopt;
     }
   }
-
-  std::unordered_map<BinaryKey, BranchListBinaryInfo, BinaryKeyHash> binary_map_;
-};  // namespace
+};
 
 class InjectCommand : public Command {
  public:
@@ -742,13 +747,22 @@ class InjectCommand : public Command {
       return false;
     }
 
-    for (const auto& filename : input_filenames_) {
-      if (!ProcessInputFile(filename)) {
-        return false;
+    CHECK(!input_filenames_.empty());
+    if (IsPerfDataFile(input_filenames_[0])) {
+      switch (output_format_) {
+        case OutputFormat::AutoFDO:
+          return ConvertPerfDataToAutoFDO();
+        case OutputFormat::BranchList:
+          return ConvertPerfDataToBranchList();
+      }
+    } else {
+      switch (output_format_) {
+        case OutputFormat::AutoFDO:
+          return ConvertBranchListToAutoFDO();
+        case OutputFormat::BranchList:
+          return ConvertBranchListToBranchList();
       }
     }
-
-    return WriteOutput();
   }
 
  private:
@@ -829,50 +843,85 @@ class InjectCommand : public Command {
     return true;
   }
 
-  bool ProcessInputFile(const std::string& input_filename) {
-    if (IsPerfDataFile(input_filename)) {
+  bool ConvertPerfDataToAutoFDO() {
+    AutoFDOWriter autofdo_writer;
+    auto callback = [&](const BinaryKey& key, AutoFDOBinaryInfo& binary) {
+      autofdo_writer.AddAutoFDOBinary(key, binary);
+    };
+    for (const auto& input_filename : input_filenames_) {
       PerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_, binary_name_regex_);
-      if (output_format_ == OutputFormat::AutoFDO) {
-        reader.SetCallback([this](const BinaryKey& key, AutoFDOBinaryInfo& binary) {
-          autofdo_writer_.AddAutoFDOBinary(key, binary);
-        });
-      } else if (output_format_ == OutputFormat::BranchList) {
-        reader.SetCallback([this](const BinaryKey& key, BranchListBinaryInfo& binary) {
-          branch_list_writer_.AddBranchListBinary(key, binary);
-        });
+      reader.SetCallback(callback);
+      if (!reader.Read()) {
+        return false;
       }
-      return reader.Read();
     }
-    return ProcessBranchListFile(input_filename);
+    return autofdo_writer.Write(output_filename_);
   }
 
-  bool ProcessBranchListFile(const std::string& input_filename) {
-    if (output_format_ != OutputFormat::AutoFDO) {
-      LOG(ERROR) << "Only support autofdo output when given a branch list file.";
-      return false;
-    }
-    BranchListToAutoFDOConverter converter;
+  bool ConvertPerfDataToBranchList() {
+    BranchListMerger branch_list_merger;
     auto callback = [&](const BinaryKey& key, BranchListBinaryInfo& binary) {
+      branch_list_merger.AddBranchListBinary(key, binary);
+    };
+    for (const auto& input_filename : input_filenames_) {
+      PerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_, binary_name_regex_);
+      reader.SetCallback(callback);
+      if (!reader.Read()) {
+        return false;
+      }
+    }
+    BranchListWriter branch_list_writer;
+    return branch_list_writer.Write(output_filename_, branch_list_merger.binary_map);
+  }
+
+  bool ConvertBranchListToAutoFDO() {
+    // Step1 : Merge branch lists from all input files.
+    BranchListMerger branch_list_merger;
+    auto callback = [&](const BinaryKey& key, BranchListBinaryInfo& binary) {
+      branch_list_merger.AddBranchListBinary(key, binary);
+    };
+    for (const auto& input_filename : input_filenames_) {
+      BranchListReader reader(input_filename, binary_name_regex_);
+      reader.SetCallback(callback);
+      if (!reader.Read()) {
+        return false;
+      }
+    }
+
+    // Step2: Convert BranchListBinaryInfo to AutoFDOBinaryInfo.
+    AutoFDOWriter autofdo_writer;
+    BranchListToAutoFDOConverter converter;
+    for (auto& p : branch_list_merger.binary_map) {
+      const BinaryKey& key = p.first;
+      BranchListBinaryInfo& binary = p.second;
       std::unique_ptr<AutoFDOBinaryInfo> autofdo_binary = converter.Convert(key, binary);
       if (autofdo_binary) {
         // Create new BinaryKey with kernel_start_addr = 0. Because AutoFDO output doesn't care
         // kernel_start_addr.
-        autofdo_writer_.AddAutoFDOBinary(BinaryKey(key.path, key.build_id), *autofdo_binary);
+        autofdo_writer.AddAutoFDOBinary(BinaryKey(key.path, key.build_id), *autofdo_binary);
       }
-    };
-
-    BranchListReader reader(input_filename, binary_name_regex_);
-    reader.SetCallback(callback);
-    return reader.Read();
-  }
-
-  bool WriteOutput() {
-    if (output_format_ == OutputFormat::AutoFDO) {
-      return autofdo_writer_.Write(output_filename_);
     }
 
-    CHECK(output_format_ == OutputFormat::BranchList);
-    return branch_list_writer_.Write(output_filename_);
+    // Step3: Write AutoFDOBinaryInfo.
+    return autofdo_writer.Write(output_filename_);
+  }
+
+  bool ConvertBranchListToBranchList() {
+    // Step1 : Merge branch lists from all input files.
+    BranchListMerger branch_list_merger;
+    auto callback = [&](const BinaryKey& key, BranchListBinaryInfo& binary) {
+      branch_list_merger.AddBranchListBinary(key, binary);
+    };
+    for (const auto& input_filename : input_filenames_) {
+      BranchListReader reader(input_filename, binary_name_regex_);
+      reader.SetCallback(callback);
+      if (!reader.Read()) {
+        return false;
+      }
+    }
+    // Step2: Write BranchListBinaryInfo.
+    BranchListWriter branch_list_writer;
+    return branch_list_writer.Write(output_filename_, branch_list_merger.binary_map);
   }
 
   std::regex binary_name_regex_{""};  // Default to match everything.
@@ -883,8 +932,6 @@ class InjectCommand : public Command {
   ETMDumpOption etm_dump_option_;
 
   std::unique_ptr<Dso> placeholder_dso_;
-  AutoFDOWriter autofdo_writer_;
-  BranchListWriter branch_list_writer_;
 };
 
 }  // namespace
