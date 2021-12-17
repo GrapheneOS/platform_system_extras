@@ -239,6 +239,16 @@ $ simpleperf report-sample --protobuf --show-callchain -i perf.data -o perf.trac
 # Then open perf.trace in Android Studio to show it.
 ```
 
+## Deobfuscate Java symbols
+
+Java symbols may be obfuscated by ProGuard. To restore the original symbols in a report, we can
+pass a Proguard mapping file to the report scripts or report-sample command via
+`--proguard-mapping-file`.
+
+```sh
+$ ./report_html.py --proguard-mapping-file proguard_mapping_file.txt
+```
+
 ## Record both on CPU time and off CPU time
 
 We can [record both on CPU time and off CPU time](executable_commands_reference.md#record-both-on-cpu-time-and-off-cpu-time).
