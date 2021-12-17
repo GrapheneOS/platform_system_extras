@@ -524,6 +524,13 @@ TEST_F(ReportCommandTest, csv_option) {
   ASSERT_NE(content.find("AccEventCount,SelfEventCount,EventName"), std::string::npos);
 }
 
+TEST_F(ReportCommandTest, csv_separator_option) {
+  Report(PERF_DATA, {"--csv", "--csv-separator", ";"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("EventCount;EventName"), std::string::npos);
+  ASSERT_NE(content.find(";cpu-cycles"), std::string::npos);
+}
+
 TEST_F(ReportCommandTest, dso_path_for_jit_cache) {
   Report("perf_with_jit_symbol.data", {"--sort", "dso"});
   ASSERT_TRUE(success);

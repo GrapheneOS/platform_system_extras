@@ -375,6 +375,7 @@ class ReportCommand : public Command {
 "                  Report samples on the selected cpus. cpu_item can be cpu\n"
 "                  number like 1, or cpu range like 0-3.\n"
 "--csv                     Report in csv format.\n"
+"--csv-separator <sep>     Set separator for csv columns. Default is ','.\n"
 "--dsos dso1,dso2,...      Report only for selected dsos.\n"
 "--full-callgraph  Print full call graph. Used with -g option. By default,\n"
 "                  brief call graph is printed.\n"
@@ -472,6 +473,7 @@ class ReportCommand : public Command {
   bool trace_offcpu_;
   size_t sched_switch_attr_id_;
   bool report_csv_ = false;
+  std::string csv_separator_ = ",";
 
   std::string report_filename_;
 };
@@ -515,6 +517,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       {"--comms", {OptionValueType::STRING, OptionType::MULTIPLE}},
       {"--cpu", {OptionValueType::STRING, OptionType::MULTIPLE}},
       {"--csv", {OptionValueType::NONE, OptionType::SINGLE}},
+      {"--csv-separator", {OptionValueType::STRING, OptionType::SINGLE}},
       {"--dsos", {OptionValueType::STRING, OptionType::MULTIPLE}},
       {"--full-callgraph", {OptionValueType::NONE, OptionType::SINGLE}},
       {"-g", {OptionValueType::OPT_STRING, OptionType::SINGLE}},
@@ -556,6 +559,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
     }
   }
   report_csv_ = options.PullBoolValue("--csv");
+  options.PullStringValue("--csv-separator", &csv_separator_);
   for (const OptionValue& value : options.PullValues("--dsos")) {
     std::vector<std::string> strs = Split(*value.str_value, ",");
     sample_tree_builder_options_.dso_filter.insert(strs.begin(), strs.end());
@@ -642,7 +646,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
 bool ReportCommand::BuildSampleComparatorAndDisplayer(bool print_sample_count,
                                                       const std::vector<std::string>& sort_keys) {
   SampleDisplayer<SampleEntry, SampleTree> displayer;
-  displayer.SetReportFormat(report_csv_);
+  displayer.SetReportFormat(report_csv_, csv_separator_);
   SampleComparator<SampleEntry> comparator;
 
   if (accumulate_callchain_) {
