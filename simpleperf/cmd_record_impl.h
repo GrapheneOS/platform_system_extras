@@ -87,6 +87,8 @@ inline const OptionFormatMap& GetRecordCmdOptionFormats() {
         {"--trace-offcpu", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"--tracepoint-events",
          {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::CHECK_PATH}},
+        {"--use-cmd-exit-code",
+         {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
     };
     const OptionFormatMap& record_filter_options = GetRecordFilterOptionFormats();
     option_formats.insert(record_filter_options.begin(), record_filter_options.end());
