@@ -199,7 +199,10 @@ class SampleDisplayer {
 
  public:
   void SetInfo(const InfoT* info) { info_ = info; }
-  void SetReportFormat(bool report_csv) { report_csv_ = report_csv; }
+  void SetReportFormat(bool report_csv, const std::string& csv_separator) {
+    report_csv_ = report_csv;
+    csv_separator_ = csv_separator;
+  }
   void SetFilterFunction(const std::function<bool(const EntryT*, const InfoT*)>& filter) {
     filter_func_ = filter;
   }
@@ -244,7 +247,8 @@ class SampleDisplayer {
     for (size_t i = 0; i < display_v_.size(); ++i) {
       auto& item = display_v_[i];
       if (report_csv_) {
-        fprintf(fp, "%s%c", item.name.c_str(), (i + 1 == display_v_.size()) ? '\n' : ',');
+        fprintf(fp, "%s%s", item.name.c_str(),
+                (i + 1 == display_v_.size()) ? "\n" : csv_separator_.c_str());
       } else {
         if (i != display_v_.size() - 1) {
           fprintf(fp, "%-*s  ", static_cast<int>(item.width), item.name.c_str());
@@ -264,12 +268,12 @@ class SampleDisplayer {
       std::string data =
           (item.func != nullptr) ? item.func(sample) : item.func_with_info(sample, info_);
       if (report_csv_) {
-        if (data.find(',') == std::string::npos) {
+        if (data.find(csv_separator_) == std::string::npos) {
           fprintf(fp, "%s", data.c_str());
         } else {
           fprintf(fp, "\"%s\"", data.c_str());
         }
-        fputc((i + 1 == display_v_.size()) ? '\n' : ',', fp);
+        fputs((i + 1 == display_v_.size()) ? "\n" : csv_separator_.c_str(), fp);
       } else {
         if (i != display_v_.size() - 1) {
           fprintf(fp, "%-*s  ", static_cast<int>(item.width), data.c_str());
@@ -289,6 +293,7 @@ class SampleDisplayer {
   std::vector<exclusive_display_sample_func_t> exclusive_display_v_;
   std::optional<std::function<bool(const EntryT*, const InfoT*)>> filter_func_;
   bool report_csv_ = false;
+  std::string csv_separator_;
 };
 
 }  // namespace simpleperf

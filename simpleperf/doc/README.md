@@ -25,26 +25,26 @@ the Android profiling environment:
    needed symbols, device info and recording time.
 
 2. It delivers new features for recording.
-   a. When recording dwarf based call graph, simpleperf unwinds the stack before writing a sample
+   1) When recording dwarf based call graph, simpleperf unwinds the stack before writing a sample
       to file. This is to save storage space on the device.
-   b. Support tracing both on CPU time and off CPU time with --trace-offcpu option.
-   c. Support recording callgraphs of JITed and interpreted Java code on Android >= P.
+   2) Support tracing both on CPU time and off CPU time with --trace-offcpu option.
+   3) Support recording callgraphs of JITed and interpreted Java code on Android >= P.
 
 3. It relates closely to the Android platform.
-   a. Is aware of Android environment, like using system properties to enable profiling, using
+   1) Is aware of Android environment, like using system properties to enable profiling, using
       run-as to profile in application's context.
-   b. Supports reading symbols and debug information from the .gnu_debugdata section, because
+   2) Supports reading symbols and debug information from the .gnu_debugdata section, because
       system libraries are built with .gnu_debugdata section starting from Android O.
-   c. Supports profiling shared libraries embedded in apk files.
-   d. It uses the standard Android stack unwinder, so its results are consistent with all other
+   3) Supports profiling shared libraries embedded in apk files.
+   4) It uses the standard Android stack unwinder, so its results are consistent with all other
       Android tools.
 
 4. It builds executables and shared libraries for different usages.
-   a. Builds static executables on the device. Since static executables don't rely on any library,
+   1) Builds static executables on the device. Since static executables don't rely on any library,
       simpleperf executables can be pushed on any Android device and used to record profiling data.
-   b. Builds executables on different hosts: Linux, Mac and Windows. These executables can be used
+   2) Builds executables on different hosts: Linux, Mac and Windows. These executables can be used
       to report on hosts.
-   c. Builds report shared libraries on different hosts. The report library is used by different
+   3) Builds report shared libraries on different hosts. The report library is used by different
       Python scripts to parse profiling data.
 
 Detailed documentation for the simpleperf executable is [here](#executable-commands-reference).
@@ -206,19 +206,17 @@ disassembly with event count annotation. Simpleperf supports showing annotated s
 disassembly for C++ code and fully compiled Java code. Simpleperf supports two ways to do it:
 
 1. Through report_html.py:
-
-  a. Generate perf.data and pull it on host.
-  b. Generate binary_cache, containing elf files with debug information. Use -lib option to add
+   1) Generate perf.data and pull it on host.
+   2) Generate binary_cache, containing elf files with debug information. Use -lib option to add
      libs with debug info. Do it with
      `binary_cache_builder.py -i perf.data -lib <dir_of_lib_with_debug_info>`.
-  c. Use report_html.py to generate report.html with annotated source code and disassembly,
+   3) Use report_html.py to generate report.html with annotated source code and disassembly,
      as described [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/scripts_reference.md#report_html_py).
 
 2. Through pprof.
-
-  a. Generate perf.data and binary_cache as above.
-  b. Use pprof_proto_generator.py to generate pprof proto file. `pprof_proto_generator.py`.
-  c. Use pprof to report a function with annotated source code, as described [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/scripts_reference.md#pprof_proto_generator_py).
+   1) Generate perf.data and binary_cache as above.
+   2) Use pprof_proto_generator.py to generate pprof proto file. `pprof_proto_generator.py`.
+   3) Use pprof to report a function with annotated source code, as described [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/scripts_reference.md#pprof_proto_generator_py).
 
 ## Bugs and contribution
 
