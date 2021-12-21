@@ -421,7 +421,6 @@ class ReportCommand : public Command {
         record_filename_("perf.data"),
         record_file_arch_(GetTargetArch()),
         use_branch_address_(false),
-        system_wide_collection_(false),
         accumulate_callchain_(false),
         print_callgraph_(false),
         callgraph_show_callee_(false),
@@ -462,7 +461,6 @@ class ReportCommand : public Command {
   std::unique_ptr<ReportCmdSampleTreeDisplayer> sample_tree_displayer_;
   bool use_branch_address_;
   std::string record_cmdline_;
-  bool system_wide_collection_;
   bool accumulate_callchain_;
   bool print_callgraph_;
   bool callgraph_show_callee_;
@@ -763,9 +761,6 @@ bool ReportCommand::BuildSampleComparatorAndDisplayer(bool print_sample_count,
 
 void ReportCommand::ReadMetaInfoFromRecordFile() {
   auto& meta_info = record_file_reader_->GetMetaInfoFeature();
-  if (auto it = meta_info.find("system_wide_collection"); it != meta_info.end()) {
-    system_wide_collection_ = it->second == "true";
-  }
   if (auto it = meta_info.find("trace_offcpu"); it != meta_info.end()) {
     trace_offcpu_ = it->second == "true";
   }
@@ -819,22 +814,6 @@ bool ReportCommand::ReadFeaturesFromRecordFile() {
   std::vector<std::string> cmdline = record_file_reader_->ReadCmdlineFeature();
   if (!cmdline.empty()) {
     record_cmdline_ = android::base::Join(cmdline, ' ');
-    if (record_file_reader_->GetMetaInfoFeature().count("system_wide_collection")) {
-      // TODO: the code to detect system wide collection option is fragile, remove
-      // it once we can do cross unwinding.
-      for (size_t i = 0; i < cmdline.size(); i++) {
-        std::string& s = cmdline[i];
-        if (s == "-a") {
-          system_wide_collection_ = true;
-          break;
-        } else if (s == "--call-graph" || s == "--cpu" || s == "-e" || s == "-f" || s == "-F" ||
-                   s == "-j" || s == "-m" || s == "-o" || s == "-p" || s == "-t") {
-          i++;
-        } else if (!s.empty() && s[0] != '-') {
-          break;
-        }
-      }
-    }
   }
   if (record_file_reader_->HasFeature(PerfFileFormat::FEAT_TRACING_DATA)) {
     std::vector<char> tracing_data;
