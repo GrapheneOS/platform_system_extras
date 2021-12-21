@@ -967,7 +967,13 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   allow_cutting_samples_ = !options.PullBoolValue("--no-cut-samples");
   can_dump_kernel_symbols_ = !options.PullBoolValue("--no-dump-kernel-symbols");
   dump_symbols_ = !options.PullBoolValue("--no-dump-symbols");
-  child_inherit_ = !options.PullBoolValue("--no-inherit");
+  if (auto value = options.PullValue("--no-inherit"); value) {
+    child_inherit_ = false;
+  } else if (system_wide_collection_) {
+    // child_inherit is used to monitor newly created threads. It isn't useful in system wide
+    // collection, which monitors all threads running on selected cpus.
+    child_inherit_ = false;
+  }
   unwind_dwarf_callchain_ = !options.PullBoolValue("--no-unwind");
 
   if (auto value = options.PullValue("-o"); value) {
