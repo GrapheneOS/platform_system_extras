@@ -109,6 +109,8 @@ class EventSelectionSet {
 
   bool AddEventType(const std::string& event_name, size_t* group_id = nullptr);
   bool AddEventGroup(const std::vector<std::string>& event_names, size_t* group_id = nullptr);
+  // For each sample generated for the existing event group, add counters for selected events.
+  bool AddCounters(const std::vector<std::string>& event_names);
   std::vector<const EventType*> GetEvents() const;
   std::vector<const EventType*> GetTracepointEvents() const;
   bool ExcludeKernel() const;

@@ -34,7 +34,7 @@ class RecordFilterTest : public ::testing::Test {
   void SetUp() override {
     const EventType* event_type = FindEventTypeByName("cpu-clock");
     attr = CreateDefaultPerfEventAttr(*event_type);
-    record.reset(new SampleRecord(attr, 0, 0, 0, 0, 0, 0, 0, {}, {}, 0));
+    record.reset(new SampleRecord(attr, 0, 0, 0, 0, 0, 0, 0, {}, {}, {}, 0));
   }
 
   SampleRecord* GetRecord(uint32_t pid, uint32_t tid) {

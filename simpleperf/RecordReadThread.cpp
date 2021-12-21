@@ -107,6 +107,7 @@ void RecordBuffer::MoveToNextRecord() {
 
 RecordParser::RecordParser(const perf_event_attr& attr)
     : sample_type_(attr.sample_type),
+      read_format_(attr.read_format),
       sample_regs_count_(__builtin_popcountll(attr.sample_regs_user)) {
   size_t pos = sizeof(perf_event_header);
   uint64_t mask = PERF_SAMPLE_IDENTIFIER | PERF_SAMPLE_IP;
@@ -122,7 +123,7 @@ RecordParser::RecordParser(const perf_event_attr& attr)
   mask = PERF_SAMPLE_ADDR | PERF_SAMPLE_ID | PERF_SAMPLE_STREAM_ID | PERF_SAMPLE_CPU |
          PERF_SAMPLE_PERIOD;
   pos += __builtin_popcountll(sample_type_ & mask) * sizeof(uint64_t);
-  callchain_pos_in_sample_records_ = pos;
+  read_pos_in_sample_records_ = pos;
   if ((sample_type_ & PERF_SAMPLE_TIME) && attr.sample_id_all) {
     mask = PERF_SAMPLE_IDENTIFIER | PERF_SAMPLE_CPU | PERF_SAMPLE_STREAM_ID | PERF_SAMPLE_ID;
     time_rpos_in_non_sample_records_ =
@@ -143,7 +144,19 @@ size_t RecordParser::GetTimePos(const perf_event_header& header) const {
 
 size_t RecordParser::GetStackSizePos(
     const std::function<void(size_t, size_t, void*)>& read_record_fn) const {
-  size_t pos = callchain_pos_in_sample_records_;
+  size_t pos = read_pos_in_sample_records_;
+  if (sample_type_ & PERF_SAMPLE_READ) {
+    uint64_t nr = 1;
+    if (read_format_ & PERF_FORMAT_GROUP) {
+      read_record_fn(pos, sizeof(nr), &nr);
+      pos += sizeof(uint64_t);
+    }
+    size_t u64_count = nr;
+    u64_count += (read_format_ & PERF_FORMAT_TOTAL_TIME_ENABLED) ? 1 : 0;
+    u64_count += (read_format_ & PERF_FORMAT_TOTAL_TIME_RUNNING) ? 1 : 0;
+    u64_count += (read_format_ & PERF_FORMAT_ID) ? nr : 0;
+    pos += u64_count * sizeof(uint64_t);
+  }
   if (sample_type_ & PERF_SAMPLE_CALLCHAIN) {
     uint64_t ip_nr;
     read_record_fn(pos, sizeof(ip_nr), &ip_nr);

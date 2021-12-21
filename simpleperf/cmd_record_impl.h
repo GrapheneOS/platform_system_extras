@@ -33,6 +33,7 @@ inline const OptionFormatMap& GetRecordCmdOptionFormats() {
   if (option_formats.empty()) {
     option_formats = {
         {"-a", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
+        {"--add-counter", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"--add-meta-info",
          {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
         {"--addr-filter", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
