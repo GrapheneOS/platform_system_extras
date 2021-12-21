@@ -172,6 +172,10 @@ class RecordCommand : public Command {
 "             Documentation/trace/kprobetrace.rst in the kernel. Examples:\n"
 "               'p:myprobe do_sys_open $arg2:string'   - add event kprobes:myprobe\n"
 "               'r:myretprobe do_sys_open $retval:s64' - add event kprobes:myretprobe\n"
+"--add-counter event1,event2,...     Add additional event counts in record samples. For example,\n"
+"                                    we can use `-e cpu-cycles --add-counter instructions` to\n"
+"                                    get samples for cpu-cycles event, while having instructions\n"
+"                                    event count for each sample.\n"
 "\n"
 "Select monitoring options:\n"
 "-f freq      Set event sample frequency. It means recording at most [freq]\n"
@@ -441,6 +445,7 @@ RECORD_FILTER_OPTION_HELP_MSG
 
   std::unordered_map<std::string, std::string> extra_meta_info_;
   bool use_cmd_exit_code_ = false;
+  std::vector<std::string> add_counters_;
 };
 
 void RecordCommand::Run(const std::vector<std::string>& args, int* exit_code) {
@@ -538,6 +543,15 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   exclude_kernel_callchain_ = event_selection_set_.ExcludeKernel();
   if (trace_offcpu_ && !TraceOffCpu()) {
     return false;
+  }
+  if (!add_counters_.empty()) {
+    if (child_inherit_) {
+      LOG(ERROR) << "--no-inherit is needed when using --add-counter.";
+      return false;
+    }
+    if (!event_selection_set_.AddCounters(add_counters_)) {
+      return false;
+    }
   }
   if (!SetEventSelectionFlags()) {
     return false;
@@ -829,6 +843,10 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   // Process options.
   system_wide_collection_ = options.PullBoolValue("-a");
 
+  if (auto value = options.PullValue("--add-counter"); value) {
+    add_counters_ = android::base::Split(*value->str_value, ",");
+  }
+
   for (const OptionValue& value : options.PullValues("--add-meta-info")) {
     const std::string& s = *value.str_value;
     auto split_pos = s.find('=');
@@ -949,7 +967,13 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   allow_cutting_samples_ = !options.PullBoolValue("--no-cut-samples");
   can_dump_kernel_symbols_ = !options.PullBoolValue("--no-dump-kernel-symbols");
   dump_symbols_ = !options.PullBoolValue("--no-dump-symbols");
-  child_inherit_ = !options.PullBoolValue("--no-inherit");
+  if (auto value = options.PullValue("--no-inherit"); value) {
+    child_inherit_ = false;
+  } else if (system_wide_collection_) {
+    // child_inherit is used to monitor newly created threads. It isn't useful in system wide
+    // collection, which monitors all threads running on selected cpus.
+    child_inherit_ = false;
+  }
   unwind_dwarf_callchain_ = !options.PullBoolValue("--no-unwind");
 
   if (auto value = options.PullValue("-o"); value) {
