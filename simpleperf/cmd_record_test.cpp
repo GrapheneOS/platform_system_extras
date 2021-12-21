@@ -1208,3 +1208,24 @@ TEST(record_cmd, device_meta_info) {
   ASSERT_NE(it, meta_info.end());
   ASSERT_FALSE(it->second.empty());
 }
+
+TEST(record_cmd, add_counter_option) {
+  TEST_REQUIRE_HW_COUNTER();
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run({"-e", "cpu-cycles", "--add-counter", "instructions", "--no-inherit",
+                                "-o", tmpfile.path, "sleep", "1"}));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader);
+  bool has_sample = false;
+  ASSERT_TRUE(reader->ReadDataSection([&](std::unique_ptr<Record> r) {
+    if (r->type() == PERF_RECORD_SAMPLE) {
+      has_sample = true;
+      auto sr = static_cast<SampleRecord*>(r.get());
+      if (sr->read_data.counts.size() != 2 || sr->read_data.ids.size() != 2) {
+        return false;
+      }
+    }
+    return true;
+  }));
+  ASSERT_TRUE(has_sample);
+}
