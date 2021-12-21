@@ -649,21 +649,21 @@ bool ReportCommand::BuildSampleComparatorAndDisplayer(bool print_sample_count,
 
   if (accumulate_callchain_) {
     if (raw_period_) {
-      displayer.AddDisplayFunction("Children", DisplayAccumulatedPeriod);
-      displayer.AddDisplayFunction("Self", DisplaySelfPeriod);
+      displayer.AddDisplayFunction("Children", DisplayAccumulatedPeriod<SampleEntry>);
+      displayer.AddDisplayFunction("Self", DisplaySelfPeriod<SampleEntry>);
     } else {
-      displayer.AddDisplayFunction("Children", DisplayAccumulatedOverhead);
-      displayer.AddDisplayFunction("Self", DisplaySelfOverhead);
+      displayer.AddDisplayFunction("Children", DisplayAccumulatedOverhead<SampleEntry, SampleTree>);
+      displayer.AddDisplayFunction("Self", DisplaySelfOverhead<SampleEntry, SampleTree>);
     }
   } else {
     if (raw_period_) {
-      displayer.AddDisplayFunction("Overhead", DisplaySelfPeriod);
+      displayer.AddDisplayFunction("Overhead", DisplaySelfPeriod<SampleEntry>);
     } else {
-      displayer.AddDisplayFunction("Overhead", DisplaySelfOverhead);
+      displayer.AddDisplayFunction("Overhead", DisplaySelfOverhead<SampleEntry, SampleTree>);
     }
   }
   if (print_sample_count) {
-    displayer.AddDisplayFunction("Sample", DisplaySampleCount);
+    displayer.AddDisplayFunction("Sample", DisplaySampleCount<SampleEntry>);
   }
 
   for (auto& key : sort_keys) {
@@ -673,34 +673,34 @@ bool ReportCommand::BuildSampleComparatorAndDisplayer(bool print_sample_count,
     }
     if (key == "pid") {
       comparator.AddCompareFunction(ComparePid);
-      displayer.AddDisplayFunction("Pid", DisplayPid);
+      displayer.AddDisplayFunction("Pid", DisplayPid<SampleEntry>);
     } else if (key == "tid") {
       comparator.AddCompareFunction(CompareTid);
-      displayer.AddDisplayFunction("Tid", DisplayTid);
+      displayer.AddDisplayFunction("Tid", DisplayTid<SampleEntry>);
     } else if (key == "comm") {
       comparator.AddCompareFunction(CompareComm);
-      displayer.AddDisplayFunction("Command", DisplayComm);
+      displayer.AddDisplayFunction("Command", DisplayComm<SampleEntry>);
     } else if (key == "dso") {
       comparator.AddCompareFunction(CompareDso);
-      displayer.AddDisplayFunction("Shared Object", DisplayDso);
+      displayer.AddDisplayFunction("Shared Object", DisplayDso<SampleEntry>);
     } else if (key == "symbol") {
       comparator.AddCompareFunction(CompareSymbol);
-      displayer.AddDisplayFunction("Symbol", DisplaySymbol);
+      displayer.AddDisplayFunction("Symbol", DisplaySymbol<SampleEntry>);
     } else if (key == "vaddr_in_file") {
       comparator.AddCompareFunction(CompareVaddrInFile);
-      displayer.AddDisplayFunction("VaddrInFile", DisplayVaddrInFile);
+      displayer.AddDisplayFunction("VaddrInFile", DisplayVaddrInFile<SampleEntry>);
     } else if (key == "dso_from") {
       comparator.AddCompareFunction(CompareDsoFrom);
-      displayer.AddDisplayFunction("Source Shared Object", DisplayDsoFrom);
+      displayer.AddDisplayFunction("Source Shared Object", DisplayDsoFrom<SampleEntry>);
     } else if (key == "dso_to") {
       comparator.AddCompareFunction(CompareDso);
-      displayer.AddDisplayFunction("Target Shared Object", DisplayDso);
+      displayer.AddDisplayFunction("Target Shared Object", DisplayDso<SampleEntry>);
     } else if (key == "symbol_from") {
       comparator.AddCompareFunction(CompareSymbolFrom);
-      displayer.AddDisplayFunction("Source Symbol", DisplaySymbolFrom);
+      displayer.AddDisplayFunction("Source Symbol", DisplaySymbolFrom<SampleEntry>);
     } else if (key == "symbol_to") {
       comparator.AddCompareFunction(CompareSymbol);
-      displayer.AddDisplayFunction("Target Symbol", DisplaySymbol);
+      displayer.AddDisplayFunction("Target Symbol", DisplaySymbol<SampleEntry>);
     } else {
       LOG(ERROR) << "Unknown sort key: " << key;
       return false;
@@ -709,10 +709,10 @@ bool ReportCommand::BuildSampleComparatorAndDisplayer(bool print_sample_count,
 
   if (report_csv_) {
     if (accumulate_callchain_) {
-      displayer.AddDisplayFunction("AccEventCount", DisplayAccumulatedPeriod);
-      displayer.AddDisplayFunction("SelfEventCount", DisplaySelfPeriod);
+      displayer.AddDisplayFunction("AccEventCount", DisplayAccumulatedPeriod<SampleEntry>);
+      displayer.AddDisplayFunction("SelfEventCount", DisplaySelfPeriod<SampleEntry>);
     } else {
-      displayer.AddDisplayFunction("EventCount", DisplaySelfPeriod);
+      displayer.AddDisplayFunction("EventCount", DisplaySelfPeriod<SampleEntry>);
     }
     displayer.AddDisplayFunction("EventName", DisplayEventName);
   }
