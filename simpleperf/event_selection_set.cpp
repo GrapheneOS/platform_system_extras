@@ -321,7 +321,7 @@ bool EventSelectionSet::AddCounters(const std::vector<std::string>& event_names)
     }
     // Use a big sample_period to avoid getting samples for added counters.
     selection.event_attr.freq = 0;
-    selection.event_attr.sample_period = 1ULL << 62;
+    selection.event_attr.sample_period = INFINITE_SAMPLE_PERIOD;
     selection.event_attr.inherit = 0;
     groups_[0].emplace_back(std::move(selection));
   }
