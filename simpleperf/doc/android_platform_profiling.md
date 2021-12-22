@@ -68,7 +68,8 @@ try {
 When monitoring instruction and cache related perf events (in hw/cache/raw/pmu category of list cmd),
 these events are mapped to PMU counters on each cpu core. But each core only has a limited number
 of PMU counters. If number of events > number of PMU counters, then the counters are multiplexed
-among events, which probably isn't what we want.
+among events, which probably isn't what we want. We can use `simpleperf stat --print-hw-counter` to
+show hardware counters (per core) available on the device.
 
 On Pixel devices, the number of PMU counters on each core is usually 7, of which 4 of them are used
 by the kernel to monitor memory latency. So only 3 counters are available. It's fine to monitor up
