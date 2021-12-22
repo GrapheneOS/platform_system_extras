@@ -77,10 +77,15 @@ struct SampleEntry {
   BranchFromEntry branch_from;
   // a callchain tree representing all callchains in the sample
   CallChainRoot<SampleEntry> callchain;
+  // event counts for the sample
+  std::vector<uint64_t> counts;
+  // accumulated event counts for the sample
+  std::vector<uint64_t> acc_counts;
 
   SampleEntry(uint64_t time, uint64_t period, uint64_t accumulated_period, uint64_t sample_count,
               int cpu, const ThreadEntry* thread, const MapEntry* map, const Symbol* symbol,
-              uint64_t vaddr_in_file)
+              uint64_t vaddr_in_file, const std::vector<uint64_t>& counts,
+              const std::vector<uint64_t>& acc_counts)
       : time(time),
         period(period),
         accumulated_period(accumulated_period),
@@ -91,7 +96,9 @@ struct SampleEntry {
         thread_comm(thread->comm),
         map(map),
         symbol(symbol),
-        vaddr_in_file(vaddr_in_file) {}
+        vaddr_in_file(vaddr_in_file),
+        counts(counts),
+        acc_counts(acc_counts) {}
 
   // The data member 'callchain' can only move, not copy.
   SampleEntry(SampleEntry&&) = default;
@@ -115,12 +122,19 @@ static std::string DisplayEventName(const SampleEntry*, const SampleTree* info) 
   return info->event_name;
 }
 
-class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_t> {
+struct AccInfo {
+  uint64_t period = 0;
+  std::vector<uint64_t> counts;
+};
+
+class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, AccInfo> {
  public:
   ReportCmdSampleTreeBuilder(const SampleComparator<SampleEntry>& sample_comparator,
-                             ThreadTree* thread_tree)
+                             ThreadTree* thread_tree,
+                             const std::unordered_map<uint64_t, size_t>& event_id_to_attr_index)
       : SampleTreeBuilder(sample_comparator),
         thread_tree_(thread_tree),
+        event_id_to_attr_index_(event_id_to_attr_index),
         total_samples_(0),
         total_period_(0),
         total_error_callchains_(0) {}
@@ -163,15 +177,19 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
  protected:
   virtual uint64_t GetPeriod(const SampleRecord& r) = 0;
 
-  SampleEntry* CreateSample(const SampleRecord& r, bool in_kernel, uint64_t* acc_info) override {
+  SampleEntry* CreateSample(const SampleRecord& r, bool in_kernel, AccInfo* acc_info) override {
     const ThreadEntry* thread = thread_tree_->FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
     const MapEntry* map = thread_tree_->FindMap(thread, r.ip_data.ip, in_kernel);
     uint64_t vaddr_in_file;
     const Symbol* symbol = thread_tree_->FindSymbol(map, r.ip_data.ip, &vaddr_in_file);
     uint64_t period = GetPeriod(r);
-    *acc_info = period;
-    return InsertSample(std::make_unique<SampleEntry>(r.time_data.time, period, 0, 1, r.Cpu(),
-                                                      thread, map, symbol, vaddr_in_file));
+    acc_info->period = period;
+    std::vector<uint64_t> counts = GetCountsForSample(r);
+    acc_info->counts = counts;
+    std::unique_ptr<SampleEntry> sample(new SampleEntry(r.time_data.time, period, 0, 1, r.Cpu(),
+                                                        thread, map, symbol, vaddr_in_file, counts,
+                                                        counts));
+    return InsertSample(std::move(sample));
   }
 
   SampleEntry* CreateBranchSample(const SampleRecord& r, const BranchStackItemType& item) override {
@@ -182,9 +200,9 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
     const MapEntry* to_map = thread_tree_->FindMap(thread, item.to);
     uint64_t to_vaddr_in_file;
     const Symbol* to_symbol = thread_tree_->FindSymbol(to_map, item.to, &to_vaddr_in_file);
-    auto sample =
-        std::make_unique<SampleEntry>(r.time_data.time, r.period_data.period, 0, 1, r.Cpu(), thread,
-                                      to_map, to_symbol, to_vaddr_in_file);
+    std::unique_ptr<SampleEntry> sample(new SampleEntry(r.time_data.time, r.period_data.period, 0,
+                                                        1, r.Cpu(), thread, to_map, to_symbol,
+                                                        to_vaddr_in_file, {}, {}));
     sample->branch_from.map = from_map;
     sample->branch_from.symbol = from_symbol;
     sample->branch_from.vaddr_in_file = from_vaddr_in_file;
@@ -195,7 +213,7 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
   SampleEntry* CreateCallChainSample(const ThreadEntry* thread, const SampleEntry* sample,
                                      uint64_t ip, bool in_kernel,
                                      const std::vector<SampleEntry*>& callchain,
-                                     const uint64_t& acc_info) override {
+                                     const AccInfo& acc_info) override {
     const MapEntry* map = thread_tree_->FindMap(thread, ip, in_kernel);
     if (thread_tree_->IsUnknownDso(map->dso)) {
       // The unwinders can give wrong ip addresses, which can't map to a valid dso. Skip them.
@@ -204,8 +222,9 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
     }
     uint64_t vaddr_in_file;
     const Symbol* symbol = thread_tree_->FindSymbol(map, ip, &vaddr_in_file);
-    auto callchain_sample = std::make_unique<SampleEntry>(sample->time, 0, acc_info, 0, sample->cpu,
-                                                          thread, map, symbol, vaddr_in_file);
+    std::unique_ptr<SampleEntry> callchain_sample(
+        new SampleEntry(sample->time, 0, acc_info.period, 0, sample->cpu, thread, map, symbol,
+                        vaddr_in_file, {}, acc_info.counts));
     callchain_sample->thread_comm = sample->thread_comm;
     return InsertCallChainSample(std::move(callchain_sample), callchain);
   }
@@ -214,7 +233,7 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
     return thread_tree_->FindThreadOrNew(sample->pid, sample->tid);
   }
 
-  uint64_t GetPeriodForCallChain(const uint64_t& acc_info) override { return acc_info; }
+  uint64_t GetPeriodForCallChain(const AccInfo& acc_info) override { return acc_info.period; }
 
   bool FilterSample(const SampleEntry* sample) override {
     if (!cpu_filter_.empty() && cpu_filter_.count(sample->cpu) == 0) {
@@ -247,10 +266,41 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
     sample1->period += sample2->period;
     sample1->accumulated_period += sample2->accumulated_period;
     sample1->sample_count += sample2->sample_count;
+    if (sample1->counts.size() < sample2->counts.size()) {
+      sample1->counts.resize(sample2->counts.size(), 0);
+    }
+    for (size_t i = 0; i < sample2->counts.size(); i++) {
+      sample1->counts[i] += sample2->counts[i];
+    }
+    if (sample1->acc_counts.size() < sample2->acc_counts.size()) {
+      sample1->acc_counts.resize(sample2->acc_counts.size(), 0);
+    }
+    for (size_t i = 0; i < sample2->acc_counts.size(); i++) {
+      sample1->acc_counts[i] += sample2->acc_counts[i];
+    }
   }
 
  private:
+  std::vector<uint64_t> GetCountsForSample(const SampleRecord& r) {
+    CHECK_EQ(r.read_data.counts.size(), r.read_data.ids.size());
+    std::vector<uint64_t> res(r.read_data.counts.size(), 0);
+    for (size_t i = 0; i < r.read_data.counts.size(); i++) {
+      uint64_t event_id = r.read_data.ids[i];
+      uint64_t count = r.read_data.counts[i];
+      uint64_t& last_count = event_id_count_map_[event_id];
+      uint64_t added_count = count - last_count;
+      last_count = count;
+      auto it = event_id_to_attr_index_.find(event_id);
+      CHECK(it != event_id_to_attr_index_.end());
+      CHECK_LT(it->second, res.size());
+      // Count for the current sample is the added event count after generating the previous sample.
+      res[it->second] = added_count;
+    }
+    return res;
+  }
+
   ThreadTree* thread_tree_;
+  const std::unordered_map<uint64_t, size_t>& event_id_to_attr_index_;
 
   std::unordered_set<int> cpu_filter_;
   std::unordered_set<int> pid_filter_;
@@ -264,14 +314,17 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, uint64_
   uint64_t total_error_callchains_;
 
   std::string event_name_;
+  // Map from event_id to its last event count.
+  std::unordered_map<uint64_t, uint64_t> event_id_count_map_;
 };
 
 // Build sample tree based on event count in each sample.
 class EventCountSampleTreeBuilder : public ReportCmdSampleTreeBuilder {
  public:
   EventCountSampleTreeBuilder(const SampleComparator<SampleEntry>& sample_comparator,
-                              ThreadTree* thread_tree)
-      : ReportCmdSampleTreeBuilder(sample_comparator, thread_tree) {}
+                              ThreadTree* thread_tree,
+                              const std::unordered_map<uint64_t, size_t>& event_id_to_attr_index)
+      : ReportCmdSampleTreeBuilder(sample_comparator, thread_tree, event_id_to_attr_index) {}
 
  protected:
   uint64_t GetPeriod(const SampleRecord& r) override { return r.period_data.period; }
@@ -281,8 +334,9 @@ class EventCountSampleTreeBuilder : public ReportCmdSampleTreeBuilder {
 class TimestampSampleTreeBuilder : public ReportCmdSampleTreeBuilder {
  public:
   TimestampSampleTreeBuilder(const SampleComparator<SampleEntry>& sample_comparator,
-                             ThreadTree* thread_tree)
-      : ReportCmdSampleTreeBuilder(sample_comparator, thread_tree) {}
+                             ThreadTree* thread_tree,
+                             const std::unordered_map<uint64_t, size_t>& event_id_to_attr_index)
+      : ReportCmdSampleTreeBuilder(sample_comparator, thread_tree, event_id_to_attr_index) {}
 
   void ReportCmdProcessSampleRecord(std::shared_ptr<SampleRecord>& r) override {
     pid_t tid = static_cast<pid_t>(r->tid_data.tid);
@@ -326,12 +380,13 @@ struct SampleTreeBuilderOptions {
   bool use_caller_as_callchain_root;
   bool trace_offcpu;
 
-  std::unique_ptr<ReportCmdSampleTreeBuilder> CreateSampleTreeBuilder() {
+  std::unique_ptr<ReportCmdSampleTreeBuilder> CreateSampleTreeBuilder(
+      const RecordFileReader& reader) {
     std::unique_ptr<ReportCmdSampleTreeBuilder> builder;
     if (trace_offcpu) {
-      builder.reset(new TimestampSampleTreeBuilder(comparator, thread_tree));
+      builder.reset(new TimestampSampleTreeBuilder(comparator, thread_tree, reader.EventIdMap()));
     } else {
-      builder.reset(new EventCountSampleTreeBuilder(comparator, thread_tree));
+      builder.reset(new EventCountSampleTreeBuilder(comparator, thread_tree, reader.EventIdMap()));
     }
     builder->SetFilters(cpu_filter, pid_filter, tid_filter, comm_filter, dso_filter, symbol_filter);
     builder->SetBranchSampleOption(use_branch_address);
@@ -836,7 +891,8 @@ bool ReportCommand::ReadSampleTreeFromRecordFile() {
   sample_tree_builder_options_.trace_offcpu = trace_offcpu_;
 
   for (size_t i = 0; i < event_attrs_.size(); ++i) {
-    sample_tree_builder_.push_back(sample_tree_builder_options_.CreateSampleTreeBuilder());
+    sample_tree_builder_.push_back(
+        sample_tree_builder_options_.CreateSampleTreeBuilder(*record_file_reader_));
     sample_tree_builder_.back()->SetEventName(event_attrs_[i].name);
     OfflineUnwinder* unwinder = sample_tree_builder_.back()->GetUnwinder();
     if (unwinder != nullptr) {
