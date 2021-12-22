@@ -185,8 +185,8 @@ class CallgraphDisplayer {
 template <typename EntryT, typename InfoT>
 class SampleDisplayer {
  public:
-  typedef std::string (*display_sample_func_t)(const EntryT*);
-  typedef std::string (*display_sample_with_info_func_t)(const EntryT*, const InfoT*);
+  using display_sample_func_t = std::function<std::string(const EntryT*)>;
+  using display_sample_with_info_func_t = std::function<std::string(const EntryT*, const InfoT*)>;
   using exclusive_display_sample_func_t = std::function<void(FILE*, const EntryT*)>;
 
  private:
@@ -207,7 +207,7 @@ class SampleDisplayer {
     filter_func_ = filter;
   }
 
-  void AddDisplayFunction(const std::string& name, display_sample_func_t func) {
+  void AddDisplayFunction(const std::string& name, const display_sample_func_t& func) {
     Item item;
     item.name = name;
     item.width = name.size();
@@ -216,7 +216,8 @@ class SampleDisplayer {
     display_v_.push_back(item);
   }
 
-  void AddDisplayFunction(const std::string& name, display_sample_with_info_func_t func_with_info) {
+  void AddDisplayFunction(const std::string& name,
+                          const display_sample_with_info_func_t& func_with_info) {
     Item item;
     item.name = name;
     item.width = name.size();
@@ -225,7 +226,7 @@ class SampleDisplayer {
     display_v_.push_back(item);
   }
 
-  void AddExclusiveDisplayFunction(exclusive_display_sample_func_t func) {
+  void AddExclusiveDisplayFunction(const exclusive_display_sample_func_t& func) {
     exclusive_display_v_.push_back(func);
   }
 
