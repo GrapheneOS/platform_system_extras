@@ -409,11 +409,6 @@ class ReportCmdCallgraphDisplayerWithVaddrInFile : public ReportCmdCallgraphDisp
   }
 };
 
-struct EventAttrWithName {
-  perf_event_attr attr;
-  std::string name;
-};
-
 class ReportCommand : public Command {
  public:
   ReportCommand()
@@ -447,6 +442,8 @@ class ReportCommand : public Command {
 "-o report_file_name   Set report file name, default is stdout.\n"
 "--percent-limit <percent>  Set min percentage in report entries and call graphs.\n"
 "--pids pid1,pid2,...  Report only for selected pids.\n"
+"--print-event-count   Print event counts for each item. Additional events can be added by\n"
+"                      --add-counter in record cmd.\n"
 "--raw-period          Report period count instead of period percentage.\n"
 "--sort key1,key2,...  Select keys used to group samples into report entries. Samples having\n"
 "                      the same key values are aggregated into one report entry. Each report\n"
@@ -490,8 +487,7 @@ class ReportCommand : public Command {
 
  private:
   bool ParseOptions(const std::vector<std::string>& args);
-  bool BuildSampleComparatorAndDisplayer(bool print_sample_count,
-                                         const std::vector<std::string>& sort_keys);
+  bool BuildSampleComparatorAndDisplayer();
   void ReadMetaInfoFromRecordFile();
   bool ReadEventAttrFromRecordFile();
   bool ReadFeaturesFromRecordFile();
@@ -505,7 +501,8 @@ class ReportCommand : public Command {
   std::string record_filename_;
   ArchType record_file_arch_;
   std::unique_ptr<RecordFileReader> record_file_reader_;
-  std::vector<EventAttrWithName> event_attrs_;
+  std::vector<perf_event_attr> event_attrs_;
+  std::vector<std::string> attr_names_;
   ThreadTree thread_tree_;
   // Create a SampleTreeBuilder and SampleTree for each event_attr.
   std::vector<SampleTree> sample_tree_;
@@ -527,7 +524,9 @@ class ReportCommand : public Command {
   size_t sched_switch_attr_id_;
   bool report_csv_ = false;
   std::string csv_separator_ = ",";
-
+  bool print_sample_count_ = false;
+  bool print_event_count_ = false;
+  std::vector<std::string> sort_keys_;
   std::string report_filename_;
 };
 
@@ -544,6 +543,9 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
   }
   ReadMetaInfoFromRecordFile();
   if (!ReadEventAttrFromRecordFile()) {
+    return false;
+  }
+  if (!BuildSampleComparatorAndDisplayer()) {
     return false;
   }
   // Read features first to prepare build ids used when building SampleTree.
@@ -583,6 +585,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       {"-o", {OptionValueType::STRING, OptionType::SINGLE}},
       {"--percent-limit", {OptionValueType::DOUBLE, OptionType::SINGLE}},
       {"--pids", {OptionValueType::STRING, OptionType::MULTIPLE}},
+      {"--print-event-count", {OptionValueType::NONE, OptionType::SINGLE}},
       {"--tids", {OptionValueType::STRING, OptionType::MULTIPLE}},
       {"--raw-period", {OptionValueType::NONE, OptionType::SINGLE}},
       {"--sort", {OptionValueType::STRING, OptionType::SINGLE}},
@@ -645,7 +648,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   if (!options.PullUintValue("--max-stack", &callgraph_max_stack_)) {
     return false;
   }
-  bool print_sample_count = options.PullBoolValue("-n");
+  print_sample_count_ = options.PullBoolValue("-n");
 
   Dso::SetDemangle(!options.PullBoolValue("--no-demangle"));
 
@@ -665,6 +668,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       return false;
     }
   }
+  print_event_count_ = options.PullBoolValue("--print-event-count");
   for (const OptionValue& value : options.PullValues("--tids")) {
     if (auto tids = GetTidsFromString(*value.str_value, false); tids) {
       sample_tree_builder_options_.tid_filter.insert(tids->begin(), tids->end());
@@ -674,9 +678,9 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   }
   raw_period_ = options.PullBoolValue("--raw-period");
 
-  std::vector<std::string> sort_keys = {"comm", "pid", "tid", "dso", "symbol"};
+  sort_keys_ = {"comm", "pid", "tid", "dso", "symbol"};
   if (auto value = options.PullValue("--sort"); value) {
-    sort_keys = Split(*value->str_value, ",");
+    sort_keys_ = Split(*value->str_value, ",");
   }
 
   for (const OptionValue& value : options.PullValues("--symbols")) {
@@ -693,11 +697,10 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
     Dso::SetVmlinux(*value->str_value);
   }
   CHECK(options.values.empty());
-  return BuildSampleComparatorAndDisplayer(print_sample_count, sort_keys);
+  return true;
 }
 
-bool ReportCommand::BuildSampleComparatorAndDisplayer(bool print_sample_count,
-                                                      const std::vector<std::string>& sort_keys) {
+bool ReportCommand::BuildSampleComparatorAndDisplayer() {
   SampleDisplayer<SampleEntry, SampleTree> displayer;
   displayer.SetReportFormat(report_csv_, csv_separator_);
   SampleComparator<SampleEntry> comparator;
@@ -717,11 +720,38 @@ bool ReportCommand::BuildSampleComparatorAndDisplayer(bool print_sample_count,
       displayer.AddDisplayFunction("Overhead", DisplaySelfOverhead<SampleEntry, SampleTree>);
     }
   }
-  if (print_sample_count) {
+  if (print_sample_count_) {
     displayer.AddDisplayFunction("Sample", DisplaySampleCount<SampleEntry>);
   }
+  if (print_event_count_) {
+    if (event_attrs_.size() == attr_names_.size()) {
+      // Without additional counters, counts field isn't available. So print period field instead.
+      if (accumulate_callchain_) {
+        displayer.AddDisplayFunction("AccEventCount", DisplayAccumulatedPeriod<SampleEntry>);
+        displayer.AddDisplayFunction("SelfEventCount", DisplaySelfPeriod<SampleEntry>);
+      } else {
+        displayer.AddDisplayFunction("EventCount", DisplaySelfPeriod<SampleEntry>);
+      }
+    } else {
+      // With additional counters, print counts field.
+      for (size_t i = 0; i < attr_names_.size(); i++) {
+        auto self_event_count_fn = [i](const SampleEntry* s) {
+          return i < s->counts.size() ? std::to_string(s->counts[i]) : "0";
+        };
+        auto acc_event_count_fn = [i](const SampleEntry* s) {
+          return i < s->acc_counts.size() ? std::to_string(s->acc_counts[i]) : "0";
+        };
+        if (accumulate_callchain_) {
+          displayer.AddDisplayFunction("AccEventCount_" + attr_names_[i], acc_event_count_fn);
+          displayer.AddDisplayFunction("SelfEventCount_" + attr_names_[i], self_event_count_fn);
+        } else {
+          displayer.AddDisplayFunction("EventCount_" + attr_names_[i], self_event_count_fn);
+        }
+      }
+    }
+  }
 
-  for (auto& key : sort_keys) {
+  for (auto& key : sort_keys_) {
     if (!use_branch_address_ && branch_sort_keys.find(key) != branch_sort_keys.end()) {
       LOG(ERROR) << "sort key '" << key << "' can only be used with -b option.";
       return false;
@@ -762,7 +792,9 @@ bool ReportCommand::BuildSampleComparatorAndDisplayer(bool print_sample_count,
     }
   }
 
-  if (report_csv_) {
+  // Reporting with --csv will add event count and event name columns. But if --print-event-count is
+  // used, there is no need to duplicate printing event counts.
+  if (report_csv_ && !print_event_count_) {
     if (accumulate_callchain_) {
       displayer.AddDisplayFunction("AccEventCount", DisplayAccumulatedPeriod<SampleEntry>);
       displayer.AddDisplayFunction("SelfEventCount", DisplaySelfPeriod<SampleEntry>);
@@ -775,7 +807,7 @@ bool ReportCommand::BuildSampleComparatorAndDisplayer(bool print_sample_count,
   if (print_callgraph_) {
     bool has_symbol_key = false;
     bool has_vaddr_in_file_key = false;
-    for (const auto& key : sort_keys) {
+    for (const auto& key : sort_keys_) {
       if (key == "symbol") {
         has_symbol_key = true;
       } else if (key == "vaddr_in_file") {
@@ -824,15 +856,20 @@ void ReportCommand::ReadMetaInfoFromRecordFile() {
 bool ReportCommand::ReadEventAttrFromRecordFile() {
   std::vector<EventAttrWithId> attrs = record_file_reader_->AttrSection();
   for (const auto& attr_with_id : attrs) {
-    EventAttrWithName attr;
-    attr.attr = *attr_with_id.attr;
-    attr.name = GetEventNameByAttr(attr.attr);
-    event_attrs_.push_back(attr);
+    const perf_event_attr& attr = *attr_with_id.attr;
+    attr_names_.emplace_back(GetEventNameByAttr(attr));
+
+    // There are no samples for events added by --add-counter. So skip them.
+    if ((attr.read_format & PERF_FORMAT_GROUP) && (attr.freq == 0) &&
+        (attr.sample_period == INFINITE_SAMPLE_PERIOD)) {
+      continue;
+    }
+    event_attrs_.emplace_back(attr);
   }
   if (use_branch_address_) {
     bool has_branch_stack = true;
     for (const auto& attr : event_attrs_) {
-      if ((attr.attr.sample_type & PERF_SAMPLE_BRANCH_STACK) == 0) {
+      if ((attr.sample_type & PERF_SAMPLE_BRANCH_STACK) == 0) {
         has_branch_stack = false;
         break;
       }
@@ -845,7 +882,7 @@ bool ReportCommand::ReadEventAttrFromRecordFile() {
   if (trace_offcpu_) {
     size_t i;
     for (i = 0; i < event_attrs_.size(); ++i) {
-      if (event_attrs_[i].name == "sched:sched_switch") {
+      if (attr_names_[i] == "sched:sched_switch") {
         break;
       }
     }
@@ -893,7 +930,7 @@ bool ReportCommand::ReadSampleTreeFromRecordFile() {
   for (size_t i = 0; i < event_attrs_.size(); ++i) {
     sample_tree_builder_.push_back(
         sample_tree_builder_options_.CreateSampleTreeBuilder(*record_file_reader_));
-    sample_tree_builder_.back()->SetEventName(event_attrs_[i].name);
+    sample_tree_builder_.back()->SetEventName(attr_names_[i]);
     OfflineUnwinder* unwinder = sample_tree_builder_.back()->GetUnwinder();
     if (unwinder != nullptr) {
       unwinder->LoadMetaInfo(record_file_reader_->GetMetaInfoFeature());
@@ -950,10 +987,10 @@ void ReportCommand::ProcessSampleRecordInTraceOffCpuMode(std::unique_ptr<Record>
 
 bool ReportCommand::ProcessTracingData(const std::vector<char>& data) {
   Tracing tracing(data);
-  for (auto& attr : event_attrs_) {
-    if (attr.attr.type == PERF_TYPE_TRACEPOINT) {
-      uint64_t trace_event_id = attr.attr.config;
-      attr.name = tracing.GetTracingEventNameHavingId(trace_event_id);
+  for (size_t i = 0; i < event_attrs_.size(); i++) {
+    if (event_attrs_[i].type == PERF_TYPE_TRACEPOINT) {
+      uint64_t trace_event_id = event_attrs_[i].config;
+      attr_names_[i] = tracing.GetTracingEventNameHavingId(trace_event_id);
     }
   }
   return true;
@@ -978,10 +1015,9 @@ bool ReportCommand::PrintReport() {
     if (i != 0) {
       fprintf(report_fp, "\n");
     }
-    EventAttrWithName& attr = event_attrs_[i];
     SampleTree& sample_tree = sample_tree_[i];
-    fprintf(report_fp, "Event: %s (type %u, config %llu)\n", attr.name.c_str(), attr.attr.type,
-            attr.attr.config);
+    fprintf(report_fp, "Event: %s (type %u, config %llu)\n", attr_names_[i].c_str(),
+            event_attrs_[i].type, event_attrs_[i].config);
     fprintf(report_fp, "Samples: %" PRIu64 "\n", sample_tree.total_samples);
     if (sample_tree.total_error_callchains != 0) {
       fprintf(report_fp, "Error Callchains: %" PRIu64 ", %f%%\n",
