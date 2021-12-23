@@ -373,6 +373,10 @@ TEST(stat_cmd, counter_sum) {
   ASSERT_EQ(counter.time_running, 6);
 }
 
+TEST(stat_cmd, print_hw_counter_option) {
+  ASSERT_TRUE(StatCmd()->Run({"--print-hw-counter"}));
+}
+
 class StatCmdSummaryBuilderTest : public ::testing::Test {
  protected:
   struct CounterArg {
