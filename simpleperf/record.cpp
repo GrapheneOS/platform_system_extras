@@ -455,6 +455,7 @@ bool SampleRecord::Parse(const perf_event_attr& attr, char* p, char* end) {
     return false;
   }
   sample_type = attr.sample_type;
+  read_format = attr.read_format;
   const uint64_t sample_mask = PERF_SAMPLE_IDENTIFIER | PERF_SAMPLE_IP | PERF_SAMPLE_TID |
                                PERF_SAMPLE_TIME | PERF_SAMPLE_ADDR | PERF_SAMPLE_ID |
                                PERF_SAMPLE_STREAM_ID | PERF_SAMPLE_CPU | PERF_SAMPLE_PERIOD;
@@ -488,6 +489,33 @@ bool SampleRecord::Parse(const perf_event_attr& attr, char* p, char* end) {
   }
   if (sample_type & PERF_SAMPLE_PERIOD) {
     MoveFromBinaryFormat(period_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_READ) {
+    uint64_t nr = 1;
+    if (read_format & PERF_FORMAT_GROUP) {
+      CHECK_SIZE_U64(p, end, 1);
+      MoveFromBinaryFormat(nr, p);
+    }
+    size_t u64_count = (read_format & PERF_FORMAT_TOTAL_TIME_ENABLED) ? 1 : 0;
+    u64_count += (read_format & PERF_FORMAT_TOTAL_TIME_RUNNING) ? 1 : 0;
+    u64_count += ((read_format & PERF_FORMAT_ID) ? 2 : 1) * nr;
+    CHECK_SIZE_U64(p, end, u64_count);
+    if (read_format & PERF_FORMAT_TOTAL_TIME_ENABLED) {
+      MoveFromBinaryFormat(read_data.time_enabled, p);
+    }
+    if (read_format & PERF_FORMAT_TOTAL_TIME_RUNNING) {
+      MoveFromBinaryFormat(read_data.time_running, p);
+    }
+    read_data.counts.resize(nr);
+    if (read_format & PERF_FORMAT_ID) {
+      read_data.ids.resize(nr);
+    }
+    for (uint64_t i = 0; i < nr; i++) {
+      MoveFromBinaryFormat(read_data.counts[i], p);
+      if (read_format & PERF_FORMAT_ID) {
+        MoveFromBinaryFormat(read_data.ids[i], p);
+      }
+    }
   }
   if (sample_type & PERF_SAMPLE_CALLCHAIN) {
     CHECK_SIZE_U64(p, end, 1);
@@ -545,14 +573,15 @@ bool SampleRecord::Parse(const perf_event_attr& attr, char* p, char* end) {
 
 SampleRecord::SampleRecord(const perf_event_attr& attr, uint64_t id, uint64_t ip, uint32_t pid,
                            uint32_t tid, uint64_t time, uint32_t cpu, uint64_t period,
-                           const std::vector<uint64_t>& ips, const std::vector<char>& stack,
-                           uint64_t dyn_stack_size) {
+                           const PerfSampleReadType& read_data, const std::vector<uint64_t>& ips,
+                           const std::vector<char>& stack, uint64_t dyn_stack_size) {
   SetTypeAndMisc(PERF_RECORD_SAMPLE, PERF_RECORD_MISC_USER);
   sample_type = attr.sample_type;
+  read_format = attr.read_format;
   CHECK_EQ(0u,
            sample_type & ~(PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_TIME | PERF_SAMPLE_ID |
-                           PERF_SAMPLE_CPU | PERF_SAMPLE_PERIOD | PERF_SAMPLE_CALLCHAIN |
-                           PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER));
+                           PERF_SAMPLE_CPU | PERF_SAMPLE_PERIOD | PERF_SAMPLE_READ |
+                           PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER));
   ip_data.ip = ip;
   tid_data.pid = pid;
   tid_data.tid = tid;
@@ -561,6 +590,7 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, uint64_t id, uint64_t ip
   cpu_data.cpu = cpu;
   cpu_data.res = 0;
   period_data.period = period;
+  this->read_data = read_data;
   callchain_data.ip_nr = ips.size();
   raw_data.size = 0;
   branch_stack_data.stack_nr = 0;
@@ -588,6 +618,13 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, uint64_t id, uint64_t ip
   }
   if (sample_type & PERF_SAMPLE_PERIOD) {
     size += sizeof(period_data);
+  }
+  if (sample_type & PERF_SAMPLE_READ) {
+    size_t u64_count = (read_format & PERF_FORMAT_GROUP) ? 1 : 0;
+    u64_count += (read_format & PERF_FORMAT_TOTAL_TIME_ENABLED) ? 1 : 0;
+    u64_count += (read_format & PERF_FORMAT_TOTAL_TIME_RUNNING) ? 1 : 0;
+    u64_count += read_data.counts.size() + read_data.ids.size();
+    size += sizeof(uint64_t) * u64_count;
   }
   if (sample_type & PERF_SAMPLE_CALLCHAIN) {
     size += sizeof(uint64_t) * (ips.size() + 1);
@@ -620,6 +657,24 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, uint64_t id, uint64_t ip
   }
   if (sample_type & PERF_SAMPLE_PERIOD) {
     MoveToBinaryFormat(period_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_READ) {
+    if (read_format & PERF_FORMAT_GROUP) {
+      uint64_t nr = read_data.counts.size();
+      MoveToBinaryFormat(nr, p);
+    }
+    if (read_format & PERF_FORMAT_TOTAL_TIME_ENABLED) {
+      MoveToBinaryFormat(read_data.time_enabled, p);
+    }
+    if (read_format & PERF_FORMAT_TOTAL_TIME_RUNNING) {
+      MoveToBinaryFormat(read_data.time_running, p);
+    }
+    for (size_t i = 0; i < read_data.counts.size(); i++) {
+      MoveToBinaryFormat(read_data.counts[i], p);
+      if (read_format & PERF_FORMAT_ID) {
+        MoveToBinaryFormat(read_data.ids[i], p);
+      }
+    }
   }
   if (sample_type & PERF_SAMPLE_CALLCHAIN) {
     MoveToBinaryFormat(callchain_data.ip_nr, p);
@@ -789,6 +844,21 @@ void SampleRecord::DumpData(size_t indent) const {
   }
   if (sample_type & PERF_SAMPLE_PERIOD) {
     PrintIndented(indent, "period %" PRId64 "\n", period_data.period);
+  }
+  if (sample_type & PERF_SAMPLE_READ) {
+    PrintIndented(indent, "read nr=%zu\n", read_data.counts.size());
+    if (read_format & PERF_FORMAT_TOTAL_TIME_ENABLED) {
+      PrintIndented(indent + 1, "time_enabled %" PRIu64 "\n", read_data.time_enabled);
+    }
+    if (read_format & PERF_FORMAT_TOTAL_TIME_RUNNING) {
+      PrintIndented(indent + 1, "time_running %" PRIu64 "\n", read_data.time_running);
+    }
+    for (size_t i = 0; i < read_data.counts.size(); i++) {
+      PrintIndented(indent + 1, "count[%zu] %" PRIu64 "\n", i, read_data.counts[i]);
+      if (read_format & PERF_FORMAT_ID) {
+        PrintIndented(indent + 1, "id[%zu] %" PRIu64 "\n", i, read_data.ids[i]);
+      }
+    }
   }
   if (sample_type & PERF_SAMPLE_CALLCHAIN) {
     PrintIndented(indent, "callchain nr=%" PRIu64 "\n", callchain_data.ip_nr);
