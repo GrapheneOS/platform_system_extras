@@ -564,6 +564,39 @@ TEST_F(ReportCommandTest, cpu_option) {
   ASSERT_FALSE(ReportCmd()->Run({"-i", GetTestData("perf.data"), "--cpu", "-2"}));
 }
 
+TEST_F(ReportCommandTest, print_event_count_option) {
+  // Report record file not recorded with --add-counter.
+  Report("perf.data", {"--print-event-count"});
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("EventCount"), std::string::npos);
+  ASSERT_TRUE(std::regex_search(
+      content, std::regex(R"(325005586\s+elf\s+26083\s+26083\s+/elf\s+GlobalFunc)")));
+
+  // Report record file recorded with --add-counter.
+  const std::string record_file = "perf_with_add_counter.data";
+  Report(record_file, {"--print-event-count"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(
+      std::regex_search(content, std::regex(R"(EventCount_cpu-cycles\s+EventCount_instructions)")));
+  ASSERT_TRUE(std::regex_search(
+      content, std::regex(R"(175099\s+140443\s+sleep\s+689664\s+689664.+_dl_addr)")));
+
+  // Report accumulated event counts.
+  Report(record_file, {"--print-event-count", "--children"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(std::regex_search(
+      content,
+      std::regex(
+          R"(AccEventCount_cpu-cycles\s+SelfEventCount_cpu-cycles\s+AccEventCount_instructions\s+)"
+          R"(SelfEventCount_instructions)")));
+  ASSERT_TRUE(std::regex_search(
+      content,
+      std::regex(R"(175099\s+175099\s+140443\s+140443\s+sleep\s+689664\s+689664.+_dl_addr)")));
+  ASSERT_TRUE(std::regex_search(
+      content,
+      std::regex(R"(366116\s+0\s+297474\s+0\s+sleep\s+689664\s+689664.+__libc_start_main)")));
+}
+
 #if defined(__linux__)
 #include "event_selection_set.h"
 
