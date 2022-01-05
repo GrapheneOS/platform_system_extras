@@ -58,4 +58,8 @@ std::unique_ptr<OfflineUnwinder> OfflineUnwinder::Create(bool) {
   return std::unique_ptr<OfflineUnwinder>(new NoOpOfflineUnwinder);
 }
 
+std::optional<uint32_t> GetProcessUid(pid_t) {
+  return std::nullopt;
+}
+
 }  // namespace simpleperf
