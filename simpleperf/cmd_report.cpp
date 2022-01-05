@@ -412,14 +412,17 @@ class ReportCmdCallgraphDisplayerWithVaddrInFile : public ReportCmdCallgraphDisp
 class ReportCommand : public Command {
  public:
   ReportCommand()
-      : Command("report", "report sampling information in perf.data",
-                // clang-format off
+      : Command(
+            "report", "report sampling information in perf.data",
+            // clang-format off
 "Usage: simpleperf report [options]\n"
 "The default options are: -i perf.data --sort comm,pid,tid,dso,symbol.\n"
 "-b    Use the branch-to addresses in sampled take branches instead of the\n"
 "      instruction addresses. Only valid for perf.data recorded with -b/-j\n"
 "      option.\n"
 "--children    Print the overhead accumulated by appearing in the callchain.\n"
+"              In the report, Children column shows overhead for a symbol and functions called\n"
+"              by the symbol, while Self column shows overhead for the symbol itself.\n"
 "--comms comm1,comm2,...   Report only for selected comms.\n"
 "--cpu   cpu_item1,cpu_item2,...\n"
 "                  Report samples on the selected cpus. cpu_item can be cpu\n"
@@ -468,8 +471,8 @@ class ReportCommand : public Command {
 "--symfs <dir>         Look for files with symbols relative to this directory.\n"
 "--tids tid1,tid2,...  Report only for selected tids.\n"
 "--vmlinux <file>      Parse kernel symbols from <file>.\n"
-                // clang-format on
-                ),
+            // clang-format on
+            ),
         record_filename_("perf.data"),
         record_file_arch_(GetTargetArch()),
         use_branch_address_(false),
