@@ -150,8 +150,9 @@ static inline int gettid() {
 }
 #endif
 
-std::optional<uid_t> GetProcessUid(pid_t pid);
 #endif  // defined(__linux__)
+
+std::optional<uint32_t> GetProcessUid(pid_t pid);
 
 }  // namespace simpleperf
 
