@@ -43,6 +43,11 @@ class RecordFilterTest : public ::testing::Test {
     return record.get();
   }
 
+  bool SetFilterData(const std::string& data) {
+    TemporaryFile tmpfile;
+    return android::base::WriteStringToFd(data, tmpfile.fd) && filter.SetFilterFile(tmpfile.path);
+  }
+
   ThreadTree thread_tree;
   perf_event_attr attr;
   RecordFilter filter;
@@ -127,6 +132,118 @@ TEST_F(RecordFilterTest, include_uid) {
   ASSERT_TRUE(filter.Check(GetRecord(pid, pid)));
   uint32_t pid_not_exist = UINT32_MAX;
   ASSERT_FALSE(filter.Check(GetRecord(pid_not_exist, pid_not_exist)));
+}
+
+TEST_F(RecordFilterTest, global_time_filter) {
+  ASSERT_TRUE(
+      SetFilterData("GLOBAL_BEGIN 1000\n"
+                    "GLOBAL_END 2000\n"
+                    "GLOBAL_BEGIN 3000\n"
+                    "GLOBAL_END 4000"));
+  SampleRecord* r = GetRecord(1, 1);
+  r->time_data.time = 0;
+  ASSERT_FALSE(filter.Check(r));
+  r->time_data.time = 999;
+  ASSERT_FALSE(filter.Check(r));
+  r->time_data.time = 1000;
+  ASSERT_TRUE(filter.Check(r));
+  r->time_data.time = 1001;
+  ASSERT_TRUE(filter.Check(r));
+  r->time_data.time = 1999;
+  ASSERT_TRUE(filter.Check(r));
+  r->time_data.time = 2000;
+  ASSERT_FALSE(filter.Check(r));
+  r->time_data.time = 2001;
+  ASSERT_FALSE(filter.Check(r));
+  r->time_data.time = 3000;
+  ASSERT_TRUE(filter.Check(r));
+  r->time_data.time = 4000;
+  ASSERT_FALSE(filter.Check(r));
+}
+
+TEST_F(RecordFilterTest, process_time_filter) {
+  ASSERT_TRUE(
+      SetFilterData("PROCESS_BEGIN 1 1000\n"
+                    "PROCESS_END 1 2000"));
+  SampleRecord* r = GetRecord(1, 1);
+  r->time_data.time = 0;
+  ASSERT_FALSE(filter.Check(r));
+  r->time_data.time = 999;
+  ASSERT_FALSE(filter.Check(r));
+  r->time_data.time = 1000;
+  ASSERT_TRUE(filter.Check(r));
+  r->time_data.time = 1001;
+  ASSERT_TRUE(filter.Check(r));
+  r->time_data.time = 1999;
+  ASSERT_TRUE(filter.Check(r));
+  r->time_data.time = 2000;
+  ASSERT_FALSE(filter.Check(r));
+  // When process time filters are used, not mentioned processes should be filtered.
+  r->tid_data.pid = 2;
+  r->time_data.time = 1000;
+  ASSERT_FALSE(filter.Check(r));
+}
+
+TEST_F(RecordFilterTest, thread_time_filter) {
+  ASSERT_TRUE(
+      SetFilterData("THREAD_BEGIN 1 1000\n"
+                    "THREAD_END 1 2000"));
+  SampleRecord* r = GetRecord(1, 1);
+  r->time_data.time = 0;
+  ASSERT_FALSE(filter.Check(r));
+  r->time_data.time = 999;
+  ASSERT_FALSE(filter.Check(r));
+  r->time_data.time = 1000;
+  ASSERT_TRUE(filter.Check(r));
+  r->time_data.time = 1001;
+  ASSERT_TRUE(filter.Check(r));
+  r->time_data.time = 1999;
+  ASSERT_TRUE(filter.Check(r));
+  r->time_data.time = 2000;
+  ASSERT_FALSE(filter.Check(r));
+  // When thread time filters are used, not mentioned threads should be filtered.
+  r->tid_data.tid = 2;
+  r->time_data.time = 1000;
+  ASSERT_FALSE(filter.Check(r));
+}
+
+TEST_F(RecordFilterTest, clock_in_time_filter) {
+  // If there is no filter data, any clock is fine.
+  ASSERT_TRUE(filter.CheckClock("monotonic"));
+  ASSERT_TRUE(filter.CheckClock("perf"));
+  // If there is no clock command, monotonic clock is used.
+  ASSERT_TRUE(SetFilterData(""));
+  ASSERT_TRUE(filter.CheckClock("monotonic"));
+  ASSERT_FALSE(filter.CheckClock("perf"));
+  // If there is a clock command, use that clock.
+  ASSERT_TRUE(SetFilterData("CLOCK realtime"));
+  ASSERT_TRUE(filter.CheckClock("realtime"));
+  ASSERT_FALSE(filter.CheckClock("monotonic"));
+}
+
+TEST_F(RecordFilterTest, error_in_time_filter) {
+  // no timestamp error
+  ASSERT_FALSE(SetFilterData("GLOBAL_BEGIN"));
+  // time range error
+  ASSERT_FALSE(
+      SetFilterData("GLOBAL_BEGIN 1000\n"
+                    "GLOBAL_END 999"));
+  // time range error
+  ASSERT_FALSE(
+      SetFilterData("GLOBAL_BEGIN 1000\n"
+                    "GLOBAL_END 1000"));
+  // no timestamp error
+  ASSERT_FALSE(SetFilterData("PROCESS_BEGIN 1"));
+  // time range error
+  ASSERT_FALSE(
+      SetFilterData("PROCESS_BEGIN 1 1000\n"
+                    "PROCESS_END 1 999"));
+  // no timestamp error
+  ASSERT_FALSE(SetFilterData("THREAD_BEGIN 1"));
+  // time range error
+  ASSERT_FALSE(
+      SetFilterData("THREAD_BEGIN 1 1000\n"
+                    "THREAD_END 1 999"));
 }
 
 namespace {
