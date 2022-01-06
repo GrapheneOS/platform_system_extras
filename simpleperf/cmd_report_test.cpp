@@ -597,6 +597,44 @@ TEST_F(ReportCommandTest, print_event_count_option) {
       std::regex(R"(366116\s+0\s+297474\s+0\s+sleep\s+689664\s+689664.+__libc_start_main)")));
 }
 
+TEST_F(ReportCommandTest, exclude_include_pid_options) {
+  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--sort", "pid", "--exclude-pid", "17441"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"17443", "17444"}));
+  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--sort", "pid", "--include-pid", "17441"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"17441"}));
+}
+
+TEST_F(ReportCommandTest, exclude_include_tid_options) {
+  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS,
+         {"--sort", "tid", "--exclude-tid", "17441,17443,17444"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"17445", "17446", "17447"}));
+  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS,
+         {"--sort", "tid", "--include-tid", "17441,17443,17444"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"17441", "17443", "17444"}));
+}
+
+TEST_F(ReportCommandTest, exclude_include_process_name_options) {
+  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--sort", "comm", "--exclude-process-name", "t1"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"simpleperf"}));
+  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--sort", "comm", "--include-process-name", "t1"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"t1"}));
+}
+
+TEST_F(ReportCommandTest, exclude_include_thread_name_options) {
+  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--sort", "comm", "--exclude-thread-name", "t1"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"simpleperf"}));
+  Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--sort", "comm", "--include-thread-name", "t1"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"t1"}));
+}
+
 #if defined(__linux__)
 #include "event_selection_set.h"
 

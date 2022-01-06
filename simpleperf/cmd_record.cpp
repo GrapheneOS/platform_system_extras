@@ -271,7 +271,7 @@ class RecordCommand : public Command {
 "\n"
 "Sample filter options:\n"
 "--exclude-perf                Exclude samples for simpleperf process.\n"
-RECORD_FILTER_OPTION_HELP_MSG
+RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
 "\n"
 "Recording file options:\n"
 "--no-dump-kernel-symbols  Don't dump kernel symbols in perf.data. By default\n"
