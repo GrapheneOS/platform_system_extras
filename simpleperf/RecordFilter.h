@@ -96,21 +96,28 @@ struct RecordFilterCondition {
   std::set<uint32_t> uids;
 };
 
+class TimeFilter;
+
 // Filter SampleRecords based on the rule below:
 //   out_sample_records = (in_sample_records & ~exclude_conditions) & include_conditions
 //   By default, exclude_conditions = 0, include_conditions = 1.
 class RecordFilter {
  public:
-  RecordFilter(const ThreadTree& thread_tree) : thread_tree_(thread_tree) {}
+  RecordFilter(const ThreadTree& thread_tree);
+  ~RecordFilter();
   bool ParseOptions(OptionValueMap& options);
   void AddPids(const std::set<pid_t>& pids, bool exclude);
   void AddTids(const std::set<pid_t>& tids, bool exclude);
   void AddProcessNameRegex(const std::string& process_name, bool exclude);
   void AddThreadNameRegex(const std::string& thread_name, bool exclude);
   void AddUids(const std::set<uint32_t>& uids, bool exclude);
+  bool SetFilterFile(const std::string& filename);
 
   // Return true if the record passes filter.
   bool Check(const SampleRecord* r);
+
+  // Check if the clock matches the clock for timestamps in the filter file.
+  bool CheckClock(const std::string& clock);
 
   RecordFilterCondition& GetCondition(bool exclude) {
     return exclude ? exclude_condition_ : include_condition_;
@@ -126,6 +133,7 @@ class RecordFilter {
   RecordFilterCondition exclude_condition_;
   RecordFilterCondition include_condition_;
   std::unordered_map<pid_t, std::optional<uint32_t>> pid_to_uid_map_;
+  std::unique_ptr<TimeFilter> time_filter_;
 };
 
 }  // namespace simpleperf
