@@ -45,7 +45,7 @@ bool RecordFilter::ParseOptions(OptionValueMap& options) {
       AddThreadNameRegex(*value.str_value, exclude);
     }
     for (const OptionValue& value : options.PullValues(prefix + "uid")) {
-      if (auto uids = ParseUintVector<uid_t>(*value.str_value); uids) {
+      if (auto uids = ParseUintVector<uint32_t>(*value.str_value); uids) {
         AddUids(uids.value(), exclude);
       } else {
         return false;
@@ -79,7 +79,7 @@ void RecordFilter::AddThreadNameRegex(const std::string& thread_name, bool exclu
   cond.thread_name_regs.emplace_back(thread_name, std::regex::optimize);
 }
 
-void RecordFilter::AddUids(const std::set<uid_t>& uids, bool exclude) {
+void RecordFilter::AddUids(const std::set<uint32_t>& uids, bool exclude) {
   RecordFilterCondition& cond = GetCondition(exclude);
   cond.used = true;
   cond.uids.insert(uids.begin(), uids.end());
@@ -141,7 +141,7 @@ bool RecordFilter::SearchInRegs(const std::string& s, const std::vector<std::reg
   return false;
 }
 
-std::optional<uid_t> RecordFilter::GetUidForProcess(pid_t pid) {
+std::optional<uint32_t> RecordFilter::GetUidForProcess(pid_t pid) {
   if (auto it = pid_to_uid_map_.find(pid); it != pid_to_uid_map_.end()) {
     return it->second;
   }

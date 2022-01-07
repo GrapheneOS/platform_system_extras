@@ -91,7 +91,7 @@ inline const OptionFormatMap& GetRecordCmdOptionFormats() {
         {"--use-cmd-exit-code",
          {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
     };
-    const OptionFormatMap& record_filter_options = GetRecordFilterOptionFormats();
+    OptionFormatMap record_filter_options = GetRecordFilterOptionFormats(true);
     option_formats.insert(record_filter_options.begin(), record_filter_options.end());
   }
   return option_formats;

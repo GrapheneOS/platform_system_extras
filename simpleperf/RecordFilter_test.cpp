@@ -83,7 +83,7 @@ TEST_F(RecordFilterTest, exclude_thread_name_regex) {
 
 TEST_F(RecordFilterTest, exclude_uid) {
   pid_t pid = getpid();
-  std::optional<uid_t> uid = GetProcessUid(pid);
+  std::optional<uint32_t> uid = GetProcessUid(pid);
   ASSERT_TRUE(uid.has_value());
   filter.AddUids({uid.value()}, true);
   ASSERT_FALSE(filter.Check(GetRecord(pid, pid)));
@@ -121,7 +121,7 @@ TEST_F(RecordFilterTest, include_thread_name_regex) {
 
 TEST_F(RecordFilterTest, include_uid) {
   pid_t pid = getpid();
-  std::optional<uid_t> uid = GetProcessUid(pid);
+  std::optional<uint32_t> uid = GetProcessUid(pid);
   ASSERT_TRUE(uid.has_value());
   filter.AddUids({uid.value()}, false);
   ASSERT_TRUE(filter.Check(GetRecord(pid, pid)));
@@ -136,7 +136,7 @@ class ParseRecordFilterCommand : public Command {
   ParseRecordFilterCommand(RecordFilter& filter) : Command("", "", ""), filter_(filter) {}
 
   bool Run(const std::vector<std::string>& args) override {
-    const auto& option_formats = GetRecordFilterOptionFormats();
+    const auto option_formats = GetRecordFilterOptionFormats(true);
     OptionValueMap options;
     std::vector<std::pair<OptionName, OptionValue>> ordered_options;
 
@@ -179,6 +179,6 @@ TEST_F(RecordFilterTest, parse_options) {
     ASSERT_TRUE(std::regex_match("threadB", thread_regs[1]));
 
     ASSERT_TRUE(filter_cmd.Run({prefix + "uid", "1,2", prefix + "uid", "3"}));
-    ASSERT_EQ(filter.GetCondition(exclude).uids, std::set<uid_t>({1, 2, 3}));
+    ASSERT_EQ(filter.GetCondition(exclude).uids, std::set<uint32_t>({1, 2, 3}));
   }
 }
