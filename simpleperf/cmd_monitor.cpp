@@ -130,7 +130,7 @@ class MonitorCommand : public Command {
 "\n"
 "Sample filter options:\n"
 "--exclude-perf                Exclude samples for simpleperf process.\n"
-RECORD_FILTER_OPTION_HELP_MSG
+RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
 "\n"
                 // clang-format on
                 ),
@@ -313,7 +313,7 @@ inline const OptionFormatMap& GetMonitorCmdOptionFormats() {
         {"-g", {OptionValueType::NONE, OptionType::ORDERED, AppRunnerType::ALLOWED}},
         {"-t", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
     };
-    const OptionFormatMap& record_filter_options = GetRecordFilterOptionFormats();
+    OptionFormatMap record_filter_options = GetRecordFilterOptionFormats(true);
     option_formats.insert(record_filter_options.begin(), record_filter_options.end());
   }
   return option_formats;
