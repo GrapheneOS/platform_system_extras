@@ -30,6 +30,7 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
+#include "RecordFilter.h"
 #include "command.h"
 #include "event_attr.h"
 #include "event_type.h"
@@ -140,14 +141,10 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, AccInfo
         total_error_callchains_(0) {}
 
   void SetFilters(const std::unordered_set<int>& cpu_filter,
-                  const std::unordered_set<int>& pid_filter,
-                  const std::unordered_set<int>& tid_filter,
                   const std::unordered_set<std::string>& comm_filter,
                   const std::unordered_set<std::string>& dso_filter,
                   const std::unordered_set<std::string>& symbol_filter) {
     cpu_filter_ = cpu_filter;
-    pid_filter_ = pid_filter;
-    tid_filter_ = tid_filter;
     comm_filter_ = comm_filter;
     dso_filter_ = dso_filter;
     symbol_filter_ = symbol_filter;
@@ -239,12 +236,6 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, AccInfo
     if (!cpu_filter_.empty() && cpu_filter_.count(sample->cpu) == 0) {
       return false;
     }
-    if (!pid_filter_.empty() && pid_filter_.count(sample->pid) == 0) {
-      return false;
-    }
-    if (!tid_filter_.empty() && tid_filter_.count(sample->tid) == 0) {
-      return false;
-    }
     if (!comm_filter_.empty() && comm_filter_.count(sample->thread_comm) == 0) {
       return false;
     }
@@ -303,8 +294,6 @@ class ReportCmdSampleTreeBuilder : public SampleTreeBuilder<SampleEntry, AccInfo
   const std::unordered_map<uint64_t, size_t>& event_id_to_attr_index_;
 
   std::unordered_set<int> cpu_filter_;
-  std::unordered_set<int> pid_filter_;
-  std::unordered_set<int> tid_filter_;
   std::unordered_set<std::string> comm_filter_;
   std::unordered_set<std::string> dso_filter_;
   std::unordered_set<std::string> symbol_filter_;
@@ -372,8 +361,6 @@ struct SampleTreeBuilderOptions {
   std::unordered_set<std::string> dso_filter;
   std::unordered_set<std::string> symbol_filter;
   std::unordered_set<int> cpu_filter;
-  std::unordered_set<int> pid_filter;
-  std::unordered_set<int> tid_filter;
   bool use_branch_address;
   bool accumulate_callchain;
   bool build_callchain;
@@ -388,7 +375,7 @@ struct SampleTreeBuilderOptions {
     } else {
       builder.reset(new EventCountSampleTreeBuilder(comparator, thread_tree, reader.EventIdMap()));
     }
-    builder->SetFilters(cpu_filter, pid_filter, tid_filter, comm_filter, dso_filter, symbol_filter);
+    builder->SetFilters(cpu_filter, comm_filter, dso_filter, symbol_filter);
     builder->SetBranchSampleOption(use_branch_address);
     builder->SetCallChainSampleOptions(accumulate_callchain, build_callchain,
                                        use_caller_as_callchain_root);
@@ -423,13 +410,8 @@ class ReportCommand : public Command {
 "--children    Print the overhead accumulated by appearing in the callchain.\n"
 "              In the report, Children column shows overhead for a symbol and functions called\n"
 "              by the symbol, while Self column shows overhead for the symbol itself.\n"
-"--comms comm1,comm2,...   Report only for selected comms.\n"
-"--cpu   cpu_item1,cpu_item2,...\n"
-"                  Report samples on the selected cpus. cpu_item can be cpu\n"
-"                  number like 1, or cpu range like 0-3.\n"
 "--csv                     Report in csv format.\n"
 "--csv-separator <sep>     Set separator for csv columns. Default is ','.\n"
-"--dsos dso1,dso2,...      Report only for selected dsos.\n"
 "--full-callgraph  Print full call graph. Used with -g option. By default,\n"
 "                  brief call graph is printed.\n"
 "-g [callee|caller]    Print call graph. If callee mode is used, the graph\n"
@@ -444,7 +426,6 @@ class ReportCommand : public Command {
 "--no-show-ip          Don't show vaddr in file for unknown symbols.\n"
 "-o report_file_name   Set report file name, default is stdout.\n"
 "--percent-limit <percent>  Set min percentage in report entries and call graphs.\n"
-"--pids pid1,pid2,...  Report only for selected pids.\n"
 "--print-event-count   Print event counts for each item. Additional events can be added by\n"
 "                      --add-counter in record cmd.\n"
 "--raw-period          Report period count instead of period percentage.\n"
@@ -467,10 +448,18 @@ class ReportCommand : public Command {
 "                        symbol_to       -- name of function branched to\n"
 "                      The default sort keys are:\n"
 "                        comm,pid,tid,dso,symbol\n"
-"--symbols symbol1;symbol2;...    Report only for selected symbols.\n"
 "--symfs <dir>         Look for files with symbols relative to this directory.\n"
-"--tids tid1,tid2,...  Report only for selected tids.\n"
 "--vmlinux <file>      Parse kernel symbols from <file>.\n"
+"\n"
+"Sample filter options:\n"
+"--comms comm1,comm2,...          Report only for threads with selected names.\n"
+"--cpu   cpu_item1,cpu_item2,...  Report samples on the selected cpus. cpu_item can be cpu\n"
+"                                 number like 1, or cpu range like 0-3.\n"
+"--dsos dso1,dso2,...             Report only for selected dsos.\n"
+"--pids pid1,pid2,...             Same as '--include-pid'.\n"
+"--symbols symbol1;symbol2;...    Report only for selected symbols.\n"
+"--tids tid1,tid2,...             Same as '--include-tid'.\n"
+RECORD_FILTER_OPTION_HELP_MSG_FOR_REPORTING
             // clang-format on
             ),
         record_filename_("perf.data"),
@@ -484,7 +473,8 @@ class ReportCommand : public Command {
         raw_period_(false),
         brief_callgraph_(true),
         trace_offcpu_(false),
-        sched_switch_attr_id_(0u) {}
+        sched_switch_attr_id_(0u),
+        record_filter_(thread_tree_) {}
 
   bool Run(const std::vector<std::string>& args);
 
@@ -531,6 +521,7 @@ class ReportCommand : public Command {
   bool print_event_count_ = false;
   std::vector<std::string> sort_keys_;
   std::string report_filename_;
+  RecordFilter record_filter_;
 };
 
 bool ReportCommand::Run(const std::vector<std::string>& args) {
@@ -569,7 +560,7 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
 }
 
 bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
-  static OptionFormatMap option_formats = {
+  OptionFormatMap option_formats = {
       {"-b", {OptionValueType::NONE, OptionType::SINGLE}},
       {"--children", {OptionValueType::NONE, OptionType::SINGLE}},
       {"--comms", {OptionValueType::STRING, OptionType::MULTIPLE}},
@@ -596,6 +587,8 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       {"--symfs", {OptionValueType::STRING, OptionType::SINGLE}},
       {"--vmlinux", {OptionValueType::STRING, OptionType::SINGLE}},
   };
+  OptionFormatMap record_filter_options = GetRecordFilterOptionFormats(false);
+  option_formats.insert(record_filter_options.begin(), record_filter_options.end());
 
   OptionValueMap options;
   std::vector<std::pair<OptionName, OptionValue>> ordered_options;
@@ -609,6 +602,9 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   for (const OptionValue& value : options.PullValues("--comms")) {
     std::vector<std::string> strs = Split(*value.str_value, ",");
     sample_tree_builder_options_.comm_filter.insert(strs.begin(), strs.end());
+  }
+  if (!record_filter_.ParseOptions(options)) {
+    return false;
   }
   for (const OptionValue& value : options.PullValues("--cpu")) {
     if (auto cpus = GetCpusFromString(*value.str_value); cpus) {
@@ -666,7 +662,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
 
   for (const OptionValue& value : options.PullValues("--pids")) {
     if (auto pids = GetTidsFromString(*value.str_value, false); pids) {
-      sample_tree_builder_options_.pid_filter.insert(pids->begin(), pids->end());
+      record_filter_.AddPids(pids.value(), false);
     } else {
       return false;
     }
@@ -674,7 +670,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   print_event_count_ = options.PullBoolValue("--print-event-count");
   for (const OptionValue& value : options.PullValues("--tids")) {
     if (auto tids = GetTidsFromString(*value.str_value, false); tids) {
-      sample_tree_builder_options_.tid_filter.insert(tids->begin(), tids->end());
+      record_filter_.AddTids(tids.value(), false);
     } else {
       return false;
     }
@@ -954,6 +950,9 @@ bool ReportCommand::ReadSampleTreeFromRecordFile() {
 bool ReportCommand::ProcessRecord(std::unique_ptr<Record> record) {
   thread_tree_.Update(*record);
   if (record->type() == PERF_RECORD_SAMPLE) {
+    if (!record_filter_.Check(static_cast<SampleRecord*>(record.get()))) {
+      return true;
+    }
     size_t attr_id = record_file_reader_->GetAttrIndexOfRecord(record.get());
     if (!trace_offcpu_) {
       sample_tree_builder_[attr_id]->ReportCmdProcessSampleRecord(
