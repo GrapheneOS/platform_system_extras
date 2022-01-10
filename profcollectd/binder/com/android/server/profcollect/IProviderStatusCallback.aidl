@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 
-extern "C" {
+package com.android.server.profcollect;
 
-bool HasDriverSupport();
-bool HasDeviceSupport();
-bool Record(const char* event_name, const char* output, float duration);
-bool Inject(const char* traceInput, const char* profileOutput, const char* binary_filter);
+/** {@hide} */
+oneway interface IProviderStatusCallback {
+    void onProviderReady();
 }

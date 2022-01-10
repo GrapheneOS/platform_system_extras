@@ -24,8 +24,14 @@
 
 using namespace simpleperf;
 
-bool HasSupport() {
-  if (!ETMRecorder::GetInstance().CheckEtmSupport()) {
+bool HasDriverSupport() {
+  return ETMRecorder::GetInstance().IsETMDriverAvailable();
+}
+
+bool HasDeviceSupport() {
+  auto result = ETMRecorder::GetInstance().CheckEtmSupport();
+  if (!result.ok()) {
+    LOG(DEBUG) << result.error();
     return false;
   }
   const EventType* type = FindEventTypeByName("cs-etm", false);
