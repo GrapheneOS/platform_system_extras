@@ -223,3 +223,55 @@ TEST(cmd_report_sample, proguard_mapping_file_option) {
   ASSERT_NE(data.find("com.example.android.displayingbitmaps.ui.ImageGridFragment.onItemClick"),
             std::string::npos);
 }
+
+TEST(cmd_report_sample, exclude_include_pid_options) {
+  std::string data;
+  GetProtobufReport("perf_display_bitmaps.data", &data, {"--exclude-pid", "31850"});
+  ASSERT_EQ(data.find("thread_id: 31850"), std::string::npos);
+
+  GetProtobufReport("perf_display_bitmaps.data", &data, {"--include-pid", "31850"});
+  ASSERT_NE(data.find("thread_id: 31850"), std::string::npos);
+}
+
+TEST(cmd_report_sample, exclude_include_tid_options) {
+  std::string data;
+  GetProtobufReport("perf_display_bitmaps.data", &data, {"--exclude-tid", "31881"});
+  ASSERT_EQ(data.find("thread_id: 31881"), std::string::npos);
+
+  GetProtobufReport("perf_display_bitmaps.data", &data, {"--include-tid", "31881"});
+  ASSERT_NE(data.find("thread_id: 31881"), std::string::npos);
+}
+
+TEST(cmd_report_sample, exclude_include_process_name_options) {
+  std::string data;
+  GetProtobufReport("perf_display_bitmaps.data", &data,
+                    {"--exclude-process-name", "com.example.android.displayingbitmaps"});
+  ASSERT_EQ(data.find("thread_id: 31881"), std::string::npos);
+
+  GetProtobufReport("perf_display_bitmaps.data", &data,
+                    {"--include-process-name", "com.example.android.displayingbitmaps"});
+  ASSERT_NE(data.find("thread_id: 31881"), std::string::npos);
+}
+
+TEST(cmd_report_sample, exclude_include_thread_name_options) {
+  std::string data;
+  GetProtobufReport("perf_display_bitmaps.data", &data,
+                    {"--exclude-thread-name", "com.example.android.displayingbitmaps"});
+  ASSERT_EQ(data.find("thread_id: 31850"), std::string::npos);
+
+  GetProtobufReport("perf_display_bitmaps.data", &data,
+                    {"--include-thread-name", "com.example.android.displayingbitmaps"});
+  ASSERT_NE(data.find("thread_id: 31850"), std::string::npos);
+}
+
+TEST(cmd_report_sample, filter_file_option) {
+  std::string filter_data =
+      "GLOBAL_BEGIN 684943449406175\n"
+      "GLOBAL_END 684943449406176";
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(android::base::WriteStringToFd(filter_data, tmpfile.fd));
+  std::string data;
+  GetProtobufReport("perf_display_bitmaps.data", &data, {"--filter-file", tmpfile.path});
+  ASSERT_NE(data.find("thread_id: 31881"), std::string::npos);
+  ASSERT_EQ(data.find("thread_id: 31850"), std::string::npos);
+}

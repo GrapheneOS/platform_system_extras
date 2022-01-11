@@ -27,6 +27,7 @@
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 
 #include "OfflineUnwinder.h"
+#include "RecordFilter.h"
 #include "command.h"
 #include "event_attr.h"
 #include "event_type.h"
@@ -143,6 +144,9 @@ class ReportSampleCommand : public Command {
 "--show-art-frames  Show frames of internal methods in the ART Java interpreter.\n"
 "--show-execution-type  Show execution type of a method\n"
 "--symdir <dir>     Look for files with symbols in a directory recursively.\n"
+"\n"
+"Sample filter options:\n"
+RECORD_FILTER_OPTION_HELP_MSG_FOR_REPORTING
             // clang-format on
             ),
         record_filename_("perf.data"),
@@ -155,7 +159,8 @@ class ReportSampleCommand : public Command {
         trace_offcpu_(false),
         remove_unknown_kernel_symbols_(false),
         kernel_symbols_available_(false),
-        callchain_report_builder_(thread_tree_) {}
+        callchain_report_builder_(thread_tree_),
+        record_filter_(thread_tree_) {}
 
   bool Run(const std::vector<std::string>& args) override;
 
@@ -199,6 +204,7 @@ class ReportSampleCommand : public Command {
   // map from <pid, tid> to thread name
   std::map<uint64_t, const char*> thread_names_;
   std::unique_ptr<UnwindingResultRecord> last_unwinding_result_;
+  RecordFilter record_filter_;
 };
 
 bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
@@ -288,7 +294,7 @@ bool ReportSampleCommand::Run(const std::vector<std::string>& args) {
 }
 
 bool ReportSampleCommand::ParseOptions(const std::vector<std::string>& args) {
-  const OptionFormatMap option_formats = {
+  OptionFormatMap option_formats = {
       {"--dump-protobuf-report", {OptionValueType::STRING, OptionType::SINGLE}},
       {"-i", {OptionValueType::STRING, OptionType::SINGLE}},
       {"-o", {OptionValueType::STRING, OptionType::SINGLE}},
@@ -300,6 +306,8 @@ bool ReportSampleCommand::ParseOptions(const std::vector<std::string>& args) {
       {"--show-execution-type", {OptionValueType::NONE, OptionType::SINGLE}},
       {"--symdir", {OptionValueType::STRING, OptionType::MULTIPLE}},
   };
+  OptionFormatMap record_filter_options = GetRecordFilterOptionFormats(false);
+  option_formats.insert(record_filter_options.begin(), record_filter_options.end());
   OptionValueMap options;
   std::vector<std::pair<OptionName, OptionValue>> ordered_options;
   if (!PreprocessOptions(args, option_formats, &options, &ordered_options, nullptr)) {
@@ -324,6 +332,9 @@ bool ReportSampleCommand::ParseOptions(const std::vector<std::string>& args) {
     if (!Dso::AddSymbolDir(*value.str_value)) {
       return false;
     }
+  }
+  if (!record_filter_.ParseOptions(options)) {
+    return false;
   }
   CHECK(options.values.empty());
 
@@ -522,6 +533,9 @@ bool ReportSampleCommand::OpenRecordFile() {
   if (auto it = meta_info.find("kernel_symbols_available"); it != meta_info.end()) {
     kernel_symbols_available_ = it->second == "true";
   }
+  if (!record_filter_.CheckClock(record_file_reader_->GetClockId())) {
+    return false;
+  }
   for (EventAttrWithId& attr : record_file_reader_->AttrSection()) {
     event_types_.push_back(GetEventNameByAttr(*attr.attr));
   }
@@ -612,6 +626,9 @@ bool ReportSampleCommand::ProcessRecord(std::unique_ptr<Record> record) {
 }
 
 bool ReportSampleCommand::ProcessSampleRecord(const SampleRecord& r) {
+  if (!record_filter_.Check(&r)) {
+    return true;
+  }
   size_t kernel_ip_count;
   std::vector<uint64_t> ips = r.GetCallChain(&kernel_ip_count);
   if (kernel_ip_count > 0u && remove_unknown_kernel_symbols_ && !kernel_symbols_available_) {

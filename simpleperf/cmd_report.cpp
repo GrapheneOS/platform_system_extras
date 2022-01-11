@@ -481,7 +481,7 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_REPORTING
  private:
   bool ParseOptions(const std::vector<std::string>& args);
   bool BuildSampleComparatorAndDisplayer();
-  void ReadMetaInfoFromRecordFile();
+  bool ReadMetaInfoFromRecordFile();
   bool ReadEventAttrFromRecordFile();
   bool ReadFeaturesFromRecordFile();
   bool ReadSampleTreeFromRecordFile();
@@ -535,7 +535,9 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
   if (record_file_reader_ == nullptr) {
     return false;
   }
-  ReadMetaInfoFromRecordFile();
+  if (!ReadMetaInfoFromRecordFile()) {
+    return false;
+  }
   if (!ReadEventAttrFromRecordFile()) {
     return false;
   }
@@ -845,11 +847,12 @@ bool ReportCommand::BuildSampleComparatorAndDisplayer() {
   return true;
 }
 
-void ReportCommand::ReadMetaInfoFromRecordFile() {
+bool ReportCommand::ReadMetaInfoFromRecordFile() {
   auto& meta_info = record_file_reader_->GetMetaInfoFeature();
   if (auto it = meta_info.find("trace_offcpu"); it != meta_info.end()) {
     trace_offcpu_ = it->second == "true";
   }
+  return record_filter_.CheckClock(record_file_reader_->GetClockId());
 }
 
 bool ReportCommand::ReadEventAttrFromRecordFile() {
