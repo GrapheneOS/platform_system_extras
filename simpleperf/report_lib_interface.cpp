@@ -24,6 +24,7 @@
 #include <android-base/strings.h>
 
 #include "JITDebugReader.h"
+#include "RecordFilter.h"
 #include "dso.h"
 #include "event_attr.h"
 #include "event_type.h"
@@ -169,7 +170,8 @@ class ReportLib {
       : log_severity_(new android::base::ScopedLogSeverity(android::base::INFO)),
         record_filename_("perf.data"),
         current_thread_(nullptr),
-        callchain_report_builder_(thread_tree_) {}
+        callchain_report_builder_(thread_tree_),
+        record_filter_(thread_tree_) {}
 
   bool SetLogSeverity(const char* log_level);
 
@@ -197,6 +199,7 @@ class ReportLib {
   }
   const char* GetSupportedTraceOffCpuModes();
   bool SetTraceOffCpuMode(const char* mode);
+  bool SetSampleFilter(const char* filter);
 
   Sample* GetNextSample();
   Event* GetEventOfCurrentSample() { return &current_event_; }
@@ -210,6 +213,7 @@ class ReportLib {
  private:
   void ProcessSampleRecord(std::unique_ptr<Record> r);
   void ProcessSwitchRecord(std::unique_ptr<Record> r);
+  void AddSampleRecordToQueue(SampleRecord* r);
   void SetCurrentSample(const SampleRecord& r);
   const EventInfo* FindEventOfCurrentSample();
   void CreateEvents();
@@ -237,6 +241,7 @@ class ReportLib {
   std::vector<char> feature_section_data_;
   CallChainReportBuilder callchain_report_builder_;
   std::unique_ptr<Tracing> tracing_;
+  RecordFilter record_filter_;
 };
 
 bool ReportLib::SetLogSeverity(const char* log_level) {
@@ -291,6 +296,17 @@ bool ReportLib::SetTraceOffCpuMode(const char* mode) {
   return true;
 }
 
+bool ReportLib::SetSampleFilter(const char* filter) {
+  std::vector<std::string> args = android::base::Split(filter, " ");
+  OptionFormatMap option_formats = GetRecordFilterOptionFormats(false);
+  OptionValueMap options;
+  std::vector<std::pair<OptionName, OptionValue>> ordered_options;
+  if (!ConvertArgsToOptions(args, option_formats, "", &options, &ordered_options, nullptr)) {
+    return false;
+  }
+  return record_filter_.ParseOptions(options);
+}
+
 bool ReportLib::OpenRecordFileIfNecessary() {
   if (record_file_reader_ == nullptr) {
     record_file_reader_ = RecordFileReader::CreateInstance(record_filename_);
@@ -313,6 +329,10 @@ bool ReportLib::OpenRecordFileIfNecessary() {
       trace_offcpu_.supported_modes.push_back(TraceOffCpuMode::ON_OFF_CPU);
       trace_offcpu_.supported_modes.push_back(TraceOffCpuMode::ON_CPU);
       trace_offcpu_.supported_modes.push_back(TraceOffCpuMode::OFF_CPU);
+    }
+    if (!record_filter_.CheckClock(record_file_reader_->GetClockId())) {
+      LOG(ERROR) << "Recording file " << record_filename_ << " doesn't match the clock of filter.";
+      return false;
     }
   }
   return true;
@@ -350,7 +370,7 @@ void ReportLib::ProcessSampleRecord(std::unique_ptr<Record> r) {
   auto sr = static_cast<SampleRecord*>(r.get());
   if (!trace_offcpu_.mode) {
     r.release();
-    sample_record_queue_.emplace(sr);
+    AddSampleRecordToQueue(sr);
     return;
   }
   size_t attr_index = record_file_reader_->GetAttrIndexOfRecord(sr);
@@ -358,7 +378,7 @@ void ReportLib::ProcessSampleRecord(std::unique_ptr<Record> r) {
   if (trace_offcpu_.mode == TraceOffCpuMode::ON_CPU) {
     if (!offcpu_sample) {
       r.release();
-      sample_record_queue_.emplace(sr);
+      AddSampleRecordToQueue(sr);
     }
     return;
   }
@@ -380,7 +400,7 @@ void ReportLib::ProcessSampleRecord(std::unique_ptr<Record> r) {
     prev_sr->period_data.period =
         (prev_sr->Timestamp() < sr->Timestamp()) ? (sr->Timestamp() - prev_sr->Timestamp()) : 1;
     it->second.release();
-    sample_record_queue_.emplace(prev_sr);
+    AddSampleRecordToQueue(prev_sr);
     if (offcpu_sample) {
       r.release();
       it->second.reset(sr);
@@ -389,7 +409,7 @@ void ReportLib::ProcessSampleRecord(std::unique_ptr<Record> r) {
   if (!offcpu_sample && (trace_offcpu_.mode == TraceOffCpuMode::ON_OFF_CPU ||
                          trace_offcpu_.mode == TraceOffCpuMode::MIXED_ON_OFF_CPU)) {
     r.release();
-    sample_record_queue_.emplace(sr);
+    AddSampleRecordToQueue(sr);
   }
 }
 
@@ -405,7 +425,13 @@ void ReportLib::ProcessSwitchRecord(std::unique_ptr<Record> r) {
     prev_sr->period_data.period =
         (prev_sr->Timestamp() < r->Timestamp()) ? (r->Timestamp() - prev_sr->Timestamp()) : 1;
     it->second.release();
-    sample_record_queue_.emplace(prev_sr);
+    AddSampleRecordToQueue(prev_sr);
+  }
+}
+
+void ReportLib::AddSampleRecordToQueue(SampleRecord* r) {
+  if (record_filter_.Check(r)) {
+    sample_record_queue_.emplace(r);
   }
 }
 
@@ -569,6 +595,7 @@ void MergeJavaMethods(ReportLib* report_lib, bool merge) EXPORT;
 bool AddProguardMappingFile(ReportLib* report_lib, const char* mapping_file) EXPORT;
 const char* GetSupportedTraceOffCpuModes(ReportLib* report_lib) EXPORT;
 bool SetTraceOffCpuMode(ReportLib* report_lib, const char* mode) EXPORT;
+bool SetSampleFilter(ReportLib* report_lib, const char* filter) EXPORT;
 
 Sample* GetNextSample(ReportLib* report_lib) EXPORT;
 Event* GetEventOfCurrentSample(ReportLib* report_lib) EXPORT;
@@ -627,6 +654,10 @@ const char* GetSupportedTraceOffCpuModes(ReportLib* report_lib) {
 
 bool SetTraceOffCpuMode(ReportLib* report_lib, const char* mode) {
   return report_lib->SetTraceOffCpuMode(mode);
+}
+
+bool SetSampleFilter(ReportLib* report_lib, const char* filter) {
+  return report_lib->SetSampleFilter(filter);
 }
 
 Sample* GetNextSample(ReportLib* report_lib) {

@@ -23,6 +23,7 @@
 #include <android-base/file.h>
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
+#include <android-base/test_utils.h>
 
 #include "command.h"
 #include "get_test_data.h"
@@ -633,6 +634,23 @@ TEST_F(ReportCommandTest, exclude_include_thread_name_options) {
   Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--sort", "comm", "--include-thread-name", "t1"});
   ASSERT_TRUE(success);
   ASSERT_TRUE(AllItemsWithString(lines, {"t1"}));
+}
+
+TEST_F(ReportCommandTest, filter_file_option) {
+  std::string filter_data =
+      "GLOBAL_BEGIN 684943449406175\n"
+      "GLOBAL_END 684943449406176";
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(android::base::WriteStringToFd(filter_data, tmpfile.fd));
+  Report("perf_display_bitmaps.data", {"--filter-file", tmpfile.path});
+  ASSERT_TRUE(success);
+  ASSERT_EQ(GetSampleCount(), 1);
+
+  // PERF_DATA uses clock perf, which doesn't match the default clock in filter data.
+  CapturedStderr capture;
+  ASSERT_FALSE(ReportCmd()->Run({"-i", GetTestData(PERF_DATA), "--filter-file", tmpfile.path}));
+  capture.Stop();
+  ASSERT_NE(capture.str().find("doesn't match clock used in time filter"), std::string::npos);
 }
 
 #if defined(__linux__)
