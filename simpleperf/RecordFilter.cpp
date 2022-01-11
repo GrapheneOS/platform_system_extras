@@ -276,6 +276,11 @@ bool RecordFilter::ParseOptions(OptionValueMap& options) {
       }
     }
   }
+  if (auto value = options.PullValue("--filter-file"); value) {
+    if (!SetFilterFile(*value->str_value)) {
+      return false;
+    }
+  }
   return true;
 }
 

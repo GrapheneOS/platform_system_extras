@@ -666,6 +666,13 @@ bool RecordFileReader::ReadMetaInfoFeature() {
   return true;
 }
 
+std::string RecordFileReader::GetClockId() {
+  if (auto it = meta_info_.find("clockid"); it != meta_info_.end()) {
+    return it->second;
+  }
+  return "perf";
+}
+
 std::optional<DebugUnwindFeature> RecordFileReader::ReadDebugUnwindFeature() {
   if (feature_section_descriptors_.count(FEAT_DEBUG_UNWIND)) {
     std::string s;
