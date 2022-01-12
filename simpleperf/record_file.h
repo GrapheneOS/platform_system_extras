@@ -189,6 +189,7 @@ class RecordFileReader {
   bool ReadFileFeature(size_t& read_pos, FileFeature* file);
 
   const std::unordered_map<std::string, std::string>& GetMetaInfoFeature() { return meta_info_; }
+  std::string GetClockId();
   std::optional<DebugUnwindFeature> ReadDebugUnwindFeature();
 
   void LoadBuildIdAndFileFeatures(ThreadTree& thread_tree);
