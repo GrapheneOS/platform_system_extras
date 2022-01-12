@@ -590,6 +590,9 @@ cc_test {
     data: [
         "testdata/**/*",
     ],
+    sanitize: {
+        memtag_heap: false,
+    },
 }
 
 cc_test {
