@@ -59,7 +59,9 @@ namespace simpleperf {
   "--include-process-name process_name_regex   Include samples for processes with name\n"          \
   "                                            containing the regular expression.\n"               \
   "--include-thread-name thread_name_regex     Include samples for threads with name containing\n" \
-  "                                            the regular expression.\n"
+  "                                            the regular expression.\n"                          \
+  "--filter-file <file>          Use filter file to filter samples based on timestamps. The\n"     \
+  "                              file format is in doc/sampler_filter.md.\n"
 
 inline OptionFormatMap GetRecordFilterOptionFormats(bool for_recording) {
   OptionFormatMap option_formats = {
@@ -83,6 +85,10 @@ inline OptionFormatMap GetRecordFilterOptionFormats(bool for_recording) {
     option_formats.emplace(
         "--include-uid",
         OptionFormat({OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}));
+  } else {
+    option_formats.emplace(
+        "--filter-file",
+        OptionFormat({OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}));
   }
   return option_formats;
 }
