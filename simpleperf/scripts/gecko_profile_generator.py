@@ -296,7 +296,8 @@ def _gecko_profile(
         symfs_dir: Optional[str],
         kallsyms_file: Optional[str],
         proguard_mapping_file: List[str],
-        comm_filter: Set[str]) -> GeckoProfile:
+        comm_filter: Set[str],
+        sample_filter: Optional[str]) -> GeckoProfile:
     """convert a simpleperf profile to gecko format"""
     lib = ReportLib()
 
@@ -308,6 +309,8 @@ def _gecko_profile(
     lib.SetRecordFile(record_file)
     if kallsyms_file is not None:
         lib.SetKallsymsFile(kallsyms_file)
+    if sample_filter:
+        lib.SetSampleFilter(sample_filter)
 
     arch = lib.GetArch()
     meta_info = lib.MetaInfo()
@@ -406,7 +409,9 @@ def main() -> None:
         '--proguard-mapping-file', nargs='+',
         help='Add proguard mapping file to de-obfuscate symbols',
         default=[])
-    parser.add_argument('--comm', nargs='+', action='append', help="""
+    sample_filter_group = parser.add_argument_group('Sample filter options')
+    parser.add_sample_filter_options(sample_filter_group)
+    sample_filter_group.add_argument('--comm', nargs='+', action='append', help="""
       Use samples only in threads with selected names.""")
     args = parser.parse_args()
     profile = _gecko_profile(
@@ -414,7 +419,8 @@ def main() -> None:
         symfs_dir=args.symfs,
         kallsyms_file=args.kallsyms,
         proguard_mapping_file=args.proguard_mapping_file,
-        comm_filter=set(flatten_arg_list(args.comm)))
+        comm_filter=set(flatten_arg_list(args.comm)),
+        sample_filter=args.sample_filter)
 
     json.dump(profile, sys.stdout, sort_keys=True)
 
