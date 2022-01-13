@@ -18,18 +18,19 @@ import json
 
 from . test_utils import TestBase, TestHelper
 
-class TestGeckoProfileGenerator(TestBase):
-  def run_generator(self, testdata_file):
-    testdata_path = TestHelper.testdata_path(testdata_file)
-    gecko_profile_json = self.run_cmd(
-        ['gecko_profile_generator.py', '-i', testdata_path], return_output=True)
-    return json.loads(gecko_profile_json)
 
-  def test_golden(self):
-    got = self.run_generator('perf_with_interpreter_frames.data')
-    golden_path = TestHelper.testdata_path('perf_with_interpreter_frames.gecko.json')
-    with open(golden_path) as f:
-      want = json.load(f)
-    self.assertEqual(
-        json.dumps(got, sort_keys=True, indent=2),
-        json.dumps(want, sort_keys=True, indent=2))
+class TestGeckoProfileGenerator(TestBase):
+    def run_generator(self, testdata_file):
+        testdata_path = TestHelper.testdata_path(testdata_file)
+        gecko_profile_json = self.run_cmd(
+            ['gecko_profile_generator.py', '-i', testdata_path], return_output=True)
+        return json.loads(gecko_profile_json)
+
+    def test_golden(self):
+        got = self.run_generator('perf_with_interpreter_frames.data')
+        golden_path = TestHelper.testdata_path('perf_with_interpreter_frames.gecko.json')
+        with open(golden_path) as f:
+            want = json.load(f)
+        self.assertEqual(
+            json.dumps(got, sort_keys=True, indent=2),
+            json.dumps(want, sort_keys=True, indent=2))
