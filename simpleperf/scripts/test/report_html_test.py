@@ -16,7 +16,8 @@
 
 import collections
 import json
-from typing import Any, Dict, List
+import tempfile
+from typing import Any, Dict, List, Set
 
 from binary_cache_builder import BinaryCacheBuilder
 from . test_utils import TestBase, TestHelper
@@ -206,3 +207,37 @@ class TestReportHtml(TestBase):
         self.assertEqual(len(record_data['sampleInfo']), 1)
         self.assertEqual(record_data['sampleInfo'][0]['eventName'], 'cpu-clock:u')
         self.assertEqual(record_data['sampleInfo'][0]['eventCount'], 396124304)
+
+    def test_sample_filters(self):
+        def get_threads_for_filter(filter: str) -> Set[int]:
+            record_data = self.get_record_data(
+                ['-i', TestHelper.testdata_path('perf_display_bitmaps.data')] + filter.split())
+            threads = set()
+            try:
+                for thread in record_data['sampleInfo'][0]['processes'][0]['threads']:
+                    threads.add(thread['tid'])
+            except IndexError:
+                pass
+            return threads
+
+        self.assertNotIn(31850, get_threads_for_filter('--exclude-pid 31850'))
+        self.assertIn(31850, get_threads_for_filter('--include-pid 31850'))
+        self.assertIn(31850, get_threads_for_filter('--pid 31850'))
+        self.assertNotIn(31881, get_threads_for_filter('--exclude-tid 31881'))
+        self.assertIn(31881, get_threads_for_filter('--include-tid 31881'))
+        self.assertIn(31881, get_threads_for_filter('--tid 31881'))
+        self.assertNotIn(31881, get_threads_for_filter(
+            '--exclude-process-name com.example.android.displayingbitmaps'))
+        self.assertIn(31881, get_threads_for_filter(
+            '--include-process-name com.example.android.displayingbitmaps'))
+        self.assertNotIn(31850, get_threads_for_filter(
+            '--exclude-thread-name com.example.android.displayingbitmaps'))
+        self.assertIn(31850, get_threads_for_filter(
+            '--include-thread-name com.example.android.displayingbitmaps'))
+
+        with tempfile.NamedTemporaryFile('w') as filter_file:
+            filter_file.write('GLOBAL_BEGIN 684943449406175\nGLOBAL_END 684943449406176')
+            filter_file.flush()
+            threads = get_threads_for_filter('--filter-file ' + filter_file.name)
+            self.assertIn(31881, threads)
+            self.assertNotIn(31850, threads)
