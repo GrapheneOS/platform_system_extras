@@ -16,6 +16,7 @@
 
 from pathlib import Path
 import re
+import tempfile
 
 from binary_cache_builder import BinaryCacheBuilder
 from . test_utils import TestBase, TestHelper
@@ -50,3 +51,24 @@ class TestAnnotate(TestBase):
         self.assertEqual(source_file.name, 'two_functions.cpp')
         check_items = ['/* Total 50.06%, Self 50.06%          */    *p = i;']
         self.check_strings_in_file(source_file, check_items)
+
+    def test_sample_filters(self):
+        def get_report(filter: str):
+            self.run_cmd(['annotate.py', '-i', TestHelper.testdata_path(
+                'perf_display_bitmaps.data')] + filter.split())
+
+        get_report('--exclude-pid 31850')
+        get_report('--include-pid 31850')
+        get_report('--pid 31850')
+        get_report('--exclude-tid 31881')
+        get_report('--include-tid 31881')
+        get_report('--tid 31881')
+        get_report('--exclude-process-name com.example.android.displayingbitmaps')
+        get_report('--include-process-name com.example.android.displayingbitmaps')
+        get_report('--exclude-thread-name com.example.android.displayingbitmaps')
+        get_report('--include-thread-name com.example.android.displayingbitmaps')
+
+        with tempfile.NamedTemporaryFile('w') as filter_file:
+            filter_file.write('GLOBAL_BEGIN 684943449406175\nGLOBAL_END 684943449406176')
+            filter_file.flush()
+            get_report('--filter-file ' + filter_file.name)

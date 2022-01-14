@@ -14,6 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
+import tempfile
+from typing import Set
+
 from . test_utils import TestBase, TestHelper
 
 
@@ -73,3 +77,36 @@ class TestReportSample(TestBase):
              '--trace-offcpu', 'on-cpu'], return_output=True)
         self.assertIn('cpu-clock:u', got)
         self.assertNotIn('sched:sched_switch', got)
+
+    def test_sample_filters(self):
+        def get_threads_for_filter(filter: str) -> Set[int]:
+            report = self.run_cmd(
+                ['report_sample.py', '-i', TestHelper.testdata_path('perf_display_bitmaps.data')] +
+                filter.split(), return_output=True)
+            pattern = re.compile(r'\s+31850/(\d+)\s+')
+            threads = set()
+            for m in re.finditer(pattern, report):
+                threads.add(int(m.group(1)))
+            return threads
+
+        self.assertNotIn(31850, get_threads_for_filter('--exclude-pid 31850'))
+        self.assertIn(31850, get_threads_for_filter('--include-pid 31850'))
+        self.assertIn(31850, get_threads_for_filter('--pid 31850'))
+        self.assertNotIn(31881, get_threads_for_filter('--exclude-tid 31881'))
+        self.assertIn(31881, get_threads_for_filter('--include-tid 31881'))
+        self.assertIn(31881, get_threads_for_filter('--tid 31881'))
+        self.assertNotIn(31881, get_threads_for_filter(
+            '--exclude-process-name com.example.android.displayingbitmaps'))
+        self.assertIn(31881, get_threads_for_filter(
+            '--include-process-name com.example.android.displayingbitmaps'))
+        self.assertNotIn(31850, get_threads_for_filter(
+            '--exclude-thread-name com.example.android.displayingbitmaps'))
+        self.assertIn(31850, get_threads_for_filter(
+            '--include-thread-name com.example.android.displayingbitmaps'))
+
+        with tempfile.NamedTemporaryFile('w') as filter_file:
+            filter_file.write('GLOBAL_BEGIN 684943449406175\nGLOBAL_END 684943449406176')
+            filter_file.flush()
+            threads = get_threads_for_filter('--filter-file ' + filter_file.name)
+            self.assertIn(31881, threads)
+            self.assertNotIn(31850, threads)
