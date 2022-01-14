@@ -31,7 +31,8 @@ def report_sample(
         proguard_mapping_file: List[str],
         header: bool,
         comm_filter: Set[str],
-        trace_offcpu: Optional[str]):
+        trace_offcpu: Optional[str],
+        sample_filter: Optional[str]):
     """ read record_file, and print each sample"""
     lib = ReportLib()
 
@@ -46,6 +47,8 @@ def report_sample(
         lib.SetKallsymsFile(kallsyms_file)
     if trace_offcpu:
         lib.SetTraceOffCpuMode(trace_offcpu)
+    if sample_filter:
+        lib.SetSampleFilter(sample_filter)
 
     if header:
         print("# ========")
@@ -103,6 +106,7 @@ def main():
     parser.add_argument('--comm', nargs='+', action='append', help="""
         Use samples only in threads with selected names.""")
     parser.add_trace_offcpu_option()
+    parser.add_sample_filter_options()
     args = parser.parse_args()
     report_sample(
         record_file=args.record_file,
@@ -112,7 +116,8 @@ def main():
         proguard_mapping_file=args.proguard_mapping_file,
         header=args.header,
         comm_filter=set(flatten_arg_list(args.comm)),
-        trace_offcpu=args.trace_offcpu)
+        trace_offcpu=args.trace_offcpu,
+        sample_filter=args.sample_filter)
 
 
 if __name__ == '__main__':

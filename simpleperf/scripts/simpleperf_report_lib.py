@@ -261,6 +261,8 @@ class ReportLib(object):
         self._GetSupportedTraceOffCpuModesFunc.restype = ct.c_char_p
         self._SetTraceOffCpuModeFunc = self._lib.SetTraceOffCpuMode
         self._SetTraceOffCpuModeFunc.restype = ct.c_bool
+        self._SetSampleFilterFunc = self._lib.SetSampleFilter
+        self._SetSampleFilterFunc.restype = ct.c_bool
         self._GetNextSampleFunc = self._lib.GetNextSample
         self._GetNextSampleFunc.restype = ct.POINTER(SampleStruct)
         self._GetEventOfCurrentSampleFunc = self._lib.GetEventOfCurrentSample
@@ -359,6 +361,28 @@ class ReportLib(object):
         """
         res: bool = self._SetTraceOffCpuModeFunc(self.getInstance(), _char_pt(mode))
         _check(res, f'Failed to call SetTraceOffCpuMode({mode})')
+
+    def SetSampleFilter(self, filter: str):
+        """ Set options used to filter samples. Available options are:
+            --exclude-pid pid1,pid2,...   Exclude samples for selected processes.
+            --exclude-tid tid1,tid2,...   Exclude samples for selected threads.
+            --exclude-process-name process_name_regex   Exclude samples for processes with name
+                                                        containing the regular expression.
+            --exclude-thread-name thread_name_regex     Exclude samples for threads with name
+                                                        containing the regular expression.
+            --include-pid pid1,pid2,...   Include samples for selected processes.
+            --include-tid tid1,tid2,...   Include samples for selected threads.
+            --include-process-name process_name_regex   Include samples for processes with name
+                                                        containing the regular expression.
+            --include-thread-name thread_name_regex     Include samples for threads with name
+                                                        containing the regular expression.
+            --filter-file <file>          Use filter file to filter samples based on timestamps. The
+                                          file format is in doc/sampler_filter.md.
+
+            The filter argument should be a concatenation of options.
+        """
+        res: bool = self._SetSampleFilterFunc(self.getInstance(), _char_pt(filter))
+        _check(res, f'Failed to call SetSampleFilter({filter})')
 
     def GetNextSample(self) -> Optional[SampleStruct]:
         """ Return the next sample. If no more samples, return None. """
