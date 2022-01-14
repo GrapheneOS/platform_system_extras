@@ -27,7 +27,7 @@
 from collections import defaultdict
 from simpleperf_report_lib import ReportLib
 from simpleperf_utils import BaseArgumentParser, flatten_arg_list
-from typing import DefaultDict, List, Set
+from typing import DefaultDict, List, Optional, Set
 
 import logging
 import sys
@@ -44,7 +44,8 @@ def collapse_stacks(
         annotate_kernel: bool,
         annotate_jit: bool,
         include_addrs: bool,
-        comm_filter: Set[str]):
+        comm_filter: Set[str],
+        sample_filter: Optional[str]):
     """read record_file, aggregate per-stack and print totals per-stack"""
     lib = ReportLib()
 
@@ -58,6 +59,8 @@ def collapse_stacks(
         lib.SetRecordFile(record_file)
     if kallsyms_file is not None:
         lib.SetKallsymsFile(kallsyms_file)
+    if sample_filter:
+        lib.SetSampleFilter(sample_filter)
 
     stacks: DefaultDict[str, int] = defaultdict(int)
     event_defaulted = False
@@ -79,7 +82,8 @@ def collapse_stacks(
         elif event.name != event_filter:
             if event_defaulted and not event_warning_shown:
                 logging.warning(
-                    'Input has multiple event types. Filtering for the first event type seen: %s' % event_filter)
+                    'Input has multiple event types. Filtering for the first event type seen: %s' %
+                    event_filter)
                 event_warning_shown = True
             continue
 
@@ -112,8 +116,6 @@ def main():
     parser.add_argument('--kallsyms', help='Set the path to find kernel symbols.')
     parser.add_argument('-i', '--record_file', nargs='?', default='perf.data',
                         help='Default is perf.data.')
-    parser.add_argument('--event-filter', nargs='?', default='',
-                        help='Event type filter e.g. "cpu-cycles" or "instructions"')
     parser.add_argument('--pid', action='store_true', help='Include PID with process names')
     parser.add_argument('--tid', action='store_true', help='Include TID and PID with process names')
     parser.add_argument('--kernel', action='store_true',
@@ -125,7 +127,11 @@ def main():
         '--proguard-mapping-file', nargs='+',
         help='Add proguard mapping file to de-obfuscate symbols',
         default=[])
-    parser.add_argument('--comm', nargs='+', action='append', help="""
+    sample_filter_group = parser.add_argument_group('Sample filter options')
+    parser.add_sample_filter_options(sample_filter_group, False)
+    sample_filter_group.add_argument('--event-filter', nargs='?', default='',
+                                     help='Event type filter e.g. "cpu-cycles" or "instructions"')
+    sample_filter_group.add_argument('--comm', nargs='+', action='append', help="""
       Use samples only in threads with selected names.""")
     args = parser.parse_args()
     collapse_stacks(
@@ -139,7 +145,8 @@ def main():
         annotate_kernel=args.kernel,
         annotate_jit=args.jit,
         include_addrs=args.addrs,
-        comm_filter=set(flatten_arg_list(args.comm)))
+        comm_filter=set(flatten_arg_list(args.comm)),
+        sample_filter=args.sample_filter)
 
 
 if __name__ == '__main__':
