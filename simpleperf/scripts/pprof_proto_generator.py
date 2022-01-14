@@ -271,14 +271,6 @@ class PprofProfileGenerator(object):
         if not os.path.isdir(config['binary_cache_dir']):
             config['binary_cache_dir'] = None
         self.comm_filter = set(config['comm_filters']) if config.get('comm_filters') else None
-        if config.get('pid_filters'):
-            self.pid_filter = {int(x) for x in config['pid_filters']}
-        else:
-            self.pid_filter = None
-        if config.get('tid_filters'):
-            self.tid_filter = {int(x) for x in config['tid_filters']}
-        else:
-            self.tid_filter = None
         self.dso_filter = set(config['dso_filters']) if config.get('dso_filters') else None
         self.max_chain_length = config['max_chain_length']
         self.profile = profile_pb2.Profile()
@@ -313,6 +305,8 @@ class PprofProfileGenerator(object):
             self.lib.ShowArtFrames()
         for file_path in self.config['proguard_mapping_file'] or []:
             self.lib.AddProguardMappingFile(file_path)
+        if self.config.get('sample_filter'):
+            self.lib.SetSampleFilter(self.config['sample_filter'])
 
         comments = [
             "Simpleperf Record Command:\n" + self.lib.GetRecordCmd(),
@@ -389,12 +383,6 @@ class PprofProfileGenerator(object):
         """Return true if the sample can be used."""
         if self.comm_filter:
             if sample.thread_comm not in self.comm_filter:
-                return False
-        if self.pid_filter:
-            if sample.pid not in self.pid_filter:
-                return False
-        if self.tid_filter:
-            if sample.tid not in self.tid_filter:
                 return False
         return True
 
@@ -642,14 +630,6 @@ def main():
         Set profiling data file to report. Default is perf.data""")
     parser.add_argument('-o', '--output_file', default='pprof.profile', help="""
         The path of generated pprof profile data.""")
-    parser.add_argument('--comm', nargs='+', action='append', help="""
-        Use samples only in threads with selected names.""")
-    parser.add_argument('--pid', nargs='+', action='append', help="""
-        Use samples only in processes with selected process ids.""")
-    parser.add_argument('--tid', nargs='+', action='append', help="""
-        Use samples only in threads with selected thread ids.""")
-    parser.add_argument('--dso', nargs='+', action='append', help="""
-        Use samples only in selected binaries.""")
     parser.add_argument('--max_chain_length', type=int, default=1000000000, help="""
         Maximum depth of samples to be converted.""")  # Large value as infinity standin.
     parser.add_argument('--ndk_path', type=extant_dir, help='Set the path of a ndk release.')
@@ -661,6 +641,12 @@ def main():
     parser.add_argument(
         '-j', '--jobs', type=int, default=os.cpu_count(),
         help='Use multithreading to speed up source code annotation.')
+    sample_filter_group = parser.add_argument_group('Sample filter options')
+    parser.add_sample_filter_options(sample_filter_group)
+    sample_filter_group.add_argument('--comm', nargs='+', action='append', help="""
+        Use samples only in threads with selected names.""")
+    sample_filter_group.add_argument('--dso', nargs='+', action='append', help="""
+        Use samples only in selected binaries.""")
 
     args = parser.parse_args()
     if args.show:
@@ -673,13 +659,12 @@ def main():
     config = {}
     config['output_file'] = args.output_file
     config['comm_filters'] = flatten_arg_list(args.comm)
-    config['pid_filters'] = flatten_arg_list(args.pid)
-    config['tid_filters'] = flatten_arg_list(args.tid)
     config['dso_filters'] = flatten_arg_list(args.dso)
     config['ndk_path'] = args.ndk_path
     config['show_art_frames'] = args.show_art_frames
     config['max_chain_length'] = args.max_chain_length
     config['proguard_mapping_file'] = args.proguard_mapping_file
+    config['sample_filter'] = args.sample_filter
     generator = PprofProfileGenerator(config)
     for record_file in args.record_file:
         generator.load_record_file(record_file)

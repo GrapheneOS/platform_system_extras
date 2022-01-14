@@ -146,8 +146,7 @@ class SourceFileAnnotator(object):
 
     def __init__(self, config):
         # check config variables
-        config_names = ['perf_data_list', 'source_dirs', 'comm_filters',
-                        'pid_filters', 'tid_filters', 'dso_filters', 'ndk_path']
+        config_names = ['perf_data_list', 'source_dirs', 'comm_filters', 'dso_filters', 'ndk_path']
         for name in config_names:
             if name not in config:
                 log_exit('config [%s] is missing' % name)
@@ -163,14 +162,6 @@ class SourceFileAnnotator(object):
         self.symfs_dir = symfs_dir
         self.kallsyms = kallsyms
         self.comm_filter = set(config['comm_filters']) if config.get('comm_filters') else None
-        if config.get('pid_filters'):
-            self.pid_filter = {int(x) for x in config['pid_filters']}
-        else:
-            self.pid_filter = None
-        if config.get('tid_filters'):
-            self.tid_filter = {int(x) for x in config['tid_filters']}
-        else:
-            self.tid_filter = None
         self.dso_filter = set(config['dso_filters']) if config.get('dso_filters') else None
 
         config['annotate_dest_dir'] = 'annotated_files'
@@ -202,6 +193,8 @@ class SourceFileAnnotator(object):
                 lib.SetSymfs(self.symfs_dir)
             if self.kallsyms:
                 lib.SetKallsymsFile(self.kallsyms)
+            if self.config.get('sample_filter'):
+                lib.SetSampleFilter(self.config.get('sample_filter'))
             while True:
                 sample = lib.GetNextSample()
                 if sample is None:
@@ -227,12 +220,6 @@ class SourceFileAnnotator(object):
         if self.comm_filter:
             if sample.thread_comm not in self.comm_filter:
                 return False
-        if self.pid_filter:
-            if sample.pid not in self.pid_filter:
-                return False
-        if self.tid_filter:
-            if sample.tid not in self.tid_filter:
-                return False
         return True
 
     def _filter_symbol(self, symbol):
@@ -254,6 +241,8 @@ class SourceFileAnnotator(object):
                 lib.SetSymfs(self.symfs_dir)
             if self.kallsyms:
                 lib.SetKallsymsFile(self.kallsyms)
+            if self.config.get('sample_filter'):
+                lib.SetSampleFilter(self.config.get('sample_filter'))
             while True:
                 sample = lib.GetNextSample()
                 if sample is None:
@@ -483,18 +472,16 @@ def main():
         The paths of profiling data. Default is perf.data.""")
     parser.add_argument('-s', '--source_dirs', type=extant_dir, nargs='+', action='append', help="""
         Directories to find source files.""")
-    parser.add_argument('--comm', nargs='+', action='append', help="""
-        Use samples only in threads with selected names.""")
-    parser.add_argument('--pid', nargs='+', action='append', help="""
-        Use samples only in processes with selected process ids.""")
-    parser.add_argument('--tid', nargs='+', action='append', help="""
-        Use samples only in threads with selected thread ids.""")
-    parser.add_argument('--dso', nargs='+', action='append', help="""
-        Use samples only in selected binaries.""")
     parser.add_argument('--ndk_path', type=extant_dir, help='Set the path of a ndk release.')
     parser.add_argument('--raw-period', action='store_true',
                         help='show raw period instead of percentage')
     parser.add_argument('--summary-width', type=int, default=80, help='max width of summary file')
+    sample_filter_group = parser.add_argument_group('Sample filter options')
+    parser.add_sample_filter_options(sample_filter_group)
+    sample_filter_group.add_argument('--comm', nargs='+', action='append', help="""
+        Use samples only in threads with selected names.""")
+    sample_filter_group.add_argument('--dso', nargs='+', action='append', help="""
+        Use samples only in selected binaries.""")
 
     args = parser.parse_args()
     config = {}
@@ -503,12 +490,11 @@ def main():
         config['perf_data_list'].append('perf.data')
     config['source_dirs'] = flatten_arg_list(args.source_dirs)
     config['comm_filters'] = flatten_arg_list(args.comm)
-    config['pid_filters'] = flatten_arg_list(args.pid)
-    config['tid_filters'] = flatten_arg_list(args.tid)
     config['dso_filters'] = flatten_arg_list(args.dso)
     config['ndk_path'] = args.ndk_path
     config['raw_period'] = args.raw_period
     config['summary_width'] = args.summary_width
+    config['sample_filter'] = args.sample_filter
 
     annotator = SourceFileAnnotator(config)
     annotator.annotate()
