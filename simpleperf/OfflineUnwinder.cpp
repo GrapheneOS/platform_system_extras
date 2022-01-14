@@ -274,17 +274,17 @@ bool OfflineUnwinderImpl::UnwindCallChain(const ThreadEntry& thread, const RegSe
   for (auto& frame : unwinder.frames()) {
     // Unwinding in arm architecture can return 0 pc address.
 
-    // If frame.map.start == 0, this frame doesn't hit any map, it could be:
+    // If frame.map_info == nullptr, this frame doesn't hit any map, it could be:
     // 1. In an executable map not backed by a file. Note that RecordCommand::ShouldOmitRecord()
     //    may omit maps only exist memory.
-    // 2. An incorrectly unwound frame. Like caused by invalid stack data, as in
+    // 2. An incorrectly unwound frame. Likely caused by invalid stack data, as in
     //    SampleRecord::GetValidStackSize(). Or caused by incomplete JIT debug info.
     // We want to remove this frame and callchains following it in either case.
-    if (frame.pc == 0 || frame.map_start == 0) {
+    if (frame.map_info == nullptr) {
       is_callchain_broken_for_incomplete_jit_debug_info_ = true;
       break;
     }
-    if (frame.map_flags & unwindstack::MAPS_FLAGS_JIT_SYMFILE_MAP) {
+    if (frame.map_info->flags() & unwindstack::MAPS_FLAGS_JIT_SYMFILE_MAP) {
       last_jit_method_frame = ips->size();
     }
     ips->push_back(frame.pc);
