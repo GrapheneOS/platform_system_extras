@@ -117,6 +117,8 @@ def parse_samples(process, args, sample_filter_fn):
         lib.AddProguardMappingFile(file_path)
     if args.trace_offcpu:
         lib.SetTraceOffCpuMode(args.trace_offcpu)
+    if args.sample_filter:
+        lib.SetSampleFilter(args.sample_filter)
     process.cmd = lib.GetRecordCmd()
     product_props = lib.MetaInfo().get("product_props")
     if product_props:
@@ -316,6 +318,7 @@ def main():
     report_group.add_argument('--proguard-mapping-file', nargs='+',
                               help='Add proguard mapping file to de-obfuscate symbols')
     parser.add_trace_offcpu_option(report_group)
+    parser.add_sample_filter_options(report_group, False)
 
     debug_group = parser.add_argument_group('Debug options')
     debug_group.add_argument('--disable_adb_root', action='store_true', help="""Force adb to run

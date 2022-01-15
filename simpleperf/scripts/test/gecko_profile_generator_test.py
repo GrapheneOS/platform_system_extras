@@ -15,21 +15,57 @@
 # limitations under the License.
 
 import json
+import re
+import tempfile
+from typing import Set
 
 from . test_utils import TestBase, TestHelper
 
-class TestGeckoProfileGenerator(TestBase):
-  def run_generator(self, testdata_file):
-    testdata_path = TestHelper.testdata_path(testdata_file)
-    gecko_profile_json = self.run_cmd(
-        ['gecko_profile_generator.py', '-i', testdata_path], return_output=True)
-    return json.loads(gecko_profile_json)
 
-  def test_golden(self):
-    got = self.run_generator('perf_with_interpreter_frames.data')
-    golden_path = TestHelper.testdata_path('perf_with_interpreter_frames.gecko.json')
-    with open(golden_path) as f:
-      want = json.load(f)
-    self.assertEqual(
-        json.dumps(got, sort_keys=True, indent=2),
-        json.dumps(want, sort_keys=True, indent=2))
+class TestGeckoProfileGenerator(TestBase):
+    def run_generator(self, testdata_file):
+        testdata_path = TestHelper.testdata_path(testdata_file)
+        gecko_profile_json = self.run_cmd(
+            ['gecko_profile_generator.py', '-i', testdata_path], return_output=True)
+        return json.loads(gecko_profile_json)
+
+    def test_golden(self):
+        got = self.run_generator('perf_with_interpreter_frames.data')
+        golden_path = TestHelper.testdata_path('perf_with_interpreter_frames.gecko.json')
+        with open(golden_path) as f:
+            want = json.load(f)
+        self.assertEqual(
+            json.dumps(got, sort_keys=True, indent=2),
+            json.dumps(want, sort_keys=True, indent=2))
+
+    def test_sample_filters(self):
+        def get_threads_for_filter(filter: str) -> Set[int]:
+            report = self.run_cmd(['gecko_profile_generator.py', '-i', TestHelper.testdata_path(
+                'perf_display_bitmaps.data')] + filter.split(), return_output=True)
+            pattern = re.compile(r'"tid":\s+(\d+),')
+            threads = set()
+            for m in re.finditer(pattern, report):
+                threads.add(int(m.group(1)))
+            return threads
+
+        self.assertNotIn(31850, get_threads_for_filter('--exclude-pid 31850'))
+        self.assertIn(31850, get_threads_for_filter('--include-pid 31850'))
+        self.assertIn(31850, get_threads_for_filter('--pid 31850'))
+        self.assertNotIn(31881, get_threads_for_filter('--exclude-tid 31881'))
+        self.assertIn(31881, get_threads_for_filter('--include-tid 31881'))
+        self.assertIn(31881, get_threads_for_filter('--tid 31881'))
+        self.assertNotIn(31881, get_threads_for_filter(
+            '--exclude-process-name com.example.android.displayingbitmaps'))
+        self.assertIn(31881, get_threads_for_filter(
+            '--include-process-name com.example.android.displayingbitmaps'))
+        self.assertNotIn(31850, get_threads_for_filter(
+            '--exclude-thread-name com.example.android.displayingbitmaps'))
+        self.assertIn(31850, get_threads_for_filter(
+            '--include-thread-name com.example.android.displayingbitmaps'))
+
+        with tempfile.NamedTemporaryFile('w') as filter_file:
+            filter_file.write('GLOBAL_BEGIN 684943449406175\nGLOBAL_END 684943449406176')
+            filter_file.flush()
+            threads = get_threads_for_filter('--filter-file ' + filter_file.name)
+            self.assertIn(31881, threads)
+            self.assertNotIn(31850, threads)
