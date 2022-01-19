@@ -17,7 +17,7 @@
 //! ProfCollect Binder service implementation.
 
 use anyhow::{anyhow, Context, Error, Result};
-use binder::Result as BinderResult;
+use binder::public_api::Result as BinderResult;
 use binder::Status;
 use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProfCollectd::IProfCollectd;
 use std::ffi::CString;
