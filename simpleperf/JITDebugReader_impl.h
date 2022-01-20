@@ -38,7 +38,11 @@ class TempSymFile {
     if (remove_in_destructor) {
       ScopedTempFiles::RegisterTempFile(path);
     }
-    return std::unique_ptr<TempSymFile>(new TempSymFile(std::move(path), fp));
+    std::unique_ptr<TempSymFile> symfile(new TempSymFile(std::move(path), fp));
+    if (!symfile->WriteHeader()) {
+      return nullptr;
+    }
+    return symfile;
   }
 
   bool WriteEntry(const char* data, size_t size) {
@@ -67,6 +71,17 @@ class TempSymFile {
 
  private:
   TempSymFile(std::string&& path, FILE* fp) : path_(std::move(path)), fp_(fp, fclose) {}
+
+  bool WriteHeader() {
+    char magic[8] = "JIT_SYM";
+    static_assert(sizeof(magic) == 8);
+    if (fwrite(magic, sizeof(magic), 1, fp_.get()) != 1) {
+      PLOG(ERROR) << "failed to write to " << path_;
+      return false;
+    }
+    file_offset_ = sizeof(magic);
+    return true;
+  }
 
   const std::string path_;
   std::unique_ptr<FILE, decltype(&fclose)> fp_;
