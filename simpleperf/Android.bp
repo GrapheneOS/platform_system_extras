@@ -561,6 +561,7 @@ cc_defaults {
                 "cmd_trace_sched_test.cpp",
                 "environment_test.cpp",
                 "IOEventLoop_test.cpp",
+                "JITDebugReader_test.cpp",
                 "MapRecordReader_test.cpp",
                 "OfflineUnwinder_test.cpp",
                 "ProbeEvents_test.cpp",
