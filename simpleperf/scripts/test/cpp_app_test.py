@@ -93,7 +93,7 @@ class TestExampleCppTraceOffCpu(TestExampleBase):
         cls.prepare("SimpleperfExampleCpp", "simpleperf.example.cpp", ".SleepActivity")
 
     def test_smoke(self):
-        self.run_app_profiler(record_arg="-g -f 1000 --duration 10 -e cpu-cycles:u --trace-offcpu")
+        self.run_app_profiler(record_arg="-g -f 1000 --duration 10 -e cpu-clock:u --trace-offcpu")
         self.run_cmd(["report.py", "-g", "--comms", "SleepThread", "-o", "report.txt"])
         self.check_strings_in_file("report.txt", [
             "SleepThread(void*)",
