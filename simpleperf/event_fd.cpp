@@ -102,7 +102,13 @@ std::string EventFd::Name() const {
 uint64_t EventFd::Id() const {
   if (id_ == 0) {
     if (ioctl(perf_event_fd_, PERF_EVENT_IOC_ID, &id_) != 0) {
-      PLOG(WARNING) << "failed to get id of event_fd";
+      // PERF_EVENT_IOC_ID isn't available in kernel <= 3.10. Fallback to read() in this case.
+      PerfCounter counter;
+      if (InnerReadCounter(&counter)) {
+        id_ = counter.id;
+      } else {
+        PLOG(WARNING) << "failed to get id of event_fd";
+      }
     }
   }
   return id_;
