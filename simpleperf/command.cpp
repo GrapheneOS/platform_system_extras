@@ -183,6 +183,7 @@ const std::vector<std::string> GetAllCommandNames() {
   return names;
 }
 
+extern void RegisterBootRecordCommand();
 extern void RegisterDumpRecordCommand();
 extern void RegisterHelpCommand();
 extern void RegisterInjectCommand();
@@ -217,6 +218,7 @@ class CommandRegister {
     RegisterMonitorCommand();
 #if defined(__ANDROID__)
     RegisterAPICommands();
+    RegisterBootRecordCommand();
 #endif
 #endif
   }
