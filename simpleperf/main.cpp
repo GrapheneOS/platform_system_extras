@@ -20,12 +20,16 @@
 
 #include "command.h"
 #include "environment.h"
+#include "utils.h"
 
 using namespace simpleperf;
 
 #if defined(__ANDROID__)
 
 bool AndroidSecurityCheck() {
+  if (IsRoot()) {
+    return true;
+  }
   // Simpleperf can be executed by the shell, or by apps themselves. To avoid malicious apps
   // exploiting perf_event_open interface via simpleperf, simpleperf needs proof that the user
   // is expecting simpleperf to be ran:
