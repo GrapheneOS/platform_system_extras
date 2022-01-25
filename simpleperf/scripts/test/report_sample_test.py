@@ -30,6 +30,7 @@ class TestReportSample(TestBase):
              '-i',
              TestHelper.testdata_path('perf_display_bitmaps.data')],
             return_output=True)
+        got = got.replace('\r', '')
         with open(TestHelper.testdata_path('perf_display_bitmaps.perf-script')) as f:
             want = f.read()
         self.assertEqual(got, want)
@@ -41,6 +42,7 @@ class TestReportSample(TestBase):
              TestHelper.testdata_path('perf_display_bitmaps.data'),
              '--comm', 'RenderThread'],
             return_output=True)
+        got = got.replace('\r', '')
         self.assertIn('RenderThread', got)
         self.assertNotIn('com.example.android.displayingbitmaps', got)
 
@@ -55,6 +57,7 @@ class TestReportSample(TestBase):
              TestHelper.testdata_path('perf_display_bitmaps.data'),
              '--comm', 'com.example.android.displayingbitmaps'],
             return_output=True)
+        got = got.replace('\r', '')
         self.assertIn('com.example.android.displayingbitmaps', got)
         self.assertNotIn('RenderThread', got)
         with open(TestHelper.testdata_path('perf_display_bitmaps.UiThread.perf-script')) as f:
@@ -68,6 +71,7 @@ class TestReportSample(TestBase):
              TestHelper.testdata_path('perf_display_bitmaps.data'),
              '--header'],
             return_output=True)
+        got = got.replace('\r', '')
         with open(TestHelper.testdata_path('perf_display_bitmaps.header.perf-script')) as f:
             want = f.read()
         self.assertEqual(got, want)
