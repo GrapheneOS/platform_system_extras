@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import re
 import tempfile
 from typing import Set
@@ -29,6 +30,7 @@ class TestReportSample(TestBase):
              '-i',
              TestHelper.testdata_path('perf_display_bitmaps.data')],
             return_output=True)
+        got = got.replace('\r', '')
         with open(TestHelper.testdata_path('perf_display_bitmaps.perf-script')) as f:
             want = f.read()
         self.assertEqual(got, want)
@@ -40,6 +42,7 @@ class TestReportSample(TestBase):
              TestHelper.testdata_path('perf_display_bitmaps.data'),
              '--comm', 'RenderThread'],
             return_output=True)
+        got = got.replace('\r', '')
         self.assertIn('RenderThread', got)
         self.assertNotIn('com.example.android.displayingbitmaps', got)
 
@@ -54,6 +57,7 @@ class TestReportSample(TestBase):
              TestHelper.testdata_path('perf_display_bitmaps.data'),
              '--comm', 'com.example.android.displayingbitmaps'],
             return_output=True)
+        got = got.replace('\r', '')
         self.assertIn('com.example.android.displayingbitmaps', got)
         self.assertNotIn('RenderThread', got)
         with open(TestHelper.testdata_path('perf_display_bitmaps.UiThread.perf-script')) as f:
@@ -67,6 +71,7 @@ class TestReportSample(TestBase):
              TestHelper.testdata_path('perf_display_bitmaps.data'),
              '--header'],
             return_output=True)
+        got = got.replace('\r', '')
         with open(TestHelper.testdata_path('perf_display_bitmaps.header.perf-script')) as f:
             want = f.read()
         self.assertEqual(got, want)
@@ -104,9 +109,10 @@ class TestReportSample(TestBase):
         self.assertIn(31850, get_threads_for_filter(
             '--include-thread-name com.example.android.displayingbitmaps'))
 
-        with tempfile.NamedTemporaryFile('w') as filter_file:
+        with tempfile.NamedTemporaryFile('w', delete=False) as filter_file:
             filter_file.write('GLOBAL_BEGIN 684943449406175\nGLOBAL_END 684943449406176')
             filter_file.flush()
             threads = get_threads_for_filter('--filter-file ' + filter_file.name)
             self.assertIn(31881, threads)
             self.assertNotIn(31850, threads)
+        os.unlink(filter_file.name)
