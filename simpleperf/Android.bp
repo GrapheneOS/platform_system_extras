@@ -238,6 +238,11 @@ cc_defaults {
         "utils.cpp",
     ],
     target: {
+        android: {
+            srcs: [
+                "cmd_boot_record.cpp",
+            ],
+        },
         linux: {
             srcs: [
                 "CallChainJoiner.cpp",
@@ -313,6 +318,7 @@ cc_binary {
             ],
         },
     },
+    init_rc: ["simpleperf.rc"],
 }
 
 cc_library {
@@ -548,6 +554,11 @@ cc_defaults {
         "utils_test.cpp",
     ],
     target: {
+        android: {
+            srcs: [
+                "cmd_boot_record_test.cpp",
+            ],
+        },
         linux: {
             srcs: [
                 "CallChainJoiner_test.cpp",
