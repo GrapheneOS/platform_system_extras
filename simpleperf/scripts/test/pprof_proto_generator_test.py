@@ -16,6 +16,7 @@
 
 from collections import namedtuple
 import google.protobuf
+import os
 import re
 import tempfile
 from typing import List, Optional, Set
@@ -248,6 +249,7 @@ class TestPprofProtoGenerator(TestBase):
     def test_comments(self):
         profile = self.generate_profile(None, ['perf_with_interpreter_frames.data'])
         comments = "\n".join([profile.string_table[i] for i in profile.comment])
+        comments = comments.replace('\\', '/')
         self.assertIn('Simpleperf Record Command:\n/data/data/com.google.sample.tunnel/simpleperf record --in-app --tracepoint-events /data/local/tmp/tracepoint_events --app com.google.sample.tunnel -g --no-post-unwind --duration 30', comments)
         self.assertIn('Converted to pprof with:', comments)
         # The full path changes per-machine, so only assert on a subset of the
@@ -280,9 +282,10 @@ class TestPprofProtoGenerator(TestBase):
         self.assertIn(31850, get_threads_for_filter(
             '--include-thread-name com.example.android.displayingbitmaps'))
 
-        with tempfile.NamedTemporaryFile('w') as filter_file:
+        with tempfile.NamedTemporaryFile('w', delete=False) as filter_file:
             filter_file.write('GLOBAL_BEGIN 684943449406175\nGLOBAL_END 684943449406176')
             filter_file.flush()
             threads = get_threads_for_filter('--filter-file ' + filter_file.name)
             self.assertIn(31881, threads)
             self.assertNotIn(31850, threads)
+        os.unlink(filter_file.name)
