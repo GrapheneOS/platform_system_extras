@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import json
+import os
 import re
 import tempfile
 from typing import Set
@@ -63,9 +64,10 @@ class TestGeckoProfileGenerator(TestBase):
         self.assertIn(31850, get_threads_for_filter(
             '--include-thread-name com.example.android.displayingbitmaps'))
 
-        with tempfile.NamedTemporaryFile('w') as filter_file:
+        with tempfile.NamedTemporaryFile('w', delete=False) as filter_file:
             filter_file.write('GLOBAL_BEGIN 684943449406175\nGLOBAL_END 684943449406176')
             filter_file.flush()
             threads = get_threads_for_filter('--filter-file ' + filter_file.name)
             self.assertIn(31881, threads)
             self.assertNotIn(31850, threads)
+        os.unlink(filter_file.name)
