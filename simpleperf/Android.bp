@@ -128,11 +128,12 @@ cc_defaults {
                 "libc",
             ],
         },
-        host: {
+        linux_glibc_x86_64: {
             stl: "libc++_static",
         },
         windows: {
             enabled: true,
+            stl: "libc++_static",
         },
     },
     use_version_lib: true,

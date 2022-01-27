@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import json
+import os
 from pathlib import Path
 import re
 import tempfile
@@ -31,6 +32,7 @@ class TestStackCollapse(TestBase):
             '-i', TestHelper.testdata_path('perf_with_jit_symbol.data'),
             '--jit',
         ], return_output=True)
+        got = got.replace('\r', '')
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack')
         self.assertEqual(got, Path(golden_path).read_text())
 
@@ -40,6 +42,7 @@ class TestStackCollapse(TestBase):
             '-i', TestHelper.testdata_path('perf_with_jit_symbol.data'),
             '--kernel',
         ], return_output=True)
+        got = got.replace('\r', '')
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack_with_kernel')
         self.assertEqual(got, Path(golden_path).read_text())
 
@@ -50,6 +53,7 @@ class TestStackCollapse(TestBase):
             '--jit',
             '--pid',
         ], return_output=True)
+        got = got.replace('\r', '')
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack_with_pid')
         self.assertEqual(got, Path(golden_path).read_text())
 
@@ -60,6 +64,7 @@ class TestStackCollapse(TestBase):
             '--jit',
             '--tid',
         ], return_output=True)
+        got = got.replace('\r', '')
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack_with_tid')
         self.assertEqual(got, Path(golden_path).read_text())
 
@@ -68,6 +73,7 @@ class TestStackCollapse(TestBase):
             'stackcollapse.py',
             '-i', TestHelper.testdata_path('perf_with_two_event_types.data'),
         ], return_output=True)
+        got = got.replace('\r', '')
         golden_path = TestHelper.testdata_path('perf_with_two_event_types.foldedstack')
         self.assertEqual(got, Path(golden_path).read_text())
 
@@ -77,6 +83,7 @@ class TestStackCollapse(TestBase):
             '-i', TestHelper.testdata_path('perf_with_two_event_types.data'),
             '--event-filter', 'cpu-clock',
         ], return_output=True)
+        got = got.replace('\r', '')
         golden_path = TestHelper.testdata_path('perf_with_two_event_types.foldedstack_cpu_clock')
         self.assertEqual(got, Path(golden_path).read_text())
 
@@ -86,6 +93,7 @@ class TestStackCollapse(TestBase):
             '-i', TestHelper.testdata_path('perf_with_jit_symbol.data'),
             '--addrs',
         ], return_output=True)
+        got = got.replace('\r', '')
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack_addrs')
         self.assertEqual(got, Path(golden_path).read_text())
 
@@ -114,9 +122,10 @@ class TestStackCollapse(TestBase):
         self.assertIn(31850, get_threads_for_filter(
             '--include-thread-name com.example.android.displayingbitmaps'))
 
-        with tempfile.NamedTemporaryFile('w') as filter_file:
+        with tempfile.NamedTemporaryFile('w', delete=False) as filter_file:
             filter_file.write('GLOBAL_BEGIN 684943449406175\nGLOBAL_END 684943449406176')
             filter_file.flush()
             threads = get_threads_for_filter('--filter-file ' + filter_file.name)
             self.assertIn(31881, threads)
             self.assertNotIn(31850, threads)
+        os.unlink(filter_file.name)
