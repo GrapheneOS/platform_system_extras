@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from pathlib import Path
 import re
 import tempfile
@@ -68,7 +69,8 @@ class TestAnnotate(TestBase):
         get_report('--exclude-thread-name com.example.android.displayingbitmaps')
         get_report('--include-thread-name com.example.android.displayingbitmaps')
 
-        with tempfile.NamedTemporaryFile('w') as filter_file:
+        with tempfile.NamedTemporaryFile('w', delete=False) as filter_file:
             filter_file.write('GLOBAL_BEGIN 684943449406175\nGLOBAL_END 684943449406176')
             filter_file.flush()
             get_report('--filter-file ' + filter_file.name)
+        os.unlink(filter_file.name)
