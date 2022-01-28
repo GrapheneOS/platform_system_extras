@@ -398,7 +398,7 @@ bool SuperHelper::Finalize() {
     sparse_file_verbose(sf.get());
 
     std::cout << "Writing sparse super image... " << std::endl;
-    if (sparse_file_read(sf.get(), super_fd_, false, false) != 0) {
+    if (sparse_file_read(sf.get(), super_fd_, SPARSE_READ_MODE_NORMAL, false) != 0) {
         std::cerr << "Could not import super partition for sparsing.\n";
         return false;
     }
