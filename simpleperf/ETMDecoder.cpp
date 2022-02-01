@@ -31,7 +31,7 @@ namespace {
 
 class DecoderLogStr : public ocsdMsgLogStrOutI {
  public:
-  void printOutStr(const std::string& out_str) override { LOG(INFO) << out_str; }
+  void printOutStr(const std::string& out_str) override { LOG(DEBUG) << out_str; }
 };
 
 class DecodeErrorLogger : public ocsdDefaultErrorLogger {
@@ -761,9 +761,8 @@ class ETMDecoderImpl : public ETMDecoder {
       map_locator_.reset(new MapLocator(thread_tree_));
       for (auto& cfg : configs_) {
         int64_t configr = (*(const ocsd_etmv4_cfg*)*cfg.second).reg_configr;
-        map_locator_->SetUseVmid(
-            cfg.first,
-            configr & (1U << ETM4_CFG_BIT_VMID | 1U << ETM4_CFG_BIT_VMID_OPT));
+        map_locator_->SetUseVmid(cfg.first,
+                                 configr & (1U << ETM4_CFG_BIT_VMID | 1U << ETM4_CFG_BIT_VMID_OPT));
       }
 
       InstallPacketCallback(map_locator_.get());
