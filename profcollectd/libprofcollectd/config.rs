@@ -128,7 +128,7 @@ where
     T::Err: Error + Send + Sync + 'static,
 {
     let default_value = default_value.to_string();
-    let value = rustutils::system_properties::read(key).unwrap_or(default_value);
+    let value = rustutils::system_properties::read(key).unwrap_or(None).unwrap_or(default_value);
     Ok(T::from_str(&value)?)
 }
 
@@ -137,7 +137,7 @@ where
     T: ToString,
 {
     let value = value.to_string();
-    rustutils::system_properties::write(key, &value)
+    Ok(rustutils::system_properties::write(key, &value)?)
 }
 
 fn generate_random_node_id() -> MacAddr6 {
