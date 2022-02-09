@@ -25,9 +25,16 @@ fn path_to_cstr(path: &Path) -> CString {
     CString::new(path.to_str().unwrap()).unwrap()
 }
 
-/// Returns whether the system has support for simpleperf etm.
-pub fn has_support() -> bool {
-    unsafe { simpleperf_profcollect_bindgen::HasSupport() }
+/// Returns whether the system has etm driver. ETM driver should be available immediately
+/// after boot.
+pub fn has_driver_support() -> bool {
+    unsafe { simpleperf_profcollect_bindgen::HasDriverSupport() }
+}
+
+/// Returns whether the system has etm device. ETM device may not be available immediately
+/// after boot.
+pub fn has_device_support() -> bool {
+    unsafe { simpleperf_profcollect_bindgen::HasDeviceSupport() }
 }
 
 /// ETM recording scope
