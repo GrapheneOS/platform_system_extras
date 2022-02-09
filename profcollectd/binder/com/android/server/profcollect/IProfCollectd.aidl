@@ -16,6 +16,8 @@
 
 package com.android.server.profcollect;
 
+import com.android.server.profcollect.IProviderStatusCallback;
+
 /** {@hide} */
 interface IProfCollectd {
     void schedule();
@@ -24,4 +26,5 @@ interface IProfCollectd {
     void process();
     @utf8InCpp String report();
     @utf8InCpp String get_supported_provider();
+    void registerProviderStatusCallback(IProviderStatusCallback cb);
 }

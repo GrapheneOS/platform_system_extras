@@ -30,10 +30,33 @@ use anyhow::{Context, Result};
 use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProfCollectd::{
     self, BnProfCollectd,
 };
+use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProviderStatusCallback::{IProviderStatusCallback, BnProviderStatusCallback};
 use profcollectd_aidl_interface::binder::{self, BinderFeatures};
-use service::ProfcollectdBinderService;
+use service::{err_to_binder_status, ProfcollectdBinderService};
+use std::time::{Duration, Instant};
 
 const PROFCOLLECTD_SERVICE_NAME: &str = "profcollectd";
+
+struct ProviderStatusCallback {
+    service_start_time: Instant,
+}
+
+impl binder::Interface for ProviderStatusCallback {}
+
+impl IProviderStatusCallback for ProviderStatusCallback {
+    fn onProviderReady(&self) -> binder::Result<()> {
+        // If we have waited too long for the provider to be ready, then we have passed
+        // boot phase, and no need to collect boot profile.
+        // TODO: should we check boottime instead?
+        const TIMEOUT_TO_COLLECT_BOOT_PROFILE: Duration = Duration::from_secs(3);
+        let elapsed = Instant::now().duration_since(self.service_start_time);
+        if elapsed < TIMEOUT_TO_COLLECT_BOOT_PROFILE {
+            trace_once("boot").map_err(err_to_binder_status)?;
+        }
+        schedule().map_err(err_to_binder_status)?;
+        Ok(())
+    }
+}
 
 /// Initialise profcollectd service.
 /// * `schedule_now` - Immediately schedule collection after service is initialised.
@@ -49,8 +72,11 @@ pub fn init_service(schedule_now: bool) -> Result<()> {
     .context("Failed to register service.")?;
 
     if schedule_now {
-        trace_once("boot")?;
-        schedule()?;
+        let cb = BnProviderStatusCallback::new_binder(
+            ProviderStatusCallback { service_start_time: Instant::now() },
+            BinderFeatures::default(),
+        );
+        get_profcollectd_service()?.registerProviderStatusCallback(&cb)?;
     }
 
     binder::ProcessState::join_thread_pool();
