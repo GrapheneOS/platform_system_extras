@@ -18,8 +18,9 @@
 
 use anyhow::{anyhow, Context, Error, Result};
 use binder::Result as BinderResult;
-use binder::Status;
+use binder::{SpIBinder, Status};
 use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProfCollectd::IProfCollectd;
+use profcollectd_aidl_interface::aidl::com::android::server::profcollect::IProviderStatusCallback::IProviderStatusCallback;
 use std::ffi::CString;
 use std::fs::{read_dir, read_to_string, remove_file, write};
 use std::str::FromStr;
@@ -32,7 +33,7 @@ use crate::config::{
 use crate::report::{get_report_ts, pack_report};
 use crate::scheduler::Scheduler;
 
-fn err_to_binder_status(msg: Error) -> Status {
+pub fn err_to_binder_status(msg: Error) -> Status {
     let msg = format!("{:#?}", msg);
     let msg = CString::new(msg).expect("Failed to convert to CString");
     Status::new_service_specific_error(1, Some(&msg))
@@ -88,6 +89,30 @@ impl IProfCollectd for ProfcollectdBinderService {
     }
     fn get_supported_provider(&self) -> BinderResult<String> {
         Ok(self.lock().scheduler.get_trace_provider_name().to_string())
+    }
+
+    fn registerProviderStatusCallback(
+        &self,
+        cb: &binder::Strong<(dyn IProviderStatusCallback)>,
+    ) -> BinderResult<()> {
+        if self.lock().scheduler.is_provider_ready() {
+            if let Err(e) = cb.onProviderReady() {
+                log::error!("Failed to call ProviderStatusCallback {:?}", e);
+            }
+            return Ok(());
+        }
+
+        let cb_binder: SpIBinder = cb.as_binder();
+        self.lock().scheduler.register_provider_ready_callback(Box::new(move || {
+            if let Ok(cb) = cb_binder.into_interface::<dyn IProviderStatusCallback>() {
+                if let Err(e) = cb.onProviderReady() {
+                    log::error!("Failed to call ProviderStatusCallback {:?}", e)
+                }
+            } else {
+                log::error!("SpIBinder is not a IProviderStatusCallback.");
+            }
+        }));
+        Ok(())
     }
 }
 
