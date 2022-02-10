@@ -23,6 +23,7 @@
 #include <memory>
 #include <string>
 
+#include <android-base/expected.h>
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/parseint.h>
@@ -33,6 +34,9 @@
 #include "utils.h"
 
 namespace simpleperf {
+
+using android::base::expected;
+using android::base::unexpected;
 
 static constexpr bool ETM_RECORD_TIMESTAMP = false;
 
@@ -103,32 +107,30 @@ std::unique_ptr<EventType> ETMRecorder::BuildEventType() {
                                      "CoreSight ETM instruction tracing", "arm");
 }
 
-bool ETMRecorder::CheckEtmSupport() {
+bool ETMRecorder::IsETMDriverAvailable() {
+  return IsDir(ETM_DIR);
+}
+
+expected<bool, std::string> ETMRecorder::CheckEtmSupport() {
   if (GetEtmEventType() == -1) {
-    LOG(ERROR) << "etm event type isn't supported on device";
-    return false;
+    return unexpected("etm event type isn't supported on device");
   }
   if (!ReadEtmInfo()) {
-    LOG(ERROR) << "etm devices are not available";
-    return false;
+    return unexpected("etm devices are not available");
   }
   for (const auto& p : etm_info_) {
     if (p.second.GetMajorVersion() < 4) {
-      LOG(ERROR) << "etm device version is less than 4.0";
-      return false;
+      return unexpected("etm device version is less than 4.0");
     }
     if (!p.second.IsContextIDSupported()) {
-      LOG(ERROR) << "etm device doesn't support contextID";
-      return false;
+      return unexpected("etm device doesn't support contextID");
     }
     if (!p.second.IsEnabled()) {
-      LOG(ERROR) << "etm device isn't enabled by the bootloader";
-      return false;
+      return unexpected("etm device isn't enabled by the bootloader");
     }
   }
   if (!FindSinkConfig()) {
-    LOG(ERROR) << "can't find etr device, which moves etm data to memory";
-    return false;
+    return unexpected("can't find etr device, which moves etm data to memory");
   }
   etm_supported_ = true;
   return true;

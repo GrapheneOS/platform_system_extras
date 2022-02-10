@@ -21,6 +21,8 @@
 #include <map>
 #include <memory>
 
+#include <android-base/expected.h>
+
 #include "event_type.h"
 #include "perf_event.h"
 #include "record.h"
@@ -55,7 +57,8 @@ class ETMRecorder {
   // If not found, return -1.
   int GetEtmEventType();
   std::unique_ptr<EventType> BuildEventType();
-  bool CheckEtmSupport();
+  bool IsETMDriverAvailable();
+  android::base::expected<bool, std::string> CheckEtmSupport();
   void SetEtmPerfEventAttr(perf_event_attr* attr);
   AuxTraceInfoRecord CreateAuxTraceInfoRecord();
   size_t GetAddrFilterPairs();
