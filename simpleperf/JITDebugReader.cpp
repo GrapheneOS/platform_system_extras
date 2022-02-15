@@ -33,6 +33,7 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
+#include "JITDebugReader_impl.h"
 #include "dso.h"
 #include "environment.h"
 #include "read_apk.h"
@@ -202,53 +203,6 @@ static_assert(sizeof(JITCodeEntry32V2) == 40, "");
 static_assert(sizeof(JITCodeEntry64) == 40, "");
 static_assert(sizeof(JITCodeEntry64V2) == 48, "");
 #endif
-
-class TempSymFile {
- public:
-  static std::unique_ptr<TempSymFile> Create(std::string&& path, bool remove_in_destructor) {
-    FILE* fp = fopen(path.data(), "web");
-    if (fp == nullptr) {
-      PLOG(ERROR) << "failed to create " << path;
-      return nullptr;
-    }
-    if (remove_in_destructor) {
-      ScopedTempFiles::RegisterTempFile(path);
-    }
-    return std::unique_ptr<TempSymFile>(new TempSymFile(std::move(path), fp));
-  }
-
-  bool WriteEntry(const char* data, size_t size) {
-    if (fwrite(data, size, 1, fp_.get()) != 1) {
-      PLOG(ERROR) << "failed to write to " << path_;
-      return false;
-    }
-    file_offset_ += size;
-    need_flush_ = true;
-    return true;
-  }
-
-  bool Flush() {
-    if (need_flush_) {
-      if (fflush(fp_.get()) != 0) {
-        PLOG(ERROR) << "failed to flush " << path_;
-        return false;
-      }
-      need_flush_ = false;
-    }
-    return true;
-  }
-
-  const std::string& GetPath() const { return path_; }
-  uint64_t GetOffset() const { return file_offset_; }
-
- private:
-  TempSymFile(std::string&& path, FILE* fp) : path_(std::move(path)), fp_(fp, fclose) {}
-
-  const std::string path_;
-  std::unique_ptr<FILE, decltype(&fclose)> fp_;
-  uint64_t file_offset_ = 0;
-  bool need_flush_ = false;
-};
 
 JITDebugReader::JITDebugReader(const std::string& symfile_prefix, SymFileOption symfile_option,
                                SyncOption sync_option)

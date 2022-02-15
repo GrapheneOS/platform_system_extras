@@ -217,7 +217,8 @@ bool EventSelectionSet::BuildAndCheckEventSelection(const std::string& event_nam
   selection->event_attr.precise_ip = event_type->precise_ip;
   if (IsEtmEventType(event_type->event_type.type)) {
     auto& etm_recorder = ETMRecorder::GetInstance();
-    if (!etm_recorder.CheckEtmSupport()) {
+    if (auto result = etm_recorder.CheckEtmSupport(); !result.ok()) {
+      LOG(ERROR) << result.error();
       return false;
     }
     ETMRecorder::GetInstance().SetEtmPerfEventAttr(&selection->event_attr);
@@ -304,6 +305,31 @@ bool EventSelectionSet::AddEventGroup(const std::vector<std::string>& event_name
   UnionSampleType();
   if (group_id != nullptr) {
     *group_id = groups_.size() - 1;
+  }
+  return true;
+}
+
+bool EventSelectionSet::AddCounters(const std::vector<std::string>& event_names) {
+  CHECK(!groups_.empty());
+  if (groups_.size() > 1) {
+    LOG(ERROR) << "Failed to add counters. Only one event group is allowed.";
+    return false;
+  }
+  for (const auto& event_name : event_names) {
+    EventSelection selection;
+    if (!BuildAndCheckEventSelection(event_name, false, &selection)) {
+      return false;
+    }
+    // Use a big sample_period to avoid getting samples for added counters.
+    selection.event_attr.freq = 0;
+    selection.event_attr.sample_period = INFINITE_SAMPLE_PERIOD;
+    selection.event_attr.inherit = 0;
+    groups_[0].emplace_back(std::move(selection));
+  }
+  // Add counters in each sample.
+  for (auto& selection : groups_[0]) {
+    selection.event_attr.sample_type |= PERF_SAMPLE_READ;
+    selection.event_attr.read_format |= PERF_FORMAT_GROUP;
   }
   return true;
 }

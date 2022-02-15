@@ -16,7 +16,10 @@
 
 from collections import namedtuple
 import google.protobuf
-from typing import List, Optional
+import os
+import re
+import tempfile
+from typing import List, Optional, Set
 
 from binary_cache_builder import BinaryCacheBuilder
 from pprof_proto_generator import load_pprof_profile, PprofProfileGenerator
@@ -246,9 +249,43 @@ class TestPprofProtoGenerator(TestBase):
     def test_comments(self):
         profile = self.generate_profile(None, ['perf_with_interpreter_frames.data'])
         comments = "\n".join([profile.string_table[i] for i in profile.comment])
+        comments = comments.replace('\\', '/')
         self.assertIn('Simpleperf Record Command:\n/data/data/com.google.sample.tunnel/simpleperf record --in-app --tracepoint-events /data/local/tmp/tracepoint_events --app com.google.sample.tunnel -g --no-post-unwind --duration 30', comments)
         self.assertIn('Converted to pprof with:', comments)
         # The full path changes per-machine, so only assert on a subset of the
         # path.
         self.assertIn('testdata/perf_with_interpreter_frames.data', comments)
         self.assertIn('Architecture:\naarch64', comments)
+
+    def test_sample_filters(self):
+        def get_threads_for_filter(filter: str) -> Set[int]:
+            report = self.run_generator(filter.split(), testdata_file='perf_display_bitmaps.data')
+            threads = set()
+            pattern = re.compile(r'\s+tid:(\d+)')
+            threads = set()
+            for m in re.finditer(pattern, report):
+                threads.add(int(m.group(1)))
+            return threads
+
+        self.assertNotIn(31850, get_threads_for_filter('--exclude-pid 31850'))
+        self.assertIn(31850, get_threads_for_filter('--include-pid 31850'))
+        self.assertIn(31850, get_threads_for_filter('--pid 31850'))
+        self.assertNotIn(31881, get_threads_for_filter('--exclude-tid 31881'))
+        self.assertIn(31881, get_threads_for_filter('--include-tid 31881'))
+        self.assertIn(31881, get_threads_for_filter('--tid 31881'))
+        self.assertNotIn(31881, get_threads_for_filter(
+            '--exclude-process-name com.example.android.displayingbitmaps'))
+        self.assertIn(31881, get_threads_for_filter(
+            '--include-process-name com.example.android.displayingbitmaps'))
+        self.assertNotIn(31850, get_threads_for_filter(
+            '--exclude-thread-name com.example.android.displayingbitmaps'))
+        self.assertIn(31850, get_threads_for_filter(
+            '--include-thread-name com.example.android.displayingbitmaps'))
+
+        with tempfile.NamedTemporaryFile('w', delete=False) as filter_file:
+            filter_file.write('GLOBAL_BEGIN 684943449406175\nGLOBAL_END 684943449406176')
+            filter_file.flush()
+            threads = get_threads_for_filter('--filter-file ' + filter_file.name)
+            self.assertIn(31881, threads)
+            self.assertNotIn(31850, threads)
+        os.unlink(filter_file.name)

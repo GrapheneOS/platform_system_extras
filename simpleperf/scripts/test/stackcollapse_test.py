@@ -15,7 +15,11 @@
 # limitations under the License.
 
 import json
+import os
 from pathlib import Path
+import re
+import tempfile
+from typing import Set
 
 from . test_utils import TestBase, TestHelper
 
@@ -28,6 +32,7 @@ class TestStackCollapse(TestBase):
             '-i', TestHelper.testdata_path('perf_with_jit_symbol.data'),
             '--jit',
         ], return_output=True)
+        got = got.replace('\r', '')
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack')
         self.assertEqual(got, Path(golden_path).read_text())
 
@@ -37,6 +42,7 @@ class TestStackCollapse(TestBase):
             '-i', TestHelper.testdata_path('perf_with_jit_symbol.data'),
             '--kernel',
         ], return_output=True)
+        got = got.replace('\r', '')
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack_with_kernel')
         self.assertEqual(got, Path(golden_path).read_text())
 
@@ -47,6 +53,7 @@ class TestStackCollapse(TestBase):
             '--jit',
             '--pid',
         ], return_output=True)
+        got = got.replace('\r', '')
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack_with_pid')
         self.assertEqual(got, Path(golden_path).read_text())
 
@@ -57,6 +64,7 @@ class TestStackCollapse(TestBase):
             '--jit',
             '--tid',
         ], return_output=True)
+        got = got.replace('\r', '')
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack_with_tid')
         self.assertEqual(got, Path(golden_path).read_text())
 
@@ -65,6 +73,7 @@ class TestStackCollapse(TestBase):
             'stackcollapse.py',
             '-i', TestHelper.testdata_path('perf_with_two_event_types.data'),
         ], return_output=True)
+        got = got.replace('\r', '')
         golden_path = TestHelper.testdata_path('perf_with_two_event_types.foldedstack')
         self.assertEqual(got, Path(golden_path).read_text())
 
@@ -74,6 +83,7 @@ class TestStackCollapse(TestBase):
             '-i', TestHelper.testdata_path('perf_with_two_event_types.data'),
             '--event-filter', 'cpu-clock',
         ], return_output=True)
+        got = got.replace('\r', '')
         golden_path = TestHelper.testdata_path('perf_with_two_event_types.foldedstack_cpu_clock')
         self.assertEqual(got, Path(golden_path).read_text())
 
@@ -83,5 +93,39 @@ class TestStackCollapse(TestBase):
             '-i', TestHelper.testdata_path('perf_with_jit_symbol.data'),
             '--addrs',
         ], return_output=True)
+        got = got.replace('\r', '')
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack_addrs')
         self.assertEqual(got, Path(golden_path).read_text())
+
+    def test_sample_filters(self):
+        def get_threads_for_filter(filter: str) -> Set[int]:
+            report = self.run_cmd(
+                ['stackcollapse.py', '-i', TestHelper.testdata_path('perf_display_bitmaps.data'),
+                 '--tid'] + filter.split(),
+                return_output=True)
+            pattern = re.compile(r'-31850/(\d+);')
+            threads = set()
+            for m in re.finditer(pattern, report):
+                threads.add(int(m.group(1)))
+            return threads
+
+        self.assertNotIn(31850, get_threads_for_filter('--exclude-pid 31850'))
+        self.assertIn(31850, get_threads_for_filter('--include-pid 31850'))
+        self.assertNotIn(31881, get_threads_for_filter('--exclude-tid 31881'))
+        self.assertIn(31881, get_threads_for_filter('--include-tid 31881'))
+        self.assertNotIn(31881, get_threads_for_filter(
+            '--exclude-process-name com.example.android.displayingbitmaps'))
+        self.assertIn(31881, get_threads_for_filter(
+            '--include-process-name com.example.android.displayingbitmaps'))
+        self.assertNotIn(31850, get_threads_for_filter(
+            '--exclude-thread-name com.example.android.displayingbitmaps'))
+        self.assertIn(31850, get_threads_for_filter(
+            '--include-thread-name com.example.android.displayingbitmaps'))
+
+        with tempfile.NamedTemporaryFile('w', delete=False) as filter_file:
+            filter_file.write('GLOBAL_BEGIN 684943449406175\nGLOBAL_END 684943449406176')
+            filter_file.flush()
+            threads = get_threads_for_filter('--filter-file ' + filter_file.name)
+            self.assertIn(31881, threads)
+            self.assertNotIn(31850, threads)
+        os.unlink(filter_file.name)

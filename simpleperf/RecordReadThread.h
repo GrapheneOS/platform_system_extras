@@ -81,11 +81,12 @@ class RecordParser {
 
  private:
   uint64_t sample_type_;
+  uint64_t read_format_;
   uint64_t sample_regs_count_;
   size_t pid_pos_in_sample_records_ = 0;
   size_t time_pos_in_sample_records_ = 0;
   size_t time_rpos_in_non_sample_records_ = 0;
-  size_t callchain_pos_in_sample_records_ = 0;
+  size_t read_pos_in_sample_records_ = 0;
 };
 
 struct RecordStat {

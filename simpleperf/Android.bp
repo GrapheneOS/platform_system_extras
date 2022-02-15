@@ -128,11 +128,12 @@ cc_defaults {
                 "libc",
             ],
         },
-        host: {
+        linux_glibc_x86_64: {
             stl: "libc++_static",
         },
         windows: {
             enabled: true,
+            stl: "libc++_static",
         },
     },
     use_version_lib: true,
@@ -228,6 +229,7 @@ cc_defaults {
         "read_elf.cpp",
         "read_symbol_map.cpp",
         "record.cpp",
+        "RecordFilter.cpp",
         "record_file.proto",
         "record_file_reader.cpp",
         "record_file_writer.cpp",
@@ -237,6 +239,11 @@ cc_defaults {
         "utils.cpp",
     ],
     target: {
+        android: {
+            srcs: [
+                "cmd_boot_record.cpp",
+            ],
+        },
         linux: {
             srcs: [
                 "CallChainJoiner.cpp",
@@ -257,7 +264,6 @@ cc_defaults {
                 "OfflineUnwinder.cpp",
                 "ProbeEvents.cpp",
                 "read_dex_file.cpp",
-                "RecordFilter.cpp",
                 "RecordReadThread.cpp",
                 "workload.cpp",
             ],
@@ -313,6 +319,7 @@ cc_binary {
             ],
         },
     },
+    init_rc: ["simpleperf.rc"],
 }
 
 cc_library {
@@ -537,6 +544,7 @@ cc_defaults {
         "read_apk_test.cpp",
         "read_elf_test.cpp",
         "read_symbol_map_test.cpp",
+        "RecordFilter_test.cpp",
         "record_file_test.cpp",
         "record_test.cpp",
         "report_utils_test.cpp",
@@ -547,6 +555,11 @@ cc_defaults {
         "utils_test.cpp",
     ],
     target: {
+        android: {
+            srcs: [
+                "cmd_boot_record_test.cpp",
+            ],
+        },
         linux: {
             srcs: [
                 "CallChainJoiner_test.cpp",
@@ -560,11 +573,11 @@ cc_defaults {
                 "cmd_trace_sched_test.cpp",
                 "environment_test.cpp",
                 "IOEventLoop_test.cpp",
+                "JITDebugReader_test.cpp",
                 "MapRecordReader_test.cpp",
                 "OfflineUnwinder_test.cpp",
                 "ProbeEvents_test.cpp",
                 "read_dex_file_test.cpp",
-                "RecordFilter_test.cpp",
                 "RecordReadThread_test.cpp",
                 "workload_test.cpp",
             ],
@@ -590,6 +603,9 @@ cc_test {
     data: [
         "testdata/**/*",
     ],
+    sanitize: {
+        memtag_heap: false,
+    },
 }
 
 cc_test {
