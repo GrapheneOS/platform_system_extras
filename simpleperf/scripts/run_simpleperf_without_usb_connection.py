@@ -45,6 +45,8 @@ def start_recording(args):
     shell_cmd = 'cd /data/local/tmp && nohup ./simpleperf record ' + args.record_options
     if args.app:
         shell_cmd += ' --app ' + args.app
+    if args.pid:
+        shell_cmd += ' -p ' + args.pid
     if args.size_limit:
         shell_cmd += ' --size-limit ' + args.size_limit
     shell_cmd += ' >/data/local/tmp/simpleperf_output 2>&1'
@@ -85,6 +87,8 @@ def main():
                                       Default is `-e task-clock:u -g`.""")
     start_parser.add_argument('-p', '--app', help="""Profile an Android app, given the package
                               name. Like `-p com.example.android.myapp`.""")
+    start_parser.add_argument('--pid', help="""Profile an Android app, given the process id.
+                              Like `--pid 918`.""")
     start_parser.add_argument('--size_limit', type=str,
                               help="""Stop profiling when recording data reaches
                                       [size_limit][K|M|G] bytes. Like `--size_limit 1M`.""")
