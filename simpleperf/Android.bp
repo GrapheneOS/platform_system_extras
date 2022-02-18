@@ -328,7 +328,10 @@ cc_library {
     srcs: ["profcollect.cpp"],
     host_supported: false,
     static_libs: ["libsimpleperf"],
-    shared_libs: ["libLLVM_android"],
+    shared_libs: [
+        "libLLVM_android",
+        "libpower",
+    ],
 }
 
 rust_bindgen {
