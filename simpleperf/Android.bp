@@ -530,6 +530,11 @@ cc_library_shared {
 
 cc_defaults {
     name: "simpleperf_test_srcs",
+    tidy_timeout_srcs: [
+        "record_test.cpp",
+        "cmd_report_sample_test.cpp",
+        "cmd_report_test.cpp",
+    ],
     srcs: [
         "cmd_inject_test.cpp",
         "cmd_kmem_test.cpp",
@@ -561,6 +566,10 @@ cc_defaults {
             ],
         },
         linux: {
+            tidy_timeout_srcs: [
+                "cmd_stat_test.cpp",
+                "cmd_record_test.cpp",
+            ],
             srcs: [
                 "CallChainJoiner_test.cpp",
                 "cmd_api_test.cpp",
