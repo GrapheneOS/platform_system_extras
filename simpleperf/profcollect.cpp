@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <wakelock/wakelock.h>
 #include <include/simpleperf_profcollect.hpp>
 
 #include "ETMRecorder.h"
@@ -42,6 +43,13 @@ bool HasDeviceSupport() {
 }
 
 bool Record(const char* event_name, const char* output, float duration) {
+  // The kernel may panic when trying to hibernate or hotplug CPUs while collecting
+  // ETM data. So get wakelock to keep the CPUs on.
+  auto wakelock = android::wakelock::WakeLock::tryGet("profcollectd");
+  if (!wakelock) {
+    LOG(ERROR) << "Failed to request wakelock.";
+    return false;
+  }
   auto recordCmd = CreateCommandInstance("record");
   std::vector<std::string> args;
   args.push_back("-a");
