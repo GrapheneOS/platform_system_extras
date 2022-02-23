@@ -735,7 +735,7 @@ class ETMDecoderImpl : public ETMDecoder {
       auto resp = decoder.TraceDataIn(OCSD_OP_DATA, data_index_, left_size, data, &processed);
       if (IsRespError(resp)) {
         // A decoding error shouldn't ruin all data. Reset decoders to recover from it.
-        LOG(INFO) << "reset etm decoders for seeing a decode failure, resp " << resp;
+        LOG(DEBUG) << "reset etm decoders for seeing a decode failure, resp " << resp;
         decoder.TraceDataIn(OCSD_OP_RESET, data_index_ + processed, 0, nullptr, nullptr);
       }
       data += processed;
