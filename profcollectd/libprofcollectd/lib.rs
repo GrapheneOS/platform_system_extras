@@ -127,6 +127,9 @@ pub fn reset() -> Result<()> {
 pub fn init_logging() {
     let min_log_level = if cfg!(feature = "test") { log::Level::Info } else { log::Level::Error };
     android_logger::init_once(
-        android_logger::Config::default().with_tag("profcollectd").with_min_level(min_log_level),
+        android_logger::Config::default()
+            .with_tag("profcollectd")
+            .with_min_level(min_log_level)
+            .with_log_id(android_logger::LogId::System),
     );
 }
