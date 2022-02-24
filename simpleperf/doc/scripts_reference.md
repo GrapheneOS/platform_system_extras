@@ -114,6 +114,9 @@ device. It is more convenient than running adb commands manually.
 
 ## Viewing the profile
 
+Scripts in this section are for viewing the profile or converting profile data into formats used by
+external UIs. For recommended UIs, see [view_the_profile.md](view_the_profile.md).
+
 ### report.py
 
 report.py is a wrapper of the `report` command on the host. It accepts all options of the `report`
