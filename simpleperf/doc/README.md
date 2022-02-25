@@ -95,6 +95,9 @@ See [executable_commands_reference.md](./executable_commands_reference.md).
 
 See [scripts_reference.md](./scripts_reference.md).
 
+## View the profile
+
+See [view_the_profile.md](./view_the_profile.md).
 
 ## Answers to common issues
 
