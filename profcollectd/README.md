@@ -37,6 +37,62 @@ are controlled by the following configurations:
 
 Setting the frequency value to `0` disables collection for the corresponding event.
 
+#### Custom configuration
+
+In adb root:
+
+```
+# Record every 60s (By default, record every 10m). The actual interval will be longer than the
+# set value if the device goes to hibernation.
+oriole:/ # setprop persist.device_config.profcollect_native_boot.collection_interval 60
+
+# Each time recording, record ETM data for 1s (By default, it's 0.5s).
+oriole:/ # setprop persist.device_config.profcollect_native_boot.sampling_period 1000
+
+# Set ETM data storage limit to 50G (By default, it is 512M).
+oriole:/ # setprop persist.device_config.profcollect_native_boot.max_trace_limit 53687091200
+
+# Enable ETM data collection (By default, it's decided by the server).
+oriole:/ # setprop persist.device_config.profcollect_native_boot.enabled true
+
+# After adjusting configuration, need to restart profcollectd
+oriole:/ # setprop ctl.stop profcollectd
+# Wait for a few seconds.
+oriole:/ # setprop ctl.start profcollectd
+
+# Check if profcollectd is running
+oriole:/ # ps -e | grep profcollectd
+root           918     1 10945660 47040 binder_wait_for_work 0 S profcollectd
+
+# Check if the new configuration takes effect.
+oriole:/ # cat /data/misc/profcollectd/output/config.json
+{"version":1,"node_id":[189,15,145,225,97,167],"build_fingerprint":"google/oriole/oriole:Tiramisu/TP1A.220223.002/8211650:userdebug/dev-keys","collection_interval":{"secs":60,"nanos":0},"sampling_period":{"secs":1,"nanos":0},"binary_filter":"^/(system|apex/.+)/(bin|lib|lib64)/.+","max_trace_limit":53687091200}
+```
+
+To check existing collected ETM data:
+```
+oriole:/ # cd data/misc/profcollectd/trace/
+oriole:/data/misc/profcollectd/trace # ls
+```
+
+To check if ETM data can be collected successfully:
+```
+# Trigger one collection manually.
+oriole:/ # profcollectctl once
+Trace once
+
+# Check trace directory to see if there is a recent manual trace file.
+oriole:/ # ls /data/misc/profcollectd/trace/
+20220224-222946_manual.etmtrace
+```
+
+If there are too many trace files, we need to processing them to avoid reaching storage limit.
+It may take a long time.
+```
+oriole:/ # profcollectctl process
+Processing traces
+```
+
 ### Processing
 
 The raw tracing data needs to be combined with the original binary to create the AutoFDO branch
