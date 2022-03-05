@@ -31,7 +31,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Un
 from simpleperf_report_lib import ReportLib, SymbolStruct
 from simpleperf_utils import (
     Addr2Nearestline, BaseArgumentParser, BinaryFinder, get_script_dir, log_exit, Objdump,
-    open_report_in_browser, ReadElf, SourceFileSearcher)
+    open_report_in_browser, ReadElf, ReportLibOptions, SourceFileSearcher)
 
 MAX_CALLSTACK_LENGTH = 750
 
@@ -624,14 +624,13 @@ class RecordData(object):
         self.binary_finder = BinaryFinder(binary_cache_path, ReadElf(ndk_path))
 
     def load_record_file(
-            self, record_file: str, show_art_frames: bool, sample_filter: Optional[str]):
+            self, record_file: str, report_lib_options: ReportLibOptions,
+            sample_filter: Optional[str]):
         lib = ReportLib()
         lib.SetRecordFile(record_file)
         # If not showing ip for unknown symbols, the percent of the unknown symbol may be
         # accumulated to very big, and ranks first in the sample table.
         lib.ShowIpForUnknownSymbol()
-        if show_art_frames:
-            lib.ShowArtFrames()
         if self.binary_cache_path:
             lib.SetSymfs(self.binary_cache_path)
         for file_path in self.proguard_mapping_files or []:
@@ -640,6 +639,7 @@ class RecordData(object):
             lib.SetTraceOffCpuMode(self.trace_offcpu)
         if sample_filter:
             lib.SetSampleFilter(sample_filter)
+        lib.SetReportOptions(report_lib_options)
         self.meta_info = lib.MetaInfo()
         self.cmdline = lib.GetRecordCmd()
         self.arch = lib.GetArch()
@@ -987,8 +987,6 @@ def get_args() -> argparse.Namespace:
         help='Use multithreading to speed up disassembly and source code annotation.')
     parser.add_argument('--ndk_path', nargs=1, help='Find tools in the ndk path.')
     parser.add_argument('--no_browser', action='store_true', help="Don't open report in browser.")
-    parser.add_argument('--show_art_frames', action='store_true',
-                        help='Show frames of internal methods in the ART Java interpreter.')
     parser.add_argument('--aggregate-by-thread-name', action='store_true', help="""aggregate
                         samples by thread name instead of thread id. This is useful for
                         showing multiple perf.data generated for the same app.""")
@@ -997,6 +995,7 @@ def get_args() -> argparse.Namespace:
         help='Add proguard mapping file to de-obfuscate symbols')
     parser.add_trace_offcpu_option()
     parser.add_sample_filter_options()
+    parser.add_report_lib_options()
     return parser.parse_args()
 
 
@@ -1025,7 +1024,7 @@ def main():
     record_data = RecordData(binary_cache_path, ndk_path, build_addr_hit_map,
                              args.proguard_mapping_file, args.trace_offcpu)
     for record_file in args.record_file:
-        record_data.load_record_file(record_file, args.show_art_frames, args.sample_filter)
+        record_data.load_record_file(record_file, args.report_lib_options, args.sample_filter)
     if args.aggregate_by_thread_name:
         record_data.aggregate_by_thread_name()
     record_data.limit_percents(args.min_func_percent, args.min_callchain_percent)

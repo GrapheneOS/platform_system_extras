@@ -21,6 +21,7 @@
 from __future__ import annotations
 import argparse
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
 import logging
 import os
 import os.path
@@ -999,11 +1000,25 @@ class ArgParseFormatter(
     pass
 
 
+@dataclass
+class ReportLibOptions:
+    show_art_frames: bool
+
+
 class BaseArgumentParser(argparse.ArgumentParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs, formatter_class=ArgParseFormatter)
         self.has_sample_filter_options = False
         self.sample_filter_with_pid_shortcut = False
+        self.has_report_lib_options = False
+
+    def add_report_lib_options(self, group: Optional[Any] = None,
+                               default_show_art_frames: bool = False):
+        self.has_report_lib_options = True
+        parser = group if group else self
+        parser.add_argument('--show-art-frames', '--show_art_frames',
+                            action=argparse.BooleanOptionalAction, default=default_show_art_frames,
+                            help='Show frames of internal methods in the ART Java interpreter.')
 
     def add_trace_offcpu_option(self, subparser: Optional[Any] = None):
         parser = subparser if subparser else self
@@ -1096,6 +1111,10 @@ class BaseArgumentParser(argparse.ArgumentParser):
 
         if self.has_sample_filter_options:
             setattr(namespace, 'sample_filter', self._build_sample_filter(namespace))
+
+        if self.has_report_lib_options:
+            report_lib_options = ReportLibOptions(namespace.show_art_frames)
+            setattr(namespace, 'report_lib_options', report_lib_options)
 
         if not Log.initialized:
             Log.init(namespace.log)

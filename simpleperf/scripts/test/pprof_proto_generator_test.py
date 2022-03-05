@@ -24,6 +24,7 @@ from typing import List, Optional, Set
 from binary_cache_builder import BinaryCacheBuilder
 from pprof_proto_generator import load_pprof_profile, PprofProfileGenerator
 from . test_utils import TestBase, TestHelper
+from simpleperf_utils import ReportLibOptions
 
 
 class TestPprofProtoGenerator(TestBase):
@@ -216,7 +217,8 @@ class TestPprofProtoGenerator(TestBase):
         binary_cache_builder.build_binary_cache(testdata_file, [TestHelper.testdata_dir])
 
         # Read recording file.
-        config = {'ndk_path': None, 'max_chain_length': 1000000, 'proguard_mapping_file': None}
+        config = {'ndk_path': None, 'max_chain_length': 1000000, 'proguard_mapping_file': None,
+                  'report_lib_options': ReportLibOptions(False)}
         generator = PprofProfileGenerator(config)
         generator.load_record_file(testdata_file)
 
