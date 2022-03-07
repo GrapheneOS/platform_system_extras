@@ -670,6 +670,7 @@ def main():
         generator.load_record_file(record_file)
     profile = generator.gen(args.jobs)
     store_pprof_profile(config['output_file'], profile)
+    logging.info("Report is generated at '%s' successfully." % config['output_file'])
 
 
 if __name__ == '__main__':
