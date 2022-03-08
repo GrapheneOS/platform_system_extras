@@ -26,7 +26,7 @@
 
 from collections import defaultdict
 from simpleperf_report_lib import ReportLib
-from simpleperf_utils import BaseArgumentParser, flatten_arg_list
+from simpleperf_utils import BaseArgumentParser, flatten_arg_list, ReportLibOptions
 from typing import DefaultDict, List, Optional, Set
 
 import logging
@@ -45,7 +45,8 @@ def collapse_stacks(
         annotate_jit: bool,
         include_addrs: bool,
         comm_filter: Set[str],
-        sample_filter: Optional[str]):
+        sample_filter: Optional[str],
+        report_lib_options: ReportLibOptions):
     """read record_file, aggregate per-stack and print totals per-stack"""
     lib = ReportLib()
 
@@ -61,6 +62,7 @@ def collapse_stacks(
         lib.SetKallsymsFile(kallsyms_file)
     if sample_filter:
         lib.SetSampleFilter(sample_filter)
+    lib.SetReportOptions(report_lib_options)
 
     stacks: DefaultDict[str, int] = defaultdict(int)
     event_defaulted = False
@@ -133,6 +135,7 @@ def main():
                                      help='Event type filter e.g. "cpu-cycles" or "instructions"')
     sample_filter_group.add_argument('--comm', nargs='+', action='append', help="""
       Use samples only in threads with selected names.""")
+    parser.add_report_lib_options()
     args = parser.parse_args()
     collapse_stacks(
         record_file=args.record_file,
@@ -146,7 +149,8 @@ def main():
         annotate_jit=args.jit,
         include_addrs=args.addrs,
         comm_filter=set(flatten_arg_list(args.comm)),
-        sample_filter=args.sample_filter)
+        sample_filter=args.sample_filter,
+        report_lib_options=args.report_lib_options)
 
 
 if __name__ == '__main__':

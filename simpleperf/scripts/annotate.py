@@ -195,6 +195,7 @@ class SourceFileAnnotator(object):
                 lib.SetKallsymsFile(self.kallsyms)
             if self.config.get('sample_filter'):
                 lib.SetSampleFilter(self.config.get('sample_filter'))
+            lib.SetReportOptions(self.config['report_lib_options'])
             while True:
                 sample = lib.GetNextSample()
                 if sample is None:
@@ -243,6 +244,7 @@ class SourceFileAnnotator(object):
                 lib.SetKallsymsFile(self.kallsyms)
             if self.config.get('sample_filter'):
                 lib.SetSampleFilter(self.config.get('sample_filter'))
+            lib.SetReportOptions(self.config['report_lib_options'])
             while True:
                 sample = lib.GetNextSample()
                 if sample is None:
@@ -482,6 +484,7 @@ def main():
         Use samples only in threads with selected names.""")
     sample_filter_group.add_argument('--dso', nargs='+', action='append', help="""
         Use samples only in selected binaries.""")
+    parser.add_report_lib_options()
 
     args = parser.parse_args()
     config = {}
@@ -495,6 +498,7 @@ def main():
     config['raw_period'] = args.raw_period
     config['summary_width'] = args.summary_width
     config['sample_filter'] = args.sample_filter
+    config['report_lib_options'] = args.report_lib_options
 
     annotator = SourceFileAnnotator(config)
     annotator.annotate()
