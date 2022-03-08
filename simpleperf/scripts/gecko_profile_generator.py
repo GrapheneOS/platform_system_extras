@@ -30,7 +30,7 @@ import sys
 
 from dataclasses import dataclass, field
 from simpleperf_report_lib import ReportLib
-from simpleperf_utils import BaseArgumentParser, flatten_arg_list
+from simpleperf_utils import BaseArgumentParser, flatten_arg_list, ReportLibOptions
 from typing import List, Dict, Optional, NamedTuple, Set, Tuple
 
 
@@ -297,7 +297,8 @@ def _gecko_profile(
         kallsyms_file: Optional[str],
         proguard_mapping_file: List[str],
         comm_filter: Set[str],
-        sample_filter: Optional[str]) -> GeckoProfile:
+        sample_filter: Optional[str],
+        report_lib_options: ReportLibOptions) -> GeckoProfile:
     """convert a simpleperf profile to gecko format"""
     lib = ReportLib()
 
@@ -311,6 +312,7 @@ def _gecko_profile(
         lib.SetKallsymsFile(kallsyms_file)
     if sample_filter:
         lib.SetSampleFilter(sample_filter)
+    lib.SetReportOptions(report_lib_options)
 
     arch = lib.GetArch()
     meta_info = lib.MetaInfo()
@@ -413,6 +415,7 @@ def main() -> None:
     parser.add_sample_filter_options(sample_filter_group)
     sample_filter_group.add_argument('--comm', nargs='+', action='append', help="""
       Use samples only in threads with selected names.""")
+    parser.add_report_lib_options()
     args = parser.parse_args()
     profile = _gecko_profile(
         record_file=args.record_file,
@@ -420,7 +423,8 @@ def main() -> None:
         kallsyms_file=args.kallsyms,
         proguard_mapping_file=args.proguard_mapping_file,
         comm_filter=set(flatten_arg_list(args.comm)),
-        sample_filter=args.sample_filter)
+        sample_filter=args.sample_filter,
+        report_lib_options=args.report_lib_options)
 
     json.dump(profile, sys.stdout, sort_keys=True)
 
