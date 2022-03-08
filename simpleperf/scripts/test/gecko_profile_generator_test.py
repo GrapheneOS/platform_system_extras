@@ -18,20 +18,22 @@ import json
 import os
 import re
 import tempfile
-from typing import Set
+from typing import List, Optional, Set
 
 from . test_utils import TestBase, TestHelper
 
 
 class TestGeckoProfileGenerator(TestBase):
-    def run_generator(self, testdata_file):
+    def run_generator(self, testdata_file: str, options: Optional[List[str]] = None) -> str:
         testdata_path = TestHelper.testdata_path(testdata_file)
-        gecko_profile_json = self.run_cmd(
-            ['gecko_profile_generator.py', '-i', testdata_path], return_output=True)
-        return json.loads(gecko_profile_json)
+        args = ['gecko_profile_generator.py', '-i', testdata_path]
+        if options:
+            args.extend(options)
+        return self.run_cmd(args, return_output=True)
 
     def test_golden(self):
-        got = self.run_generator('perf_with_interpreter_frames.data')
+        output = self.run_generator('perf_with_interpreter_frames.data')
+        got = json.loads(output)
         golden_path = TestHelper.testdata_path('perf_with_interpreter_frames.gecko.json')
         with open(golden_path) as f:
             want = json.load(f)
@@ -41,8 +43,7 @@ class TestGeckoProfileGenerator(TestBase):
 
     def test_sample_filters(self):
         def get_threads_for_filter(filter: str) -> Set[int]:
-            report = self.run_cmd(['gecko_profile_generator.py', '-i', TestHelper.testdata_path(
-                'perf_display_bitmaps.data')] + filter.split(), return_output=True)
+            report = self.run_generator('perf_display_bitmaps.data', filter.split())
             pattern = re.compile(r'"tid":\s+(\d+),')
             threads = set()
             for m in re.finditer(pattern, report):
@@ -71,3 +72,10 @@ class TestGeckoProfileGenerator(TestBase):
             self.assertIn(31881, threads)
             self.assertNotIn(31850, threads)
         os.unlink(filter_file.name)
+
+    def test_show_art_frames(self):
+        art_frame_str = 'art::interpreter::DoCall'
+        report = self.run_generator('perf_with_interpreter_frames.data')
+        self.assertNotIn(art_frame_str, report)
+        report = self.run_generator('perf_with_interpreter_frames.data', ['--show-art-frames'])
+        self.assertIn(art_frame_str, report)

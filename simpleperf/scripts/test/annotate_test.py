@@ -74,3 +74,10 @@ class TestAnnotate(TestBase):
             filter_file.flush()
             get_report('--filter-file ' + filter_file.name)
         os.unlink(filter_file.name)
+
+    def test_show_art_frames(self):
+        self.run_cmd(
+            ['annotate.py', '-i', TestHelper.testdata_path('perf_with_interpreter_frames.data'),
+             '--show-art-frames'])
+        summary = Path('annotated_files') / 'summary'
+        self.check_strings_in_file(summary, 'total period: 9800649')
