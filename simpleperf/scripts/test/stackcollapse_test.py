@@ -19,90 +19,57 @@ import os
 from pathlib import Path
 import re
 import tempfile
-from typing import Set
+from typing import List, Optional, Set
 
 from . test_utils import TestBase, TestHelper
 
 
 class TestStackCollapse(TestBase):
+    def get_report(self, testdata_file: str, options: Optional[List[str]] = None) -> str:
+        args = ['stackcollapse.py', '-i', TestHelper.testdata_path(testdata_file)]
+        if options:
+            args.extend(options)
+        report = self.run_cmd(args, return_output=True)
+        return report.replace('\r', '')
 
     def test_jit_annotations(self):
-        got = self.run_cmd([
-            'stackcollapse.py',
-            '-i', TestHelper.testdata_path('perf_with_jit_symbol.data'),
-            '--jit',
-        ], return_output=True)
-        got = got.replace('\r', '')
+        got = self.get_report('perf_with_jit_symbol.data', ['--jit'])
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack')
         self.assertEqual(got, Path(golden_path).read_text())
 
     def test_kernel_annotations(self):
-        got = self.run_cmd([
-            'stackcollapse.py',
-            '-i', TestHelper.testdata_path('perf_with_jit_symbol.data'),
-            '--kernel',
-        ], return_output=True)
-        got = got.replace('\r', '')
+        got = self.get_report('perf_with_jit_symbol.data', ['--kernel'])
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack_with_kernel')
         self.assertEqual(got, Path(golden_path).read_text())
 
     def test_with_pid(self):
-        got = self.run_cmd([
-            'stackcollapse.py',
-            '-i', TestHelper.testdata_path('perf_with_jit_symbol.data'),
-            '--jit',
-            '--pid',
-        ], return_output=True)
-        got = got.replace('\r', '')
+        got = self.get_report('perf_with_jit_symbol.data', ['--jit', '--pid'])
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack_with_pid')
         self.assertEqual(got, Path(golden_path).read_text())
 
     def test_with_tid(self):
-        got = self.run_cmd([
-            'stackcollapse.py',
-            '-i', TestHelper.testdata_path('perf_with_jit_symbol.data'),
-            '--jit',
-            '--tid',
-        ], return_output=True)
-        got = got.replace('\r', '')
+        got = self.get_report('perf_with_jit_symbol.data', ['--jit', '--tid'])
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack_with_tid')
         self.assertEqual(got, Path(golden_path).read_text())
 
     def test_two_event_types_chooses_first(self):
-        got = self.run_cmd([
-            'stackcollapse.py',
-            '-i', TestHelper.testdata_path('perf_with_two_event_types.data'),
-        ], return_output=True)
-        got = got.replace('\r', '')
+        got = self.get_report('perf_with_two_event_types.data')
         golden_path = TestHelper.testdata_path('perf_with_two_event_types.foldedstack')
         self.assertEqual(got, Path(golden_path).read_text())
 
     def test_two_event_types_chooses_with_event_filter(self):
-        got = self.run_cmd([
-            'stackcollapse.py',
-            '-i', TestHelper.testdata_path('perf_with_two_event_types.data'),
-            '--event-filter', 'cpu-clock',
-        ], return_output=True)
-        got = got.replace('\r', '')
+        got = self.get_report('perf_with_two_event_types.data', ['--event-filter', 'cpu-clock'])
         golden_path = TestHelper.testdata_path('perf_with_two_event_types.foldedstack_cpu_clock')
         self.assertEqual(got, Path(golden_path).read_text())
 
     def test_unknown_symbol_addrs(self):
-        got = self.run_cmd([
-            'stackcollapse.py',
-            '-i', TestHelper.testdata_path('perf_with_jit_symbol.data'),
-            '--addrs',
-        ], return_output=True)
-        got = got.replace('\r', '')
+        got = self.get_report('perf_with_jit_symbol.data', ['--addrs'])
         golden_path = TestHelper.testdata_path('perf_with_jit_symbol.foldedstack_addrs')
         self.assertEqual(got, Path(golden_path).read_text())
 
     def test_sample_filters(self):
         def get_threads_for_filter(filter: str) -> Set[int]:
-            report = self.run_cmd(
-                ['stackcollapse.py', '-i', TestHelper.testdata_path('perf_display_bitmaps.data'),
-                 '--tid'] + filter.split(),
-                return_output=True)
+            report = self.get_report('perf_display_bitmaps.data', ['--tid'] + filter.split())
             pattern = re.compile(r'-31850/(\d+);')
             threads = set()
             for m in re.finditer(pattern, report):
@@ -129,3 +96,10 @@ class TestStackCollapse(TestBase):
             self.assertIn(31881, threads)
             self.assertNotIn(31850, threads)
         os.unlink(filter_file.name)
+
+    def test_show_art_frames(self):
+        art_frame_str = 'art::interpreter::DoCall'
+        report = self.get_report('perf_with_interpreter_frames.data')
+        self.assertNotIn(art_frame_str, report)
+        report = self.get_report('perf_with_interpreter_frames.data', ['--show-art-frames'])
+        self.assertIn(art_frame_str, report)
