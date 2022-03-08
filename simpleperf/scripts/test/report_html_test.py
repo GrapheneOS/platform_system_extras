@@ -84,6 +84,10 @@ class TestReportHtml(TestBase):
         self.assertIn(original_methodname, json.dumps(record_data))
 
     def get_record_data(self, options: List[str]) -> Dict[str, Any]:
+        json_data = self.get_record_data_string(options)
+        return json.loads(json_data)
+
+    def get_record_data_string(self, options: List[str]) -> str:
         args = ['report_html.py'] + options
         if TestHelper.ndk_path:
             args += ['--ndk_path', TestHelper.ndk_path]
@@ -99,8 +103,7 @@ class TestReportHtml(TestBase):
         start_pos += 1
         end_pos = data.find(end_str, start_pos)
         self.assertNotEqual(end_pos, -1)
-        json_data = data[start_pos:end_pos]
-        return json.loads(json_data)
+        return data[start_pos:end_pos]
 
     def test_add_source_code(self):
         """ Test --add_source_code option. """
@@ -243,3 +246,11 @@ class TestReportHtml(TestBase):
             self.assertIn(31881, threads)
             self.assertNotIn(31850, threads)
         os.unlink(filter_file.name)
+
+    def test_show_art_frames(self):
+        art_frame_str = 'art::interpreter::DoCall'
+        options = ['-i', TestHelper.testdata_path('perf_with_interpreter_frames.data')]
+        report = self.get_record_data_string(options)
+        self.assertNotIn(art_frame_str, report)
+        report = self.get_record_data_string(options + ['--show-art-frames'])
+        self.assertIn(art_frame_str, report)
