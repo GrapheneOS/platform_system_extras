@@ -43,6 +43,7 @@ from functools import cmp_to_key
 simpleperf_path = Path(__file__).absolute().parents[1]
 sys.path.insert(0, str(simpleperf_path))
 import simpleperf_report_lib as sp
+from simpleperf_utils import BaseArgumentParser
 # fmt: on
 
 
@@ -169,8 +170,7 @@ def generate_datasource(args):
     if args.ksyms:
         lib.SetKallsymsFile(args.ksyms)
 
-    if not args.not_art:
-        lib.ShowArtFrames(True)
+    lib.SetReportOptions(args.report_lib_options)
 
     for file_path in args.proguard_mapping_file or []:
         lib.AddProguardMappingFile(file_path)
@@ -268,12 +268,11 @@ def generate_datasource(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = BaseArgumentParser()
     parser.add_argument('-i', '--input_file', type=str, required=True, help='input file')
     parser.add_argument('--title', '-t', type=str, help='document title')
     parser.add_argument('--ksyms', '-k', type=str, help='path to kernel symbols (kallsyms)')
     parser.add_argument('--usyms', '-u', type=str, help='path to tree with user space symbols')
-    parser.add_argument('--not_art', '-a', action='store_true', help='Don\'t show ART symbols')
     parser.add_argument('--output', '-o', type=str, help='output file')
     parser.add_argument('--dont_open', '-d', action='store_true', help='Don\'t open output file')
     parser.add_argument('--include_dso_names', '-n', action='store_true',
@@ -283,6 +282,8 @@ def main():
     parser.add_argument(
         '--proguard-mapping-file', nargs='+',
         help='Add proguard mapping file to de-obfuscate symbols')
+    parser.add_report_lib_options(default_show_art_frames=True)
+
     args = parser.parse_args()
 
     # TODO test hierarchical ranges too

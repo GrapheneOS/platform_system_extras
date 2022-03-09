@@ -81,3 +81,12 @@ class TestInferno(TestBase):
             self.assertIn(31881, threads)
             self.assertNotIn(31850, threads)
         os.unlink(filter_file.name)
+
+    def test_show_art_frames(self):
+        art_frame_str = 'art::interpreter::DoCall'
+        options = ['--record_file',
+                   TestHelper.testdata_path('perf_with_interpreter_frames.data'), '-sc']
+        report = self.get_report(options)
+        self.assertNotIn(art_frame_str, report)
+        report = self.get_report(options + ['--show-art-frames'])
+        self.assertIn(art_frame_str, report)
