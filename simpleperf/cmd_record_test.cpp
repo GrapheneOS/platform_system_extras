@@ -565,10 +565,12 @@ TEST(record_cmd, exit_with_parent_option) {
 TEST(record_cmd, use_cmd_exit_code_option) {
   TemporaryFile tmpfile;
   int exit_code;
-  RecordCmd()->Run({"--use-cmd-exit-code", "-o", tmpfile.path, "ls", "."}, &exit_code);
-  ASSERT_EQ(exit_code, 0);
-  RecordCmd()->Run({"--use-cmd-exit-code", "-o", tmpfile.path, "ls", "/not_exist_path"},
+  RecordCmd()->Run({"-e", GetDefaultEvent(), "--use-cmd-exit-code", "-o", tmpfile.path, "ls", "."},
                    &exit_code);
+  ASSERT_EQ(exit_code, 0);
+  RecordCmd()->Run(
+      {"-e", GetDefaultEvent(), "--use-cmd-exit-code", "-o", tmpfile.path, "ls", "/not_exist_path"},
+      &exit_code);
   ASSERT_NE(exit_code, 0);
 }
 
