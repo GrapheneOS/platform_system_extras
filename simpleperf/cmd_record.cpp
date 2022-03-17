@@ -114,9 +114,7 @@ constexpr size_t DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE = 8 * 1024 * 1024;
 static constexpr size_t kRecordBufferSize = 64 * 1024 * 1024;
 static constexpr size_t kSystemWideRecordBufferSize = 256 * 1024 * 1024;
 
-// If the kernel needs to allocate continuous DMA memory for ETR (like when IOMMU for ETR isn't
-// available), requesting 4M ETR buffer may fail and cause warning. So use 1M buffer here.
-static constexpr size_t kDefaultAuxBufferSize = 1 * 1024 * 1024;
+static constexpr size_t kDefaultAuxBufferSize = 4 * 1024 * 1024;
 
 // On Pixel 3, it takes about 1ms to enable ETM, and 16-40ms to disable ETM and copy 4M ETM data.
 // So make default period to 100ms.
@@ -223,7 +221,7 @@ class RecordCommand : public Command {
 "--aux-buffer-size <buffer_size>  Set aux buffer size, only used in cs-etm event type.\n"
 "                                 Need to be power of 2 and page size aligned.\n"
 "                                 Used memory size is (buffer_size * (cpu_count + 1).\n"
-"                                 Default is 1M.\n"
+"                                 Default is 4M.\n"
 "--no-inherit  Don't record created child threads/processes.\n"
 "--cpu-percent <percent>  Set the max percent of cpu time used for recording.\n"
 "                         percent is in range [1-100], default is 25.\n"
