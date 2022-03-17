@@ -303,8 +303,6 @@ class PprofProfileGenerator(object):
 
         if self.config.get('show_art_frames'):
             self.lib.ShowArtFrames()
-        for file_path in self.config['proguard_mapping_file'] or []:
-            self.lib.AddProguardMappingFile(file_path)
         if self.config.get('sample_filter'):
             self.lib.SetSampleFilter(self.config['sample_filter'])
         self.lib.SetReportOptions(self.config['report_lib_options'])
@@ -635,9 +633,6 @@ def main():
         Maximum depth of samples to be converted.""")  # Large value as infinity standin.
     parser.add_argument('--ndk_path', type=extant_dir, help='Set the path of a ndk release.')
     parser.add_argument(
-        '--proguard-mapping-file', nargs='+',
-        help='Add proguard mapping file to de-obfuscate symbols')
-    parser.add_argument(
         '-j', '--jobs', type=int, default=os.cpu_count(),
         help='Use multithreading to speed up source code annotation.')
     sample_filter_group = parser.add_argument_group('Sample filter options')
@@ -662,7 +657,6 @@ def main():
     config['dso_filters'] = flatten_arg_list(args.dso)
     config['ndk_path'] = args.ndk_path
     config['max_chain_length'] = args.max_chain_length
-    config['proguard_mapping_file'] = args.proguard_mapping_file
     config['sample_filter'] = args.sample_filter
     config['report_lib_options'] = args.report_lib_options
     generator = PprofProfileGenerator(config)

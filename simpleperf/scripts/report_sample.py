@@ -28,7 +28,6 @@ def report_sample(
         symfs_dir: str,
         kallsyms_file: str,
         show_tracing_data: bool,
-        proguard_mapping_file: List[str],
         header: bool,
         comm_filter: Set[str],
         sample_filter: Optional[str],
@@ -37,8 +36,6 @@ def report_sample(
     lib = ReportLib()
 
     lib.ShowIpForUnknownSymbol()
-    for file_path in proguard_mapping_file:
-        lib.AddProguardMappingFile(file_path)
     if symfs_dir is not None:
         lib.SetSymfs(symfs_dir)
     if record_file is not None:
@@ -96,10 +93,6 @@ def main():
     parser.add_argument('-i', '--record_file', nargs='?', default='perf.data',
                         help='Default is perf.data.')
     parser.add_argument('--show_tracing_data', action='store_true', help='print tracing data.')
-    parser.add_argument(
-        '--proguard-mapping-file', nargs='+',
-        help='Add proguard mapping file to de-obfuscate symbols',
-        default=[])
     parser.add_argument('--header', action='store_true',
                         help='Show metadata header, like perf script --header')
     parser.add_argument('--comm', nargs='+', action='append', help="""
@@ -112,7 +105,6 @@ def main():
         symfs_dir=args.symfs,
         kallsyms_file=args.kallsyms,
         show_tracing_data=args.show_tracing_data,
-        proguard_mapping_file=args.proguard_mapping_file,
         header=args.header,
         comm_filter=set(flatten_arg_list(args.comm)),
         sample_filter=args.sample_filter,

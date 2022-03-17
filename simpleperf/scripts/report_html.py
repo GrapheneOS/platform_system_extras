@@ -605,11 +605,10 @@ class RecordData(object):
     def __init__(
             self, binary_cache_path: Optional[str],
             ndk_path: Optional[str],
-            build_addr_hit_map: bool, proguard_mapping_files: Optional[List[str]]):
+            build_addr_hit_map: bool):
         self.binary_cache_path = binary_cache_path
         self.ndk_path = ndk_path
         self.build_addr_hit_map = build_addr_hit_map
-        self.proguard_mapping_files = proguard_mapping_files
         self.meta_info: Optional[Dict[str, str]] = None
         self.cmdline: Optional[str] = None
         self.arch: Optional[str] = None
@@ -631,8 +630,6 @@ class RecordData(object):
         lib.ShowIpForUnknownSymbol()
         if self.binary_cache_path:
             lib.SetSymfs(self.binary_cache_path)
-        for file_path in self.proguard_mapping_files or []:
-            lib.AddProguardMappingFile(file_path)
         if sample_filter:
             lib.SetSampleFilter(sample_filter)
         lib.SetReportOptions(report_lib_options)
@@ -986,9 +983,6 @@ def get_args() -> argparse.Namespace:
     parser.add_argument('--aggregate-by-thread-name', action='store_true', help="""aggregate
                         samples by thread name instead of thread id. This is useful for
                         showing multiple perf.data generated for the same app.""")
-    parser.add_argument(
-        '--proguard-mapping-file', nargs='+',
-        help='Add proguard mapping file to de-obfuscate symbols')
     parser.add_sample_filter_options()
     parser.add_report_lib_options()
     return parser.parse_args()
@@ -1016,8 +1010,7 @@ def main():
         log_exit('Invalid --jobs option.')
 
     # 2. Produce record data.
-    record_data = RecordData(binary_cache_path, ndk_path, build_addr_hit_map,
-                             args.proguard_mapping_file)
+    record_data = RecordData(binary_cache_path, ndk_path, build_addr_hit_map)
     for record_file in args.record_file:
         record_data.load_record_file(record_file, args.report_lib_options, args.sample_filter)
     if args.aggregate_by_thread_name:

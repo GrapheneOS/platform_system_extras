@@ -1004,6 +1004,7 @@ class ArgParseFormatter(
 class ReportLibOptions:
     show_art_frames: bool
     trace_offcpu: str
+    proguard_mapping_files: List[str]
 
 
 class BaseArgumentParser(argparse.ArgumentParser):
@@ -1017,6 +1018,9 @@ class BaseArgumentParser(argparse.ArgumentParser):
                                default_show_art_frames: bool = False):
         self.has_report_lib_options = True
         parser = group if group else self
+        parser.add_argument(
+            '--proguard-mapping-file', nargs='+',
+            help='Add proguard mapping file to de-obfuscate symbols')
         parser.add_argument('--show-art-frames', '--show_art_frames',
                             action=argparse.BooleanOptionalAction, default=default_show_art_frames,
                             help='Show frames of internal methods in the ART Java interpreter.')
@@ -1111,7 +1115,8 @@ class BaseArgumentParser(argparse.ArgumentParser):
             setattr(namespace, 'sample_filter', self._build_sample_filter(namespace))
 
         if self.has_report_lib_options:
-            report_lib_options = ReportLibOptions(namespace.show_art_frames, namespace.trace_offcpu)
+            report_lib_options = ReportLibOptions(
+                namespace.show_art_frames, namespace.trace_offcpu, namespace.proguard_mapping_file)
             setattr(namespace, 'report_lib_options', report_lib_options)
 
         if not Log.initialized:
