@@ -172,9 +172,6 @@ def generate_datasource(args):
 
     lib.SetReportOptions(args.report_lib_options)
 
-    for file_path in args.proguard_mapping_file or []:
-        lib.AddProguardMappingFile(file_path)
-
     product = lib.MetaInfo().get('product_props')
 
     if product:
@@ -279,9 +276,6 @@ def main():
                         help='Include dso names in backtraces')
     parser.add_argument('--include_symbols_addr', '-s', action='store_true',
                         help='Include addresses of symbols in backtraces')
-    parser.add_argument(
-        '--proguard-mapping-file', nargs='+',
-        help='Add proguard mapping file to de-obfuscate symbols')
     parser.add_report_lib_options(default_show_art_frames=True)
 
     args = parser.parse_args()
