@@ -605,13 +605,11 @@ class RecordData(object):
     def __init__(
             self, binary_cache_path: Optional[str],
             ndk_path: Optional[str],
-            build_addr_hit_map: bool, proguard_mapping_files: Optional[List[str]],
-            trace_offcpu: Optional[str]):
+            build_addr_hit_map: bool, proguard_mapping_files: Optional[List[str]]):
         self.binary_cache_path = binary_cache_path
         self.ndk_path = ndk_path
         self.build_addr_hit_map = build_addr_hit_map
         self.proguard_mapping_files = proguard_mapping_files
-        self.trace_offcpu = trace_offcpu
         self.meta_info: Optional[Dict[str, str]] = None
         self.cmdline: Optional[str] = None
         self.arch: Optional[str] = None
@@ -635,8 +633,6 @@ class RecordData(object):
             lib.SetSymfs(self.binary_cache_path)
         for file_path in self.proguard_mapping_files or []:
             lib.AddProguardMappingFile(file_path)
-        if self.trace_offcpu:
-            lib.SetTraceOffCpuMode(self.trace_offcpu)
         if sample_filter:
             lib.SetSampleFilter(sample_filter)
         lib.SetReportOptions(report_lib_options)
@@ -993,7 +989,6 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         '--proguard-mapping-file', nargs='+',
         help='Add proguard mapping file to de-obfuscate symbols')
-    parser.add_trace_offcpu_option()
     parser.add_sample_filter_options()
     parser.add_report_lib_options()
     return parser.parse_args()
@@ -1022,7 +1017,7 @@ def main():
 
     # 2. Produce record data.
     record_data = RecordData(binary_cache_path, ndk_path, build_addr_hit_map,
-                             args.proguard_mapping_file, args.trace_offcpu)
+                             args.proguard_mapping_file)
     for record_file in args.record_file:
         record_data.load_record_file(record_file, args.report_lib_options, args.sample_filter)
     if args.aggregate_by_thread_name:

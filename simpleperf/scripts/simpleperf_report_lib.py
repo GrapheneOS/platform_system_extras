@@ -302,6 +302,8 @@ class ReportLib(object):
         """ Set report options in one call. """
         if options.show_art_frames:
             self.ShowArtFrames(True)
+        if options.trace_offcpu:
+            self.SetTraceOffCpuMode(options.trace_offcpu)
 
     def SetLogSeverity(self, log_level: str = 'info'):
         """ Set log severity of native lib, can be verbose,debug,info,error,fatal."""

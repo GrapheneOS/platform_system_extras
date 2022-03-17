@@ -218,7 +218,7 @@ class TestPprofProtoGenerator(TestBase):
 
         # Read recording file.
         config = {'ndk_path': None, 'max_chain_length': 1000000, 'proguard_mapping_file': None,
-                  'report_lib_options': ReportLibOptions(False)}
+                  'report_lib_options': ReportLibOptions(False, '')}
         generator = PprofProfileGenerator(config)
         generator.load_record_file(testdata_file)
 
