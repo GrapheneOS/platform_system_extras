@@ -19,7 +19,7 @@
 """
 
 from simpleperf_report_lib import ReportLib
-from simpleperf_utils import BaseArgumentParser, flatten_arg_list
+from simpleperf_utils import BaseArgumentParser, flatten_arg_list, ReportLibOptions
 from typing import List, Set, Optional
 
 
@@ -32,7 +32,8 @@ def report_sample(
         header: bool,
         comm_filter: Set[str],
         trace_offcpu: Optional[str],
-        sample_filter: Optional[str]):
+        sample_filter: Optional[str],
+        report_lib_options: ReportLibOptions):
     """ read record_file, and print each sample"""
     lib = ReportLib()
 
@@ -49,6 +50,7 @@ def report_sample(
         lib.SetTraceOffCpuMode(trace_offcpu)
     if sample_filter:
         lib.SetSampleFilter(sample_filter)
+    lib.SetReportOptions(report_lib_options)
 
     if header:
         print("# ========")
@@ -107,6 +109,7 @@ def main():
         Use samples only in threads with selected names.""")
     parser.add_trace_offcpu_option()
     parser.add_sample_filter_options()
+    parser.add_report_lib_options()
     args = parser.parse_args()
     report_sample(
         record_file=args.record_file,
@@ -117,7 +120,8 @@ def main():
         header=args.header,
         comm_filter=set(flatten_arg_list(args.comm)),
         trace_offcpu=args.trace_offcpu,
-        sample_filter=args.sample_filter)
+        sample_filter=args.sample_filter,
+        report_lib_options=args.report_lib_options)
 
 
 if __name__ == '__main__':
