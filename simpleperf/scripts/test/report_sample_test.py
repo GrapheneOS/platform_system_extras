@@ -17,32 +17,27 @@
 import os
 import re
 import tempfile
-from typing import Set
+from typing import List, Optional, Set
 
 from . test_utils import TestBase, TestHelper
 
 
 class TestReportSample(TestBase):
+    def get_record_data_string(self, record_file: str, options: Optional[List[str]] = None):
+        args = ['report_sample.py', '-i', TestHelper.testdata_path(record_file)]
+        if options:
+            args += options
+        report = self.run_cmd(args, return_output=True)
+        return report.replace('\r', '')
 
     def test_no_flags(self):
-        got = self.run_cmd(
-            ['report_sample.py',
-             '-i',
-             TestHelper.testdata_path('perf_display_bitmaps.data')],
-            return_output=True)
-        got = got.replace('\r', '')
+        got = self.get_record_data_string('perf_display_bitmaps.data')
         with open(TestHelper.testdata_path('perf_display_bitmaps.perf-script')) as f:
             want = f.read()
         self.assertEqual(got, want)
 
     def test_comm_filter_to_renderthread(self):
-        got = self.run_cmd(
-            ['report_sample.py',
-             '-i',
-             TestHelper.testdata_path('perf_display_bitmaps.data'),
-             '--comm', 'RenderThread'],
-            return_output=True)
-        got = got.replace('\r', '')
+        got = self.get_record_data_string('perf_display_bitmaps.data', ['--comm', 'RenderThread'])
         self.assertIn('RenderThread', got)
         self.assertNotIn('com.example.android.displayingbitmaps', got)
 
@@ -51,13 +46,8 @@ class TestReportSample(TestBase):
         self.assertEqual(got, want)
 
     def test_comm_filter_to_ui_thread(self):
-        got = self.run_cmd(
-            ['report_sample.py',
-             '-i',
-             TestHelper.testdata_path('perf_display_bitmaps.data'),
-             '--comm', 'com.example.android.displayingbitmaps'],
-            return_output=True)
-        got = got.replace('\r', '')
+        got = self.get_record_data_string('perf_display_bitmaps.data', [
+                                          '--comm', 'com.example.android.displayingbitmaps'])
         self.assertIn('com.example.android.displayingbitmaps', got)
         self.assertNotIn('RenderThread', got)
         with open(TestHelper.testdata_path('perf_display_bitmaps.UiThread.perf-script')) as f:
@@ -65,29 +55,20 @@ class TestReportSample(TestBase):
         self.assertEqual(got, want)
 
     def test_header(self):
-        got = self.run_cmd(
-            ['report_sample.py',
-             '-i',
-             TestHelper.testdata_path('perf_display_bitmaps.data'),
-             '--header'],
-            return_output=True)
-        got = got.replace('\r', '')
+        got = self.get_record_data_string('perf_display_bitmaps.data', ['--header'])
         with open(TestHelper.testdata_path('perf_display_bitmaps.header.perf-script')) as f:
             want = f.read()
         self.assertEqual(got, want)
 
     def test_trace_offcpu(self):
-        got = self.run_cmd(
-            ['report_sample.py', '-i', TestHelper.testdata_path('perf_with_trace_offcpu_v2.data'),
-             '--trace-offcpu', 'on-cpu'], return_output=True)
+        got = self.get_record_data_string('perf_with_trace_offcpu_v2.data', [
+                                          '--trace-offcpu', 'on-cpu'])
         self.assertIn('cpu-clock:u', got)
         self.assertNotIn('sched:sched_switch', got)
 
     def test_sample_filters(self):
         def get_threads_for_filter(filter: str) -> Set[int]:
-            report = self.run_cmd(
-                ['report_sample.py', '-i', TestHelper.testdata_path('perf_display_bitmaps.data')] +
-                filter.split(), return_output=True)
+            report = self.get_record_data_string('perf_display_bitmaps.data', filter.split())
             pattern = re.compile(r'\s+31850/(\d+)\s+')
             threads = set()
             for m in re.finditer(pattern, report):
@@ -116,3 +97,11 @@ class TestReportSample(TestBase):
             self.assertIn(31881, threads)
             self.assertNotIn(31850, threads)
         os.unlink(filter_file.name)
+
+    def test_show_art_frames(self):
+        art_frame_str = 'art::interpreter::DoCall'
+        report = self.get_record_data_string('perf_with_interpreter_frames.data')
+        self.assertNotIn(art_frame_str, report)
+        report = self.get_record_data_string(
+            'perf_with_interpreter_frames.data', ['--show-art-frames'])
+        self.assertIn(art_frame_str, report)

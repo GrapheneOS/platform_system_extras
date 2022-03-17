@@ -37,7 +37,6 @@ def collapse_stacks(
         record_file: str,
         symfs_dir: str,
         kallsyms_file: str,
-        proguard_mapping_file: List[str],
         event_filter: str,
         include_pid: bool,
         include_tid: bool,
@@ -52,8 +51,6 @@ def collapse_stacks(
 
     if include_addrs:
         lib.ShowIpForUnknownSymbol()
-    for file_path in proguard_mapping_file:
-        lib.AddProguardMappingFile(file_path)
     if symfs_dir is not None:
         lib.SetSymfs(symfs_dir)
     if record_file is not None:
@@ -125,10 +122,6 @@ def main():
     parser.add_argument('--jit', action='store_true', help='Annotate JIT functions with a _[j]')
     parser.add_argument('--addrs', action='store_true',
                         help='include raw addresses where symbols can\'t be found')
-    parser.add_argument(
-        '--proguard-mapping-file', nargs='+',
-        help='Add proguard mapping file to de-obfuscate symbols',
-        default=[])
     sample_filter_group = parser.add_argument_group('Sample filter options')
     parser.add_sample_filter_options(sample_filter_group, False)
     sample_filter_group.add_argument('--event-filter', nargs='?', default='',
@@ -141,7 +134,6 @@ def main():
         record_file=args.record_file,
         symfs_dir=args.symfs,
         kallsyms_file=args.kallsyms,
-        proguard_mapping_file=args.proguard_mapping_file,
         event_filter=args.event_filter,
         include_pid=args.pid,
         include_tid=args.tid,
