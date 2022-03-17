@@ -300,8 +300,13 @@ class ReportLib(object):
 
     def SetReportOptions(self, options: ReportLibOptions):
         """ Set report options in one call. """
+        if options.proguard_mapping_files:
+            for file_path in options.proguard_mapping_files:
+                self.AddProguardMappingFile(file_path)
         if options.show_art_frames:
             self.ShowArtFrames(True)
+        if options.trace_offcpu:
+            self.SetTraceOffCpuMode(options.trace_offcpu)
 
     def SetLogSeverity(self, log_level: str = 'info'):
         """ Set log severity of native lib, can be verbose,debug,info,error,fatal."""
