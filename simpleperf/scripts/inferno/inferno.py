@@ -111,10 +111,6 @@ def parse_samples(process, args, sample_filter_fn):
         lib.SetRecordFile(record_file)
     if kallsyms_file:
         lib.SetKallsymsFile(kallsyms_file)
-    for file_path in args.proguard_mapping_file or []:
-        lib.AddProguardMappingFile(file_path)
-    if args.trace_offcpu:
-        lib.SetTraceOffCpuMode(args.trace_offcpu)
     if args.sample_filter:
         lib.SetSampleFilter(args.sample_filter)
     lib.SetReportOptions(args.report_lib_options)
@@ -312,9 +308,6 @@ def main():
     report_group.add_argument('--symfs', help="""Set the path to find binaries with symbols and
                               debug info.""")
     report_group.add_argument('--title', help='Show a title in the report.')
-    report_group.add_argument('--proguard-mapping-file', nargs='+',
-                              help='Add proguard mapping file to de-obfuscate symbols')
-    parser.add_trace_offcpu_option(report_group)
     parser.add_sample_filter_options(report_group, False)
     parser.add_report_lib_options(report_group)
 
