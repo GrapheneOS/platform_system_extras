@@ -1070,40 +1070,38 @@ class BaseArgumentParser(argparse.ArgumentParser):
         self.has_sample_filter_options = True
         self.sample_filter_with_pid_shortcut = with_pid_shortcut
 
-    def _build_sample_filter(self, args: argparse.Namespace) -> Optional[str]:
-        """ Convert sample filter options into a sample filter string, which can be passed to
-            ReportLib.SetSampleFilter().
-        """
+    def _build_sample_filter(self, args: argparse.Namespace) -> List[str]:
+        """ Build sample filters, which can be passed to ReportLib.SetSampleFilter(). """
         filters = []
         if args.exclude_pid:
-            filters.append('--exclude-pid ' + ','.join(str(pid) for pid in args.exclude_pid))
+            filters.extend(['--exclude-pid', ','.join(str(pid) for pid in args.exclude_pid)])
         if args.exclude_tid:
-            filters.append('--exclude-tid ' + ','.join(str(tid) for tid in args.exclude_tid))
+            filters.extend(['--exclude-tid', ','.join(str(tid) for tid in args.exclude_tid)])
         if args.exclude_process_name:
             for name in args.exclude_process_name:
-                filters.append('--exclude-process-name ' + name)
+                filters.extend(['--exclude-process-name', name])
         if args.exclude_thread_name:
             for name in args.exclude_thread_name:
-                filters.append('--exclude-thread-name ' + name)
+                filters.extend(['--exclude-thread-name', name])
 
         if args.include_pid:
-            filters.append('--include-pid ' + ','.join(str(pid) for pid in args.include_pid))
+            filters.extend(['--include-pid', ','.join(str(pid) for pid in args.include_pid)])
         if args.include_tid:
-            filters.append('--include-tid ' + ','.join(str(tid) for tid in args.include_tid))
+            filters.extend(['--include-tid', ','.join(str(tid) for tid in args.include_tid)])
         if self.sample_filter_with_pid_shortcut:
             if args.pid:
-                filters.append('--include-pid ' + ','.join(str(pid) for pid in args.pid))
+                filters.extend(['--include-pid', ','.join(str(pid) for pid in args.pid)])
             if args.tid:
-                filters.append('--include-tid ' + ','.join(str(pid) for pid in args.tid))
+                filters.extend(['--include-tid', ','.join(str(pid) for pid in args.tid)])
         if args.include_process_name:
             for name in args.include_process_name:
-                filters.append('--include-process-name ' + name)
+                filters.extend(['--include-process-name', name])
         if args.include_thread_name:
             for name in args.include_thread_name:
-                filters.append('--include-thread-name ' + name)
+                filters.extend(['--include-thread-name', name])
         if args.filter_file:
-            filters.append('--filter-file ' + args.filter_file)
-        return ' '.join(filters)
+            filters.extend(['--filter-file', args.filter_file])
+        return filters
 
     def parse_known_args(self, *args, **kwargs):
         self.add_argument(
