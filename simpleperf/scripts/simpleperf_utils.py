@@ -1065,7 +1065,8 @@ class BaseArgumentParser(argparse.ArgumentParser):
             '--include-process-name', metavar='process_name_regex', nargs='+',
             help='only include samples for processes with name containing the regular expression')
         group.add_argument(
-            '--include-thread-name', metavar='thread_name_regex', nargs='+',
+            '--comm', '--include-thread-name', metavar='thread_name_regex',
+            dest='include_thread_name', nargs='+',
             help='only include samples for threads with name containing the regular expression')
         group.add_argument(
             '--filter-file', metavar='file',

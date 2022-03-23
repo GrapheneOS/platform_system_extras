@@ -29,7 +29,6 @@ def report_sample(
         kallsyms_file: str,
         show_tracing_data: bool,
         header: bool,
-        comm_filter: Set[str],
         report_lib_options: ReportLibOptions):
     """ read record_file, and print each sample"""
     lib = ReportLib()
@@ -57,9 +56,6 @@ def report_sample(
         if sample is None:
             lib.Close()
             break
-        if comm_filter:
-            if sample.thread_comm not in comm_filter:
-                continue
         event = lib.GetEventOfCurrentSample()
         symbol = lib.GetSymbolOfCurrentSample()
         callchain = lib.GetCallChainOfCurrentSample()
@@ -92,8 +88,6 @@ def main():
     parser.add_argument('--show_tracing_data', action='store_true', help='print tracing data.')
     parser.add_argument('--header', action='store_true',
                         help='Show metadata header, like perf script --header')
-    parser.add_argument('--comm', nargs='+', action='append', help="""
-        Use samples only in threads with selected names.""")
     parser.add_report_lib_options()
     args = parser.parse_args()
     report_sample(
@@ -102,7 +96,6 @@ def main():
         kallsyms_file=args.kallsyms,
         show_tracing_data=args.show_tracing_data,
         header=args.header,
-        comm_filter=set(flatten_arg_list(args.comm)),
         report_lib_options=args.report_lib_options)
 
 

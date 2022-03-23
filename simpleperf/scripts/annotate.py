@@ -146,7 +146,7 @@ class SourceFileAnnotator(object):
 
     def __init__(self, config):
         # check config variables
-        config_names = ['perf_data_list', 'source_dirs', 'comm_filters', 'dso_filters', 'ndk_path']
+        config_names = ['perf_data_list', 'source_dirs', 'dso_filters', 'ndk_path']
         for name in config_names:
             if name not in config:
                 log_exit('config [%s] is missing' % name)
@@ -161,7 +161,6 @@ class SourceFileAnnotator(object):
         self.config = config
         self.symfs_dir = symfs_dir
         self.kallsyms = kallsyms
-        self.comm_filter = set(config['comm_filters']) if config.get('comm_filters') else None
         self.dso_filter = set(config['dso_filters']) if config.get('dso_filters') else None
 
         config['annotate_dest_dir'] = 'annotated_files'
@@ -199,8 +198,6 @@ class SourceFileAnnotator(object):
                 if sample is None:
                     lib.Close()
                     break
-                if not self._filter_sample(sample):
-                    continue
                 symbols = []
                 symbols.append(lib.GetSymbolOfCurrentSample())
                 callchain = lib.GetCallChainOfCurrentSample()
@@ -213,13 +210,6 @@ class SourceFileAnnotator(object):
                                                 symbol.vaddr_in_file)
                         self.addr2line.add_addr(symbol.dso_name, build_id, symbol.symbol_addr,
                                                 symbol.symbol_addr)
-
-    def _filter_sample(self, sample):
-        """Return true if the sample can be used."""
-        if self.comm_filter:
-            if sample.thread_comm not in self.comm_filter:
-                return False
-        return True
 
     def _filter_symbol(self, symbol):
         if not self.dso_filter or symbol.dso_name in self.dso_filter:
@@ -246,8 +236,6 @@ class SourceFileAnnotator(object):
                 if sample is None:
                     lib.Close()
                     break
-                if not self._filter_sample(sample):
-                    continue
                 self._generate_periods_for_sample(lib, sample)
 
     def _generate_periods_for_sample(self, lib, sample):
@@ -475,8 +463,6 @@ def main():
                         help='show raw period instead of percentage')
     parser.add_argument('--summary-width', type=int, default=80, help='max width of summary file')
     sample_filter_group = parser.add_argument_group('Sample filter options')
-    sample_filter_group.add_argument('--comm', nargs='+', action='append', help="""
-        Use samples only in threads with selected names.""")
     sample_filter_group.add_argument('--dso', nargs='+', action='append', help="""
         Use samples only in selected binaries.""")
     parser.add_report_lib_options(sample_filter_group=sample_filter_group)
@@ -487,7 +473,6 @@ def main():
     if not config['perf_data_list']:
         config['perf_data_list'].append('perf.data')
     config['source_dirs'] = flatten_arg_list(args.source_dirs)
-    config['comm_filters'] = flatten_arg_list(args.comm)
     config['dso_filters'] = flatten_arg_list(args.dso)
     config['ndk_path'] = args.ndk_path
     config['raw_period'] = args.raw_period

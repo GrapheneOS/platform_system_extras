@@ -270,7 +270,6 @@ class PprofProfileGenerator(object):
         config['binary_cache_dir'] = 'binary_cache'
         if not os.path.isdir(config['binary_cache_dir']):
             config['binary_cache_dir'] = None
-        self.comm_filter = set(config['comm_filters']) if config.get('comm_filters') else None
         self.dso_filter = set(config['dso_filters']) if config.get('dso_filters') else None
         self.max_chain_length = config['max_chain_length']
         self.profile = profile_pb2.Profile()
@@ -326,9 +325,6 @@ class PprofProfileGenerator(object):
             symbol = self.lib.GetSymbolOfCurrentSample()
             callchain = self.lib.GetCallChainOfCurrentSample()
 
-            if not self._filter_report_sample(report_sample):
-                continue
-
             sample_type_id = self.get_sample_type_id(event.name)
             sample = Sample()
             sample.add_value(sample_type_id, 1)
@@ -375,13 +371,6 @@ class PprofProfileGenerator(object):
             self.gen_profile_function(function)
 
         return self.profile
-
-    def _filter_report_sample(self, sample):
-        """Return true if the sample can be used."""
-        if self.comm_filter:
-            if sample.thread_comm not in self.comm_filter:
-                return False
-        return True
 
     def _filter_symbol(self, symbol):
         if not self.dso_filter or symbol.dso_name in self.dso_filter:
@@ -634,8 +623,6 @@ def main():
         '-j', '--jobs', type=int, default=os.cpu_count(),
         help='Use multithreading to speed up source code annotation.')
     sample_filter_group = parser.add_argument_group('Sample filter options')
-    sample_filter_group.add_argument('--comm', nargs='+', action='append', help="""
-        Use samples only in threads with selected names.""")
     sample_filter_group.add_argument('--dso', nargs='+', action='append', help="""
         Use samples only in selected binaries.""")
     parser.add_report_lib_options(sample_filter_group=sample_filter_group)
@@ -650,7 +637,6 @@ def main():
 
     config = {}
     config['output_file'] = args.output_file
-    config['comm_filters'] = flatten_arg_list(args.comm)
     config['dso_filters'] = flatten_arg_list(args.dso)
     config['ndk_path'] = args.ndk_path
     config['max_chain_length'] = args.max_chain_length
