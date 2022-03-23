@@ -307,6 +307,8 @@ class ReportLib(object):
             self.ShowArtFrames(True)
         if options.trace_offcpu:
             self.SetTraceOffCpuMode(options.trace_offcpu)
+        if options.sample_filters:
+            self.SetSampleFilter(options.sample_filters)
 
     def SetLogSeverity(self, log_level: str = 'info'):
         """ Set log severity of native lib, can be verbose,debug,info,error,fatal."""

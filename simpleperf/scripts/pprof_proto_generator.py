@@ -303,8 +303,6 @@ class PprofProfileGenerator(object):
 
         if self.config.get('show_art_frames'):
             self.lib.ShowArtFrames()
-        if self.config.get('sample_filter'):
-            self.lib.SetSampleFilter(self.config['sample_filter'])
         self.lib.SetReportOptions(self.config['report_lib_options'])
 
         comments = [
@@ -636,12 +634,11 @@ def main():
         '-j', '--jobs', type=int, default=os.cpu_count(),
         help='Use multithreading to speed up source code annotation.')
     sample_filter_group = parser.add_argument_group('Sample filter options')
-    parser.add_sample_filter_options(sample_filter_group)
     sample_filter_group.add_argument('--comm', nargs='+', action='append', help="""
         Use samples only in threads with selected names.""")
     sample_filter_group.add_argument('--dso', nargs='+', action='append', help="""
         Use samples only in selected binaries.""")
-    parser.add_report_lib_options()
+    parser.add_report_lib_options(sample_filter_group=sample_filter_group)
 
     args = parser.parse_args()
     if args.show:
@@ -657,7 +654,6 @@ def main():
     config['dso_filters'] = flatten_arg_list(args.dso)
     config['ndk_path'] = args.ndk_path
     config['max_chain_length'] = args.max_chain_length
-    config['sample_filter'] = args.sample_filter
     config['report_lib_options'] = args.report_lib_options
     generator = PprofProfileGenerator(config)
     for record_file in args.record_file:

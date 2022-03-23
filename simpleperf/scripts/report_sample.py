@@ -30,7 +30,6 @@ def report_sample(
         show_tracing_data: bool,
         header: bool,
         comm_filter: Set[str],
-        sample_filter: Optional[str],
         report_lib_options: ReportLibOptions):
     """ read record_file, and print each sample"""
     lib = ReportLib()
@@ -42,8 +41,6 @@ def report_sample(
         lib.SetRecordFile(record_file)
     if kallsyms_file is not None:
         lib.SetKallsymsFile(kallsyms_file)
-    if sample_filter:
-        lib.SetSampleFilter(sample_filter)
     lib.SetReportOptions(report_lib_options)
 
     if header:
@@ -97,7 +94,6 @@ def main():
                         help='Show metadata header, like perf script --header')
     parser.add_argument('--comm', nargs='+', action='append', help="""
         Use samples only in threads with selected names.""")
-    parser.add_sample_filter_options()
     parser.add_report_lib_options()
     args = parser.parse_args()
     report_sample(
@@ -107,7 +103,6 @@ def main():
         show_tracing_data=args.show_tracing_data,
         header=args.header,
         comm_filter=set(flatten_arg_list(args.comm)),
-        sample_filter=args.sample_filter,
         report_lib_options=args.report_lib_options)
 
 

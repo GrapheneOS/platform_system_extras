@@ -296,7 +296,6 @@ def _gecko_profile(
         symfs_dir: Optional[str],
         kallsyms_file: Optional[str],
         comm_filter: Set[str],
-        sample_filter: Optional[str],
         report_lib_options: ReportLibOptions) -> GeckoProfile:
     """convert a simpleperf profile to gecko format"""
     lib = ReportLib()
@@ -307,8 +306,6 @@ def _gecko_profile(
     lib.SetRecordFile(record_file)
     if kallsyms_file is not None:
         lib.SetKallsymsFile(kallsyms_file)
-    if sample_filter:
-        lib.SetSampleFilter(sample_filter)
     lib.SetReportOptions(report_lib_options)
 
     arch = lib.GetArch()
@@ -405,17 +402,15 @@ def main() -> None:
     parser.add_argument('-i', '--record_file', nargs='?', default='perf.data',
                         help='Default is perf.data.')
     sample_filter_group = parser.add_argument_group('Sample filter options')
-    parser.add_sample_filter_options(sample_filter_group)
     sample_filter_group.add_argument('--comm', nargs='+', action='append', help="""
       Use samples only in threads with selected names.""")
-    parser.add_report_lib_options()
+    parser.add_report_lib_options(sample_filter_group=sample_filter_group)
     args = parser.parse_args()
     profile = _gecko_profile(
         record_file=args.record_file,
         symfs_dir=args.symfs,
         kallsyms_file=args.kallsyms,
         comm_filter=set(flatten_arg_list(args.comm)),
-        sample_filter=args.sample_filter,
         report_lib_options=args.report_lib_options)
 
     json.dump(profile, sys.stdout, sort_keys=True)

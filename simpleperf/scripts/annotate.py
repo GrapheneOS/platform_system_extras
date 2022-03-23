@@ -193,8 +193,6 @@ class SourceFileAnnotator(object):
                 lib.SetSymfs(self.symfs_dir)
             if self.kallsyms:
                 lib.SetKallsymsFile(self.kallsyms)
-            if self.config.get('sample_filter'):
-                lib.SetSampleFilter(self.config.get('sample_filter'))
             lib.SetReportOptions(self.config['report_lib_options'])
             while True:
                 sample = lib.GetNextSample()
@@ -242,8 +240,6 @@ class SourceFileAnnotator(object):
                 lib.SetSymfs(self.symfs_dir)
             if self.kallsyms:
                 lib.SetKallsymsFile(self.kallsyms)
-            if self.config.get('sample_filter'):
-                lib.SetSampleFilter(self.config.get('sample_filter'))
             lib.SetReportOptions(self.config['report_lib_options'])
             while True:
                 sample = lib.GetNextSample()
@@ -479,12 +475,11 @@ def main():
                         help='show raw period instead of percentage')
     parser.add_argument('--summary-width', type=int, default=80, help='max width of summary file')
     sample_filter_group = parser.add_argument_group('Sample filter options')
-    parser.add_sample_filter_options(sample_filter_group)
     sample_filter_group.add_argument('--comm', nargs='+', action='append', help="""
         Use samples only in threads with selected names.""")
     sample_filter_group.add_argument('--dso', nargs='+', action='append', help="""
         Use samples only in selected binaries.""")
-    parser.add_report_lib_options()
+    parser.add_report_lib_options(sample_filter_group=sample_filter_group)
 
     args = parser.parse_args()
     config = {}
@@ -497,7 +492,6 @@ def main():
     config['ndk_path'] = args.ndk_path
     config['raw_period'] = args.raw_period
     config['summary_width'] = args.summary_width
-    config['sample_filter'] = args.sample_filter
     config['report_lib_options'] = args.report_lib_options
 
     annotator = SourceFileAnnotator(config)

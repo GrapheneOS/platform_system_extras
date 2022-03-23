@@ -1005,6 +1005,7 @@ class ReportLibOptions:
     show_art_frames: bool
     trace_offcpu: str
     proguard_mapping_files: List[str]
+    sample_filters: List[str]
 
 
 class BaseArgumentParser(argparse.ArgumentParser):
@@ -1015,7 +1016,9 @@ class BaseArgumentParser(argparse.ArgumentParser):
         self.has_report_lib_options = False
 
     def add_report_lib_options(self, group: Optional[Any] = None,
-                               default_show_art_frames: bool = False):
+                               default_show_art_frames: bool = False,
+                               sample_filter_group: Optional[Any] = None,
+                               sample_filter_with_pid_shortcut: bool = True):
         self.has_report_lib_options = True
         parser = group if group else self
         parser.add_argument(
@@ -1032,8 +1035,9 @@ class BaseArgumentParser(argparse.ArgumentParser):
                     mixed-on-off-cpu (on-cpu and off-cpu samples using the same event name).
                     If not set, mixed-on-off-cpu mode is used.
                 """)
+        self._add_sample_filter_options(sample_filter_group, sample_filter_with_pid_shortcut)
 
-    def add_sample_filter_options(
+    def _add_sample_filter_options(
             self, group: Optional[Any] = None, with_pid_shortcut: bool = True):
         if not group:
             group = self.add_argument_group('Sample filter options')
@@ -1109,12 +1113,11 @@ class BaseArgumentParser(argparse.ArgumentParser):
             default='info', help='set log level')
         namespace, left_args = super().parse_known_args(*args, **kwargs)
 
-        if self.has_sample_filter_options:
-            setattr(namespace, 'sample_filter', self._build_sample_filter(namespace))
-
         if self.has_report_lib_options:
+            sample_filters = self._build_sample_filter(namespace)
             report_lib_options = ReportLibOptions(
-                namespace.show_art_frames, namespace.trace_offcpu, namespace.proguard_mapping_file)
+                namespace.show_art_frames, namespace.trace_offcpu, namespace.proguard_mapping_file,
+                sample_filters)
             setattr(namespace, 'report_lib_options', report_lib_options)
 
         if not Log.initialized:
