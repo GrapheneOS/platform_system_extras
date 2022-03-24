@@ -58,7 +58,7 @@ cc_defaults {
                 "-DFEC_NO_KLOG",
             ],
         },
-        linux_glibc: {
+        host_linux: {
             sanitize: {
                 misc_undefined: ["integer"],
             },
