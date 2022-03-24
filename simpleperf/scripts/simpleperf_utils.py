@@ -1005,6 +1005,7 @@ class ReportLibOptions:
     show_art_frames: bool
     trace_offcpu: str
     proguard_mapping_files: List[str]
+    sample_filters: List[str]
 
 
 class BaseArgumentParser(argparse.ArgumentParser):
@@ -1015,7 +1016,9 @@ class BaseArgumentParser(argparse.ArgumentParser):
         self.has_report_lib_options = False
 
     def add_report_lib_options(self, group: Optional[Any] = None,
-                               default_show_art_frames: bool = False):
+                               default_show_art_frames: bool = False,
+                               sample_filter_group: Optional[Any] = None,
+                               sample_filter_with_pid_shortcut: bool = True):
         self.has_report_lib_options = True
         parser = group if group else self
         parser.add_argument(
@@ -1032,8 +1035,9 @@ class BaseArgumentParser(argparse.ArgumentParser):
                     mixed-on-off-cpu (on-cpu and off-cpu samples using the same event name).
                     If not set, mixed-on-off-cpu mode is used.
                 """)
+        self._add_sample_filter_options(sample_filter_group, sample_filter_with_pid_shortcut)
 
-    def add_sample_filter_options(
+    def _add_sample_filter_options(
             self, group: Optional[Any] = None, with_pid_shortcut: bool = True):
         if not group:
             group = self.add_argument_group('Sample filter options')
@@ -1061,7 +1065,8 @@ class BaseArgumentParser(argparse.ArgumentParser):
             '--include-process-name', metavar='process_name_regex', nargs='+',
             help='only include samples for processes with name containing the regular expression')
         group.add_argument(
-            '--include-thread-name', metavar='thread_name_regex', nargs='+',
+            '--comm', '--include-thread-name', metavar='thread_name_regex',
+            dest='include_thread_name', nargs='+',
             help='only include samples for threads with name containing the regular expression')
         group.add_argument(
             '--filter-file', metavar='file',
@@ -1070,40 +1075,38 @@ class BaseArgumentParser(argparse.ArgumentParser):
         self.has_sample_filter_options = True
         self.sample_filter_with_pid_shortcut = with_pid_shortcut
 
-    def _build_sample_filter(self, args: argparse.Namespace) -> Optional[str]:
-        """ Convert sample filter options into a sample filter string, which can be passed to
-            ReportLib.SetSampleFilter().
-        """
+    def _build_sample_filter(self, args: argparse.Namespace) -> List[str]:
+        """ Build sample filters, which can be passed to ReportLib.SetSampleFilter(). """
         filters = []
         if args.exclude_pid:
-            filters.append('--exclude-pid ' + ','.join(str(pid) for pid in args.exclude_pid))
+            filters.extend(['--exclude-pid', ','.join(str(pid) for pid in args.exclude_pid)])
         if args.exclude_tid:
-            filters.append('--exclude-tid ' + ','.join(str(tid) for tid in args.exclude_tid))
+            filters.extend(['--exclude-tid', ','.join(str(tid) for tid in args.exclude_tid)])
         if args.exclude_process_name:
             for name in args.exclude_process_name:
-                filters.append('--exclude-process-name ' + name)
+                filters.extend(['--exclude-process-name', name])
         if args.exclude_thread_name:
             for name in args.exclude_thread_name:
-                filters.append('--exclude-thread-name ' + name)
+                filters.extend(['--exclude-thread-name', name])
 
         if args.include_pid:
-            filters.append('--include-pid ' + ','.join(str(pid) for pid in args.include_pid))
+            filters.extend(['--include-pid', ','.join(str(pid) for pid in args.include_pid)])
         if args.include_tid:
-            filters.append('--include-tid ' + ','.join(str(tid) for tid in args.include_tid))
+            filters.extend(['--include-tid', ','.join(str(tid) for tid in args.include_tid)])
         if self.sample_filter_with_pid_shortcut:
             if args.pid:
-                filters.append('--include-pid ' + ','.join(str(pid) for pid in args.pid))
+                filters.extend(['--include-pid', ','.join(str(pid) for pid in args.pid)])
             if args.tid:
-                filters.append('--include-tid ' + ','.join(str(pid) for pid in args.tid))
+                filters.extend(['--include-tid', ','.join(str(pid) for pid in args.tid)])
         if args.include_process_name:
             for name in args.include_process_name:
-                filters.append('--include-process-name ' + name)
+                filters.extend(['--include-process-name', name])
         if args.include_thread_name:
             for name in args.include_thread_name:
-                filters.append('--include-thread-name ' + name)
+                filters.extend(['--include-thread-name', name])
         if args.filter_file:
-            filters.append('--filter-file ' + args.filter_file)
-        return ' '.join(filters)
+            filters.extend(['--filter-file', args.filter_file])
+        return filters
 
     def parse_known_args(self, *args, **kwargs):
         self.add_argument(
@@ -1111,12 +1114,11 @@ class BaseArgumentParser(argparse.ArgumentParser):
             default='info', help='set log level')
         namespace, left_args = super().parse_known_args(*args, **kwargs)
 
-        if self.has_sample_filter_options:
-            setattr(namespace, 'sample_filter', self._build_sample_filter(namespace))
-
         if self.has_report_lib_options:
+            sample_filters = self._build_sample_filter(namespace)
             report_lib_options = ReportLibOptions(
-                namespace.show_art_frames, namespace.trace_offcpu, namespace.proguard_mapping_file)
+                namespace.show_art_frames, namespace.trace_offcpu, namespace.proguard_mapping_file,
+                sample_filters)
             setattr(namespace, 'report_lib_options', report_lib_options)
 
         if not Log.initialized:
