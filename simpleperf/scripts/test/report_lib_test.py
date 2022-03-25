@@ -16,7 +16,7 @@
 
 import os
 import tempfile
-from typing import Set
+from typing import List, Set
 
 from simpleperf_report_lib import ReportLib
 from . test_utils import TestBase, TestHelper
@@ -275,34 +275,39 @@ class TestReportLib(TestBase):
 
     def test_set_sample_filter(self):
         """ Test using ReportLib.SetSampleFilter(). """
-        def get_threads_for_filter(filter: str) -> Set[int]:
+        def get_threads_for_filter(filters: List[str]) -> Set[int]:
             self.report_lib.Close()
             self.report_lib = ReportLib()
             self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_display_bitmaps.data'))
-            self.report_lib.SetSampleFilter(filter)
+            self.report_lib.SetSampleFilter(filters)
             threads = set()
             while self.report_lib.GetNextSample():
                 sample = self.report_lib.GetCurrentSample()
                 threads.add(sample.tid)
             return threads
 
-        self.assertNotIn(31850, get_threads_for_filter('--exclude-pid 31850'))
-        self.assertIn(31850, get_threads_for_filter('--include-pid 31850'))
-        self.assertNotIn(31881, get_threads_for_filter('--exclude-tid 31881'))
-        self.assertIn(31881, get_threads_for_filter('--include-tid 31881'))
+        self.assertNotIn(31850, get_threads_for_filter(['--exclude-pid', '31850']))
+        self.assertIn(31850, get_threads_for_filter(['--include-pid', '31850']))
+        self.assertNotIn(31881, get_threads_for_filter(['--exclude-tid', '31881']))
+        self.assertIn(31881, get_threads_for_filter(['--include-tid', '31881']))
         self.assertNotIn(31881, get_threads_for_filter(
-            '--exclude-process-name com.example.android.displayingbitmaps'))
+            ['--exclude-process-name', 'com.example.android.displayingbitmaps']))
         self.assertIn(31881, get_threads_for_filter(
-            '--include-process-name com.example.android.displayingbitmaps'))
+            ['--include-process-name', 'com.example.android.displayingbitmaps']))
         self.assertNotIn(31850, get_threads_for_filter(
-            '--exclude-thread-name com.example.android.displayingbitmaps'))
+            ['--exclude-thread-name', 'com.example.android.displayingbitmaps']))
         self.assertIn(31850, get_threads_for_filter(
-            '--include-thread-name com.example.android.displayingbitmaps'))
+            ['--include-thread-name', 'com.example.android.displayingbitmaps']))
+
+        # Check that thread name can have space.
+        self.assertNotIn(31856, get_threads_for_filter(
+            ['--exclude-thread-name', 'Jit thread pool']))
+        self.assertIn(31856, get_threads_for_filter(['--include-thread-name', 'Jit thread pool']))
 
         with tempfile.NamedTemporaryFile('w', delete=False) as filter_file:
             filter_file.write('GLOBAL_BEGIN 684943449406175\nGLOBAL_END 684943449406176')
             filter_file.flush()
-            threads = get_threads_for_filter('--filter-file ' + filter_file.name)
+            threads = get_threads_for_filter(['--filter-file', filter_file.name])
             self.assertIn(31881, threads)
             self.assertNotIn(31850, threads)
         os.unlink(filter_file.name)
