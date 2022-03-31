@@ -25,6 +25,11 @@ cc_binary_host {
                 misc_undefined: ["integer"],
             },
         },
+        linux_musl_x86_64: {
+            sanitize: {
+                misc_undefined: ["integer"],
+            },
+        },
         linux: {
             static_libs: [
                 "libavb",
