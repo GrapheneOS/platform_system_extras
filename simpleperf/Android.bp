@@ -131,6 +131,9 @@ cc_defaults {
         linux_glibc_x86_64: {
             stl: "libc++_static",
         },
+        linux_musl_x86_64: {
+            stl: "libc++_static",
+        },
         windows: {
             enabled: true,
             stl: "libc++_static",
@@ -434,6 +437,16 @@ cc_binary {
                 dir: "simpleperf/linux/x86_64",
             },
         },
+        linux_musl_x86: {
+            dist: {
+                dir: "simpleperf/linux_musl/x86",
+            },
+        },
+        linux_musl_x86_64: {
+            dist: {
+                dir: "simpleperf/linux_musl/x86_64",
+            },
+        },
         windows_x86: {
             dist: {
                 dir: "simpleperf/windows/x86",
@@ -516,6 +529,16 @@ cc_library_shared {
         linux_glibc_x86_64: {
             dist: {
                 dir: "simpleperf/linux/x86_64",
+            },
+        },
+        linux_musl_x86: {
+            dist: {
+                dir: "simpleperf/linux_musl/x86",
+            },
+        },
+        linux_musl_x86_64: {
+            dist: {
+                dir: "simpleperf/linux_musl/x86_64",
             },
         },
         windows_x86: {
