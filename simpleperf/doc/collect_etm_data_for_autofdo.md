@@ -94,7 +94,7 @@ Then we can use a.prof for PGO during compilation, via `-fprofile-sample-use=a.p
 ## Collect ETM data with a daemon
 
 Android also has a daemon collecting ETM data periodically. It only runs on userdebug and eng
-devices. The source code is in `<aosp-top>/system/extras/profcollectd`.
+devices. The source code is in https://android.googlesource.com/platform/system/extras/+/master/profcollectd/.
 
 ## Support ETM in the kernel
 
@@ -107,20 +107,36 @@ The Coresight driver can be enabled by below kernel configs:
 	CONFIG_CORESIGHT=y
 	CONFIG_CORESIGHT_LINK_AND_SINK_TMC=y
 	CONFIG_CORESIGHT_SOURCE_ETM4X=y
-	CONFIG_CORESIGHT_DYNAMIC_REPLICATOR=y
 ```
 
-On Kernel 5.10+, we can build Coresight driver as kernel modules instead.
+On Kernel 5.10+, we recommend building Coresight driver as kernel modules. Because it works with
+GKI kernel.
 
-Android common kernel 5.10+ should have all the Coresight patches needed. And we have backported
-necessary Coresight patches to Android common kernel 4.14 and 4.19. Android common kernel 5.4
-misses a few patches. Please create an [ndk issue](https://github.com/android/ndk/issues) if you
-need ETM function on 5.4 kernel.
+```config
+	CONFIG_CORESIGHT=m
+	CONFIG_CORESIGHT_LINK_AND_SINK_TMC=m
+	CONFIG_CORESIGHT_SOURCE_ETM4X=m
+```
+
+Android common kernel 5.10+ should have all the Coresight patches needed to collect ETM data.
+Android common kernel 5.4 misses two patches. But by adding patches in
+https://android-review.googlesource.com/q/topic:test_etm_on_hikey960_5.4, we can collect ETM data
+on hikey960 with 5.4 kernel.
+For Android common kernel 4.14 and 4.19, we have backported all necessary Coresight patches.
 
 Besides Coresight driver, we also need to add Coresight devices in device tree. An example is in
 https://github.com/torvalds/linux/blob/master/arch/arm64/boot/dts/arm/juno-base.dtsi. There should
 be a path flowing ETM data from ETM device through funnels, ETF and replicators, all the way to
 ETR, which writes ETM data to system memory.
+
+One optional flag in ETM device tree is "arm,coresight-loses-context-with-cpu". It saves ETM
+registers when a CPU enters low power state. It may be needed to avoid
+"coresight_disclaim_device_unlocked" warning when doing system wide collection.
+
+One optional flag in ETR device tree is "arm,scatter-gather". Simpleperf requests 4M system memory
+for ETR to store ETM data. Without IOMMU, the memory needs to be contiguous. If the kernel can't
+fulfill the request, simpleperf will report out of memory error. Fortunately, we can use
+"arm,scatter-gather" flag to let ETR run in scatter gather mode, which uses non-contiguous memory.
 
 ## Enable ETM in the bootloader
 
