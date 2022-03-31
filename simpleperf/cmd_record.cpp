@@ -629,25 +629,26 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   }
   IOEventLoop* loop = event_selection_set_.GetIOEventLoop();
   auto exit_loop_callback = [loop]() { return loop->ExitLoop(); };
-  if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM}, exit_loop_callback)) {
+  if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM}, exit_loop_callback, IOEventHighPriority)) {
     return false;
   }
 
   // Only add an event for SIGHUP if we didn't inherit SIG_IGN (e.g. from nohup).
   if (!SignalIsIgnored(SIGHUP)) {
-    if (!loop->AddSignalEvent(SIGHUP, exit_loop_callback)) {
+    if (!loop->AddSignalEvent(SIGHUP, exit_loop_callback, IOEventHighPriority)) {
       return false;
     }
   }
   if (stop_signal_fd_ != -1) {
-    if (!loop->AddReadEvent(stop_signal_fd_, exit_loop_callback)) {
+    if (!loop->AddReadEvent(stop_signal_fd_, exit_loop_callback, IOEventHighPriority)) {
       return false;
     }
   }
 
   if (duration_in_sec_ != 0) {
-    if (!loop->AddPeriodicEvent(SecondToTimeval(duration_in_sec_),
-                                [loop]() { return loop->ExitLoop(); })) {
+    if (!loop->AddPeriodicEvent(
+            SecondToTimeval(duration_in_sec_), [loop]() { return loop->ExitLoop(); },
+            IOEventHighPriority)) {
       return false;
     }
   }
