@@ -291,6 +291,10 @@ bool MonitorCommand::DoMonitoring() {
   if (!event_selection_set_.GetIOEventLoop()->RunLoop()) {
     return false;
   }
+  if (!event_selection_set_.SyncKernelBuffer()) {
+    return false;
+  }
+  event_selection_set_.CloseEventFiles();
   if (!event_selection_set_.FinishReadMmapEventData()) {
     return false;
   }
