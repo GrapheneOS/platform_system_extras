@@ -629,25 +629,26 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   }
   IOEventLoop* loop = event_selection_set_.GetIOEventLoop();
   auto exit_loop_callback = [loop]() { return loop->ExitLoop(); };
-  if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM}, exit_loop_callback)) {
+  if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM}, exit_loop_callback, IOEventHighPriority)) {
     return false;
   }
 
   // Only add an event for SIGHUP if we didn't inherit SIG_IGN (e.g. from nohup).
   if (!SignalIsIgnored(SIGHUP)) {
-    if (!loop->AddSignalEvent(SIGHUP, exit_loop_callback)) {
+    if (!loop->AddSignalEvent(SIGHUP, exit_loop_callback, IOEventHighPriority)) {
       return false;
     }
   }
   if (stop_signal_fd_ != -1) {
-    if (!loop->AddReadEvent(stop_signal_fd_, exit_loop_callback)) {
+    if (!loop->AddReadEvent(stop_signal_fd_, exit_loop_callback, IOEventHighPriority)) {
       return false;
     }
   }
 
   if (duration_in_sec_ != 0) {
-    if (!loop->AddPeriodicEvent(SecondToTimeval(duration_in_sec_),
-                                [loop]() { return loop->ExitLoop(); })) {
+    if (!loop->AddPeriodicEvent(
+            SecondToTimeval(duration_in_sec_), [loop]() { return loop->ExitLoop(); },
+            IOEventHighPriority)) {
       return false;
     }
   }
@@ -718,9 +719,10 @@ bool RecordCommand::DoRecording(Workload* workload) {
     return false;
   }
   time_stat_.stop_recording_time = GetSystemClock();
-  if (!event_selection_set_.FinishReadMmapEventData()) {
+  if (!event_selection_set_.SyncKernelBuffer()) {
     return false;
   }
+  event_selection_set_.CloseEventFiles();
   time_stat_.finish_recording_time = GetSystemClock();
   uint64_t recording_time = time_stat_.finish_recording_time - time_stat_.start_recording_time;
   LOG(INFO) << "Recorded for " << recording_time / 1e9 << " seconds. Start post processing.";
@@ -754,26 +756,31 @@ static bool WriteRecordDataToOutFd(const std::string& in_filename,
 }
 
 bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
-  // 1. Merge map records dumped while recording by map record thread.
+  // 1. Read records left in the buffer.
+  if (!event_selection_set_.FinishReadMmapEventData()) {
+    return false;
+  }
+
+  // 2. Merge map records dumped while recording by map record thread.
   if (map_record_thread_) {
     if (!map_record_thread_->Join() || !MergeMapRecords()) {
       return false;
     }
   }
 
-  // 2. Post unwind dwarf callchain.
+  // 3. Post unwind dwarf callchain.
   if (unwind_dwarf_callchain_ && post_unwind_) {
     if (!PostUnwindRecords()) {
       return false;
     }
   }
 
-  // 3. Optionally join Callchains.
+  // 4. Optionally join Callchains.
   if (callchain_joiner_) {
     JoinCallChains();
   }
 
-  // 4. Dump additional features, and close record file.
+  // 5. Dump additional features, and close record file.
   if (!DumpAdditionalFeatures(args)) {
     return false;
   }
@@ -785,7 +792,7 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
   }
   time_stat_.post_process_time = GetSystemClock();
 
-  // 4. Show brief record result.
+  // 6. Show brief record result.
   auto record_stat = event_selection_set_.GetRecordStat();
   if (event_selection_set_.HasAuxTrace()) {
     LOG(INFO) << "Aux data traced: " << record_stat.aux_data_size;
