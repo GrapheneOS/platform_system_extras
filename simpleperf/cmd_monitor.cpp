@@ -266,21 +266,22 @@ bool MonitorCommand::PrepareMonitoring() {
   // 5. Add read/signal/periodic Events.
   IOEventLoop* loop = event_selection_set_.GetIOEventLoop();
   auto exit_loop_callback = [loop]() { return loop->ExitLoop(); };
-  if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM}, exit_loop_callback)) {
+  if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM}, exit_loop_callback, IOEventHighPriority)) {
     return false;
   }
 
   // Only add an event for SIGHUP if we didn't inherit SIG_IGN (e.g. from
   // nohup).
   if (!SignalIsIgnored(SIGHUP)) {
-    if (!loop->AddSignalEvent(SIGHUP, exit_loop_callback)) {
+    if (!loop->AddSignalEvent(SIGHUP, exit_loop_callback, IOEventHighPriority)) {
       return false;
     }
   }
 
   if (duration_in_sec_ != 0) {
-    if (!loop->AddPeriodicEvent(SecondToTimeval(duration_in_sec_),
-                                [loop]() { return loop->ExitLoop(); })) {
+    if (!loop->AddPeriodicEvent(
+            SecondToTimeval(duration_in_sec_), [loop]() { return loop->ExitLoop(); },
+            IOEventHighPriority)) {
       return false;
     }
   }
@@ -291,6 +292,10 @@ bool MonitorCommand::DoMonitoring() {
   if (!event_selection_set_.GetIOEventLoop()->RunLoop()) {
     return false;
   }
+  if (!event_selection_set_.SyncKernelBuffer()) {
+    return false;
+  }
+  event_selection_set_.CloseEventFiles();
   if (!event_selection_set_.FinishReadMmapEventData()) {
     return false;
   }
