@@ -1285,8 +1285,9 @@ bool RecordCommand::CreateAndInitRecordFile() {
     return false;
   }
   // Use first perf_event_attr and first event id to dump mmap and comm records.
-  EventAttrWithId dumping_attr_id = event_selection_set_.GetEventAttrWithId()[0];
-  map_record_reader_.emplace(*dumping_attr_id.attr, dumping_attr_id.ids[0],
+  dumping_attr_id_ = event_selection_set_.GetEventAttrWithId()[0];
+  CHECK(!dumping_attr_id_.ids.empty());
+  map_record_reader_.emplace(*dumping_attr_id_.attr, dumping_attr_id_.ids[0],
                              event_selection_set_.RecordNotExecutableMaps());
   map_record_reader_->SetCallback([this](Record* r) { return ProcessRecord(r); });
 
@@ -1510,14 +1511,13 @@ bool RecordCommand::SaveRecordWithoutUnwinding(Record* record) {
 
 bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_info,
                                         bool sync_kernel_records) {
-  EventAttrWithId attr_id = event_selection_set_.GetEventAttrWithId()[0];
   for (auto& info : debug_info) {
     if (info.type == JITDebugInfo::JIT_DEBUG_JIT_CODE) {
       uint64_t timestamp =
           jit_debug_reader_->SyncWithRecords() ? info.timestamp : last_record_timestamp_;
-      Mmap2Record record(*attr_id.attr, false, info.pid, info.pid, info.jit_code_addr,
+      Mmap2Record record(*dumping_attr_id_.attr, false, info.pid, info.pid, info.jit_code_addr,
                          info.jit_code_len, info.file_offset, map_flags::PROT_JIT_SYMFILE_MAP,
-                         info.file_path, attr_id.ids[0], timestamp);
+                         info.file_path, dumping_attr_id_.ids[0], timestamp);
       if (!ProcessRecord(&record)) {
         return false;
       }
@@ -1526,8 +1526,9 @@ bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_i
         ThreadMmap& map = *info.extracted_dex_file_map;
         uint64_t timestamp =
             jit_debug_reader_->SyncWithRecords() ? info.timestamp : last_record_timestamp_;
-        Mmap2Record record(*attr_id.attr, false, info.pid, info.pid, map.start_addr, map.len,
-                           map.pgoff, map.prot, map.name, attr_id.ids[0], timestamp);
+        Mmap2Record record(*dumping_attr_id_.attr, false, info.pid, info.pid, map.start_addr,
+                           map.len, map.pgoff, map.prot, map.name, dumping_attr_id_.ids[0],
+                           timestamp);
         if (!ProcessRecord(&record)) {
           return false;
         }
