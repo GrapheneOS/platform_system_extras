@@ -840,14 +840,7 @@ bool EventSelectionSet::ReadMmapEventData(bool with_time_limit) {
 }
 
 bool EventSelectionSet::FinishReadMmapEventData() {
-  // Stop the read thread, so we don't get more records beyond current time.
-  if (!SyncKernelBuffer() || !record_read_thread_->StopReadThread()) {
-    return false;
-  }
-  if (!ReadMmapEventData(false)) {
-    return false;
-  }
-  return true;
+  return ReadMmapEventData(false);
 }
 
 void EventSelectionSet::CloseEventFiles() {
