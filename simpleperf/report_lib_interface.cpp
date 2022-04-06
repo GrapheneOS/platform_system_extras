@@ -199,7 +199,7 @@ class ReportLib {
   }
   const char* GetSupportedTraceOffCpuModes();
   bool SetTraceOffCpuMode(const char* mode);
-  bool SetSampleFilter(const char* filter);
+  bool SetSampleFilter(const char** filters, int filters_len);
 
   Sample* GetNextSample();
   Event* GetEventOfCurrentSample() { return &current_event_; }
@@ -296,8 +296,11 @@ bool ReportLib::SetTraceOffCpuMode(const char* mode) {
   return true;
 }
 
-bool ReportLib::SetSampleFilter(const char* filter) {
-  std::vector<std::string> args = android::base::Split(filter, " ");
+bool ReportLib::SetSampleFilter(const char** filters, int filters_len) {
+  std::vector<std::string> args;
+  for (int i = 0; i < filters_len; i++) {
+    args.emplace_back(filters[i]);
+  }
   OptionFormatMap option_formats = GetRecordFilterOptionFormats(false);
   OptionValueMap options;
   std::vector<std::pair<OptionName, OptionValue>> ordered_options;
@@ -595,7 +598,7 @@ void MergeJavaMethods(ReportLib* report_lib, bool merge) EXPORT;
 bool AddProguardMappingFile(ReportLib* report_lib, const char* mapping_file) EXPORT;
 const char* GetSupportedTraceOffCpuModes(ReportLib* report_lib) EXPORT;
 bool SetTraceOffCpuMode(ReportLib* report_lib, const char* mode) EXPORT;
-bool SetSampleFilter(ReportLib* report_lib, const char* filter) EXPORT;
+bool SetSampleFilter(ReportLib* report_lib, const char** filters, int filters_len) EXPORT;
 
 Sample* GetNextSample(ReportLib* report_lib) EXPORT;
 Event* GetEventOfCurrentSample(ReportLib* report_lib) EXPORT;
@@ -656,8 +659,8 @@ bool SetTraceOffCpuMode(ReportLib* report_lib, const char* mode) {
   return report_lib->SetTraceOffCpuMode(mode);
 }
 
-bool SetSampleFilter(ReportLib* report_lib, const char* filter) {
-  return report_lib->SetSampleFilter(filter);
+bool SetSampleFilter(ReportLib* report_lib, const char** filters, int filters_len) {
+  return report_lib->SetSampleFilter(filters, filters_len);
 }
 
 Sample* GetNextSample(ReportLib* report_lib) {

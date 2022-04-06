@@ -114,9 +114,7 @@ constexpr size_t DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE = 8 * 1024 * 1024;
 static constexpr size_t kRecordBufferSize = 64 * 1024 * 1024;
 static constexpr size_t kSystemWideRecordBufferSize = 256 * 1024 * 1024;
 
-// If the kernel needs to allocate continuous DMA memory for ETR (like when IOMMU for ETR isn't
-// available), requesting 4M ETR buffer may fail and cause warning. So use 1M buffer here.
-static constexpr size_t kDefaultAuxBufferSize = 1 * 1024 * 1024;
+static constexpr size_t kDefaultAuxBufferSize = 4 * 1024 * 1024;
 
 // On Pixel 3, it takes about 1ms to enable ETM, and 16-40ms to disable ETM and copy 4M ETM data.
 // So make default period to 100ms.
@@ -223,7 +221,7 @@ class RecordCommand : public Command {
 "--aux-buffer-size <buffer_size>  Set aux buffer size, only used in cs-etm event type.\n"
 "                                 Need to be power of 2 and page size aligned.\n"
 "                                 Used memory size is (buffer_size * (cpu_count + 1).\n"
-"                                 Default is 1M.\n"
+"                                 Default is 4M.\n"
 "--no-inherit  Don't record created child threads/processes.\n"
 "--cpu-percent <percent>  Set the max percent of cpu time used for recording.\n"
 "                         percent is in range [1-100], default is 25.\n"
@@ -631,25 +629,26 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   }
   IOEventLoop* loop = event_selection_set_.GetIOEventLoop();
   auto exit_loop_callback = [loop]() { return loop->ExitLoop(); };
-  if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM}, exit_loop_callback)) {
+  if (!loop->AddSignalEvents({SIGCHLD, SIGINT, SIGTERM}, exit_loop_callback, IOEventHighPriority)) {
     return false;
   }
 
   // Only add an event for SIGHUP if we didn't inherit SIG_IGN (e.g. from nohup).
   if (!SignalIsIgnored(SIGHUP)) {
-    if (!loop->AddSignalEvent(SIGHUP, exit_loop_callback)) {
+    if (!loop->AddSignalEvent(SIGHUP, exit_loop_callback, IOEventHighPriority)) {
       return false;
     }
   }
   if (stop_signal_fd_ != -1) {
-    if (!loop->AddReadEvent(stop_signal_fd_, exit_loop_callback)) {
+    if (!loop->AddReadEvent(stop_signal_fd_, exit_loop_callback, IOEventHighPriority)) {
       return false;
     }
   }
 
   if (duration_in_sec_ != 0) {
-    if (!loop->AddPeriodicEvent(SecondToTimeval(duration_in_sec_),
-                                [loop]() { return loop->ExitLoop(); })) {
+    if (!loop->AddPeriodicEvent(
+            SecondToTimeval(duration_in_sec_), [loop]() { return loop->ExitLoop(); },
+            IOEventHighPriority)) {
       return false;
     }
   }
@@ -720,9 +719,10 @@ bool RecordCommand::DoRecording(Workload* workload) {
     return false;
   }
   time_stat_.stop_recording_time = GetSystemClock();
-  if (!event_selection_set_.FinishReadMmapEventData()) {
+  if (!event_selection_set_.SyncKernelBuffer()) {
     return false;
   }
+  event_selection_set_.CloseEventFiles();
   time_stat_.finish_recording_time = GetSystemClock();
   uint64_t recording_time = time_stat_.finish_recording_time - time_stat_.start_recording_time;
   LOG(INFO) << "Recorded for " << recording_time / 1e9 << " seconds. Start post processing.";
@@ -756,26 +756,31 @@ static bool WriteRecordDataToOutFd(const std::string& in_filename,
 }
 
 bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
-  // 1. Merge map records dumped while recording by map record thread.
+  // 1. Read records left in the buffer.
+  if (!event_selection_set_.FinishReadMmapEventData()) {
+    return false;
+  }
+
+  // 2. Merge map records dumped while recording by map record thread.
   if (map_record_thread_) {
     if (!map_record_thread_->Join() || !MergeMapRecords()) {
       return false;
     }
   }
 
-  // 2. Post unwind dwarf callchain.
+  // 3. Post unwind dwarf callchain.
   if (unwind_dwarf_callchain_ && post_unwind_) {
     if (!PostUnwindRecords()) {
       return false;
     }
   }
 
-  // 3. Optionally join Callchains.
+  // 4. Optionally join Callchains.
   if (callchain_joiner_) {
     JoinCallChains();
   }
 
-  // 4. Dump additional features, and close record file.
+  // 5. Dump additional features, and close record file.
   if (!DumpAdditionalFeatures(args)) {
     return false;
   }
@@ -787,7 +792,7 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
   }
   time_stat_.post_process_time = GetSystemClock();
 
-  // 4. Show brief record result.
+  // 6. Show brief record result.
   auto record_stat = event_selection_set_.GetRecordStat();
   if (event_selection_set_.HasAuxTrace()) {
     LOG(INFO) << "Aux data traced: " << record_stat.aux_data_size;
@@ -1280,8 +1285,9 @@ bool RecordCommand::CreateAndInitRecordFile() {
     return false;
   }
   // Use first perf_event_attr and first event id to dump mmap and comm records.
-  EventAttrWithId dumping_attr_id = event_selection_set_.GetEventAttrWithId()[0];
-  map_record_reader_.emplace(*dumping_attr_id.attr, dumping_attr_id.ids[0],
+  dumping_attr_id_ = event_selection_set_.GetEventAttrWithId()[0];
+  CHECK(!dumping_attr_id_.ids.empty());
+  map_record_reader_.emplace(*dumping_attr_id_.attr, dumping_attr_id_.ids[0],
                              event_selection_set_.RecordNotExecutableMaps());
   map_record_reader_->SetCallback([this](Record* r) { return ProcessRecord(r); });
 
@@ -1505,14 +1511,13 @@ bool RecordCommand::SaveRecordWithoutUnwinding(Record* record) {
 
 bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_info,
                                         bool sync_kernel_records) {
-  EventAttrWithId attr_id = event_selection_set_.GetEventAttrWithId()[0];
   for (auto& info : debug_info) {
     if (info.type == JITDebugInfo::JIT_DEBUG_JIT_CODE) {
       uint64_t timestamp =
           jit_debug_reader_->SyncWithRecords() ? info.timestamp : last_record_timestamp_;
-      Mmap2Record record(*attr_id.attr, false, info.pid, info.pid, info.jit_code_addr,
+      Mmap2Record record(*dumping_attr_id_.attr, false, info.pid, info.pid, info.jit_code_addr,
                          info.jit_code_len, info.file_offset, map_flags::PROT_JIT_SYMFILE_MAP,
-                         info.file_path, attr_id.ids[0], timestamp);
+                         info.file_path, dumping_attr_id_.ids[0], timestamp);
       if (!ProcessRecord(&record)) {
         return false;
       }
@@ -1521,8 +1526,9 @@ bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_i
         ThreadMmap& map = *info.extracted_dex_file_map;
         uint64_t timestamp =
             jit_debug_reader_->SyncWithRecords() ? info.timestamp : last_record_timestamp_;
-        Mmap2Record record(*attr_id.attr, false, info.pid, info.pid, map.start_addr, map.len,
-                           map.pgoff, map.prot, map.name, attr_id.ids[0], timestamp);
+        Mmap2Record record(*dumping_attr_id_.attr, false, info.pid, info.pid, map.start_addr,
+                           map.len, map.pgoff, map.prot, map.name, dumping_attr_id_.ids[0],
+                           timestamp);
         if (!ProcessRecord(&record)) {
           return false;
         }

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (C) 2018 The Android Open Source Project
 #
@@ -165,7 +165,7 @@ def ConstructE2fsCommands(args):
 
   if args.flash_erase_block_size:
     mke2fs_extended_opts.append("stripe_width={}".format(
-        int(args.flash_erase_block_size) / BLOCKSIZE))
+        int(args.flash_erase_block_size) // BLOCKSIZE))
   if args.flash_logical_block_size:
     # stride should be the max of 8kb and the logical block size
     stride = max(int(args.flash_logical_block_size), 8192)

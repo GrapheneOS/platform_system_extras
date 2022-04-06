@@ -144,7 +144,8 @@ static inline uint64_t GetSystemClock() {
 
 #if defined(__ANDROID__)
 bool IsInAppUid();
-#else
+#endif
+#if !defined(__ANDROID__) && !defined(ANDROID_HOST_MUSL)
 static inline int gettid() {
   return syscall(__NR_gettid);
 }
