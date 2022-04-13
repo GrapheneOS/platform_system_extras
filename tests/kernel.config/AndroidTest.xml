@@ -26,7 +26,7 @@
     </target_preparer>
     <!-- Make sure there is some data in the pstore then reboot -->
     <target_preparer class="com.android.tradefed.targetprep.RunCommandTargetPreparer">
-        <option name="run-command" value="echo HELLOWORLD >/dev/pmsg0" />
+        <option name="run-command" value="if [ -e /dev/pmsg0 ] ; then echo HELLOWORLD > /dev/pmsg0; fi" />
         <option name="throw-if-cmd-fail" value="true" />
     </target_preparer>
     <target_preparer class="com.android.tradefed.targetprep.RebootTargetPreparer" />
