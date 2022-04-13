@@ -47,8 +47,8 @@ def build_metadata_block(verity_table, signature, verity_disable=False):
     return block
 
 def sign_verity_table(table, signer_path, key_path, signer_args=None):
-    with tempfile.NamedTemporaryFile(suffix='.table') as table_file:
-        with tempfile.NamedTemporaryFile(suffix='.sig') as signature_file:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.table') as table_file:
+        with tempfile.NamedTemporaryFile(mode='r', suffix='.sig') as signature_file:
             table_file.write(table)
             table_file.flush()
             if signer_args is None:
