@@ -43,12 +43,12 @@ def build_metadata_block(verity_table, signature, verity_disable=False):
     magic = MAGIC_DISABLE if verity_disable else MAGIC_NUMBER
     block = struct.pack("II256sI", magic, VERSION, signature, table_len)
     block += verity_table
-    block = block.ljust(METADATA_SIZE, '\x00')
+    block = block.ljust(METADATA_SIZE, b'\x00')
     return block
 
 def sign_verity_table(table, signer_path, key_path, signer_args=None):
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.table') as table_file:
-        with tempfile.NamedTemporaryFile(mode='r', suffix='.sig') as signature_file:
+    with tempfile.NamedTemporaryFile(mode='wb', suffix='.table') as table_file:
+        with tempfile.NamedTemporaryFile(mode='rb', suffix='.sig') as signature_file:
             table_file.write(table)
             table_file.flush()
             if signer_args is None:
@@ -70,7 +70,7 @@ def build_verity_table(block_device, data_blocks, root_hash, salt):
                 data_blocks,
                 root_hash,
                 salt)
-    return table
+    return table.encode()
 
 def build_verity_metadata(data_blocks, metadata_image, root_hash, salt,
         block_device, signer_path, signing_key, signer_args=None,
