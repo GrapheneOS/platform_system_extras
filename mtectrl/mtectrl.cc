@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
   if (argc != 2) {
     std::cerr
         << "Usage: " << argv[0]
-        << " [none|memtag|memtag_once|memtag_kernel|memtag_kernel_once]\n";
+        << " none|memtag|memtag-once|memtag-kernel|memtag-kernel-once[,...]\n";
     return 1;
   }
   std::string value = argv[1];
