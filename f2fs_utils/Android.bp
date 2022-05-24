@@ -30,6 +30,7 @@ cc_library_shared {
 
     include_dirs: [
         "external/f2fs-tools/include",
+        "bionic/libc",
     ],
 
     export_include_dirs: ["."],
@@ -48,6 +49,7 @@ cc_binary {
 
     include_dirs: [
         "external/f2fs-tools/include",
+        "bionic/libc",
     ],
 }
 
