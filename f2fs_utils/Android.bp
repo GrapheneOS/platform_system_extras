@@ -53,7 +53,7 @@ cc_binary {
     ],
 }
 
-sh_binary {
+sh_binary_host {
     name: "mkf2fsuserimg.sh",
 
     src: "mkf2fsuserimg.sh",
@@ -61,5 +61,4 @@ sh_binary {
         "make_f2fs",
         "sload_f2fs",
     ],
-    host_supported: true,
 }
