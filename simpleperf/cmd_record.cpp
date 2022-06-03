@@ -352,7 +352,8 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
   bool TraceOffCpu();
   bool SetEventSelectionFlags();
   bool CreateAndInitRecordFile();
-  std::unique_ptr<RecordFileWriter> CreateRecordFile(const std::string& filename);
+  std::unique_ptr<RecordFileWriter> CreateRecordFile(
+      const std::string& filename, const std::vector<EventAttrWithId>& override_attrs);
   bool DumpKernelSymbol();
   bool DumpTracingData();
   bool DumpMaps();
@@ -1280,7 +1281,8 @@ bool RecordCommand::SetEventSelectionFlags() {
 }
 
 bool RecordCommand::CreateAndInitRecordFile() {
-  record_file_writer_ = CreateRecordFile(record_filename_);
+  record_file_writer_ =
+      CreateRecordFile(record_filename_, event_selection_set_.GetEventAttrWithId());
   if (record_file_writer_ == nullptr) {
     return false;
   }
@@ -1294,13 +1296,14 @@ bool RecordCommand::CreateAndInitRecordFile() {
   return DumpKernelSymbol() && DumpTracingData() && DumpMaps() && DumpAuxTraceInfo();
 }
 
-std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(const std::string& filename) {
+std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(
+    const std::string& filename, const std::vector<EventAttrWithId>& attrs) {
   std::unique_ptr<RecordFileWriter> writer = RecordFileWriter::CreateInstance(filename);
   if (writer == nullptr) {
     return nullptr;
   }
 
-  if (!writer->WriteAttrSection(event_selection_set_.GetEventAttrWithId())) {
+  if (!writer->WriteAttrSection(attrs)) {
     return nullptr;
   }
   return writer;
@@ -1697,11 +1700,17 @@ std::unique_ptr<RecordFileReader> RecordCommand::MoveRecordFile(const std::strin
       return nullptr;
     }
   }
-  record_file_writer_ = CreateRecordFile(record_filename_);
+
+  auto reader = RecordFileReader::CreateInstance(old_filename);
+  if (!reader) {
+    return nullptr;
+  }
+
+  record_file_writer_ = CreateRecordFile(record_filename_, reader->AttrSection());
   if (!record_file_writer_) {
     return nullptr;
   }
-  return RecordFileReader::CreateInstance(old_filename);
+  return reader;
 }
 
 bool RecordCommand::MergeMapRecords() {
