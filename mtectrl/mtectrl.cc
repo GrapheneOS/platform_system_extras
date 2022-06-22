@@ -39,6 +39,8 @@ int main(int argc, char** argv) {
       m.memtag_mode |= MISC_MEMTAG_MODE_MEMTAG_KERNEL;
     } else if (field == "memtag-kernel-once") {
       m.memtag_mode |= MISC_MEMTAG_MODE_MEMTAG_KERNEL_ONCE;
+    } else if (field == "memtag-off") {
+      m.memtag_mode |= MISC_MEMTAG_MODE_MEMTAG_OFF;
     } else if (field != "none") {
       LOG(ERROR) << "Unknown value for arm64.memtag.bootctl: " << field;
       return 1;
