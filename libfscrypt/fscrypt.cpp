@@ -85,7 +85,8 @@ static bool LookupModeById(const std::vector<struct ModeLookupEntry>& modes, int
     return false;
 }
 
-bool fscrypt_is_native() {
+// Returns true if FBE (File Based Encryption) is enabled.
+bool IsFbeEnabled() {
     char value[PROPERTY_VALUE_MAX];
     property_get("ro.crypto.type", value, "none");
     return !strcmp(value, "file");
