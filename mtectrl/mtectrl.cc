@@ -21,15 +21,16 @@
 #include <iostream>
 
 int main(int argc, char** argv) {
-  if (argc != 2) {
-    std::cerr
-        << "Usage: " << argv[0]
-        << " none|memtag|memtag-once|memtag-kernel|memtag-kernel-once[,...]\n";
-    return 1;
-  }
+    if (argc != 2 && argc != 3) {
+        std::cerr << "Usage: " << argv[0]
+                  << " none|memtag|memtag-once|memtag-kernel|memtag-kernel-once[,.."
+                     ".] [default|force_on|force_off]\n";
+        return 1;
+    }
   std::string value = argv[1];
   misc_memtag_message m = {.version = MISC_MEMTAG_MESSAGE_VERSION,
                            .magic = MISC_MEMTAG_MAGIC_HEADER};
+  bool valid_value = true;
   for (const auto& field : android::base::Split(value, ",")) {
     if (field == "memtag") {
       m.memtag_mode |= MISC_MEMTAG_MODE_MEMTAG;
@@ -42,17 +43,48 @@ int main(int argc, char** argv) {
     } else if (field == "memtag-off") {
       m.memtag_mode |= MISC_MEMTAG_MODE_MEMTAG_OFF;
     } else if (field != "none") {
-      LOG(ERROR) << "Unknown value for arm64.memtag.bootctl: " << field;
-      return 1;
+      LOG(ERROR) << "Unknown value for mode: " << field;
+      valid_value = false;
+      m = {.version = MISC_MEMTAG_MESSAGE_VERSION, .magic = MISC_MEMTAG_MAGIC_HEADER};
+      break;
     }
+  }
+  bool valid_override = true;
+  std::string override_value;
+  if (argc == 3) {
+    override_value = argv[2];
+  }
+  if (override_value == "force_off") {
+    // If the force_off override is active, only allow MEMTAG_MODE_MEMTAG_ONCE.
+    m.memtag_mode |= MISC_MEMTAG_MODE_MEMTAG_OFF;
+    m.memtag_mode &= ~MISC_MEMTAG_MODE_MEMTAG;
+  } else if (override_value == "force_on") {
+    m.memtag_mode |= MISC_MEMTAG_MODE_MEMTAG;
+    m.memtag_mode &= ~MISC_MEMTAG_MODE_MEMTAG_OFF;
+  } else if (!override_value.empty() && override_value != "default") {
+    LOG(ERROR) << "Unknown value for override: " << override_value;
+    valid_override = false;
+  }
+  if (!valid_value && !valid_override) {
+    return 1;
   }
   std::string err;
   if (!WriteMiscMemtagMessage(m, &err)) {
-    LOG(ERROR) << "Failed to apply arm64.memtag.bootctl: " << value << ". "
-               << err;
+    LOG(ERROR) << "Failed to apply mode: " << value << ", override: " << override_value << err;
     return 1;
   } else {
-    LOG(INFO) << "Applied arm64.memtag.bootctl: " << value;
-    return 0;
+    const char* parse_error = "";
+    const char* verb = "Applied";
+    if (!valid_value) {
+      parse_error = " (invalid mode)";
+      verb = "Partially applied";
+    } else if (!valid_override) {
+      // else if because we bail out if both are false above.
+      parse_error = " (invalid override)";
+      verb = "Partially applied";
+    }
+    LOG(INFO) << verb << " mode: " << value << ", "
+              << "override: " << override_value << parse_error;
+    return !valid_value || !valid_override;
   }
 }
