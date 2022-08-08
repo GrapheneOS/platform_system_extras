@@ -372,8 +372,7 @@ bool ReportSampleCommand::DumpProtobufReport(const std::string& filename) {
   // files[file_id] is the number of symbols in the file.
   std::vector<uint32_t> files;
   uint32_t max_message_size = 64 * (1 << 20);
-  uint32_t warning_message_size = 512 * (1 << 20);
-  coded_is.SetTotalBytesLimit(max_message_size, warning_message_size);
+  coded_is.SetTotalBytesLimit(max_message_size);
   while (true) {
     uint32_t size;
     if (!coded_is.ReadLittleEndian32(&size)) {
@@ -386,7 +385,7 @@ bool ReportSampleCommand::DumpProtobufReport(const std::string& filename) {
     // Handle files having large symbol table.
     if (size > max_message_size) {
       max_message_size = size;
-      coded_is.SetTotalBytesLimit(max_message_size, warning_message_size);
+      coded_is.SetTotalBytesLimit(max_message_size);
     }
     auto limit = coded_is.PushLimit(size);
     proto::Record proto_record;
