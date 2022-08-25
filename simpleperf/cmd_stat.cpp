@@ -141,8 +141,8 @@ void CounterSummaries::ShowCSV(FILE* fp, bool show_thread, bool show_cpu) {
     if (show_cpu) {
       fprintf(fp, "%d,", s.cpu);
     }
-    fprintf(fp, "%s,%s,%s,(%.0f%%)%s\n", s.readable_count.c_str(), s.Name().c_str(),
-            s.comment.c_str(), 1.0 / s.scale * 100, (s.auto_generated ? " (generated)," : ","));
+    fprintf(fp, "%s,%s,%s,%s\n", s.readable_count.c_str(), s.Name().c_str(), s.comment.c_str(),
+            (s.auto_generated ? "(generated)," : ""));
   }
 }
 
