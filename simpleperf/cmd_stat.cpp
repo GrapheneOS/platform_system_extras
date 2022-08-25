@@ -433,7 +433,7 @@ class StatCommand : public Command {
  private:
   bool ParseOptions(const std::vector<std::string>& args,
                     std::vector<std::string>* non_option_args);
-  bool PrintHardwareCounters();
+  void PrintHardwareCounters();
   bool AddDefaultMeasuredEventTypes();
   void SetEventSelectionFlags();
   void MonitorEachThread();
@@ -480,7 +480,8 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
     return false;
   }
   if (print_hw_counter_) {
-    return PrintHardwareCounters();
+    PrintHardwareCounters();
+    return true;
   }
   if (!app_package_name_.empty() && !in_app_context_) {
     if (!IsRoot()) {
@@ -793,16 +794,17 @@ std::optional<size_t> GetHardwareCountersOnCpu(int cpu) {
   return available_counters;
 }
 
-bool StatCommand::PrintHardwareCounters() {
+void StatCommand::PrintHardwareCounters() {
   for (int cpu : GetOnlineCpus()) {
     std::optional<size_t> counters = GetHardwareCountersOnCpu(cpu);
     if (!counters) {
-      LOG(ERROR) << "failed to get CPU PMU hardware counters on cpu " << cpu;
-      return false;
+      // When built as a 32-bit program, we can't set sched_affinity to a 64-bit only CPU. So we
+      // may not be able to get hardware counters on that CPU.
+      LOG(WARNING) << "Failed to get CPU PMU hardware counters on cpu " << cpu;
+      continue;
     }
     printf("There are %zu CPU PMU hardware counters available on cpu %d.\n", counters.value(), cpu);
   }
-  return true;
 }
 
 bool StatCommand::AddDefaultMeasuredEventTypes() {
