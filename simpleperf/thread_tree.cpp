@@ -398,7 +398,7 @@ void ThreadTree::Update(const Record& record) {
     ExitThread(r.data->pid, r.data->tid);
   } else if (record.type() == SIMPLE_PERF_RECORD_KERNEL_SYMBOL) {
     const auto& r = *static_cast<const KernelSymbolRecord*>(&record);
-    Dso::SetKallsyms(std::move(r.kallsyms));
+    Dso::SetKallsyms(std::string(r.kallsyms, r.kallsyms_size));
   }
 }
 
