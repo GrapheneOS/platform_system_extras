@@ -739,23 +739,23 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
   return true;
 }
 
-bool StatCommand::PrintHardwareCounters() {
+std::optional<size_t> GetHardwareCountersOnCpu(int cpu) {
   size_t available_counters = 0;
   const EventType* event = FindEventTypeByName("cpu-cycles", true);
   if (event == nullptr) {
-    return false;
+    return std::nullopt;
   }
   perf_event_attr attr = CreateDefaultPerfEventAttr(*event);
   while (true) {
     auto workload = Workload::CreateWorkload({"sleep", "0.1"});
-    if (!workload) {
-      return false;
+    if (!workload || !workload->SetCpuAffinity(cpu)) {
+      return std::nullopt;
     }
     std::vector<std::unique_ptr<EventFd>> event_fds;
     for (size_t i = 0; i <= available_counters; i++) {
       EventFd* group_event_fd = event_fds.empty() ? nullptr : event_fds[0].get();
-      auto event_fd =
-          EventFd::OpenEventFile(attr, workload->GetPid(), -1, group_event_fd, "cpu-cycles", false);
+      auto event_fd = EventFd::OpenEventFile(attr, workload->GetPid(), cpu, group_event_fd,
+                                             "cpu-cycles", false);
       if (!event_fd) {
         break;
       }
@@ -771,7 +771,7 @@ bool StatCommand::PrintHardwareCounters() {
     for (auto& event_fd : event_fds) {
       PerfCounter counter;
       if (!event_fd->ReadCounter(&counter)) {
-        return false;
+        return std::nullopt;
       }
       if (counter.time_enabled == 0 || counter.time_enabled > counter.time_running) {
         always_running = false;
@@ -783,7 +783,18 @@ bool StatCommand::PrintHardwareCounters() {
     }
     available_counters++;
   }
-  printf("There are %zu CPU PMU hardware counters available on this device.\n", available_counters);
+  return available_counters;
+}
+
+bool StatCommand::PrintHardwareCounters() {
+  for (int cpu : GetOnlineCpus()) {
+    std::optional<size_t> counters = GetHardwareCountersOnCpu(cpu);
+    if (!counters) {
+      LOG(ERROR) << "failed to get CPU PMU hardware counters on cpu " << cpu;
+      return false;
+    }
+    printf("There are %zu CPU PMU hardware counters available on cpu %d.\n", counters.value(), cpu);
+  }
   return true;
 }
 
