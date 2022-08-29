@@ -167,7 +167,7 @@ bool Workload::SetCpuAffinity(int cpu) {
   CPU_ZERO(&mask);
   CPU_SET(cpu, &mask);
   if (sched_setaffinity(GetPid(), sizeof(mask), &mask) != 0) {
-    PLOG(ERROR) << "sched_setaffinity failed";
+    PLOG(WARNING) << "sched_setaffinity failed";
     return false;
   }
   return true;
