@@ -518,15 +518,6 @@ def run_tests_in_child_process(tests: List[str], args: argparse.Namespace) -> bo
     return False
 
 
-def sign_executables_on_darwin():
-    """ Sign executables on M1 Mac, otherwise they can't run. """
-    if not is_darwin():
-        return
-    bin_dir = Path(__file__).resolve().parents[1] / 'bin' / 'darwin' / 'x86_64'
-    for path in bin_dir.iterdir():
-        subprocess.run(f'codesign --force -s - {path}', shell=True, check=True)
-
-
 def main() -> bool:
     args = get_args()
     tests = get_host_tests() if args.only_host_test else get_all_tests()
@@ -542,5 +533,4 @@ def main() -> bool:
     # Switch to the test dir.
     os.chdir(test_dir)
     build_testdata(Path('testdata'))
-    sign_executables_on_darwin()
     return run_tests_in_child_process(tests, args)
