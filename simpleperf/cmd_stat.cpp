@@ -440,6 +440,7 @@ class StatCommand : public Command {
   void AdjustToIntervalOnlyValues(std::vector<CountersInfo>& counters);
   bool ShowCounters(const std::vector<CountersInfo>& counters, double duration_in_sec, FILE* fp);
   void CheckHardwareCounterMultiplexing();
+  void PrintWarningForInaccurateEvents();
 
   bool verbose_mode_;
   bool system_wide_collection_;
@@ -620,9 +621,10 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
     }
   }
 
-  // 7. Print hardware counter multiplexing warning when needed.
+  // 7. Print warnings when needed.
   event_selection_set_.CloseEventFiles();
   CheckHardwareCounterMultiplexing();
+  PrintWarningForInaccurateEvents();
 
   return true;
 }
@@ -950,6 +952,16 @@ void StatCommand::CheckHardwareCounterMultiplexing() {
                    << "If on a rooted device, try --use-devfreq-counters to get more counters.\n"
 #endif
           ;
+      break;
+    }
+  }
+}
+
+void StatCommand::PrintWarningForInaccurateEvents() {
+  for (const EventType* event : event_selection_set_.GetEvents()) {
+    if (event->name == "raw-l3d-cache-lmiss-rd") {
+      LOG(WARNING) << "PMU event L3D_CACHE_LMISS_RD might undercount on A510. Please use "
+                      "L3D_CACHE_REFILL_RD instead.";
       break;
     }
   }
