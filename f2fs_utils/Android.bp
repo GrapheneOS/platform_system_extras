@@ -54,8 +54,7 @@ cc_binary {
 }
 
 sh_binary_host {
-    name: "mkf2fsuserimg.sh",
-
+    name: "mkf2fsuserimg",
     src: "mkf2fsuserimg.sh",
     required: [
         "make_f2fs",
