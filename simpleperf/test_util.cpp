@@ -78,6 +78,7 @@ bool HasHardwareCounter() {
     auto arch = GetBuildArch();
     std::string fingerprint = android::base::GetProperty("ro.system.build.fingerprint", "");
     bool is_emulator = android::base::StartsWith(fingerprint, "google/sdk_gphone") ||
+                       android::base::StartsWith(fingerprint, "google/sdk_gpc") ||
                        android::base::StartsWith(fingerprint, "generic/cf");
 
     if (arch == ARCH_X86_64 || arch == ARCH_X86_32 || is_emulator) {
