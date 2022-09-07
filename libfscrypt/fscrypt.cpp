@@ -39,6 +39,9 @@
 
 using namespace std::string_literals;
 
+/* This can be removed once this macro is available in <linux/fscrypt.h> */
+#define FSCRYPT_MODE_AES_256_HCTR2 10
+
 /* modes not supported by upstream kernel, so not in <linux/fscrypt.h> */
 #define FSCRYPT_MODE_AES_256_HEH 126
 #define FSCRYPT_MODE_PRIVATE 127
@@ -61,6 +64,7 @@ static const auto filenames_modes = std::vector<ModeLookupEntry>{
         {"aes-256-cts"s, FSCRYPT_MODE_AES_256_CTS},
         {"aes-256-heh"s, FSCRYPT_MODE_AES_256_HEH},
         {"adiantum"s, FSCRYPT_MODE_ADIANTUM},
+        {"aes-256-hctr2"s, FSCRYPT_MODE_AES_256_HCTR2},
 };
 
 static bool LookupModeByName(const std::vector<struct ModeLookupEntry>& modes,
