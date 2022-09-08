@@ -162,7 +162,7 @@ class TestBase(unittest.TestCase):
             args += TestHelper.browser_option
         if TestHelper.ndk_path:
             if args[0] in ['app_profiler.py', 'binary_cache_builder.py', 'pprof_proto_generator.py',
-                           'report_html.py']:
+                           'report_html.py', 'annotate.py']:
                 args += ['--ndk_path', TestHelper.ndk_path]
         if args[0].endswith('.py'):
             args = [sys.executable, TestHelper.script_path(args[0])] + args[1:]

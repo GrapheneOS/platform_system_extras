@@ -59,6 +59,8 @@ class TestExamplePureJava(TestExampleBase):
         time.sleep(1)
         args = [sys.executable, TestHelper.script_path("app_profiler.py"),
                 "--app", self.package_name, "-r", "--duration 10000", "--disable_adb_root"]
+        if TestHelper.ndk_path:
+            args += ['--ndk_path', TestHelper.ndk_path]
         subproc = subprocess.Popen(args)
         time.sleep(3)
 
@@ -70,9 +72,11 @@ class TestExamplePureJava(TestExampleBase):
     def test_app_profiler_stop_after_app_exit(self):
         self.adb.check_run(['shell', 'am', 'start', '-n', self.package_name + '/.MainActivity'])
         time.sleep(1)
-        subproc = subprocess.Popen(
-            [sys.executable, TestHelper.script_path('app_profiler.py'),
-             '--app', self.package_name, '-r', '--duration 10000', '--disable_adb_root'])
+        args = [sys.executable, TestHelper.script_path('app_profiler.py'),
+                '--app', self.package_name, '-r', '--duration 10000', '--disable_adb_root']
+        if TestHelper.ndk_path:
+            args += ['--ndk_path', TestHelper.ndk_path]
+        subproc = subprocess.Popen(args)
         time.sleep(3)
         self.adb.check_run(['shell', 'am', 'force-stop', self.package_name])
         subproc.wait()
