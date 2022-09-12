@@ -250,6 +250,15 @@ TEST(dso, find_vmlinux_in_symdirs) {
   std::unique_ptr<Dso> dso = Dso::CreateDso(DSO_KERNEL, DEFAULT_KERNEL_MMAP_NAME);
   ASSERT_TRUE(dso);
   ASSERT_EQ(dso->GetDebugFilePath(), vmlinux_path);
+  ASSERT_EQ(0x400927, dso->IpToVaddrInFile(0x800527, 0x800000, 0));
+
+  // Find vmlinux by CreateDsoWithBuildId.
+  Dso::SetBuildIds({});
+  BuildId build_id(ELF_FILE_BUILD_ID);
+  dso = Dso::CreateDsoWithBuildId(DSO_KERNEL, DEFAULT_KERNEL_MMAP_NAME, build_id);
+  ASSERT_TRUE(dso);
+  ASSERT_EQ(dso->GetDebugFilePath(), vmlinux_path);
+  ASSERT_EQ(0x400927, dso->IpToVaddrInFile(0x800527, 0x800000, 0));
 }
 
 TEST(dso, kernel_module) {
