@@ -148,6 +148,60 @@ void MoveToBinaryFormat(const T* data_p, size_t n, char*& p) {
   p += size;
 }
 
+// Read info from binary data.
+struct BinaryReader {
+ public:
+  BinaryReader(const char* head, size_t size) : head(head), end(head + size), error(false) {}
+
+  size_t LeftSize() const { return end - head; }
+
+  bool CheckLeftSize(size_t size) {
+    if (UNLIKELY(error)) {
+      return false;
+    }
+    if (UNLIKELY(LeftSize() < size)) {
+      error = true;
+      return false;
+    }
+    return true;
+  }
+
+  template <class T>
+  void Read(T& data) {
+    static_assert(std::is_standard_layout<T>::value, "not standard layout");
+    if (UNLIKELY(error)) {
+      return;
+    }
+    if (UNLIKELY(LeftSize() < sizeof(T))) {
+      error = true;
+    } else {
+      memcpy(&data, head, sizeof(T));
+      head += sizeof(T);
+    }
+  }
+
+  // Read a string ending with '\0'.
+  std::string ReadString() {
+    if (UNLIKELY(error)) {
+      return "";
+    }
+    std::string result;
+    while (head < end && *head != '\0') {
+      result.push_back(*head++);
+    }
+    if (LIKELY(head < end && *head == '\0')) {
+      head++;
+      return result;
+    }
+    error = true;
+    return "";
+  }
+
+  const char* head;
+  const char* end;
+  bool error;
+};
+
 void PrintIndented(size_t indent, const char* fmt, ...);
 void FprintIndented(FILE* fp, size_t indent, const char* fmt, ...);
 
