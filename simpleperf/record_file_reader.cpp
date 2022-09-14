@@ -492,12 +492,11 @@ std::string RecordFileReader::ReadFeatureString(int feature) {
   if (!ReadFeatureSection(feature, &buf)) {
     return std::string();
   }
-  const char* p = buf.data();
-  const char* end = buf.data() + buf.size();
-  uint32_t len;
-  MoveFromBinaryFormat(len, p);
-  CHECK_LE(p + len, end);
-  return p;
+  BinaryReader reader(buf.data(), buf.size());
+  uint32_t len = 0;
+  reader.Read(len);
+  std::string s = reader.ReadString();
+  return reader.error ? "" : s;
 }
 
 std::vector<uint64_t> RecordFileReader::ReadAuxTraceFeature() {
