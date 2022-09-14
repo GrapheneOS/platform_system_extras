@@ -133,10 +133,14 @@ bool RecordFileReader::ReadHeader() {
   return true;
 }
 
-bool RecordFileReader::CheckSectionDesc(const SectionDesc& desc, uint64_t min_offset) {
+bool RecordFileReader::CheckSectionDesc(const SectionDesc& desc, uint64_t min_offset,
+                                        uint64_t alignment) {
   uint64_t desc_end;
   if (desc.offset < min_offset || __builtin_add_overflow(desc.offset, desc.size, &desc_end) ||
       desc_end > file_size_) {
+    return false;
+  }
+  if (desc.size % alignment != 0) {
     return false;
   }
   return true;
@@ -169,7 +173,7 @@ bool RecordFileReader::ReadAttrSection() {
     size_t perf_event_attr_size = header_.attr_size - section_desc_size;
     memcpy(&attr.attr, &buf[0], std::min(sizeof(attr.attr), perf_event_attr_size));
     memcpy(&attr.ids, &buf[perf_event_attr_size], section_desc_size);
-    if (!CheckSectionDesc(attr.ids, 0)) {
+    if (!CheckSectionDesc(attr.ids, 0, sizeof(uint64_t))) {
       LOG(ERROR) << "invalid attr section in " << filename_;
       return false;
     }
