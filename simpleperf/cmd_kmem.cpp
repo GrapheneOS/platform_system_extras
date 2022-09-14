@@ -314,7 +314,7 @@ class KmemCommand : public Command {
   bool ReadFeaturesFromRecordFile();
   bool ReadSampleTreeFromRecordFile();
   bool ProcessRecord(std::unique_ptr<Record> record);
-  void ProcessTracingData(const std::vector<char>& data);
+  bool ProcessTracingData(const std::vector<char>& data);
   bool PrintReport();
   void PrintReportContext(FILE* fp);
   void PrintSlabReportContext(FILE* fp);
@@ -588,18 +588,23 @@ bool KmemCommand::ProcessRecord(std::unique_ptr<Record> record) {
   } else if (record->type() == PERF_RECORD_TRACING_DATA ||
              record->type() == SIMPLE_PERF_RECORD_TRACING_DATA) {
     const auto& r = *static_cast<TracingDataRecord*>(record.get());
-    ProcessTracingData(std::vector<char>(r.data, r.data + r.data_size));
+    if (!ProcessTracingData(std::vector<char>(r.data, r.data + r.data_size))) {
+      return false;
+    }
   }
   return true;
 }
 
-void KmemCommand::ProcessTracingData(const std::vector<char>& data) {
-  Tracing tracing(data);
+bool KmemCommand::ProcessTracingData(const std::vector<char>& data) {
+  auto tracing = Tracing::Create(data);
+  if (!tracing) {
+    return false;
+  }
   for (auto& attr : event_attrs_) {
     if (attr.attr.type == PERF_TYPE_TRACEPOINT) {
       uint64_t trace_event_id = attr.attr.config;
-      attr.name = tracing.GetTracingEventNameHavingId(trace_event_id);
-      TracingFormat format = tracing.GetTracingFormatHavingId(trace_event_id);
+      attr.name = tracing->GetTracingEventNameHavingId(trace_event_id);
+      TracingFormat format = tracing->GetTracingFormatHavingId(trace_event_id);
       if (use_slab_) {
         if (format.name == "kmalloc" || format.name == "kmem_cache_alloc" ||
             format.name == "kmalloc_node" || format.name == "kmem_cache_alloc_node") {
@@ -621,6 +626,7 @@ void KmemCommand::ProcessTracingData(const std::vector<char>& data) {
       }
     }
   }
+  return true;
 }
 
 bool KmemCommand::PrintReport() {

@@ -362,7 +362,10 @@ Sample* ReportLib::GetNextSample() {
     } else if (record->type() == PERF_RECORD_TRACING_DATA ||
                record->type() == SIMPLE_PERF_RECORD_TRACING_DATA) {
       const auto& r = *static_cast<TracingDataRecord*>(record.get());
-      tracing_.reset(new Tracing(std::vector<char>(r.data, r.data + r.data_size)));
+      tracing_ = Tracing::Create(std::vector<char>(r.data, r.data + r.data_size));
+      if (!tracing_) {
+        return nullptr;
+      }
     }
   }
   SetCurrentSample(*sample_record_queue_.front());
