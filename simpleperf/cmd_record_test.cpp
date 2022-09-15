@@ -1197,6 +1197,7 @@ TEST(record_cmd, add_meta_info_option) {
 }
 
 TEST(record_cmd, device_meta_info) {
+#if defined(__ANDROID__)
   TemporaryFile tmpfile;
   ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
   auto reader = RecordFileReader::CreateInstance(tmpfile.path);
@@ -1209,6 +1210,9 @@ TEST(record_cmd, device_meta_info) {
   it = meta_info.find("android_build_type");
   ASSERT_NE(it, meta_info.end());
   ASSERT_FALSE(it->second.empty());
+#else
+  GTEST_LOG_(INFO) << "This test tests a function only available on Android.";
+#endif
 }
 
 TEST(record_cmd, add_counter_option) {

@@ -180,6 +180,21 @@ struct BinaryReader {
     }
   }
 
+  template <class T>
+  void Read(T* data_p, size_t n) {
+    static_assert(std::is_standard_layout<T>::value, "not standard layout");
+    if (UNLIKELY(error)) {
+      return;
+    }
+    size_t size;
+    if (UNLIKELY(__builtin_mul_overflow(n, sizeof(T), &size) || LeftSize() < size)) {
+      error = true;
+    } else {
+      memcpy(data_p, head, size);
+      head += size;
+    }
+  }
+
   // Read a string ending with '\0'.
   std::string ReadString() {
     if (UNLIKELY(error)) {
