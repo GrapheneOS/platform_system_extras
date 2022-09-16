@@ -204,7 +204,8 @@ class RecordFileReader {
  private:
   RecordFileReader(const std::string& filename, FILE* fp);
   bool ReadHeader();
-  bool CheckSectionDesc(const PerfFileFormat::SectionDesc& desc, uint64_t min_offset);
+  bool CheckSectionDesc(const PerfFileFormat::SectionDesc& desc, uint64_t min_offset,
+                        uint64_t alignment = 1);
   bool ReadAttrSection();
   bool ReadIdsForAttr(const PerfFileFormat::FileAttr& attr, std::vector<uint64_t>* ids);
   bool ReadFeatureSectionDescriptors();
