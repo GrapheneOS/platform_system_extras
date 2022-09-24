@@ -299,15 +299,16 @@ bool CheckPerfEventLimit() {
     }
   }
   if (can_read_allow_file) {
-    LOG(WARNING) << perf_event_allow_path << " is " << limit_level << ", "
-                 << GetLimitLevelDescription(limit_level) << ".";
+    LOG(ERROR) << perf_event_allow_path << " is " << limit_level << ", "
+               << GetLimitLevelDescription(limit_level) << ".";
   }
-  LOG(WARNING) << "Try using `adb shell setprop security.perf_harden 0` to allow profiling.";
+  LOG(ERROR) << "Try using `adb shell setprop security.perf_harden 0` to allow profiling.";
   return false;
 #else
   if (can_read_allow_file) {
-    LOG(WARNING) << perf_event_allow_path << " is " << limit_level << ", "
-                 << GetLimitLevelDescription(limit_level) << ".";
+    LOG(ERROR) << perf_event_allow_path << " is " << limit_level << ", "
+               << GetLimitLevelDescription(limit_level) << ". Try using `echo -1 >"
+               << perf_event_allow_path << "` to enable profiling.";
     return false;
   }
 #endif
