@@ -25,3 +25,18 @@ cc_binary {
   ],
   init_rc: ["mtectrl.rc"],
 }
+
+cc_test {
+  name: "mtectrl_test",
+  srcs: ["mtectrl_test.cc"],
+  test_suites: ["general-tests"],
+  // shell cannot use /system/bin/mtectrl
+  require_root: true,
+  shared_libs: [
+    "libbootloader_message",
+    "libbase",
+  ],
+  static_libs: [
+    "libgmock",
+  ]
+}

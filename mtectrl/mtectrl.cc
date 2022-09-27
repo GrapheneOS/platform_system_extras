@@ -15,17 +15,19 @@
  */
 
 #include <getopt.h>
+#include <unistd.h>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/properties.h>
 #include <android-base/strings.h>
 #include <bootloader_message/bootloader_message.h>
 
+#include <functional>
 #include <iostream>
 
 void AddItem(std::string* s, const char* item) {
-  if (!s->empty())
-    *s += ",";
+  if (!s->empty()) *s += ",";
   *s += item;
 }
 
@@ -85,11 +87,31 @@ bool HandleOverride(const std::string& override_value, misc_memtag_message* m) {
 int main(int argc, char** argv) {
   const char* set_prop = nullptr;
   int opt;
-  while ((opt = getopt(argc, argv, "s:")) != -1) {
+  std::function<bool(misc_memtag_message*, std::string*)> read_memtag_message =
+      ReadMiscMemtagMessage;
+  std::function<bool(const misc_memtag_message&, std::string*)> write_memtag_message =
+      WriteMiscMemtagMessage;
+  while ((opt = getopt(argc, argv, "s:t:")) != -1) {
     switch (opt) {
       case 's':
         set_prop = optarg;
         break;
+      case 't': {
+        // Use different fake misc partition for testing.
+        const char* filename = optarg;
+        int fd = open(filename, O_RDWR | O_CLOEXEC);
+        CHECK_NE(fd, -1);
+        CHECK_NE(ftruncate(fd, sizeof(misc_memtag_message)), -1);
+        read_memtag_message = [fd](misc_memtag_message* m, std::string*) {
+          CHECK(android::base::ReadFully(fd, m, sizeof(*m)));
+          return true;
+        };
+        write_memtag_message = [fd](const misc_memtag_message& m, std::string*) {
+          CHECK(android::base::WriteFully(fd, &m, sizeof(m)));
+          return true;
+        };
+        break;
+      }
       default:
         PrintUsage(argv[0]);
         return 1;
@@ -107,7 +129,7 @@ int main(int argc, char** argv) {
   if (!value && set_prop) {
     std::string err;
     misc_memtag_message m = {};
-    if (!ReadMiscMemtagMessage(&m, &err)) {
+    if (!read_memtag_message(&m, &err)) {
       LOG(ERROR) << "Failed to read memtag message: " << err;
       return 1;
     }
@@ -137,7 +159,7 @@ int main(int argc, char** argv) {
     return 1;
   }
   std::string err;
-  if (!WriteMiscMemtagMessage(m, &err)) {
+  if (!write_memtag_message(m, &err)) {
     LOG(ERROR) << "Failed to apply mode: " << value << ", override: " << override_value << err;
     return 1;
   } else {
