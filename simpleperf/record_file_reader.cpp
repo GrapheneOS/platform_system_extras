@@ -297,6 +297,10 @@ std::unique_ptr<Record> RecordFileReader::ReadRecord() {
     return nullptr;
   }
   RecordHeader header(header_buf);
+  if (header.size < Record::header_size()) {
+    LOG(ERROR) << "invalid record";
+    return nullptr;
+  }
   std::unique_ptr<char[]> p;
   if (header.type == SIMPLE_PERF_RECORD_SPLIT) {
     // Read until meeting a RECORD_SPLIT_END record.
