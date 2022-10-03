@@ -84,7 +84,7 @@ def main():
       value = float(kv[1])
       components_to_monitor[key] = value
 
-  cfg = yaml.load(args.config, Loader=yaml.FullLoader)
+  cfg = yaml.load(args.config, Loader=yaml.SafeLoader)
 
   if args.stressfs:
     if run_adb_cmd('install -r -g ' + args.stressfs) != 0:
