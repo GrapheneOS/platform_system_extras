@@ -123,11 +123,6 @@ cc_defaults {
                 "libc++fs",
             ],
         },
-        android: {
-            static_libs: [
-                "libc",
-            ],
-        },
         linux_glibc_x86_64: {
             stl: "libc++_static",
         },
@@ -389,6 +384,9 @@ cc_binary {
     target: {
         android: {
             static_executable: true,
+            static_libs: [
+                "libc",
+            ],
         },
         android_arm: {
             dist: {
@@ -717,7 +715,7 @@ filegroup {
 cc_fuzz {
     name: "libsimpleperf_report_fuzzer",
     defaults: [
-        "simpleperf_shared_libs",
+        "simpleperf_static_libs",
     ],
     host_supported: true,
     srcs: [
@@ -725,14 +723,12 @@ cc_fuzz {
     ],
     static_libs: [
         "libsimpleperf",
-        "libLLVMObject",
-        "libLLVMBitReader",
-        "libLLVMMC",
-        "libLLVMMCParser",
-        "libLLVMCore",
-        "libLLVMSupport",
     ],
     target: {
+        linux: {
+            // Fuzzer may not be able to load libdexfile. So statically link it.
+            static_libs: ["libdexfile_static"],
+        },
         windows: {
             enabled: false,
         },
