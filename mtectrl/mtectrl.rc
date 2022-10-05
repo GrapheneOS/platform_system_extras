@@ -18,5 +18,5 @@ on property:arm64.memtag.bootctl=*
 on property:persist.device_config.memory_safety_native.bootloader_override=*
   exec -- /system/bin/mtectrl -s arm64.memtag.bootctl ${arm64.memtag.bootctl:-none} ${persist.device_config.memory_safety_native.bootloader_override:-default}
 
-on init
+on init && property:ro.arm64.memtag.bootctl_supported=1
   exec -- /system/bin/mtectrl -s arm64.memtag.bootctl
