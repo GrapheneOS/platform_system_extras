@@ -781,7 +781,7 @@ bool ReportSampleCommand::ProcessSwitchRecord(Record* r) {
 }
 
 bool ReportSampleCommand::WriteRecordInProtobuf(proto::Record& proto_record) {
-  coded_os_->WriteLittleEndian32(proto_record.ByteSize());
+  coded_os_->WriteLittleEndian32(static_cast<uint32_t>(proto_record.ByteSizeLong()));
   if (!proto_record.SerializeToCodedStream(coded_os_)) {
     LOG(ERROR) << "failed to write record to protobuf";
     return false;
