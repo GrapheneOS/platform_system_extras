@@ -295,6 +295,8 @@ class MemAccess : public ITargetMemAccess {
     return OCSD_OK;
   }
 
+  void InvalidateMemAccCache(const uint8_t cs_trace_id) override {}
+
  private:
   llvm::MemoryBuffer* GetMemoryBuffer(Dso* dso) {
     auto it = elf_map_.find(dso);
