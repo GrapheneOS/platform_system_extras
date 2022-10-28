@@ -20,3 +20,6 @@ on property:persist.device_config.memory_safety_native.bootloader_override=*
 
 on init && property:ro.arm64.memtag.bootctl_supported=1
   exec -- /system/bin/mtectrl -s arm64.memtag.bootctl
+
+on shutdown && property:ro.arm64.memtag.bootctl_supported=1
+  exec -- /system/bin/mtectrl ${arm64.memtag.bootctl:-none} ${persist.device_config.memory_safety_native.bootloader_override:-default}
