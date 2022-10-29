@@ -97,6 +97,16 @@ TEST_F(MteCtrlTest, read_invalid_memtag_message) {
   EXPECT_EQ(TestProperty(), "");
 }
 
+TEST_F(MteCtrlTest, read_invalid_memtag_mode) {
+  misc_memtag_message m = {.version = MISC_MEMTAG_MESSAGE_VERSION,
+                           .magic = MISC_MEMTAG_MAGIC_HEADER,
+                           .memtag_mode = MISC_MEMTAG_MODE_MEMTAG | 1u << 31};
+  std::string m_str(reinterpret_cast<char*>(&m), sizeof(m));
+  android::base::WriteStringToFile(m_str, "/data/local/tmp/misc_memtag");
+  ASSERT_NE(mtectrl("-s arm64.memtag.test_bootctl"), 0);
+  EXPECT_EQ(TestProperty(), "memtag");
+}
+
 TEST_F(MteCtrlTest, set_read_memtag) {
   ASSERT_EQ(mtectrl("-s arm64.memtag.test_bootctl memtag"), 0);
   EXPECT_EQ(TestProperty(), "memtag");
