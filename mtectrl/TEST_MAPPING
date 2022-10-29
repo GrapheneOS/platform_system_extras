@@ -3,5 +3,10 @@
     {
       "name": "mtectrl_test"
     }
+  ],
+  "hwasan-presubmit": [
+    {
+      "name": "mtectrl_test"
+    }
   ]
 }
