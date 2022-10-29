@@ -31,15 +31,28 @@ void AddItem(std::string* s, const char* item) {
   *s += item;
 }
 
-void UpdateProp(const char* prop_name, const misc_memtag_message& m) {
+bool CheckAndUnset(uint32_t& mode, uint32_t mask) {
+  bool is_set = mode & mask;
+  mode &= ~mask;
+  return is_set;
+}
+
+bool UpdateProp(const char* prop_name, const misc_memtag_message& m) {
+  uint32_t mode = m.memtag_mode;
   std::string prop_str;
-  if (m.memtag_mode & MISC_MEMTAG_MODE_MEMTAG) AddItem(&prop_str, "memtag");
-  if (m.memtag_mode & MISC_MEMTAG_MODE_MEMTAG_ONCE) AddItem(&prop_str, "memtag-once");
-  if (m.memtag_mode & MISC_MEMTAG_MODE_MEMTAG_KERNEL) AddItem(&prop_str, "memtag-kernel");
-  if (m.memtag_mode & MISC_MEMTAG_MODE_MEMTAG_KERNEL_ONCE) AddItem(&prop_str, "memtag-kernel-once");
-  if (m.memtag_mode & MISC_MEMTAG_MODE_MEMTAG_OFF) AddItem(&prop_str, "memtag-off");
+  if (CheckAndUnset(mode, MISC_MEMTAG_MODE_MEMTAG)) AddItem(&prop_str, "memtag");
+  if (CheckAndUnset(mode, MISC_MEMTAG_MODE_MEMTAG_ONCE)) AddItem(&prop_str, "memtag-once");
+  if (CheckAndUnset(mode, MISC_MEMTAG_MODE_MEMTAG_KERNEL)) AddItem(&prop_str, "memtag-kernel");
+  if (CheckAndUnset(mode, MISC_MEMTAG_MODE_MEMTAG_KERNEL_ONCE))
+    AddItem(&prop_str, "memtag-kernel-once");
+  if (CheckAndUnset(mode, MISC_MEMTAG_MODE_MEMTAG_OFF)) AddItem(&prop_str, "memtag-off");
   if (android::base::GetProperty(prop_name, "") != prop_str)
     android::base::SetProperty(prop_name, prop_str);
+  if (mode) {
+    LOG(ERROR) << "MTE mode in misc message contained unknown bits: " << mode
+               << ". Ignoring and setting " << prop_name << " to " << prop_str;
+  }
+  return mode == 0;
 }
 
 void PrintUsage(const char* progname) {
@@ -134,11 +147,14 @@ int main(int argc, char** argv) {
       return 1;
     }
     if (m.magic != MISC_MEMTAG_MAGIC_HEADER || m.version != MISC_MEMTAG_MESSAGE_VERSION) {
-      UpdateProp(set_prop, {});
+      // This should not fail by construction.
+      CHECK(UpdateProp(set_prop, {}));
+      // This is an expected case, as the partition gets initialized to all zero.
       return 0;
     }
-    UpdateProp(set_prop, m);
-    return 0;
+    // UpdateProp failing is an unexpected case, as a message with a valid
+    // header should not have an invalid memtag_mode.
+    return UpdateProp(set_prop, m) ? 0 : 1;
   }
 
   if (!value) {
@@ -175,7 +191,8 @@ int main(int argc, char** argv) {
     }
     LOG(INFO) << verb << " mode: " << value << ", "
               << "override: " << (override_value ? override_value : "") << parse_error;
-    if (set_prop) UpdateProp(set_prop, m);
+    // Because all the bits in memtag_mode were set above, this should never fail.
+    if (set_prop) CHECK(UpdateProp(set_prop, m));
     return !valid_value || !valid_override;
   }
 }

@@ -1,7 +1,0 @@
-{
-  "presubmit": [
-    {
-      "name": "mtectrl_test"
-    }
-  ]
-}
