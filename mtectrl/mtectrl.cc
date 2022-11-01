@@ -21,6 +21,7 @@
 #include <android-base/logging.h>
 #include <android-base/properties.h>
 #include <android-base/strings.h>
+#include <android-base/unique_fd.h>
 #include <bootloader_message/bootloader_message.h>
 
 #include <functional>
@@ -104,6 +105,8 @@ int main(int argc, char** argv) {
       ReadMiscMemtagMessage;
   std::function<bool(const misc_memtag_message&, std::string*)> write_memtag_message =
       WriteMiscMemtagMessage;
+
+  android::base::unique_fd fake_partition_fd;
   while ((opt = getopt(argc, argv, "s:t:")) != -1) {
     switch (opt) {
       case 's':
@@ -112,15 +115,16 @@ int main(int argc, char** argv) {
       case 't': {
         // Use different fake misc partition for testing.
         const char* filename = optarg;
-        int fd = open(filename, O_RDWR | O_CLOEXEC);
-        CHECK_NE(fd, -1);
-        CHECK_NE(ftruncate(fd, sizeof(misc_memtag_message)), -1);
-        read_memtag_message = [fd](misc_memtag_message* m, std::string*) {
-          CHECK(android::base::ReadFully(fd, m, sizeof(*m)));
+        fake_partition_fd.reset(open(filename, O_RDWR | O_CLOEXEC));
+        int raw_fd = fake_partition_fd.get();
+        CHECK_NE(raw_fd, -1);
+        CHECK_NE(ftruncate(raw_fd, sizeof(misc_memtag_message)), -1);
+        read_memtag_message = [raw_fd](misc_memtag_message* m, std::string*) {
+          CHECK(android::base::ReadFully(raw_fd, m, sizeof(*m)));
           return true;
         };
-        write_memtag_message = [fd](const misc_memtag_message& m, std::string*) {
-          CHECK(android::base::WriteFully(fd, &m, sizeof(m)));
+        write_memtag_message = [raw_fd](const misc_memtag_message& m, std::string*) {
+          CHECK(android::base::WriteFully(raw_fd, &m, sizeof(m)));
           return true;
         };
         break;
