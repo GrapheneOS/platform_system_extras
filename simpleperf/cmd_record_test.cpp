@@ -192,6 +192,9 @@ TEST(record_cmd, rN_event) {
   } else if (GetTargetArch() == ARCH_X86_32 || GetTargetArch() == ARCH_X86_64) {
     // As in volume 3 chapter 19 of the Intel manual, 0x00c0 is the event number for instruction.
     event_number = 0x00c0;
+  } else if (GetTargetArch() == ARCH_RISCV64) {
+    // RISCV_PMU_INSTRET = 1
+    event_number = 0x1;
   } else {
     GTEST_LOG_(INFO) << "Omit arch " << GetTargetArch();
     return;
