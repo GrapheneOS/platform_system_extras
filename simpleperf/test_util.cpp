@@ -43,6 +43,10 @@ bool IsInNativeAbi() {
       if (s.find("arm") == std::string::npos && s.find("aarch64") == std::string::npos) {
         in_native_abi = 0;
       }
+    } else if (GetTargetArch() == ARCH_RISCV64) {
+      if (s.find("riscv") == std::string::npos) {
+        in_native_abi = 0;
+      }
     }
   }
   return in_native_abi == 1;
