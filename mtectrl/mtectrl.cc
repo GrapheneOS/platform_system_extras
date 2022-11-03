@@ -21,6 +21,7 @@
 #include <android-base/logging.h>
 #include <android-base/properties.h>
 #include <android-base/strings.h>
+#include <android-base/unique_fd.h>
 #include <bootloader_message/bootloader_message.h>
 
 #include <functional>
@@ -56,10 +57,50 @@ bool UpdateProp(const char* prop_name, const misc_memtag_message& m) {
 }
 
 void PrintUsage(const char* progname) {
-  std::cerr << "Usage: " << progname
-            << " [-s PROPERTY_NAME] none|memtag|memtag-once|memtag-kernel|memtag-kernel-once[,.."
-               ".] [default|force_on|force_off]\n"
-            << "       " << progname << " -s PROPERTY_NAME\n";
+  std::cerr
+      << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+         "!!! YOU PROBABLY DO NOT NEED TO USE THIS                    !!!\n"
+         "!!! USE THE `arm64.memtag.bootctl` SYSTEM PROPERTY INSTEAD. !!!\n"
+         "!!! This program is an implementation detail that is used   !!!\n"
+         "!!! by the system to apply MTE settings.                    !!!\n"
+         "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+         "\n"
+      << "USAGE: " << progname
+      << "\n"
+         "      [-s PROPERTY_NAME]\n"
+         "      [none,][memtag,][memtag-once,][memtag-kernel,][memtag-kernel-once,][memtag-off,]\n"
+         "      [default|force_on|force_off]\n"
+         "      [-t PATH_TO_FAKE_MISC_PARTITION]\n"
+
+         "OPTIONS:\n"
+         "  -s PROPERTY_NAME\n"
+         "      Sets the system property 'PROPERTY_NAME' to the new MTE mode (if provided), or to\n"
+         "      the current value from the /misc partition.\n"
+         "  [none,][memtag,][memtag-once,][memtag-kernel,][memtag-kernel-once,][memtag-off,]\n"
+         "      A set of MTE options to be applied, if provided. Multiple options may be\n"
+         "      specified as a ','-delimited list, e.g. 'memtag,memtag-kernel'.\n"
+         "      The options are described below:\n"
+         "        - none: default settings for MTE for the product will be applied on next\n"
+         "                reboot.\n"
+         "        - memtag: MTE is persistently enabled in userspace upon the next reboot.\n"
+         "        - memtag-once: MTE is enabled in userspace, only for the next reboot.\n"
+         "        - memtag-kernel: MTE is persistently enabled in the kernel upon the next \n"
+         "                         reboot.\n"
+         "        - memtag-kernel-once: MTE is enabled in the kernel, only for the next reboot.\n"
+         "        - memtag-off: MTE is persistently disabled in both userspace and kernel upon \n"
+         "                      the next reboot.\n"
+         "  [default|force_on|force_off]\n"
+         "      An alternative method of configuring the MTE options to be applied, if provided.\n"
+         "      This control is generally to be used by device_config only, and it overwrites\n"
+         "      the previously described settings that are expected to be utilized by the user.\n"
+         "      The options are described below:\n"
+         "        - default: This flag is not overwriting the MTE mode, and so the setting\n"
+         "                   should be inherited from the userspace controls (if present), or the\n"
+         "                   default value from the bootloader's ROM.\n"
+         "        - force_on: MTE is persistently enabled in userspace, overwriting the userspace\n"
+         "                    setting.\n"
+         "        - force_off: MTE is persistently disabled in userspace and the kernel, \n"
+         "                     overwriting the userspace setting.\n";
 }
 
 int StringToMode(const char* value) {
@@ -104,23 +145,32 @@ int main(int argc, char** argv) {
       ReadMiscMemtagMessage;
   std::function<bool(const misc_memtag_message&, std::string*)> write_memtag_message =
       WriteMiscMemtagMessage;
+
+  android::base::unique_fd fake_partition_fd;
   while ((opt = getopt(argc, argv, "s:t:")) != -1) {
     switch (opt) {
       case 's':
+        // Set property in argument to state of misc partition. If given by
+        // itself, sets the property to the current state. We do this on device
+        // boot,
+        //
+        // Otherwise, applies new state and then sets property to newly applied
+        // state.
         set_prop = optarg;
         break;
       case 't': {
         // Use different fake misc partition for testing.
         const char* filename = optarg;
-        int fd = open(filename, O_RDWR | O_CLOEXEC);
-        CHECK_NE(fd, -1);
-        CHECK_NE(ftruncate(fd, sizeof(misc_memtag_message)), -1);
-        read_memtag_message = [fd](misc_memtag_message* m, std::string*) {
-          CHECK(android::base::ReadFully(fd, m, sizeof(*m)));
+        fake_partition_fd.reset(open(filename, O_RDWR | O_CLOEXEC));
+        int raw_fd = fake_partition_fd.get();
+        CHECK_NE(raw_fd, -1);
+        CHECK_NE(ftruncate(raw_fd, sizeof(misc_memtag_message)), -1);
+        read_memtag_message = [raw_fd](misc_memtag_message* m, std::string*) {
+          CHECK(android::base::ReadFully(raw_fd, m, sizeof(*m)));
           return true;
         };
-        write_memtag_message = [fd](const misc_memtag_message& m, std::string*) {
-          CHECK(android::base::WriteFully(fd, &m, sizeof(m)));
+        write_memtag_message = [raw_fd](const misc_memtag_message& m, std::string*) {
+          CHECK(android::base::WriteFully(raw_fd, &m, sizeof(m)));
           return true;
         };
         break;
@@ -140,6 +190,8 @@ int main(int argc, char** argv) {
   }
 
   if (!value && set_prop) {
+    // -s <property> is given on its own. This means we want to read the state
+    // of the misc partition into the property.
     std::string err;
     misc_memtag_message m = {};
     if (!read_memtag_message(&m, &err)) {
@@ -152,8 +204,8 @@ int main(int argc, char** argv) {
       // This is an expected case, as the partition gets initialized to all zero.
       return 0;
     }
-    // UpdateProp failing is an unexpected case, as a message with a valid
-    // header should not have an invalid memtag_mode.
+    // Unlike above, setting the system property here can fail if the misc partition
+    // was corrupted by another program (e.g. the bootloader).
     return UpdateProp(set_prop, m) ? 0 : 1;
   }
 
