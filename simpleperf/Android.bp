@@ -65,6 +65,11 @@ cc_defaults {
             local_include_dirs: ["nonlinux_support/include"],
         },
     },
+    arch: {
+        riscv64: {
+            enabled: false,
+        },
+    },
 }
 
 // linked as a separate library because using OpenCSD headers needs to enable exception
