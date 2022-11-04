@@ -67,7 +67,10 @@ class ETMV4IDecodeTree {
  public:
   ETMV4IDecodeTree()
       : error_logger_(std::bind(&ETMV4IDecodeTree::ProcessError, this, std::placeholders::_1)) {
-    frame_decoder_.Configure(OCSD_DFRMTR_FRAME_MEM_ALIGN);
+    ocsd_err_t err = frame_decoder_.Init();
+    CHECK_EQ(err, OCSD_OK);
+    err = frame_decoder_.Configure(OCSD_DFRMTR_FRAME_MEM_ALIGN);
+    CHECK_EQ(err, OCSD_OK);
     frame_decoder_.getErrLogAttachPt()->attach(&error_logger_);
   }
 
