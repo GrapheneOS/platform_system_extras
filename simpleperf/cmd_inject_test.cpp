@@ -195,7 +195,6 @@ TEST(cmd_inject, merge_branch_list_files) {
 
 TEST(cmd_inject, report_warning_when_overflow) {
   CapturedStderr capture;
-  capture.Start();
   std::vector<std::unique_ptr<TemporaryFile>> branch_list_files;
   std::vector<std::unique_ptr<TemporaryFile>> input_files;
 

@@ -140,7 +140,6 @@ TEST(DebugElfFileFinder, build_id_mismatch) {
   DebugElfFileFinder finder;
   finder.SetSymFsDir(GetTestDataDir());
   CapturedStderr capture;
-  capture.Start();
   BuildId mismatch_build_id("0c12a384a9f4a3f3659b7171ca615dbec3a81f71");
   std::string debug_file = finder.FindDebugFile(ELF_FILE, false, mismatch_build_id);
   capture.Stop();
@@ -324,7 +323,6 @@ TEST(dso, search_debug_file_only_when_needed) {
   Dso::SetBuildIds({std::make_pair("/elf", BuildId("1b12a384a9f4a3f3659b7171ca615dbec3a81f71"))});
   Dso::SetSymFsDir(GetTestDataDir());
   CapturedStderr capture;
-  capture.Start();
   auto dso = Dso::CreateDso(DSO_ELF_FILE, "/elf");
   ASSERT_EQ(capture.str().find("build id mismatch"), std::string::npos);
   ASSERT_EQ(dso->GetDebugFilePath(), "/elf");
