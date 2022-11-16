@@ -617,8 +617,17 @@ class ElfDso : public Dso {
     if (elf) {
       status = elf->ParseSymbols(symbol_callback);
     }
-    ReportReadElfSymbolResult(status, path_, GetDebugFilePath(),
-                              symbols_.empty() ? android::base::WARNING : android::base::DEBUG);
+    android::base::LogSeverity log_level = android::base::WARNING;
+    if (!symbols_.empty()) {
+      // We already have some symbols when recording.
+      log_level = android::base::DEBUG;
+    }
+    if ((status == ElfStatus::FILE_NOT_FOUND || status == ElfStatus::FILE_MALFORMED) &&
+        build_id.IsEmpty()) {
+      // This is likely to be a file wongly thought of as an ELF file, maybe due to stack unwinding.
+      log_level = android::base::DEBUG;
+    }
+    ReportReadElfSymbolResult(status, path_, GetDebugFilePath(), log_level);
     SortAndFixSymbols(symbols);
     return symbols;
   }
