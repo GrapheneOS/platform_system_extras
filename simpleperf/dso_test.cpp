@@ -331,3 +331,43 @@ TEST(dso, search_debug_file_only_when_needed) {
   ASSERT_NE(capture.str().find("build id mismatch"), std::string::npos);
   capture.Stop();
 }
+
+TEST(dso, read_symbol_warning) {
+  {
+    // Don't warn when the file may not be an ELF file.
+    auto dso = Dso::CreateDso(DSO_ELF_FILE, GetTestData("not_exist_file"));
+    CapturedStderr capture;
+    dso->LoadSymbols();
+    ASSERT_EQ(capture.str().find("failed to read symbols"), std::string::npos);
+  }
+  {
+    // Don't warn when the file may not be an ELF file.
+    auto dso = Dso::CreateDso(DSO_ELF_FILE, GetTestData("base.vdex"));
+    CapturedStderr capture;
+    dso->LoadSymbols();
+    ASSERT_EQ(capture.str().find("failed to read symbols"), std::string::npos);
+  }
+  {
+    // Warn when the file is an ELF file (having a build id).
+    std::string file_path = GetTestData("not_exist_file");
+    Dso::SetBuildIds(
+        {std::make_pair(file_path, BuildId("1b12a384a9f4a3f3659b7171ca615dbec3a81f71"))});
+    auto dso = Dso::CreateDso(DSO_ELF_FILE, file_path);
+    CapturedStderr capture;
+    dso->LoadSymbols();
+    ASSERT_NE(capture.str().find("failed to read symbols"), std::string::npos);
+  }
+  {
+    // Don't warn when we already have symbols.
+    std::string file_path = GetTestData("not_exist_file");
+    Dso::SetBuildIds(
+        {std::make_pair(file_path, BuildId("1b12a384a9f4a3f3659b7171ca615dbec3a81f71"))});
+    auto dso = Dso::CreateDso(DSO_ELF_FILE, file_path);
+    std::vector<Symbol> symbols;
+    symbols.emplace_back("fake_symbol", 0x1234, 0x60);
+    dso->SetSymbols(&symbols);
+    CapturedStderr capture;
+    dso->LoadSymbols();
+    ASSERT_EQ(capture.str().find("failed to read symbols"), std::string::npos);
+  }
+}
