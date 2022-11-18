@@ -68,7 +68,7 @@ impl Scheduler {
                     Ok(_) => break,
                     Err(_) => {
                         // Did not receive a termination signal, initiate trace event.
-                        if check_space_limit(*TRACE_OUTPUT_DIR, &config).unwrap() {
+                        if check_space_limit(&TRACE_OUTPUT_DIR, &config).unwrap() {
                             trace_provider.lock().unwrap().trace(
                                 &TRACE_OUTPUT_DIR,
                                 "periodic",
@@ -94,7 +94,7 @@ impl Scheduler {
 
     pub fn one_shot(&self, config: &Config, tag: &str) -> Result<()> {
         let trace_provider = self.trace_provider.clone();
-        if check_space_limit(*TRACE_OUTPUT_DIR, config)? {
+        if check_space_limit(&TRACE_OUTPUT_DIR, config)? {
             trace_provider.lock().unwrap().trace(&TRACE_OUTPUT_DIR, tag, &config.sampling_period);
         }
         Ok(())

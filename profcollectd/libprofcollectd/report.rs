@@ -67,7 +67,7 @@ pub fn pack_report(profile: &Path, report: &Path, config: &Config) -> Result<Str
             let mut f = File::open(e)?;
             let mut buffer = Vec::new();
             f.read_to_end(&mut buffer)?;
-            zip.write_all(&*buffer)?;
+            zip.write_all(&buffer)?;
             Ok(())
         })?;
     zip.finish()?;
