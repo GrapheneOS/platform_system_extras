@@ -738,5 +738,5 @@ cc_fuzz {
             enabled: false,
         },
     },
-    corpus: ["testdata/*.data"],
+    corpus: ["testdata/**/*.data"],
 }
