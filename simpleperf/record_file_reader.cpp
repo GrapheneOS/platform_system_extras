@@ -149,6 +149,10 @@ bool RecordFileReader::CheckSectionDesc(const SectionDesc& desc, uint64_t min_of
 bool RecordFileReader::ReadAttrSection() {
   size_t attr_count = header_.attrs.size / header_.attr_size;
   if (header_.attr_size != sizeof(FileAttr)) {
+    if (header_.attr_size <= sizeof(SectionDesc)) {
+      LOG(ERROR) << "invalid attr section in " << filename_;
+      return false;
+    }
     LOG(DEBUG) << "attr size (" << header_.attr_size << ") in " << filename_
                << " doesn't match expected size (" << sizeof(FileAttr) << ")";
   }
@@ -474,9 +478,9 @@ std::vector<BuildIdRecord> RecordFileReader::ReadBuildIdFeature() {
   const char* p = buf.data();
   const char* end = buf.data() + buf.size();
   std::vector<BuildIdRecord> result;
-  while (p < end) {
+  while (p + sizeof(perf_event_header) < end) {
     auto header = reinterpret_cast<const perf_event_header*>(p);
-    if (p + header->size > end) {
+    if ((header->size <= sizeof(perf_event_header)) || (header->size > end - p)) {
       return {};
     }
     std::unique_ptr<char[]> binary(new char[header->size]);
