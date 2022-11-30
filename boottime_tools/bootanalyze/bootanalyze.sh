@@ -16,13 +16,17 @@
 
 readme() {
     echo '
-Analyze boot-time & bootchart
+Analyze boot-time
 e.g.
 ANDROID_BUILD_TOP="$PWD" \
 CONFIG_YMAL="$ANDROID_BUILD_TOP/system/extras/boottime_tools/bootanalyze/config.yaml" \
     LOOPS=3 \
-    RESULTS_DIR="$ANDROID_BUILD_TOP/bootAnalyzeResults" \
-    $PWD/system/extras/boottime_tools/bootanalyze/bootanalyze.sh
+    RESULTS_DIR="$PWD/bootAnalyzeResults" \
+    $ANDROID_BUILD_TOP/system/extras/boottime_tools/bootanalyze/bootanalyze.sh
+
+Flags:
+-b : If set grabs bootchart
+-w : If set grabs carwatchdog perf stats
 '
     exit
 }
@@ -48,6 +52,25 @@ fi
 echo "RESULTS_DIR=$RESULTS_DIR"
 mkdir -p $RESULTS_DIR
 
+BOOTCHART_FLAG=""
+CARWATCHDOG_FLAG=""
+
+while getopts 'bw' OPTION; do
+  case "$OPTION" in
+    b)
+      BOOTCHART_FLAG="-b"
+      ;;
+    w)
+      CARWATCHDOG_FLAG="-W"
+      ;;
+    ?)
+      echo 'Error: Invalid flag set'
+      readme
+      ;;
+  esac
+done
+shift "$(($OPTIND -1))"
+
 
 adb shell 'touch /data/bootchart/enabled'
 
@@ -57,13 +80,14 @@ fi
 echo "Analyzing boot-time for LOOPS=$LOOPS"
 START=1
 
-SLEEP_SEC=30
+SLEEP_SEC=20
 for (( l=$START; l<=$LOOPS; l++ )); do
-    echo -n "Loop: $l"
+    echo "Loop: $l"
     SECONDS=0
-    $SCRIPT_DIR/bootanalyze.py -c $CONFIG_YMAL -G 4M -r -b > "$RESULTS_DIR/boot$l.txt"
+    mkdir $RESULTS_DIR/$l
+    $SCRIPT_DIR/bootanalyze.py -c $CONFIG_YMAL -G 4M -r $BOOTCHART_FLAG $CARWATCHDOG_FLAG -o "$RESULTS_DIR/$l" > "$RESULTS_DIR/$l/boot.txt"
     echo "$SECONDS sec."
-    cp /tmp/android-bootchart/bootchart.tgz "$RESULTS_DIR/bootchart$l.tgz"
+    cp /tmp/android-bootchart/bootchart.tgz "$RESULTS_DIR/$l/bootchart.tgz"
     echo "Sleep for $SLEEP_SEC sec."
     sleep $SLEEP_SEC
 done
