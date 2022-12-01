@@ -53,6 +53,7 @@ class CallChainReportBuilderTest : public testing::Test {
         Symbol("art_func1", 0x0, 0x100),
         Symbol("art_func2", 0x100, 0x100),
         Symbol("_ZN3artL13Method_invokeEP7_JNIEnvP8_jobjectS3_P13_jobjectArray", 0x200, 0x100),
+        Symbol("art_quick_generic_jni_trampoline", 0x300, 0x100),
     };
     thread_tree.AddDsoInfo(file);
 
@@ -243,7 +244,7 @@ TEST_F(CallChainReportBuilderTest, keep_art_jni_method) {
       0x100,   // art_jni_trampoline
       0x2000,  // java_method1 in dex file
       0x1200,  // art::Method_invoke(_JNIEnv*, _jobject*, _jobject*, _jobjectArray*)
-      0x100,   // art_jni_trampoline
+      0x1300,  // art_quick_generic_jni_trampoline
   };
   CallChainReportBuilder builder(thread_tree);
   std::vector<CallChainReportEntry> entries = builder.Build(thread, fake_ips, 0);
