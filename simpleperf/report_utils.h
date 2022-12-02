@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "RegEx.h"
 #include "dso.h"
 #include "thread_tree.h"
 
@@ -85,6 +86,36 @@ class CallChainReportBuilder {
   std::unordered_map<std::string, JavaMethod> java_method_map_;
   // Map from minified class names to ProguardMappingClass.
   std::unordered_map<std::string, ProguardMappingClass> proguard_class_map_;
+};
+
+struct ThreadReport {
+  int pid;
+  int tid;
+  const char* thread_name;
+
+  ThreadReport(int pid = 0, int tid = 0, const char* thread_name = nullptr)
+      : pid(pid), tid(tid), thread_name(thread_name) {}
+};
+
+// Report thread info of a sample.
+class ThreadReportBuilder {
+ public:
+  // Aggregate threads with names matching the same regex.
+  bool AggregateThreads(const std::vector<std::string>& thread_name_regex);
+  ThreadReport Build(const ThreadEntry& thread);
+
+ private:
+  void ModifyReportToAggregateThreads(ThreadReport& report);
+
+  struct ThreadNameRegInfo {
+    std::unique_ptr<RegEx> re;
+    ThreadReport report;
+  };
+
+  std::vector<ThreadNameRegInfo> thread_regs_;
+  // Map from thread name to the corresponding index in thread_regs_.
+  // Return -1 if the thread name doesn't match any regular expression.
+  std::unordered_map<std::string, int> thread_map_;
 };
 
 }  // namespace simpleperf
