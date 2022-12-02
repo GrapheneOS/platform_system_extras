@@ -103,6 +103,20 @@ cc_library_static {
     },
 }
 
+// Build regex support in a separate library to catch std::regex_error exception.
+cc_library_static {
+    name: "libsimpleperf_regex",
+    host_supported: true,
+    srcs: ["RegEx.cpp"],
+    cppflags: ["-fexceptions"],
+    static_libs: ["libbase"],
+    target: {
+        windows: {
+            enabled: true,
+        },
+    },
+}
+
 cc_defaults {
     name: "simpleperf_static_libs",
     defaults: [
@@ -112,6 +126,7 @@ cc_defaults {
     host_supported: true,
     static_libs: [
         "libsimpleperf_etm_decoder",
+        "libsimpleperf_regex",
         "libbase",
         "liblog",
         "libutils",
@@ -156,6 +171,7 @@ cc_defaults {
     ],
     static_libs: [
         "libsimpleperf_etm_decoder",
+        "libsimpleperf_regex",
         "libopencsd_decoder",
     ],
     target: {
@@ -579,6 +595,7 @@ cc_defaults {
         "read_elf_test.cpp",
         "read_symbol_map_test.cpp",
         "RecordFilter_test.cpp",
+        "RegEx_test.cpp",
         "record_file_test.cpp",
         "record_test.cpp",
         "report_utils_test.cpp",
@@ -687,6 +704,7 @@ cc_library_static {
     whole_static_libs: [
         "libgmock",
         "libsimpleperf",
+        "libsimpleperf_regex",
     ],
 }
 

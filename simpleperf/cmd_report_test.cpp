@@ -16,7 +16,6 @@
 
 #include <gtest/gtest.h>
 
-#include <regex>
 #include <set>
 #include <unordered_map>
 
@@ -25,6 +24,7 @@
 #include <android-base/strings.h>
 #include <android-base/test_utils.h>
 
+#include "RegEx.h"
 #include "command.h"
 #include "get_test_data.h"
 #include "perf_regs.h"
@@ -67,10 +67,11 @@ class ReportCommandTest : public ::testing::Test {
   }
 
   size_t GetSampleCount() {
-    std::smatch m;
-    if (std::regex_search(content, m, std::regex(R"(Samples: (\d+))"))) {
+    auto regex = RegEx::Create(R"(Samples: (\d+))");
+    auto match = regex->SearchAll(content);
+    if (match->IsValid()) {
       size_t count;
-      if (android::base::ParseUint(m[1], &count)) {
+      if (android::base::ParseUint(match->GetField(1), &count)) {
         return count;
       }
     }
@@ -570,32 +571,31 @@ TEST_F(ReportCommandTest, print_event_count_option) {
   Report("perf.data", {"--print-event-count"});
   ASSERT_TRUE(success);
   ASSERT_NE(content.find("EventCount"), std::string::npos);
-  ASSERT_TRUE(std::regex_search(
-      content, std::regex(R"(325005586\s+elf\s+26083\s+26083\s+/elf\s+GlobalFunc)")));
+  ASSERT_TRUE(
+      RegEx::Create(R"(325005586\s+elf\s+26083\s+26083\s+/elf\s+GlobalFunc)")->Search(content));
 
   // Report record file recorded with --add-counter.
   const std::string record_file = "perf_with_add_counter.data";
   Report(record_file, {"--print-event-count"});
   ASSERT_TRUE(success);
+  ASSERT_TRUE(RegEx::Create(R"(EventCount_cpu-cycles\s+EventCount_instructions)")->Search(content));
   ASSERT_TRUE(
-      std::regex_search(content, std::regex(R"(EventCount_cpu-cycles\s+EventCount_instructions)")));
-  ASSERT_TRUE(std::regex_search(
-      content, std::regex(R"(175099\s+140443\s+sleep\s+689664\s+689664.+_dl_addr)")));
+      RegEx::Create(R"(175099\s+140443\s+sleep\s+689664\s+689664.+_dl_addr)")->Search(content));
 
   // Report accumulated event counts.
   Report(record_file, {"--print-event-count", "--children"});
   ASSERT_TRUE(success);
-  ASSERT_TRUE(std::regex_search(
-      content,
-      std::regex(
+  ASSERT_TRUE(
+      RegEx::Create(
           R"(AccEventCount_cpu-cycles\s+SelfEventCount_cpu-cycles\s+AccEventCount_instructions\s+)"
-          R"(SelfEventCount_instructions)")));
-  ASSERT_TRUE(std::regex_search(
-      content,
-      std::regex(R"(175099\s+175099\s+140443\s+140443\s+sleep\s+689664\s+689664.+_dl_addr)")));
-  ASSERT_TRUE(std::regex_search(
-      content,
-      std::regex(R"(366116\s+0\s+297474\s+0\s+sleep\s+689664\s+689664.+__libc_start_main)")));
+          R"(SelfEventCount_instructions)")
+          ->Search(content));
+  ASSERT_TRUE(
+      RegEx::Create(R"(175099\s+175099\s+140443\s+140443\s+sleep\s+689664\s+689664.+_dl_addr)")
+          ->Search(content));
+  ASSERT_TRUE(
+      RegEx::Create(R"(366116\s+0\s+297474\s+0\s+sleep\s+689664\s+689664.+__libc_start_main)")
+          ->Search(content));
 }
 
 TEST_F(ReportCommandTest, exclude_include_pid_options) {
