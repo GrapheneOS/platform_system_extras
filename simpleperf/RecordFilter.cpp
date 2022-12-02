@@ -263,10 +263,14 @@ bool RecordFilter::ParseOptions(OptionValueMap& options) {
       }
     }
     for (const OptionValue& value : options.PullValues(prefix + "process-name")) {
-      AddProcessNameRegex(*value.str_value, exclude);
+      if (!AddProcessNameRegex(*value.str_value, exclude)) {
+        return false;
+      }
     }
     for (const OptionValue& value : options.PullValues(prefix + "thread-name")) {
-      AddThreadNameRegex(*value.str_value, exclude);
+      if (!AddThreadNameRegex(*value.str_value, exclude)) {
+        return false;
+      }
     }
     for (const OptionValue& value : options.PullValues(prefix + "uid")) {
       if (auto uids = ParseUintVector<uint32_t>(*value.str_value); uids) {
@@ -296,16 +300,24 @@ void RecordFilter::AddTids(const std::set<pid_t>& tids, bool exclude) {
   cond.tids.insert(tids.begin(), tids.end());
 }
 
-void RecordFilter::AddProcessNameRegex(const std::string& process_name, bool exclude) {
+bool RecordFilter::AddProcessNameRegex(const std::string& process_name, bool exclude) {
   RecordFilterCondition& cond = GetCondition(exclude);
   cond.used = true;
-  cond.process_name_regs.emplace_back(process_name, std::regex::optimize);
+  if (auto regex = RegEx::Create(process_name); regex != nullptr) {
+    cond.process_name_regs.emplace_back(std::move(regex));
+    return true;
+  }
+  return false;
 }
 
-void RecordFilter::AddThreadNameRegex(const std::string& thread_name, bool exclude) {
+bool RecordFilter::AddThreadNameRegex(const std::string& thread_name, bool exclude) {
   RecordFilterCondition& cond = GetCondition(exclude);
   cond.used = true;
-  cond.thread_name_regs.emplace_back(thread_name, std::regex::optimize);
+  if (auto regex = RegEx::Create(thread_name); regex != nullptr) {
+    cond.thread_name_regs.emplace_back(std::move(regex));
+    return true;
+  }
+  return false;
 }
 
 void RecordFilter::AddUids(const std::set<uint32_t>& uids, bool exclude) {
@@ -382,9 +394,10 @@ bool RecordFilter::CheckCondition(const SampleRecord* r, const RecordFilterCondi
   return false;
 }
 
-bool RecordFilter::SearchInRegs(const std::string& s, const std::vector<std::regex>& regs) {
+bool RecordFilter::SearchInRegs(std::string_view s,
+                                const std::vector<std::unique_ptr<RegEx>>& regs) {
   for (auto& reg : regs) {
-    if (std::regex_search(s, reg)) {
+    if (reg->Search(s)) {
       return true;
     }
   }
