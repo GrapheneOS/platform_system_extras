@@ -248,4 +248,59 @@ void CallChainReportBuilder::DeObfuscateJavaMethods(std::vector<CallChainReportE
   }
 }
 
+bool ThreadReportBuilder::AggregateThreads(const std::vector<std::string>& thread_name_regex) {
+  size_t i = thread_regs_.size();
+  thread_regs_.resize(i + thread_name_regex.size());
+  for (const auto& reg_str : thread_name_regex) {
+    std::unique_ptr<RegEx> re = RegEx::Create(reg_str);
+    if (!re) {
+      return false;
+    }
+    thread_regs_[i++].re = std::move(re);
+  }
+  return true;
+}
+
+ThreadReport ThreadReportBuilder::Build(const ThreadEntry& thread) {
+  ThreadReport report(thread.pid, thread.tid, thread.comm);
+  ModifyReportToAggregateThreads(report);
+  return report;
+}
+
+void ThreadReportBuilder::ModifyReportToAggregateThreads(ThreadReport& report) {
+  if (thread_regs_.empty()) {
+    // No modification when there are no regular expressions.
+    return;
+  }
+  const std::string thread_name = report.thread_name;
+  if (auto it = thread_map_.find(thread_name); it != thread_map_.end()) {
+    // Found cached result in thread_map_.
+    if (it->second != -1) {
+      report = thread_regs_[it->second].report;
+    }
+    return;
+  }
+  // Run the slow path to walk through every regular expression.
+  size_t index;
+  for (index = 0; index < thread_regs_.size(); ++index) {
+    if (thread_regs_[index].re->Match(thread_name)) {
+      break;
+    }
+  }
+  if (index == thread_regs_.size()) {
+    thread_map_[thread_name] = -1;
+  } else {
+    thread_map_[thread_name] = static_cast<int>(index);
+    // Modify thread report.
+    auto& aggregated_report = thread_regs_[index].report;
+    if (aggregated_report.thread_name == nullptr) {
+      // Use regular expression as the name of the aggregated thread. So users know it's an
+      // aggregated thread.
+      aggregated_report =
+          ThreadReport(report.pid, report.tid, thread_regs_[index].re->GetPattern().c_str());
+    }
+    report = aggregated_report;
+  }
+}
+
 }  // namespace simpleperf
