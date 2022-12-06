@@ -19,13 +19,13 @@
 
 #include <memory>
 #include <optional>
+#include <regex>
 #include <string>
 
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
 
 #include "ETMDecoder.h"
-#include "RegEx.h"
 #include "cmd_inject_impl.h"
 #include "command.h"
 #include "record_file.h"
@@ -213,20 +213,20 @@ class ThreadTreeWithFilter : public ThreadTree {
 
 class DsoFilter {
  public:
-  DsoFilter(const RegEx* binary_name_regex) : binary_name_regex_(binary_name_regex) {}
+  DsoFilter(const std::regex& binary_name_regex) : binary_name_regex_(binary_name_regex) {}
 
   bool FilterDso(Dso* dso) {
     auto lookup = dso_filter_cache_.find(dso);
     if (lookup != dso_filter_cache_.end()) {
       return lookup->second;
     }
-    bool match = (binary_name_regex_ == nullptr) || binary_name_regex_->Search(dso->Path());
+    bool match = std::regex_search(dso->Path(), binary_name_regex_);
     dso_filter_cache_.insert({dso, match});
     return match;
   }
 
  private:
-  const RegEx* binary_name_regex_;
+  std::regex binary_name_regex_;
   std::unordered_map<Dso*, bool> dso_filter_cache_;
 };
 
@@ -247,7 +247,7 @@ static uint64_t GetFirstLoadSegmentVaddr(Dso* dso) {
 class PerfDataReader {
  public:
   PerfDataReader(const std::string& filename, bool exclude_perf, ETMDumpOption etm_dump_option,
-                 const RegEx* binary_name_regex)
+                 const std::regex& binary_name_regex)
       : filename_(filename),
         exclude_perf_(exclude_perf),
         etm_dump_option_(etm_dump_option),
@@ -399,7 +399,7 @@ class PerfDataReader {
 // Read a protobuf file specified by etm_branch_list.proto, and generate BranchListBinaryInfo.
 class BranchListReader {
  public:
-  BranchListReader(const std::string& filename, const RegEx* binary_name_regex)
+  BranchListReader(const std::string& filename, const std::regex binary_name_regex)
       : filename_(filename), binary_name_regex_(binary_name_regex) {}
 
   void SetCallback(const BranchListBinaryCallback& callback) { callback_ = callback; }
@@ -423,7 +423,7 @@ class BranchListReader {
 
     for (size_t i = 0; i < branch_list_proto.binaries_size(); i++) {
       const auto& binary_proto = branch_list_proto.binaries(i);
-      if (binary_name_regex_ != nullptr && !binary_name_regex_->Search(binary_proto.path())) {
+      if (!std::regex_search(binary_proto.path(), binary_name_regex_)) {
         continue;
       }
       BinaryKey key(binary_proto.path(), BuildId(binary_proto.build_id()));
@@ -474,7 +474,7 @@ class BranchListReader {
   }
 
   const std::string filename_;
-  const RegEx* binary_name_regex_;
+  const std::regex binary_name_regex_;
   BranchListBinaryCallback callback_;
 };
 
@@ -783,10 +783,7 @@ class InjectCommand : public Command {
     }
 
     if (auto value = options.PullValue("--binary"); value) {
-      binary_name_regex_ = RegEx::Create(*value->str_value);
-      if (binary_name_regex_ == nullptr) {
-        return false;
-      }
+      binary_name_regex_ = *value->str_value;
     }
     if (auto value = options.PullValue("--dump-etm"); value) {
       if (!ParseEtmDumpOption(*value->str_value, &etm_dump_option_)) {
@@ -852,8 +849,7 @@ class InjectCommand : public Command {
       autofdo_writer.AddAutoFDOBinary(key, binary);
     };
     for (const auto& input_filename : input_filenames_) {
-      PerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_,
-                            binary_name_regex_.get());
+      PerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_, binary_name_regex_);
       reader.SetCallback(callback);
       if (!reader.Read()) {
         return false;
@@ -868,8 +864,7 @@ class InjectCommand : public Command {
       branch_list_merger.AddBranchListBinary(key, binary);
     };
     for (const auto& input_filename : input_filenames_) {
-      PerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_,
-                            binary_name_regex_.get());
+      PerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_, binary_name_regex_);
       reader.SetCallback(callback);
       if (!reader.Read()) {
         return false;
@@ -886,7 +881,7 @@ class InjectCommand : public Command {
       branch_list_merger.AddBranchListBinary(key, binary);
     };
     for (const auto& input_filename : input_filenames_) {
-      BranchListReader reader(input_filename, binary_name_regex_.get());
+      BranchListReader reader(input_filename, binary_name_regex_);
       reader.SetCallback(callback);
       if (!reader.Read()) {
         return false;
@@ -918,7 +913,7 @@ class InjectCommand : public Command {
       branch_list_merger.AddBranchListBinary(key, binary);
     };
     for (const auto& input_filename : input_filenames_) {
-      BranchListReader reader(input_filename, binary_name_regex_.get());
+      BranchListReader reader(input_filename, binary_name_regex_);
       reader.SetCallback(callback);
       if (!reader.Read()) {
         return false;
@@ -929,7 +924,7 @@ class InjectCommand : public Command {
     return branch_list_writer.Write(output_filename_, branch_list_merger.binary_map);
   }
 
-  std::unique_ptr<RegEx> binary_name_regex_;
+  std::regex binary_name_regex_{""};  // Default to match everything.
   bool exclude_perf_ = false;
   std::vector<std::string> input_filenames_;
   std::string output_filename_ = "perf_inject.data";

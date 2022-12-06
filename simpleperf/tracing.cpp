@@ -21,6 +21,7 @@
 
 #include <map>
 #include <optional>
+#include <regex>
 #include <string>
 #include <vector>
 
@@ -30,7 +31,6 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
-#include "RegEx.h"
 #include "environment.h"
 #include "perf_event.h"
 #include "utils.h"
@@ -283,13 +283,14 @@ static TracingField ParseTracingField(const std::string& s) {
   TracingField field;
   std::string name;
   std::string value;
-  auto re = RegEx::Create(R"((\w+):(.+?);)");
+  std::regex re(R"((\w+):(.+?);)");
 
-  std::unique_ptr<RegExMatch> match = re->SearchAll(s);
-  while (match->IsValid()) {
-    std::string name = match->GetField(1);
-    std::string value = match->GetField(2);
-    match->MoveToNextMatch();
+  std::sregex_iterator match_it(s.begin(), s.end(), re);
+  std::sregex_iterator match_end;
+  while (match_it != match_end) {
+    std::smatch match = *match_it++;
+    std::string name = match.str(1);
+    std::string value = match.str(2);
 
     if (name == "field") {
       std::string last_value_part = Split(value, " \t").back();

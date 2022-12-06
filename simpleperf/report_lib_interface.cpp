@@ -200,7 +200,6 @@ class ReportLib {
   const char* GetSupportedTraceOffCpuModes();
   bool SetTraceOffCpuMode(const char* mode);
   bool SetSampleFilter(const char** filters, int filters_len);
-  bool AggregateThreads(const char** thread_name_regex, int thread_name_regex_len);
 
   Sample* GetNextSample();
   Event* GetEventOfCurrentSample() { return &current_event_; }
@@ -241,7 +240,6 @@ class ReportLib {
   FeatureSection feature_section_;
   std::vector<char> feature_section_data_;
   CallChainReportBuilder callchain_report_builder_;
-  ThreadReportBuilder thread_report_builder_;
   std::unique_ptr<Tracing> tracing_;
   RecordFilter record_filter_;
 };
@@ -310,14 +308,6 @@ bool ReportLib::SetSampleFilter(const char** filters, int filters_len) {
     return false;
   }
   return record_filter_.ParseOptions(options);
-}
-
-bool ReportLib::AggregateThreads(const char** thread_name_regex, int thread_name_regex_len) {
-  std::vector<std::string> regs(thread_name_regex_len);
-  for (int i = 0; i < thread_name_regex_len; ++i) {
-    regs[i] = thread_name_regex[i];
-  }
-  return thread_report_builder_.AggregateThreads(regs);
 }
 
 bool ReportLib::OpenRecordFileIfNecessary() {
@@ -455,11 +445,10 @@ void ReportLib::SetCurrentSample(const SampleRecord& r) {
   current_mappings_.clear();
   callchain_entries_.clear();
   current_sample_.ip = r.ip_data.ip;
+  current_sample_.pid = r.tid_data.pid;
+  current_sample_.tid = r.tid_data.tid;
   current_thread_ = thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-  ThreadReport thread_report = thread_report_builder_.Build(*current_thread_);
-  current_sample_.pid = thread_report.pid;
-  current_sample_.tid = thread_report.tid;
-  current_sample_.thread_comm = thread_report.thread_name;
+  current_sample_.thread_comm = current_thread_->comm;
   current_sample_.time = r.time_data.time;
   current_sample_.in_kernel = r.InKernel();
   current_sample_.cpu = r.cpu_data.cpu;
@@ -613,8 +602,6 @@ bool AddProguardMappingFile(ReportLib* report_lib, const char* mapping_file) EXP
 const char* GetSupportedTraceOffCpuModes(ReportLib* report_lib) EXPORT;
 bool SetTraceOffCpuMode(ReportLib* report_lib, const char* mode) EXPORT;
 bool SetSampleFilter(ReportLib* report_lib, const char** filters, int filters_len) EXPORT;
-bool AggregateThreads(ReportLib* report_lib, const char** thread_name_regex,
-                      int thread_name_regex_len) EXPORT;
 
 Sample* GetNextSample(ReportLib* report_lib) EXPORT;
 Event* GetEventOfCurrentSample(ReportLib* report_lib) EXPORT;
@@ -677,11 +664,6 @@ bool SetTraceOffCpuMode(ReportLib* report_lib, const char* mode) {
 
 bool SetSampleFilter(ReportLib* report_lib, const char** filters, int filters_len) {
   return report_lib->SetSampleFilter(filters, filters_len);
-}
-
-bool AggregateThreads(ReportLib* report_lib, const char** thread_name_regex,
-                      int thread_name_regex_len) {
-  return report_lib->AggregateThreads(thread_name_regex, thread_name_regex_len);
 }
 
 Sample* GetNextSample(ReportLib* report_lib) {

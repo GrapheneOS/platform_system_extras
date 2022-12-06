@@ -487,16 +487,12 @@ std::set<pid_t> WaitForAppProcesses(const std::string& package_name) {
   while (true) {
     std::vector<pid_t> pids = GetAllProcesses();
     for (pid_t pid : pids) {
-      std::string argv0;
-      if (!android::base::ReadFileToString("/proc/" + std::to_string(pid) + "/cmdline", &argv0)) {
+      std::string cmdline;
+      if (!android::base::ReadFileToString("/proc/" + std::to_string(pid) + "/cmdline", &cmdline)) {
         // Maybe we don't have permission to read it.
         continue;
       }
-      size_t pos = argv0.find('\0');
-      if (pos != std::string::npos) {
-        argv0.resize(pos);
-      }
-      std::string process_name = android::base::Basename(argv0);
+      std::string process_name = android::base::Basename(cmdline);
       // The app may have multiple processes, with process name like
       // com.google.android.googlequicksearchbox:search.
       size_t split_pos = process_name.find(':');
