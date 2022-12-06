@@ -39,9 +39,6 @@
 
 using namespace std::string_literals;
 
-/* This can be removed once this macro is available in <linux/fscrypt.h> */
-#define FSCRYPT_MODE_AES_256_HCTR2 10
-
 /* modes not supported by upstream kernel, so not in <linux/fscrypt.h> */
 #define FSCRYPT_MODE_AES_256_HEH 126
 #define FSCRYPT_MODE_PRIVATE 127
