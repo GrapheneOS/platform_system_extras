@@ -298,7 +298,7 @@ system/extras/simpleperf/runtest/two_functions.cpp:21:3
     def test_source_file_searcher(self):
         searcher = SourceFileSearcher(
             [TestHelper.testdata_path('SimpleperfExampleCpp'),
-             TestHelper.testdata_path('SimpleperfExampleOfKotlin')])
+             TestHelper.testdata_path('SimpleperfExampleKotlin')])
 
         def format_path(path):
             return os.path.join(TestHelper.testdata_dir, path.replace('/', os.sep))
@@ -317,8 +317,9 @@ system/extras/simpleperf/runtest/two_functions.cpp:21:3
             searcher.get_real_path('cpp/MainActivity.java'))
         # Find a Kotlin file.
         self.assertEqual(
-            format_path('SimpleperfExampleOfKotlin/app/src/main/java/com/example/' +
-                        'simpleperf/simpleperfexampleofkotlin/MainActivity.kt'),
+            format_path(
+                'SimpleperfExampleKotlin/app/src/main/java/simpleperf/example/kotlin/' +
+                'MainActivity.kt'),
             searcher.get_real_path('MainActivity.kt'))
 
     def test_is_elf_file(self):
