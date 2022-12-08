@@ -895,7 +895,9 @@ bool ReportCommand::ReadEventAttrFromRecordFile() {
 }
 
 bool ReportCommand::ReadFeaturesFromRecordFile() {
-  record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
+  if (!record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_)) {
+    return false;
+  }
 
   std::string arch = record_file_reader_->ReadFeatureString(PerfFileFormat::FEAT_ARCH);
   if (!arch.empty()) {

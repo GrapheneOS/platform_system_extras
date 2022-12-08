@@ -131,7 +131,7 @@ class ThreadTree {
   // Clear thread and map information, but keep loaded dso information. It saves
   // the time to reload dso information.
   void ClearThreadAndMap();
-  void AddDsoInfo(FileFeature& file);
+  bool AddDsoInfo(FileFeature& file);
   void AddDexFileOffset(const std::string& file_path, uint64_t dex_file_offset);
 
   // Update thread tree with information provided by record.
