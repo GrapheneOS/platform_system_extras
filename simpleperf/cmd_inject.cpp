@@ -275,7 +275,9 @@ class PerfDataReader {
         thread_tree_.ExcludePid(pid);
       }
     }
-    record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
+    if (!record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_)) {
+      return false;
+    }
     if (!record_file_reader_->ReadDataSection([this](auto r) { return ProcessRecord(r.get()); })) {
       return false;
     }
