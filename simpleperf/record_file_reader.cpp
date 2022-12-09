@@ -708,7 +708,7 @@ std::optional<DebugUnwindFeature> RecordFileReader::ReadDebugUnwindFeature() {
   return std::nullopt;
 }
 
-void RecordFileReader::LoadBuildIdAndFileFeatures(ThreadTree& thread_tree) {
+bool RecordFileReader::LoadBuildIdAndFileFeatures(ThreadTree& thread_tree) {
   std::vector<BuildIdRecord> records = ReadBuildIdFeature();
   std::vector<std::pair<std::string, BuildId>> build_ids;
   for (auto& r : records) {
@@ -720,9 +720,12 @@ void RecordFileReader::LoadBuildIdAndFileFeatures(ThreadTree& thread_tree) {
     FileFeature file_feature;
     size_t read_pos = 0;
     while (ReadFileFeature(read_pos, &file_feature)) {
-      thread_tree.AddDsoInfo(file_feature);
+      if (!thread_tree.AddDsoInfo(file_feature)) {
+        return false;
+      }
     }
   }
+  return true;
 }
 
 bool RecordFileReader::ReadAuxData(uint32_t cpu, uint64_t aux_offset, void* buf, size_t size) {
