@@ -322,7 +322,9 @@ void DumpRecordCommand::DumpAttrSection() {
 
 bool DumpRecordCommand::DumpDataSection() {
   thread_tree_.ShowIpForUnknownSymbol();
-  record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
+  if (!record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_)) {
+    return false;
+  }
 
   auto record_callback = [&](std::unique_ptr<Record> r) { return ProcessRecord(r.get()); };
   return record_file_reader_->ReadDataSection(record_callback);

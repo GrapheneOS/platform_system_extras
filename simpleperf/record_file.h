@@ -192,7 +192,7 @@ class RecordFileReader {
   std::string GetClockId();
   std::optional<DebugUnwindFeature> ReadDebugUnwindFeature();
 
-  void LoadBuildIdAndFileFeatures(ThreadTree& thread_tree);
+  bool LoadBuildIdAndFileFeatures(ThreadTree& thread_tree);
 
   bool ReadAuxData(uint32_t cpu, uint64_t aux_offset, void* buf, size_t size);
 
