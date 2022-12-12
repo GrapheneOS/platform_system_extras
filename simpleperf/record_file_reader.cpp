@@ -18,7 +18,9 @@
 
 #include <fcntl.h>
 #include <string.h>
+
 #include <set>
+#include <string_view>
 #include <vector>
 
 #include <android-base/logging.h>
@@ -670,14 +672,24 @@ bool RecordFileReader::ReadMetaInfoFeature() {
     if (!ReadFeatureSection(FEAT_META_INFO, &buf)) {
       return false;
     }
-    const char* p = buf.data();
-    const char* end = buf.data() + buf.size();
-    while (p < end) {
-      const char* key = p;
-      const char* value = key + strlen(key) + 1;
-      CHECK(value < end);
-      meta_info_[p] = value;
-      p = value + strlen(value) + 1;
+    std::string_view s(buf.data(), buf.size());
+    size_t key_start = 0;
+    while (key_start < s.size()) {
+      // Parse a C-string for key.
+      size_t key_end = s.find('\0', key_start);
+      if (key_end == key_start || key_end == s.npos) {
+        LOG(ERROR) << "invalid meta info in " << filename_;
+        return false;
+      }
+      // Parse a C-string for value.
+      size_t value_start = key_end + 1;
+      size_t value_end = s.find('\0', value_start);
+      if (value_end == value_start || value_end == s.npos) {
+        LOG(ERROR) << "invalid meta info in " << filename_;
+        return false;
+      }
+      meta_info_[&s[key_start]] = &s[value_start];
+      key_start = value_end + 1;
     }
   }
   return true;
