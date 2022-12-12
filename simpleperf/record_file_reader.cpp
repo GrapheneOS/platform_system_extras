@@ -299,40 +299,37 @@ bool RecordFileReader::ReadRecord(std::unique_ptr<Record>& record) {
 
 std::unique_ptr<Record> RecordFileReader::ReadRecord() {
   char header_buf[Record::header_size()];
-  if (!Read(header_buf, Record::header_size())) {
-    return nullptr;
-  }
-  RecordHeader header(header_buf);
-  if (header.size < Record::header_size()) {
-    LOG(ERROR) << "invalid record";
+  RecordHeader header;
+  if (!Read(header_buf, Record::header_size()) || !header.Parse(header_buf)) {
     return nullptr;
   }
   std::unique_ptr<char[]> p;
   if (header.type == SIMPLE_PERF_RECORD_SPLIT) {
     // Read until meeting a RECORD_SPLIT_END record.
     std::vector<char> buf;
-    size_t cur_size = 0;
-    char header_buf[Record::header_size()];
     while (header.type == SIMPLE_PERF_RECORD_SPLIT) {
-      size_t bytes_to_read = header.size - Record::header_size();
-      buf.resize(cur_size + bytes_to_read);
-      if (!Read(&buf[cur_size], bytes_to_read)) {
+      size_t add_size = header.size - Record::header_size();
+      size_t old_size = buf.size();
+      buf.resize(old_size + add_size);
+      if (!Read(&buf[old_size], add_size)) {
         return nullptr;
       }
-      cur_size += bytes_to_read;
       read_record_size_ += header.size;
-      if (!Read(header_buf, Record::header_size())) {
+      if (!Read(header_buf, Record::header_size()) || !header.Parse(header_buf)) {
         return nullptr;
       }
-      header = RecordHeader(header_buf);
     }
     if (header.type != SIMPLE_PERF_RECORD_SPLIT_END) {
       LOG(ERROR) << "SPLIT records are not followed by a SPLIT_END record.";
       return nullptr;
     }
     read_record_size_ += header.size;
-    header = RecordHeader(buf.data());
-    p.reset(new char[header.size]);
+    if (buf.size() < Record::header_size() || !header.Parse(buf.data()) ||
+        header.size != buf.size()) {
+      LOG(ERROR) << "invalid record merged from SPLIT records";
+      return nullptr;
+    }
+    p.reset(new char[buf.size()]);
     memcpy(p.get(), buf.data(), buf.size());
   } else {
     p.reset(new char[header.size]);
