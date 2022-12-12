@@ -50,6 +50,10 @@ void ThreadTree::SetThreadName(int pid, int tid, const std::string& comm) {
 }
 
 void ThreadTree::ForkThread(int pid, int tid, int ppid, int ptid) {
+  // Skip invalid fork info.
+  if (tid == ptid) {
+    return;
+  }
   ThreadEntry* parent = FindThreadOrNew(ppid, ptid);
   ThreadEntry* child = FindThreadOrNew(pid, tid);
   child->comm = parent->comm;
