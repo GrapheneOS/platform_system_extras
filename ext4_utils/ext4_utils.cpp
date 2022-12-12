@@ -144,7 +144,8 @@ void ext4_create_fs_aux_info() {
         aux_info.sb = aux_info.sb_block;
 
     /* Alloc an array to hold the pointers to the backup superblocks */
-    aux_info.backup_sb = (struct ext4_super_block**)calloc(aux_info.groups, sizeof(char*));
+    aux_info.backup_sb =
+            (struct ext4_super_block**)calloc(aux_info.groups, sizeof(struct ext4_super_block*));
 
     if (!aux_info.sb) critical_error_errno("calloc");
 
