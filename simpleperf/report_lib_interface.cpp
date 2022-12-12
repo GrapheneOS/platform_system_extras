@@ -326,7 +326,9 @@ bool ReportLib::OpenRecordFileIfNecessary() {
     if (record_file_reader_ == nullptr) {
       return false;
     }
-    record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_);
+    if (!record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_)) {
+      return false;
+    }
     auto& meta_info = record_file_reader_->GetMetaInfoFeature();
     if (auto it = meta_info.find("trace_offcpu"); it != meta_info.end() && it->second == "true") {
       // If recorded with --trace-offcpu, default is to report on-off-cpu samples.
