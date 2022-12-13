@@ -39,7 +39,12 @@ namespace simpleperf {
     }                                     \
   } while (0)
 
-#define CHECK_SIZE_U64(p, end, u64_count) CHECK_SIZE(p, end, (u64_count) * sizeof(uint64_t))
+#define CHECK_SIZE_U64(p, end, u64_count)                           \
+  do {                                                              \
+    if (UNLIKELY(((end) - (p)) / sizeof(uint64_t) < (u64_count))) { \
+      return false;                                                 \
+    }                                                               \
+  } while (0)
 
 static std::string RecordTypeToString(int record_type) {
   static std::unordered_map<int, std::string> record_type_names = {

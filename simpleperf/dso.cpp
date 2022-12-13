@@ -948,9 +948,9 @@ std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_pat
     case DSO_UNKNOWN_FILE:
       return std::unique_ptr<Dso>(new UnknownDso(dso_path));
     default:
-      LOG(FATAL) << "Unexpected dso_type " << static_cast<int>(dso_type);
+      LOG(ERROR) << "Unexpected dso_type " << static_cast<int>(dso_type);
+      return nullptr;
   }
-  return nullptr;
 }
 
 std::unique_ptr<Dso> Dso::CreateDsoWithBuildId(DsoType dso_type, const std::string& dso_path,
@@ -967,7 +967,7 @@ std::unique_ptr<Dso> Dso::CreateDsoWithBuildId(DsoType dso_type, const std::stri
       dso.reset(new KernelModuleDso(dso_path, 0, 0, nullptr));
       break;
     default:
-      LOG(FATAL) << "Unexpected dso_type " << static_cast<int>(dso_type);
+      LOG(ERROR) << "Unexpected dso_type " << static_cast<int>(dso_type);
       return nullptr;
   }
   dso->debug_file_path_ = debug_elf_file_finder_.FindDebugFile(dso_path, false, build_id);
