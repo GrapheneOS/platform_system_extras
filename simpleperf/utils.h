@@ -166,6 +166,12 @@ struct BinaryReader {
     return true;
   }
 
+  void Move(size_t size) {
+    if (CheckLeftSize(size)) {
+      head += size;
+    }
+  }
+
   template <class T>
   void Read(T& data) {
     static_assert(std::is_standard_layout<T>::value, "not standard layout");
