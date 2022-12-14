@@ -146,7 +146,9 @@ class RecordFileProcessor {
     }
 
     // 2. Load feature sections.
-    reader_->LoadBuildIdAndFileFeatures(thread_tree_);
+    if (!reader_->LoadBuildIdAndFileFeatures(thread_tree_)) {
+      return false;
+    }
     ScopedCurrentArch scoped_arch(
         GetArchType(reader_->ReadFeatureString(PerfFileFormat::FEAT_ARCH)));
     unwinder_->LoadMetaInfo(reader_->GetMetaInfoFeature());

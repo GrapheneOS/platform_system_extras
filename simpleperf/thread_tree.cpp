@@ -50,6 +50,10 @@ void ThreadTree::SetThreadName(int pid, int tid, const std::string& comm) {
 }
 
 void ThreadTree::ForkThread(int pid, int tid, int ppid, int ptid) {
+  // Skip invalid fork info.
+  if (tid == ptid) {
+    return;
+  }
   ThreadEntry* parent = FindThreadOrNew(ppid, ptid);
   ThreadEntry* child = FindThreadOrNew(pid, tid);
   child->comm = parent->comm;
@@ -159,6 +163,7 @@ void ThreadTree::AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t le
                               const std::string& filename, uint32_t flags) {
   ThreadEntry* thread = FindThreadOrNew(pid, tid);
   Dso* dso = FindUserDsoOrNew(filename, start_addr);
+  CHECK(dso != nullptr);
   InsertMap(*thread->maps, MapEntry(start_addr, len, pgoff, dso, false, flags));
 }
 
@@ -197,6 +202,9 @@ Dso* ThreadTree::FindUserDsoOrNew(const std::string& filename, uint64_t start_ad
   if (it == user_dso_tree_.end()) {
     bool force_64bit = start_addr > UINT_MAX;
     std::unique_ptr<Dso> dso = Dso::CreateDso(dso_type, filename, force_64bit);
+    if (!dso) {
+      return nullptr;
+    }
     auto pair = user_dso_tree_.insert(std::make_pair(filename, std::move(dso)));
     CHECK(pair.second);
     it = pair.first;
@@ -347,7 +355,7 @@ void ThreadTree::ClearThreadAndMap() {
   map_storage_.clear();
 }
 
-void ThreadTree::AddDsoInfo(FileFeature& file) {
+bool ThreadTree::AddDsoInfo(FileFeature& file) {
   DsoType dso_type = file.type;
   Dso* dso = nullptr;
   if (dso_type == DSO_KERNEL) {
@@ -357,11 +365,15 @@ void ThreadTree::AddDsoInfo(FileFeature& file) {
   } else {
     dso = FindUserDsoOrNew(file.path, 0, dso_type);
   }
+  if (!dso) {
+    return false;
+  }
   dso->SetMinExecutableVaddr(file.min_vaddr, file.file_offset_of_min_vaddr);
   dso->SetSymbols(&file.symbols);
   for (uint64_t offset : file.dex_file_offsets) {
     dso->AddDexFileOffset(offset);
   }
+  return true;
 }
 
 void ThreadTree::AddDexFileOffset(const std::string& file_path, uint64_t dex_file_offset) {
