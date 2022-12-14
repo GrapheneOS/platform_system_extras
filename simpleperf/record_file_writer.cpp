@@ -202,7 +202,10 @@ bool RecordFileWriter::ReadDataSection(const std::function<void(const Record*)>&
     if (!Read(record_buf.data(), Record::header_size())) {
       return false;
     }
-    RecordHeader header(record_buf.data());
+    RecordHeader header;
+    if (!header.Parse(record_buf.data())) {
+      return false;
+    }
     if (record_buf.size() < header.size) {
       record_buf.resize(header.size);
     }
