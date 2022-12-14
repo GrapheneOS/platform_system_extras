@@ -543,17 +543,16 @@ std::vector<uint64_t> RecordFileReader::ReadAuxTraceFeature() {
 
 bool RecordFileReader::ReadFileFeature(size_t& read_pos, FileFeature* file) {
   file->Clear();
+  bool result = false;
   if (HasFeature(FEAT_FILE)) {
-    if (!ReadFileV1Feature(read_pos, file)) {
-      LOG(ERROR) << "failed to read file feature section";
-      return false;
-    }
-    return true;
+    result = ReadFileV1Feature(read_pos, file);
+  } else if (HasFeature(FEAT_FILE2)) {
+    result = ReadFileV2Feature(read_pos, file);
   }
-  if (HasFeature(FEAT_FILE2)) {
-    return ReadFileV2Feature(read_pos, file);
+  if (!result) {
+    LOG(ERROR) << "failed to read file feature section";
   }
-  return false;
+  return result;
 }
 
 bool RecordFileReader::ReadFileV1Feature(size_t& read_pos, FileFeature* file) {
@@ -639,11 +638,15 @@ bool RecordFileReader::ReadFileV2Feature(size_t& read_pos, FileFeature* file) {
   if (!Read(&size, 4)) {
     return false;
   }
-  read_pos += 4 + size;
+  read_pos += 4;
+  if (read_pos > it->second.size || size > it->second.size - read_pos) {
+    return false;
+  }
   std::string s(size, '\0');
   if (!Read(s.data(), size)) {
     return false;
   }
+  read_pos += size;
   proto::FileFeature proto_file;
   if (!proto_file.ParseFromString(s)) {
     return false;
@@ -657,15 +660,21 @@ bool RecordFileReader::ReadFileV2Feature(size_t& read_pos, FileFeature* file) {
     file->symbols.emplace_back(proto_symbol.name(), proto_symbol.vaddr(), proto_symbol.len());
   }
   if (file->type == DSO_DEX_FILE) {
-    CHECK(proto_file.has_dex_file());
+    if (!proto_file.has_dex_file()) {
+      return false;
+    }
     const auto& dex_file_offsets = proto_file.dex_file().dex_file_offset();
     file->dex_file_offsets.insert(file->dex_file_offsets.end(), dex_file_offsets.begin(),
                                   dex_file_offsets.end());
   } else if (file->type == DSO_ELF_FILE) {
-    CHECK(proto_file.has_elf_file());
+    if (!proto_file.has_elf_file()) {
+      return false;
+    }
     file->file_offset_of_min_vaddr = proto_file.elf_file().file_offset_of_min_vaddr();
   } else if (file->type == DSO_KERNEL_MODULE) {
-    CHECK(proto_file.has_kernel_module());
+    if (!proto_file.has_kernel_module()) {
+      return false;
+    }
     file->file_offset_of_min_vaddr = proto_file.kernel_module().memory_offset_of_min_vaddr();
   }
   return true;
