@@ -49,10 +49,14 @@ void ThreadTree::SetThreadName(int pid, int tid, const std::string& comm) {
   }
 }
 
-void ThreadTree::ForkThread(int pid, int tid, int ppid, int ptid) {
-  // Skip invalid fork info.
+bool ThreadTree::ForkThread(int pid, int tid, int ppid, int ptid) {
+  // Check thread ID.
   if (tid == ptid) {
-    return;
+    return false;
+  }
+  // Check thread group ID (pid here) as in https://linux.die.net/man/2/clone2.
+  if (pid != tid && pid != ppid) {
+    return false;
   }
   ThreadEntry* parent = FindThreadOrNew(ppid, ptid);
   ThreadEntry* child = FindThreadOrNew(pid, tid);
@@ -68,6 +72,7 @@ void ThreadTree::ForkThread(int pid, int tid, int ppid, int ptid) {
       }
     }
   }
+  return true;
 }
 
 ThreadEntry* ThreadTree::FindThread(int tid) const {
