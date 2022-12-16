@@ -299,40 +299,37 @@ bool RecordFileReader::ReadRecord(std::unique_ptr<Record>& record) {
 
 std::unique_ptr<Record> RecordFileReader::ReadRecord() {
   char header_buf[Record::header_size()];
-  if (!Read(header_buf, Record::header_size())) {
-    return nullptr;
-  }
-  RecordHeader header(header_buf);
-  if (header.size < Record::header_size()) {
-    LOG(ERROR) << "invalid record";
+  RecordHeader header;
+  if (!Read(header_buf, Record::header_size()) || !header.Parse(header_buf)) {
     return nullptr;
   }
   std::unique_ptr<char[]> p;
   if (header.type == SIMPLE_PERF_RECORD_SPLIT) {
     // Read until meeting a RECORD_SPLIT_END record.
     std::vector<char> buf;
-    size_t cur_size = 0;
-    char header_buf[Record::header_size()];
     while (header.type == SIMPLE_PERF_RECORD_SPLIT) {
-      size_t bytes_to_read = header.size - Record::header_size();
-      buf.resize(cur_size + bytes_to_read);
-      if (!Read(&buf[cur_size], bytes_to_read)) {
+      size_t add_size = header.size - Record::header_size();
+      size_t old_size = buf.size();
+      buf.resize(old_size + add_size);
+      if (!Read(&buf[old_size], add_size)) {
         return nullptr;
       }
-      cur_size += bytes_to_read;
       read_record_size_ += header.size;
-      if (!Read(header_buf, Record::header_size())) {
+      if (!Read(header_buf, Record::header_size()) || !header.Parse(header_buf)) {
         return nullptr;
       }
-      header = RecordHeader(header_buf);
     }
     if (header.type != SIMPLE_PERF_RECORD_SPLIT_END) {
       LOG(ERROR) << "SPLIT records are not followed by a SPLIT_END record.";
       return nullptr;
     }
     read_record_size_ += header.size;
-    header = RecordHeader(buf.data());
-    p.reset(new char[header.size]);
+    if (buf.size() < Record::header_size() || !header.Parse(buf.data()) ||
+        header.size != buf.size()) {
+      LOG(ERROR) << "invalid record merged from SPLIT records";
+      return nullptr;
+    }
+    p.reset(new char[buf.size()]);
     memcpy(p.get(), buf.data(), buf.size());
   } else {
     p.reset(new char[header.size]);
@@ -546,17 +543,16 @@ std::vector<uint64_t> RecordFileReader::ReadAuxTraceFeature() {
 
 bool RecordFileReader::ReadFileFeature(size_t& read_pos, FileFeature* file) {
   file->Clear();
+  bool result = false;
   if (HasFeature(FEAT_FILE)) {
-    if (!ReadFileV1Feature(read_pos, file)) {
-      LOG(ERROR) << "failed to read file feature section";
-      return false;
-    }
-    return true;
+    result = ReadFileV1Feature(read_pos, file);
+  } else if (HasFeature(FEAT_FILE2)) {
+    result = ReadFileV2Feature(read_pos, file);
   }
-  if (HasFeature(FEAT_FILE2)) {
-    return ReadFileV2Feature(read_pos, file);
+  if (!result) {
+    LOG(ERROR) << "failed to read file feature section";
   }
-  return false;
+  return result;
 }
 
 bool RecordFileReader::ReadFileV1Feature(size_t& read_pos, FileFeature* file) {
@@ -642,11 +638,15 @@ bool RecordFileReader::ReadFileV2Feature(size_t& read_pos, FileFeature* file) {
   if (!Read(&size, 4)) {
     return false;
   }
-  read_pos += 4 + size;
+  read_pos += 4;
+  if (read_pos > it->second.size || size > it->second.size - read_pos) {
+    return false;
+  }
   std::string s(size, '\0');
   if (!Read(s.data(), size)) {
     return false;
   }
+  read_pos += size;
   proto::FileFeature proto_file;
   if (!proto_file.ParseFromString(s)) {
     return false;
@@ -660,15 +660,21 @@ bool RecordFileReader::ReadFileV2Feature(size_t& read_pos, FileFeature* file) {
     file->symbols.emplace_back(proto_symbol.name(), proto_symbol.vaddr(), proto_symbol.len());
   }
   if (file->type == DSO_DEX_FILE) {
-    CHECK(proto_file.has_dex_file());
+    if (!proto_file.has_dex_file()) {
+      return false;
+    }
     const auto& dex_file_offsets = proto_file.dex_file().dex_file_offset();
     file->dex_file_offsets.insert(file->dex_file_offsets.end(), dex_file_offsets.begin(),
                                   dex_file_offsets.end());
   } else if (file->type == DSO_ELF_FILE) {
-    CHECK(proto_file.has_elf_file());
+    if (!proto_file.has_elf_file()) {
+      return false;
+    }
     file->file_offset_of_min_vaddr = proto_file.elf_file().file_offset_of_min_vaddr();
   } else if (file->type == DSO_KERNEL_MODULE) {
-    CHECK(proto_file.has_kernel_module());
+    if (!proto_file.has_kernel_module()) {
+      return false;
+    }
     file->file_offset_of_min_vaddr = proto_file.kernel_module().memory_offset_of_min_vaddr();
   }
   return true;

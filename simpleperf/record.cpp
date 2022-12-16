@@ -210,7 +210,9 @@ bool Record::ParseHeader(char*& p, char*& end) {
   binary_ = p;
   CHECK(end != nullptr);
   CHECK_SIZE(p, end, sizeof(perf_event_header));
-  header = RecordHeader(p);
+  if (!header.Parse(p)) {
+    return false;
+  }
   CHECK_SIZE(p, end, header.size);
   end = p + header.size;
   p += sizeof(perf_event_header);
