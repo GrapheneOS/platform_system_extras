@@ -101,7 +101,7 @@ class ThreadTree {
   virtual ~ThreadTree() {}
 
   void SetThreadName(int pid, int tid, const std::string& comm);
-  void ForkThread(int pid, int tid, int ppid, int ptid);
+  bool ForkThread(int pid, int tid, int ppid, int ptid);
   virtual ThreadEntry* FindThread(int tid) const;
   ThreadEntry* FindThreadOrNew(int pid, int tid);
   void ExitThread(int pid, int tid);
