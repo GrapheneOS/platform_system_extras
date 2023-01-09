@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,29 @@
 
 #pragma once
 
-#include "AllocParser.h"
+#include <string>
 
-// Forward Declarations.
-class Pointers;
+enum AllocEnum : uint8_t {
+    MALLOC = 0,
+    CALLOC,
+    MEMALIGN,
+    REALLOC,
+    FREE,
+    THREAD_DONE,
+};
 
-bool AllocDoesFree(const AllocEntry& entry);
+struct AllocEntry {
+    pid_t tid;
+    AllocEnum type;
+    uint64_t ptr = 0;
+    size_t size = 0;
+    union {
+        uint64_t old_ptr = 0;
+        uint64_t n_elements;
+        uint64_t align;
+    } u;
+    uint64_t st = 0;
+    uint64_t et = 0;
+};
 
-uint64_t AllocExecute(const AllocEntry& entry, Pointers* pointers);
+void AllocGetData(const std::string& line, AllocEntry* entry);
