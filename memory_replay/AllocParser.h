@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <sys/types.h>
+
 #include <string>
 
 enum AllocEnum : uint8_t {
