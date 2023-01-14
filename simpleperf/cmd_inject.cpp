@@ -320,6 +320,10 @@ class PerfDataReader {
           LOG(ERROR) << "failed to read aux data in " << filename_;
           return false;
         }
+        if (!etm_decoder_) {
+          LOG(ERROR) << "ETMDecoder isn't created";
+          return false;
+        }
         return etm_decoder_->ProcessData(aux_data_buffer_.data(), aux_size, !aux->Unformatted(),
                                          aux->Cpu());
       }
