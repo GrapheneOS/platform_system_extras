@@ -476,16 +476,17 @@ struct FakeAuxData {
 };
 
 TEST_F(RecordReadThreadTest, read_aux_data) {
+  ScopedEventTypes scoped_types("cs-etm,0,0");
   const EventType* type = FindEventTypeByName("cs-etm");
-  if (type == nullptr) {
-    GTEST_LOG_(INFO) << "Omit this test as cs-etm event type isn't available";
-    return;
-  }
+  ASSERT_TRUE(type != nullptr);
   std::vector<FakeAuxData> aux_data;
   aux_data.emplace_back(40, 0, '0', 0, false);   // one buffer
   aux_data.emplace_back(40, 40, '1', 0, false);  // two buffers
   aux_data.emplace_back(36, 0, '2', 4, false);   // one buffer needs padding to 8 bytes alignment
-  aux_data.emplace_back(1024, 0, '3', 0, true);  // one buffer too big to fit into RecordReadThread
+  // one buffer too big to fit in record buffer, failing at checking free size
+  aux_data.emplace_back(1024, 0, '3', 0, true);
+  // one buffer too big to fit in record buffer, failing at AllocWriteSpace()
+  aux_data.emplace_back(800, 0, '4', 0, true);
   size_t test_index = 0;
 
   auto SetBuf1 = [&](char** buf1) {
