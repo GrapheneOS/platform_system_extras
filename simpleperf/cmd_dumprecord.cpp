@@ -421,6 +421,10 @@ bool DumpRecordCommand::DumpAuxData(const AuxRecord& aux) {
     if (!record_file_reader_->ReadAuxData(aux.Cpu(), aux.data->aux_offset, data.get(), size)) {
       return false;
     }
+    if (!etm_decoder_) {
+      LOG(ERROR) << "ETMDecoder isn't created";
+      return false;
+    }
     return etm_decoder_->ProcessData(data.get(), size, !aux.Unformatted(), aux.Cpu());
   }
   return true;
