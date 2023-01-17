@@ -289,9 +289,14 @@ class MemAccess : public ITargetMemAccess {
       // addr.
       if (!map->in_kernel) {
         data.buffer_map = map;
-        data.buffer = memory == nullptr ? nullptr : (memory->getBufferStart() + map->pgoff);
         data.buffer_start = map->start_addr;
         data.buffer_end = map->get_end_addr();
+        if (memory != nullptr && memory->getBufferSize() > map->pgoff &&
+            (memory->getBufferSize() - map->pgoff >= map->len)) {
+          data.buffer = memory->getBufferStart() + map->pgoff;
+        } else {
+          data.buffer = nullptr;
+        }
       }
     }
     *num_bytes = copy_size;
