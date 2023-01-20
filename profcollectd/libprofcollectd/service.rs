@@ -131,7 +131,7 @@ impl ProfcollectdBinderService {
             log::info!("Config change detected, resetting profcollect.");
             clear_data()?;
 
-            write(*CONFIG_FILE, &new_config.to_string())?;
+            write(*CONFIG_FILE, new_config.to_string())?;
         }
 
         // Clear profile reports out of rentention period.
