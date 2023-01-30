@@ -65,6 +65,7 @@ class CallChainReportBuilderTest : public testing::Test {
                    Symbol("java_method2", 0x3000, 0x100),
                    Symbol("java_method3", 0x3100, 0x100),
                    Symbol("obfuscated_class.obfuscated_java_method2", 0x3200, 0x100),
+                   Symbol("obfuscated_class.java_method4", 0x3300, 0x100),
                });
 
     // Add map layout for libraries used in the thread:
@@ -265,11 +266,12 @@ TEST_F(CallChainReportBuilderTest, add_proguard_mapping_file) {
   std::vector<uint64_t> fake_ips = {
       0x2200,  // 2200,  // obfuscated_class.obfuscated_java_method
       0x3200,  // 3200,  // obfuscated_class.obfuscated_java_method2
+      0x3300,  // 3300,  // obfuscated_class.java_method4
   };
   CallChainReportBuilder builder(thread_tree);
   // Symbol names aren't changed when not given proguard mapping files.
   std::vector<CallChainReportEntry> entries = builder.Build(thread, fake_ips, 0);
-  ASSERT_EQ(entries.size(), 2);
+  ASSERT_EQ(entries.size(), 3);
   ASSERT_EQ(entries[0].ip, 0x2200);
   ASSERT_STREQ(entries[0].symbol->DemangledName(), "obfuscated_class.obfuscated_java_method");
   ASSERT_EQ(entries[0].dso->Path(), fake_dex_file_path);
@@ -280,6 +282,11 @@ TEST_F(CallChainReportBuilderTest, add_proguard_mapping_file) {
   ASSERT_EQ(entries[1].dso->Path(), fake_jit_cache_path);
   ASSERT_EQ(entries[1].vaddr_in_file, 0x3200);
   ASSERT_EQ(entries[1].execution_type, CallChainExecutionType::JIT_JVM_METHOD);
+  ASSERT_EQ(entries[2].ip, 0x3300);
+  ASSERT_STREQ(entries[2].symbol->DemangledName(), "obfuscated_class.java_method4");
+  ASSERT_EQ(entries[2].dso->Path(), fake_jit_cache_path);
+  ASSERT_EQ(entries[2].vaddr_in_file, 0x3300);
+  ASSERT_EQ(entries[2].execution_type, CallChainExecutionType::JIT_JVM_METHOD);
 
   // Symbol names are changed when given a proguard mapping file.
   TemporaryFile tmpfile;
@@ -294,7 +301,7 @@ TEST_F(CallChainReportBuilderTest, add_proguard_mapping_file) {
       tmpfile.path));
   builder.AddProguardMappingFile(tmpfile.path);
   entries = builder.Build(thread, fake_ips, 0);
-  ASSERT_EQ(entries.size(), 2);
+  ASSERT_EQ(entries.size(), 3);
   ASSERT_EQ(entries[0].ip, 0x2200);
   ASSERT_STREQ(entries[0].symbol->DemangledName(),
                "android.support.v4.app.RemoteActionCompatParcelizer.read");
@@ -307,6 +314,11 @@ TEST_F(CallChainReportBuilderTest, add_proguard_mapping_file) {
   ASSERT_EQ(entries[1].dso->Path(), fake_jit_cache_path);
   ASSERT_EQ(entries[1].vaddr_in_file, 0x3200);
   ASSERT_EQ(entries[1].execution_type, CallChainExecutionType::JIT_JVM_METHOD);
+  ASSERT_STREQ(entries[2].symbol->DemangledName(),
+               "android.support.v4.app.RemoteActionCompatParcelizer.java_method4");
+  ASSERT_EQ(entries[2].dso->Path(), fake_jit_cache_path);
+  ASSERT_EQ(entries[2].vaddr_in_file, 0x3300);
+  ASSERT_EQ(entries[2].execution_type, CallChainExecutionType::JIT_JVM_METHOD);
 }
 
 TEST_F(CallChainReportBuilderTest, add_proguard_mapping_file_for_jit_method_with_signature) {
