@@ -275,6 +275,13 @@ static inline void HashCombine(size_t& seed, const T& val) {
 
 size_t SafeStrlen(const char* s, const char* end);
 
+struct OverflowResult {
+  bool overflow = false;
+  uint64_t value = 0;
+};
+
+OverflowResult SafeAdd(uint64_t a, uint64_t b);
+
 }  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_UTILS_H_

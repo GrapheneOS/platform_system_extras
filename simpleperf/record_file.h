@@ -194,7 +194,7 @@ class RecordFileReader {
 
   bool LoadBuildIdAndFileFeatures(ThreadTree& thread_tree);
 
-  bool ReadAuxData(uint32_t cpu, uint64_t aux_offset, void* buf, size_t size);
+  bool ReadAuxData(uint32_t cpu, uint64_t aux_offset, size_t size, std::vector<uint8_t>* buf);
 
   bool Close();
 
