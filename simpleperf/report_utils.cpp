@@ -23,18 +23,7 @@
 
 namespace simpleperf {
 
-static bool IsArtEntry(const CallChainReportEntry& entry, bool* is_jni_trampoline) {
-  if (entry.execution_type == CallChainExecutionType::NATIVE_METHOD) {
-    // art_jni_trampoline/art_quick_generic_jni_trampoline are trampolines used to call jni
-    // methods in art runtime. We want to hide them when hiding art frames.
-    *is_jni_trampoline = android::base::EndsWith(entry.symbol->Name(), "jni_trampoline");
-    return *is_jni_trampoline || android::base::EndsWith(entry.dso->Path(), "/libart.so") ||
-           android::base::EndsWith(entry.dso->Path(), "/libartd.so");
-  }
-  return false;
-};
-
-bool CallChainReportBuilder::AddProguardMappingFile(std::string_view mapping_file) {
+bool ProguardMappingRetrace::AddProguardMappingFile(std::string_view mapping_file) {
   // The mapping file format is described in
   // https://www.guardsquare.com/en/products/proguard/manual/retrace.
   LineReader reader(mapping_file);
@@ -81,6 +70,42 @@ bool CallChainReportBuilder::AddProguardMappingFile(std::string_view mapping_fil
   return true;
 }
 
+std::string ProguardMappingRetrace::DeObfuscateJavaMethods(std::string_view name) {
+  if (auto split_pos = name.rfind('.'); split_pos != name.npos) {
+    std::string obfuscated_classname(name.substr(0, split_pos));
+    if (auto it = proguard_class_map_.find(obfuscated_classname); it != proguard_class_map_.end()) {
+      const ProguardMappingClass& proguard_class = it->second;
+      std::string obfuscated_methodname(name.substr(split_pos + 1));
+      if (auto method_it = proguard_class.method_map.find(obfuscated_methodname);
+          method_it != proguard_class.method_map.end()) {
+        return proguard_class.original_classname + "." + method_it->second;
+      } else {
+        // Only the classname is obfuscated.
+        return proguard_class.original_classname + "." + obfuscated_methodname;
+      }
+    }
+  }
+  return "";
+}
+
+static bool IsArtEntry(const CallChainReportEntry& entry, bool* is_jni_trampoline) {
+  if (entry.execution_type == CallChainExecutionType::NATIVE_METHOD) {
+    // art_jni_trampoline/art_quick_generic_jni_trampoline are trampolines used to call jni
+    // methods in art runtime. We want to hide them when hiding art frames.
+    *is_jni_trampoline = android::base::EndsWith(entry.symbol->Name(), "jni_trampoline");
+    return *is_jni_trampoline || android::base::EndsWith(entry.dso->Path(), "/libart.so") ||
+           android::base::EndsWith(entry.dso->Path(), "/libartd.so");
+  }
+  return false;
+};
+
+bool CallChainReportBuilder::AddProguardMappingFile(std::string_view mapping_file) {
+  if (!retrace_) {
+    retrace_.reset(new ProguardMappingRetrace);
+  }
+  return retrace_->AddProguardMappingFile(mapping_file);
+}
+
 std::vector<CallChainReportEntry> CallChainReportBuilder::Build(const ThreadEntry* thread,
                                                                 const std::vector<uint64_t>& ips,
                                                                 size_t kernel_ip_count) {
@@ -118,7 +143,7 @@ std::vector<CallChainReportEntry> CallChainReportBuilder::Build(const ThreadEntr
   if (convert_jit_frame_) {
     ConvertJITFrame(result);
   }
-  if (!proguard_class_map_.empty()) {
+  if (retrace_) {
     DeObfuscateJavaMethods(result);
   }
   return result;
@@ -232,23 +257,9 @@ void CallChainReportBuilder::DeObfuscateJavaMethods(std::vector<CallChainReportE
       continue;
     }
     std::string_view name = entry.symbol->FunctionName();
-    if (auto split_pos = name.rfind('.'); split_pos != name.npos) {
-      std::string obfuscated_classname(name.substr(0, split_pos));
-      if (auto it = proguard_class_map_.find(obfuscated_classname);
-          it != proguard_class_map_.end()) {
-        const ProguardMappingClass& proguard_class = it->second;
-        std::string obfuscated_methodname(name.substr(split_pos + 1));
-        if (auto method_it = proguard_class.method_map.find(obfuscated_methodname);
-            method_it != proguard_class.method_map.end()) {
-          std::string new_symbol_name = proguard_class.original_classname + "." + method_it->second;
-          entry.symbol->SetDemangledName(new_symbol_name);
-        } else {
-          // Only the classname is obfuscated.
-          std::string new_symbol_name =
-              proguard_class.original_classname + "." + obfuscated_methodname;
-          entry.symbol->SetDemangledName(new_symbol_name);
-        }
-      }
+    std::string new_symbol_name = retrace_->DeObfuscateJavaMethods(name);
+    if (!new_symbol_name.empty()) {
+      entry.symbol->SetDemangledName(new_symbol_name);
     }
   }
 }

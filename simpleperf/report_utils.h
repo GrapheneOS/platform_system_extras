@@ -29,6 +29,25 @@
 
 namespace simpleperf {
 
+class ProguardMappingRetrace {
+ public:
+  // Add proguard mapping.txt to de-obfuscate minified symbols.
+  bool AddProguardMappingFile(std::string_view mapping_file);
+
+  // Return an empty string if not obfuscated.
+  std::string DeObfuscateJavaMethods(std::string_view name);
+
+ private:
+  struct ProguardMappingClass {
+    std::string original_classname;
+    // Map from minified method names to original method names.
+    std::unordered_map<std::string, std::string> method_map;
+  };
+
+  // Map from minified class names to ProguardMappingClass.
+  std::unordered_map<std::string, ProguardMappingClass> proguard_class_map_;
+};
+
 enum class CallChainExecutionType {
   NATIVE_METHOD,
   INTERPRETED_JVM_METHOD,
@@ -68,12 +87,6 @@ class CallChainReportBuilder {
     JavaMethod(Dso* dso, const Symbol* symbol) : dso(dso), symbol(symbol) {}
   };
 
-  struct ProguardMappingClass {
-    std::string original_classname;
-    // Map from minified method names to original method names.
-    std::unordered_map<std::string, std::string> method_map;
-  };
-
   void MarkArtFrame(std::vector<CallChainReportEntry>& callchain);
   void ConvertJITFrame(std::vector<CallChainReportEntry>& callchain);
   void CollectJavaMethods();
@@ -84,8 +97,7 @@ class CallChainReportBuilder {
   bool convert_jit_frame_ = true;
   bool java_method_initialized_ = false;
   std::unordered_map<std::string, JavaMethod> java_method_map_;
-  // Map from minified class names to ProguardMappingClass.
-  std::unordered_map<std::string, ProguardMappingClass> proguard_class_map_;
+  std::unique_ptr<ProguardMappingRetrace> retrace_;
 };
 
 struct ThreadReport {
