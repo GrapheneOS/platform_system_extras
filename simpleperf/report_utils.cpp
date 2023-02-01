@@ -242,6 +242,11 @@ void CallChainReportBuilder::DeObfuscateJavaMethods(std::vector<CallChainReportE
             method_it != proguard_class.method_map.end()) {
           std::string new_symbol_name = proguard_class.original_classname + "." + method_it->second;
           entry.symbol->SetDemangledName(new_symbol_name);
+        } else {
+          // Only the classname is obfuscated.
+          std::string new_symbol_name =
+              proguard_class.original_classname + "." + obfuscated_methodname;
+          entry.symbol->SetDemangledName(new_symbol_name);
         }
       }
     }
