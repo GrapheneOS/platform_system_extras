@@ -503,9 +503,16 @@ bool SampleRecord::Parse(const perf_event_attr& attr, char* p, char* end) {
       CHECK_SIZE_U64(p, end, 1);
       MoveFromBinaryFormat(nr, p);
     }
-    size_t u64_count = (read_format & PERF_FORMAT_TOTAL_TIME_ENABLED) ? 1 : 0;
+    uint64_t u64_count = (read_format & PERF_FORMAT_TOTAL_TIME_ENABLED) ? 1 : 0;
     u64_count += (read_format & PERF_FORMAT_TOTAL_TIME_RUNNING) ? 1 : 0;
-    u64_count += ((read_format & PERF_FORMAT_ID) ? 2 : 1) * nr;
+    if (__builtin_add_overflow(u64_count, nr, &u64_count)) {
+      return false;
+    }
+    if (read_format & PERF_FORMAT_ID) {
+      if (__builtin_add_overflow(u64_count, nr, &u64_count)) {
+        return false;
+      }
+    }
     CHECK_SIZE_U64(p, end, u64_count);
     if (read_format & PERF_FORMAT_TOTAL_TIME_ENABLED) {
       MoveFromBinaryFormat(read_data.time_enabled, p);
