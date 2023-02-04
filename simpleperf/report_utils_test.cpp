@@ -25,6 +25,47 @@
 
 using namespace simpleperf;
 
+TEST(ProguardMappingRetrace, smoke) {
+  TemporaryFile tmpfile;
+  close(tmpfile.release());
+  ASSERT_TRUE(
+      android::base::WriteStringToFile("original.class.A -> A:\n"
+                                       "\n"
+                                       "    void method_a() -> a\n"
+                                       "    void method_b() -> b\n"
+                                       "      # {\"id\":\"com.android.tools.r8.synthesized\"}\n"
+                                       "      # some other comments\n"
+                                       "    void original.class.M.method_c() -> c\n"
+                                       "    void original.class.A.method_d() -> d\n"
+                                       "original.class.B -> B:\n"
+                                       "# some other comments\n"
+                                       "original.class.C -> C:\n"
+                                       "# {\'id\':\'com.android.tools.r8.synthesized\'}\n",
+                                       tmpfile.path));
+  ProguardMappingRetrace retrace;
+  ASSERT_TRUE(retrace.AddProguardMappingFile(tmpfile.path));
+  std::string original_name;
+  bool synthesized;
+  ASSERT_TRUE(retrace.DeObfuscateJavaMethods("A.a", &original_name, &synthesized));
+  ASSERT_EQ(original_name, "original.class.A.method_a");
+  ASSERT_FALSE(synthesized);
+  ASSERT_TRUE(retrace.DeObfuscateJavaMethods("A.b", &original_name, &synthesized));
+  ASSERT_EQ(original_name, "original.class.A.method_b");
+  ASSERT_TRUE(synthesized);
+  ASSERT_TRUE(retrace.DeObfuscateJavaMethods("A.c", &original_name, &synthesized));
+  ASSERT_EQ(original_name, "original.class.M.method_c");
+  ASSERT_FALSE(synthesized);
+  ASSERT_TRUE(retrace.DeObfuscateJavaMethods("A.d", &original_name, &synthesized));
+  ASSERT_EQ(original_name, "original.class.A.method_d");
+  ASSERT_FALSE(synthesized);
+  ASSERT_TRUE(retrace.DeObfuscateJavaMethods("B.b", &original_name, &synthesized));
+  ASSERT_EQ(original_name, "original.class.B.b");
+  ASSERT_FALSE(synthesized);
+  ASSERT_TRUE(retrace.DeObfuscateJavaMethods("C.c", &original_name, &synthesized));
+  ASSERT_EQ(original_name, "original.class.C.c");
+  ASSERT_TRUE(synthesized);
+}
+
 class CallChainReportBuilderTest : public testing::Test {
  protected:
   virtual void SetUp() {
@@ -319,6 +360,35 @@ TEST_F(CallChainReportBuilderTest, add_proguard_mapping_file) {
   ASSERT_EQ(entries[2].dso->Path(), fake_jit_cache_path);
   ASSERT_EQ(entries[2].vaddr_in_file, 0x3300);
   ASSERT_EQ(entries[2].execution_type, CallChainExecutionType::JIT_JVM_METHOD);
+}
+
+TEST_F(CallChainReportBuilderTest, add_proguard_mapping_file_synthesized_frame) {
+  std::vector<uint64_t> fake_ips = {
+      0x2200,  // 2200,  // obfuscated_class.obfuscated_java_method
+      0x3200,  // 3200,  // obfuscated_class.obfuscated_java_method2
+  };
+
+  // Synthesized frames are removed.
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(android::base::WriteStringToFile(
+      "android.support.v4.app.RemoteActionCompatParcelizer -> obfuscated_class:\n"
+      "    13:13:androidx.core.app.RemoteActionCompat read(androidx.versionedparcelable.Versioned"
+      "Parcel) -> obfuscated_java_method\n"
+      "      # {\"id\":\"com.android.tools.r8.synthesized\"}\n"
+      "    13:13:androidx.core.app.RemoteActionCompat "
+      "android.support.v4.app.RemoteActionCompatParcelizer.read2(androidx.versionedparcelable."
+      "VersionedParcel) -> obfuscated_java_method2",
+      tmpfile.path));
+  CallChainReportBuilder builder(thread_tree);
+  builder.AddProguardMappingFile(tmpfile.path);
+  std::vector<CallChainReportEntry> entries = builder.Build(thread, fake_ips, 0);
+  ASSERT_EQ(entries.size(), 1);
+  ASSERT_EQ(entries[0].ip, 0x3200);
+  ASSERT_STREQ(entries[0].symbol->DemangledName(),
+               "android.support.v4.app.RemoteActionCompatParcelizer.read2");
+  ASSERT_EQ(entries[0].dso->Path(), fake_jit_cache_path);
+  ASSERT_EQ(entries[0].vaddr_in_file, 0x3200);
+  ASSERT_EQ(entries[0].execution_type, CallChainExecutionType::JIT_JVM_METHOD);
 }
 
 TEST_F(CallChainReportBuilderTest, add_proguard_mapping_file_for_jit_method_with_signature) {
