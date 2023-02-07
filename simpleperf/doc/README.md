@@ -1,5 +1,9 @@
 # Simpleperf
 
+Android Studio includes a graphical front end to Simpleperf, documented in
+[Inspect CPU activity with CPU Profiler](https://developer.android.com/studio/profile/cpu-profiler).
+Most users will prefer to use that instead of using Simpleperf directly.
+
 Simpleperf is a native CPU profiling tool for Android. It can be used to profile
 both Android applications and native processes running on Android. It can
 profile both Java and C++ code on Android. The simpleperf executable can run on Android >=L,
