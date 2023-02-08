@@ -15,6 +15,7 @@
  */
 
 #include <inttypes.h>
+#include <stdint.h>
 
 #include <map>
 #include <string>
@@ -415,17 +416,21 @@ SymbolInfo DumpRecordCommand::GetSymbolInfo(uint32_t pid, uint32_t tid, uint64_t
 }
 
 bool DumpRecordCommand::DumpAuxData(const AuxRecord& aux) {
+  if (aux.data->aux_size > SIZE_MAX) {
+    LOG(ERROR) << "invalid aux size";
+    return false;
+  }
   size_t size = aux.data->aux_size;
   if (size > 0) {
-    std::unique_ptr<uint8_t[]> data(new uint8_t[size]);
-    if (!record_file_reader_->ReadAuxData(aux.Cpu(), aux.data->aux_offset, data.get(), size)) {
+    std::vector<uint8_t> data;
+    if (!record_file_reader_->ReadAuxData(aux.Cpu(), aux.data->aux_offset, size, &data)) {
       return false;
     }
     if (!etm_decoder_) {
       LOG(ERROR) << "ETMDecoder isn't created";
       return false;
     }
-    return etm_decoder_->ProcessData(data.get(), size, !aux.Unformatted(), aux.Cpu());
+    return etm_decoder_->ProcessData(data.data(), size, !aux.Unformatted(), aux.Cpu());
   }
   return true;
 }
