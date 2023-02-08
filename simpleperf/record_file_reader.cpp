@@ -754,10 +754,16 @@ bool RecordFileReader::LoadBuildIdAndFileFeatures(ThreadTree& thread_tree) {
   return true;
 }
 
-bool RecordFileReader::ReadAuxData(uint32_t cpu, uint64_t aux_offset, void* buf, size_t size) {
+bool RecordFileReader::ReadAuxData(uint32_t cpu, uint64_t aux_offset, size_t size,
+                                   std::vector<uint8_t>* buf) {
   long saved_pos = ftell(record_fp_);
   if (saved_pos == -1) {
     PLOG(ERROR) << "ftell() failed";
+    return false;
+  }
+  OverflowResult aux_end = SafeAdd(aux_offset, size);
+  if (aux_end.overflow) {
+    LOG(ERROR) << "aux_end overflow";
     return false;
   }
   if (aux_data_location_.empty() && !BuildAuxDataLocation()) {
@@ -772,7 +778,7 @@ bool RecordFileReader::ReadAuxData(uint32_t cpu, uint64_t aux_offset, void* buf,
     auto location_it = std::upper_bound(it->second.begin(), it->second.end(), aux_offset, comp);
     if (location_it != it->second.begin()) {
       --location_it;
-      if (location_it->aux_offset + location_it->aux_size >= aux_offset + size) {
+      if (location_it->aux_offset + location_it->aux_size >= aux_end.value) {
         location = &*location_it;
       }
     }
@@ -782,7 +788,10 @@ bool RecordFileReader::ReadAuxData(uint32_t cpu, uint64_t aux_offset, void* buf,
                << aux_offset << ", size " << size;
     return false;
   }
-  if (!ReadAtOffset(aux_offset - location->aux_offset + location->file_offset, buf, size)) {
+  if (buf->size() < size) {
+    buf->resize(size);
+  }
+  if (!ReadAtOffset(aux_offset - location->aux_offset + location->file_offset, buf->data(), size)) {
     return false;
   }
   if (fseek(record_fp_, saved_pos, SEEK_SET) != 0) {
@@ -807,8 +816,27 @@ bool RecordFileReader::BuildAuxDataLocation() {
     if (!auxtrace.Parse(file_attrs_[0].attr, buf.get(), buf.get() + AuxTraceRecord::Size())) {
       return false;
     }
-    aux_data_location_[auxtrace.data->cpu].emplace_back(
-        auxtrace.data->offset, auxtrace.data->aux_size, offset + auxtrace.size());
+    AuxDataLocation location(auxtrace.data->offset, auxtrace.data->aux_size,
+                             offset + auxtrace.size());
+    OverflowResult aux_end = SafeAdd(location.aux_offset, location.aux_size);
+    OverflowResult file_end = SafeAdd(location.file_offset, location.aux_size);
+    if (aux_end.overflow || file_end.overflow || file_end.value > file_size_) {
+      LOG(ERROR) << "invalid auxtrace feature section";
+      return false;
+    }
+    auto location_it = aux_data_location_.find(auxtrace.data->cpu);
+    if (location_it != aux_data_location_.end()) {
+      const AuxDataLocation& prev_location = location_it->second.back();
+      uint64_t prev_aux_end = prev_location.aux_offset + prev_location.aux_size;
+      // The AuxTraceRecords should be sorted by aux_offset for each cpu.
+      if (prev_aux_end > location.aux_offset) {
+        LOG(ERROR) << "invalid auxtrace feature section";
+        return false;
+      }
+      location_it->second.emplace_back(location);
+    } else {
+      aux_data_location_[auxtrace.data->cpu].emplace_back(location);
+    }
   }
   return true;
 }

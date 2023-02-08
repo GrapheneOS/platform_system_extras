@@ -432,4 +432,12 @@ size_t SafeStrlen(const char* s, const char* end) {
   return p - s;
 }
 
+OverflowResult SafeAdd(uint64_t a, uint64_t b) {
+  OverflowResult result;
+  if (__builtin_add_overflow(a, b, &result.value)) {
+    result.overflow = true;
+  }
+  return result;
+}
+
 }  // namespace simpleperf
