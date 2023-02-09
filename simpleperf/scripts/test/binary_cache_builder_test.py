@@ -68,6 +68,25 @@ class TestBinaryCacheBuilder(TestBase):
         binary_cache_builder.pull_binaries_from_device()
         self.assertTrue(filecmp.cmp(target_file, source_file))
 
+    def test_copy_binary_with_different_name(self):
+        # Build symfs_dir.
+        symfs_dir = self.test_dir / 'symfs_dir'
+        remove(symfs_dir)
+        symfs_dir.mkdir()
+        filename = 'simpleperf_runtest_two_functions_arm'
+        origin_file = TestHelper.testdata_path(filename)
+        modified_name = 'two_functions_arm'
+        source_file = os.path.join(symfs_dir, modified_name)
+        shutil.copy(origin_file, source_file)
+
+        # Copy binary with the same build id but a different name.
+        builder = BinaryCacheBuilder(TestHelper.ndk_path, False)
+        builder.binaries[filename] = builder.readelf.get_build_id(origin_file)
+        builder.copy_binaries_from_symfs_dirs([symfs_dir])
+
+        target_file = os.path.join('binary_cache', filename)
+        self.assertTrue(filecmp.cmp(target_file, source_file))
+
     def test_prefer_binary_with_debug_info(self):
         binary_cache_builder = BinaryCacheBuilder(TestHelper.ndk_path, False)
         binary_cache_builder.collect_used_binaries(

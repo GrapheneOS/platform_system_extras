@@ -126,53 +126,88 @@ class BinarySourceFromDevice(BinarySource):
 
 
 class BinarySourceFromLibDirs(BinarySource):
-    """ Collect binaries from lib dirs.
-
-        It is possible that the path of the binary in lib dir doesn't match
-        the one recorded in perf.data. For example, a file in lib dir might
-        be "debug/arm/obj/armeabi-v7a/libsudo-game-jni.so", but the path in
-        perf.data is "/data/app/xxxx/lib/arm/libsudo-game-jni.so". So we match
-        binaries if they have the same filename (like libsudo-game-jni.so)
-        and same build_id.
-    """
+    """ Collect binaries from lib dirs. """
 
     def __init__(self, readelf: ReadElf, lib_dirs: List[Path]):
         super().__init__(readelf)
         self.lib_dirs = lib_dirs
+        self.filename_map = None
+        self.build_id_map = None
+        self.binary_cache = None
 
     def collect_binaries(self, binaries: Dict[str, str], binary_cache: BinaryCache):
-        filename_dict = self.build_filename_dict(binaries)
+        self.create_filename_map(binaries)
+        self.create_build_id_map(binaries)
+        self.binary_cache = binary_cache
 
         # Search all files in lib_dirs, and copy matching files to build_cache.
         for lib_dir in self.lib_dirs:
-            self.search_dir(lib_dir, filename_dict, binary_cache)
+            if self.is_platform_symbols_dir(lib_dir):
+                self.search_platform_symbols_dir(lib_dir)
+            else:
+                self.search_dir(lib_dir)
 
-    def build_filename_dict(self, binaries: Dict[str, str]) -> Dict[str, List[Tuple[str, str]]]:
-        """ Return a dict mapping from filename to binary info having the filename """
-        filename_dict: Dict[str, List[Tuple[str, str]]] = defaultdict(list)
+    def create_filename_map(self, binaries: Dict[str, str]):
+        """ Create a map mapping from filename to binaries having the name. """
+        self.filename_map = defaultdict(list)
         for path, build_id in binaries.items():
             index = path.rfind('/')
             filename = path[index + 1:]
-            filename_dict[filename].append((path, build_id))
-        return filename_dict
+            self.filename_map[filename].append((path, build_id))
 
-    def search_dir(
-            self, lib_dir: Path, filename_dict: Dict[str, List[str]],
-            binary_cache: BinaryCache):
+    def create_build_id_map(self, binaries: Dict[str, str]):
+        """ Create a map mapping from build id to binary path. """
+        self.build_id_map = {}
+        for path, build_id in binaries.items():
+            if build_id:
+                self.build_id_map[build_id] = path
+
+    def is_platform_symbols_dir(self, lib_dir: Path):
+        """ Check if lib_dir points to $ANDROID_PRODUCT_OUT/symbols. """
+        subdir_names = [p.name for p in lib_dir.iterdir()]
+        return lib_dir.name == 'symbols' and 'system' in subdir_names
+
+    def search_platform_symbols_dir(self, lib_dir: Path):
+        """ Platform symbols dir contains too many binaries. Reading build ids for
+            all of them takes a long time. So we only read build ids for binaries
+            having names exist in filename_map.
+        """
         for root, _, files in os.walk(lib_dir):
             for filename in files:
-                binaries = filename_dict.get(filename)
+                binaries = self.filename_map.get(filename)
                 if not binaries:
                     continue
                 file_path = Path(os.path.join(root, filename))
                 build_id = self.read_build_id(file_path)
                 for path, expected_build_id in binaries:
                     if expected_build_id == build_id:
-                        to_path = binary_cache.get_path_in_cache(path)
-                        self.copy_to_binary_cache(file_path, expected_build_id, to_path)
+                        self.copy_to_binary_cache(file_path, build_id, path)
+
+    def search_dir(self, lib_dir: Path):
+        """ For a normal lib dir, it's unlikely to contain many binaries. So we can read
+            build ids for all binaries in it. But users may give debug binaries with a name
+            different from the one recorded in perf.data. So we should only rely on build id
+            if it is available.
+        """
+        for root, _, files in os.walk(lib_dir):
+            for filename in files:
+                file_path = Path(os.path.join(root, filename))
+                build_id = self.read_build_id(file_path)
+                if build_id:
+                    # For elf file with build id, use build id to match.
+                    device_path = self.build_id_map.get(build_id)
+                    if device_path:
+                        self.copy_to_binary_cache(file_path, build_id, device_path)
+                elif self.readelf.is_elf_file(file_path):
+                    # For elf file without build id, use filename to match.
+                    for path, expected_build_id in self.filename_map.get(filename, []):
+                        if not expected_build_id:
+                            self.copy_to_binary_cache(file_path, '', path)
+                            break
 
     def copy_to_binary_cache(
-            self, from_path: Path, expected_build_id: str, to_path: Path):
+            self, from_path: Path, expected_build_id: str, device_path: str):
+        to_path = self.binary_cache.get_path_in_cache(device_path)
         if not self.need_to_copy(from_path, to_path, expected_build_id):
             # The existing file in binary_cache can provide more information, so no need to copy.
             return
@@ -197,7 +232,7 @@ class BinarySourceFromLibDirs(BinarySource):
         return 2
 
 
-class BinaryCacheBuilder(object):
+class BinaryCacheBuilder:
     """Collect all binaries needed by perf.data in binary_cache."""
 
     def __init__(self, ndk_path: Optional[str], disable_adb_root: bool):
