@@ -86,7 +86,7 @@ class TestBinaryCacheBuilder(TestBase):
                 'simpleperf_runtest_two_functions_arm64'), debug_dir)
             # Check if the elf file with debug info is chosen.
             binary_cache_builder.copy_binaries_from_symfs_dirs([tmp_dir])
-            elf_path = (Path(binary_cache_builder.binary_cache_dir) / 'data' /
+            elf_path = (binary_cache_builder.binary_cache_dir / 'data' /
                         'local' / 'tmp' / 'simpleperf_runtest_two_functions_arm64')
             self.assertTrue(elf_path.is_file())
             self.assertIn('.debug_info', binary_cache_builder.readelf.get_sections(elf_path))
@@ -97,7 +97,7 @@ class TestBinaryCacheBuilder(TestBase):
         binary_cache_builder.collect_used_binaries(
             TestHelper.testdata_path('runtest_two_functions_arm64_perf.data'))
         binary_cache_builder.copy_binaries_from_symfs_dirs([symfs_dir])
-        elf_path = (Path(binary_cache_builder.binary_cache_dir) / 'data' /
+        elf_path = (binary_cache_builder.binary_cache_dir / 'data' /
                     'local' / 'tmp' / 'simpleperf_runtest_two_functions_arm64')
         self.assertTrue(elf_path.is_file())
 
