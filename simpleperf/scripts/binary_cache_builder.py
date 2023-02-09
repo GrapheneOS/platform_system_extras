@@ -42,12 +42,24 @@ class BinaryCache:
     def __init__(self, binary_dir: Path):
         self.binary_dir = binary_dir
 
-    def get_path_in_cache(self, path: str) -> Path:
-        """ Given a binary path in perf.data, return its corresponding path in the cache. """
-        if path.startswith('/'):
-            path = path[1:]
-        path = path.replace('/', os.sep)
-        return Path(os.path.join(self.binary_dir, path))
+    def get_path_in_cache(self, device_path: str, build_id: str) -> Path:
+        """ Given a binary path in perf.data, return its corresponding path in the cache.
+        """
+        if build_id:
+            filename = device_path.split('/')[-1]
+            # Add build id to make the filename unique.
+            unique_filename = build_id[2:] + '-' + filename
+            return self.binary_dir / unique_filename
+
+        # For elf file without build id, we can only follow its path on device. Otherwise,
+        # simpleperf can't find it. However, we don't prefer this way. Because:
+        # 1) It doesn't work for native libs loaded directly from apk
+        #    (android:extractNativeLibs=”false”).
+        # 2) It may exceed path limit on windows.
+        if device_path.startswith('/'):
+            device_path = device_path[1:]
+        device_path = device_path.replace('/', os.sep)
+        return Path(os.path.join(self.binary_dir, device_path))
 
 
 class BinarySource:
@@ -84,7 +96,7 @@ class BinarySourceFromDevice(BinarySource):
         if not path.startswith('/') or path == "//anon" or path.startswith("/dev/"):
             # [kernel.kallsyms] or unknown, or something we can't find binary.
             return
-        binary_cache_file = binary_cache.get_path_in_cache(path)
+        binary_cache_file = binary_cache.get_path_in_cache(path, build_id)
         self.check_and_pull_binary(path, build_id, binary_cache_file)
 
     def check_and_pull_binary(self, path: str, expected_build_id: str, binary_cache_file: Path):
@@ -207,7 +219,7 @@ class BinarySourceFromLibDirs(BinarySource):
 
     def copy_to_binary_cache(
             self, from_path: Path, expected_build_id: str, device_path: str):
-        to_path = self.binary_cache.get_path_in_cache(device_path)
+        to_path = self.binary_cache.get_path_in_cache(device_path, expected_build_id)
         if not self.need_to_copy(from_path, to_path, expected_build_id):
             # The existing file in binary_cache can provide more information, so no need to copy.
             return
@@ -308,6 +320,10 @@ class BinaryCacheBuilder:
                         relative_path = path.relative_to(self.binary_cache_dir)
                         line = f'{build_id}={relative_path}\n'
                         fh.write(str_to_bytes(line))
+
+    def find_path_in_cache(self, device_path: str) -> Optional[Path]:
+        build_id = self.binaries.get(device_path)
+        return self.binary_cache.get_path_in_cache(device_path, build_id)
 
 
 def main() -> bool:
