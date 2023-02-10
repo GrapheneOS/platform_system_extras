@@ -61,6 +61,7 @@ Python scripts are split into three parts according to their functions:
 
 3. Scripts used for parsing profiling data, like simpleperf_report_lib.py.
 
+The python scripts are tested on Python >= 3.9. Older versions may not be supported.
 Detailed documentation for the Python scripts is [here](#scripts-reference).
 
 
@@ -242,3 +243,13 @@ $ mmma system/extras/simpleperf -j30
 
 If built successfully, out/target/product/generic_arm64/system/bin/simpleperf is for ARM64, and
 out/target/product/generic_arm64/system/bin/simpleperf32 is for ARM.
+
+The source code of simpleperf python scripts is in [system/extras/simpleperf/scripts](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/scripts/).
+Most scripts rely on simpleperf binaries to work. To update binaries for scripts (using linux
+x86_64 host and android arm64 target as an example):
+```sh
+$ cp out/host/linux-x86/lib64/libsimpleperf_report.so system/extras/simpleperf/scripts/bin/linux/x86_64/libsimpleperf_report.so
+$ cp out/target/product/generic_arm64/system/bin/simpleperf_ndk64 system/extras/simpleperf/scripts/bin/android/arm64/simpleperf
+```
+
+Then you can try the latest simpleperf scripts and binaries in system/extras/simpleperf/scripts.
