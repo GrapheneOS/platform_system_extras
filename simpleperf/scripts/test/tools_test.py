@@ -341,18 +341,22 @@ system/extras/simpleperf/runtest/two_functions.cpp:21:3
         build_id = readelf.get_build_id(elf_path)
         self.assertGreater(len(build_id), 0)
         binary_cache_builder.binaries[elf_name] = build_id
+
+        filename_without_build_id = '/data/symfs_without_build_id/elf'
+        binary_cache_builder.binaries[filename_without_build_id] = ''
+
         binary_cache_builder.copy_binaries_from_symfs_dirs([TestHelper.testdata_dir])
         binary_cache_builder.create_build_id_list()
 
         # Test BinaryFinder.
-        path_in_binary_cache = Path(binary_cache_builder.binary_cache_dir, elf_name)
+        path_in_binary_cache = binary_cache_builder.find_path_in_cache(elf_name)
         binary_finder = BinaryFinder(binary_cache_builder.binary_cache_dir, readelf)
         # Find binary using build id.
         path = binary_finder.find_binary('[not_exist_file]', build_id)
         self.assertEqual(path, path_in_binary_cache)
         # Find binary using path.
-        path = binary_finder.find_binary('/' + elf_name, None)
-        self.assertEqual(path, path_in_binary_cache)
+        path = binary_finder.find_binary(filename_without_build_id, None)
+        self.assertIsNotNone(path)
         # Find binary using absolute path.
         path = binary_finder.find_binary(str(path_in_binary_cache), None)
         self.assertEqual(path, path_in_binary_cache)
