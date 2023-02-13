@@ -447,7 +447,7 @@ class BinaryFinder:
                 return path
         # Find binary by path in binary cache.
         if self.binary_cache_dir:
-            path = self.binary_cache_dir / dso_path_in_record_file[1:]
+            path = self.binary_cache_dir / dso_path_in_record_file[1:].replace('/', os.sep)
             if self._check_path(path, expected_build_id):
                 return path
         # Find binary by its absolute path.
