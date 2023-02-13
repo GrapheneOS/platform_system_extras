@@ -381,8 +381,9 @@ class MergeCommand : public Command {
     // Read file features.
     for (auto& reader : readers_) {
       FileFeature file;
-      size_t read_pos = 0;
-      while (reader->ReadFileFeature(read_pos, &file)) {
+      uint64_t read_pos = 0;
+      bool error = false;
+      while (reader->ReadFileFeature(read_pos, file, error)) {
         if (files_to_drop.count(file.path) != 0) {
           continue;
         }
@@ -394,6 +395,9 @@ class MergeCommand : public Command {
               << " has address-conflict symbols in different record files. So drop its symbols.";
           files_to_drop.emplace(file.path);
         }
+      }
+      if (error) {
+        return false;
       }
     }
     // Write file features.
