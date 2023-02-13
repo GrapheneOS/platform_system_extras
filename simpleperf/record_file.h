@@ -183,10 +183,11 @@ class RecordFileReader {
 
   // File feature section contains many file information. This function reads
   // one file information located at [read_pos]. [read_pos] is 0 at the first
-  // call, and is updated to point to the next file information. Return true
-  // if read successfully, and return false if there is no more file
-  // information.
-  bool ReadFileFeature(size_t& read_pos, FileFeature* file);
+  // call, and is updated to point to the next file information.
+  // When read successfully, return true and set error to false.
+  // When no more data to read, return false and set error to false.
+  // When having error, return false and set error to true.
+  bool ReadFileFeature(uint64_t& read_pos, FileFeature& file, bool& error);
 
   const std::unordered_map<std::string, std::string>& GetMetaInfoFeature() { return meta_info_; }
   std::string GetClockId();
@@ -209,8 +210,8 @@ class RecordFileReader {
   bool ReadAttrSection();
   bool ReadIdsForAttr(const PerfFileFormat::FileAttr& attr, std::vector<uint64_t>* ids);
   bool ReadFeatureSectionDescriptors();
-  bool ReadFileV1Feature(size_t& read_pos, FileFeature* file);
-  bool ReadFileV2Feature(size_t& read_pos, FileFeature* file);
+  bool ReadFileV1Feature(uint64_t& read_pos, uint64_t max_size, FileFeature& file);
+  bool ReadFileV2Feature(uint64_t& read_pos, uint64_t max_size, FileFeature& file);
   bool ReadMetaInfoFeature();
   void UseRecordingEnvironment();
   std::unique_ptr<Record> ReadRecord();

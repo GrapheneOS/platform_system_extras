@@ -352,14 +352,16 @@ static void ProcessSymbolsInPerfDataFile(
   auto reader = RecordFileReader::CreateInstance(perf_data_file);
   ASSERT_TRUE(reader);
   FileFeature file;
-  size_t read_pos = 0;
-  while (reader->ReadFileFeature(read_pos, &file)) {
+  uint64_t read_pos = 0;
+  bool error = false;
+  while (reader->ReadFileFeature(read_pos, file, error)) {
     for (const auto& symbol : file.symbols) {
       if (callback(symbol, file.type)) {
         return;
       }
     }
   }
+  ASSERT_FALSE(error);
 }
 
 // Check if dumped symbols in perf.data matches our expectation.

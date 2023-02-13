@@ -541,107 +541,106 @@ std::vector<uint64_t> RecordFileReader::ReadAuxTraceFeature() {
   return reader.error ? std::vector<uint64_t>() : auxtrace_offset;
 }
 
-bool RecordFileReader::ReadFileFeature(size_t& read_pos, FileFeature* file) {
-  file->Clear();
+bool RecordFileReader::ReadFileFeature(uint64_t& read_pos, FileFeature& file, bool& error) {
+  file.Clear();
+  error = false;
+
+  bool use_v1 = false;
+  PerfFileFormat::SectionDesc desc;
+  if (auto it = feature_section_descriptors_.find(FEAT_FILE);
+      it != feature_section_descriptors_.end()) {
+    use_v1 = true;
+    desc = it->second;
+  } else if (auto it = feature_section_descriptors_.find(FEAT_FILE2);
+             it != feature_section_descriptors_.end()) {
+    desc = it->second;
+  } else {
+    return false;
+  }
+
+  if (read_pos >= desc.size) {
+    return false;
+  }
+  if (read_pos == 0) {
+    if (fseek(record_fp_, desc.offset, SEEK_SET) != 0) {
+      PLOG(ERROR) << "fseek() failed";
+      error = true;
+      return false;
+    }
+  }
+
   bool result = false;
-  if (HasFeature(FEAT_FILE)) {
-    result = ReadFileV1Feature(read_pos, file);
-  } else if (HasFeature(FEAT_FILE2)) {
-    result = ReadFileV2Feature(read_pos, file);
+  if (use_v1) {
+    result = ReadFileV1Feature(read_pos, desc.size - read_pos, file);
+  } else {
+    result = ReadFileV2Feature(read_pos, desc.size - read_pos, file);
   }
   if (!result) {
     LOG(ERROR) << "failed to read file feature section";
+    error = true;
   }
   return result;
 }
 
-bool RecordFileReader::ReadFileV1Feature(size_t& read_pos, FileFeature* file) {
-  auto it = feature_section_descriptors_.find(FEAT_FILE);
-  if (it == feature_section_descriptors_.end()) {
-    return false;
-  }
-  if (read_pos >= it->second.size) {
-    return false;
-  }
-  if (read_pos == 0) {
-    if (fseek(record_fp_, it->second.offset, SEEK_SET) != 0) {
-      PLOG(ERROR) << "fseek() failed";
-      return false;
-    }
-  }
+bool RecordFileReader::ReadFileV1Feature(uint64_t& read_pos, uint64_t max_size, FileFeature& file) {
   uint32_t size = 0;
-  if (!Read(&size, 4) || size > it->second.size) {
+  if (max_size < 4 || !Read(&size, 4) || max_size - 4 < size) {
     return false;
   }
+  read_pos += 4;
   std::vector<char> buf(size);
   if (!Read(buf.data(), size)) {
     return false;
   }
-  read_pos += 4 + size;
+  read_pos += size;
   BinaryReader reader(buf.data(), buf.size());
-  file->path = reader.ReadString();
+  file.path = reader.ReadString();
   uint32_t file_type = 0;
   reader.Read(file_type);
   if (file_type > DSO_UNKNOWN_FILE) {
-    LOG(ERROR) << "unknown file type for " << file->path
+    LOG(ERROR) << "unknown file type for " << file.path
                << " in file feature section: " << file_type;
     return false;
   }
-  file->type = static_cast<DsoType>(file_type);
-  reader.Read(file->min_vaddr);
+  file.type = static_cast<DsoType>(file_type);
+  reader.Read(file.min_vaddr);
   uint32_t symbol_count = 0;
   reader.Read(symbol_count);
   if (symbol_count > size) {
     return false;
   }
-  file->symbols.reserve(symbol_count);
+  file.symbols.reserve(symbol_count);
   while (symbol_count-- > 0) {
     uint64_t start_vaddr = 0;
     uint32_t len = 0;
     reader.Read(start_vaddr);
     reader.Read(len);
     std::string name = reader.ReadString();
-    file->symbols.emplace_back(name, start_vaddr, len);
+    file.symbols.emplace_back(name, start_vaddr, len);
   }
-  if (file->type == DSO_DEX_FILE) {
+  if (file.type == DSO_DEX_FILE) {
     uint32_t offset_count = 0;
     reader.Read(offset_count);
     if (offset_count > size) {
       return false;
     }
-    file->dex_file_offsets.resize(offset_count);
-    reader.Read(file->dex_file_offsets.data(), offset_count);
+    file.dex_file_offsets.resize(offset_count);
+    reader.Read(file.dex_file_offsets.data(), offset_count);
   }
-  file->file_offset_of_min_vaddr = std::numeric_limits<uint64_t>::max();
-  if ((file->type == DSO_ELF_FILE || file->type == DSO_KERNEL_MODULE) && !reader.error &&
+  file.file_offset_of_min_vaddr = std::numeric_limits<uint64_t>::max();
+  if ((file.type == DSO_ELF_FILE || file.type == DSO_KERNEL_MODULE) && !reader.error &&
       reader.LeftSize() > 0) {
-    reader.Read(file->file_offset_of_min_vaddr);
+    reader.Read(file.file_offset_of_min_vaddr);
   }
   return !reader.error && reader.LeftSize() == 0;
 }
 
-bool RecordFileReader::ReadFileV2Feature(size_t& read_pos, FileFeature* file) {
-  auto it = feature_section_descriptors_.find(FEAT_FILE2);
-  if (it == feature_section_descriptors_.end()) {
-    return false;
-  }
-  if (read_pos >= it->second.size) {
-    return false;
-  }
-  if (read_pos == 0) {
-    if (fseek(record_fp_, it->second.offset, SEEK_SET) != 0) {
-      PLOG(ERROR) << "fseek() failed";
-      return false;
-    }
-  }
+bool RecordFileReader::ReadFileV2Feature(uint64_t& read_pos, uint64_t max_size, FileFeature& file) {
   uint32_t size;
-  if (!Read(&size, 4)) {
+  if (max_size < 4 || !Read(&size, 4) || max_size - 4 < size) {
     return false;
   }
   read_pos += 4;
-  if (read_pos > it->second.size || size > it->second.size - read_pos) {
-    return false;
-  }
   std::string s(size, '\0');
   if (!Read(s.data(), size)) {
     return false;
@@ -651,31 +650,31 @@ bool RecordFileReader::ReadFileV2Feature(size_t& read_pos, FileFeature* file) {
   if (!proto_file.ParseFromString(s)) {
     return false;
   }
-  file->path = proto_file.path();
-  file->type = static_cast<DsoType>(proto_file.type());
-  file->min_vaddr = proto_file.min_vaddr();
-  file->symbols.reserve(proto_file.symbol_size());
+  file.path = proto_file.path();
+  file.type = static_cast<DsoType>(proto_file.type());
+  file.min_vaddr = proto_file.min_vaddr();
+  file.symbols.reserve(proto_file.symbol_size());
   for (size_t i = 0; i < proto_file.symbol_size(); i++) {
     const auto& proto_symbol = proto_file.symbol(i);
-    file->symbols.emplace_back(proto_symbol.name(), proto_symbol.vaddr(), proto_symbol.len());
+    file.symbols.emplace_back(proto_symbol.name(), proto_symbol.vaddr(), proto_symbol.len());
   }
-  if (file->type == DSO_DEX_FILE) {
+  if (file.type == DSO_DEX_FILE) {
     if (!proto_file.has_dex_file()) {
       return false;
     }
     const auto& dex_file_offsets = proto_file.dex_file().dex_file_offset();
-    file->dex_file_offsets.insert(file->dex_file_offsets.end(), dex_file_offsets.begin(),
-                                  dex_file_offsets.end());
-  } else if (file->type == DSO_ELF_FILE) {
+    file.dex_file_offsets.insert(file.dex_file_offsets.end(), dex_file_offsets.begin(),
+                                 dex_file_offsets.end());
+  } else if (file.type == DSO_ELF_FILE) {
     if (!proto_file.has_elf_file()) {
       return false;
     }
-    file->file_offset_of_min_vaddr = proto_file.elf_file().file_offset_of_min_vaddr();
-  } else if (file->type == DSO_KERNEL_MODULE) {
+    file.file_offset_of_min_vaddr = proto_file.elf_file().file_offset_of_min_vaddr();
+  } else if (file.type == DSO_KERNEL_MODULE) {
     if (!proto_file.has_kernel_module()) {
       return false;
     }
-    file->file_offset_of_min_vaddr = proto_file.kernel_module().memory_offset_of_min_vaddr();
+    file.file_offset_of_min_vaddr = proto_file.kernel_module().memory_offset_of_min_vaddr();
   }
   return true;
 }
@@ -742,16 +741,15 @@ bool RecordFileReader::LoadBuildIdAndFileFeatures(ThreadTree& thread_tree) {
   }
   Dso::SetBuildIds(build_ids);
 
-  if (HasFeature(PerfFileFormat::FEAT_FILE) || HasFeature(PerfFileFormat::FEAT_FILE2)) {
-    FileFeature file_feature;
-    size_t read_pos = 0;
-    while (ReadFileFeature(read_pos, &file_feature)) {
-      if (!thread_tree.AddDsoInfo(file_feature)) {
-        return false;
-      }
+  FileFeature file_feature;
+  uint64_t read_pos = 0;
+  bool error = false;
+  while (ReadFileFeature(read_pos, file_feature, error)) {
+    if (!thread_tree.AddDsoInfo(file_feature)) {
+      return false;
     }
   }
-  return true;
+  return !error;
 }
 
 bool RecordFileReader::ReadAuxData(uint32_t cpu, uint64_t aux_offset, size_t size,
