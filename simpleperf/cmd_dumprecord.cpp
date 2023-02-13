@@ -484,9 +484,10 @@ bool DumpRecordCommand::DumpFeatureSection() {
       PrintIndented(1, "cmdline: %s\n", android::base::Join(cmdline, ' ').c_str());
     } else if (feature == FEAT_FILE || feature == FEAT_FILE2) {
       FileFeature file;
-      size_t read_pos = 0;
+      uint64_t read_pos = 0;
+      bool error = false;
       PrintIndented(1, "file:\n");
-      while (record_file_reader_->ReadFileFeature(read_pos, &file)) {
+      while (record_file_reader_->ReadFileFeature(read_pos, file, error)) {
         PrintIndented(2, "file_path %s\n", file.path.c_str());
         PrintIndented(2, "file_type %s\n", DsoTypeToString(file.type));
         PrintIndented(2, "min_vaddr 0x%" PRIx64 "\n", file.min_vaddr);
@@ -502,6 +503,9 @@ bool DumpRecordCommand::DumpFeatureSection() {
             PrintIndented(3, "0x%" PRIx64 "\n", offset);
           }
         }
+      }
+      if (error) {
+        return false;
       }
     } else if (feature == FEAT_META_INFO) {
       PrintIndented(1, "meta_info:\n");
