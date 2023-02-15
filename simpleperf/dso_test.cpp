@@ -369,3 +369,12 @@ TEST(dso, read_symbol_warning) {
     ASSERT_EQ(capture.str().find("failed to read symbols"), std::string::npos);
   }
 }
+
+TEST(dso, demangle) {
+  ASSERT_EQ(Dso::Demangle("main"), "main");
+  ASSERT_EQ(Dso::Demangle("_ZN4main4main17h2a68d4d833d7495aE"), "main::main::h2a68d4d833d7495a");
+#if defined(__linux__) || defined(__darwin__)
+  // Demangling rust symbol is only supported on linux and darwin.
+  ASSERT_EQ(Dso::Demangle("_RNvC6_123foo3bar"), "123foo::bar");
+#endif
+}
