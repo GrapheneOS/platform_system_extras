@@ -218,15 +218,16 @@ TEST_F(RecordFileTest, write_file2_feature_section) {
   // Read from a record file.
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile_.path);
   ASSERT_TRUE(reader != nullptr);
-  size_t read_pos = 0;
+  uint64_t read_pos = 0;
   FileFeature file;
+  bool error = false;
 
   auto check_symbol = [](const Symbol& sym1, const Symbol& sym2) {
     return sym1.addr == sym2.addr && sym1.len == sym2.len && strcmp(sym1.Name(), sym2.Name()) == 0;
   };
 
   size_t file_id = 0;
-  while (reader->ReadFileFeature(read_pos, &file)) {
+  while (reader->ReadFileFeature(read_pos, file, error)) {
     ASSERT_LT(file_id, files.size());
     const FileFeature& expected_file = files[file_id++];
     ASSERT_EQ(file.path, expected_file.path);
@@ -253,5 +254,6 @@ TEST_F(RecordFileTest, write_file2_feature_section) {
       ASSERT_EQ(file.file_offset_of_min_vaddr, expected_file.file_offset_of_min_vaddr);
     }
   }
+  ASSERT_FALSE(error);
   ASSERT_EQ(file_id, files.size());
 }
