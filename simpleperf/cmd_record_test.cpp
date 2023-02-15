@@ -352,14 +352,16 @@ static void ProcessSymbolsInPerfDataFile(
   auto reader = RecordFileReader::CreateInstance(perf_data_file);
   ASSERT_TRUE(reader);
   FileFeature file;
-  size_t read_pos = 0;
-  while (reader->ReadFileFeature(read_pos, &file)) {
+  uint64_t read_pos = 0;
+  bool error = false;
+  while (reader->ReadFileFeature(read_pos, file, error)) {
     for (const auto& symbol : file.symbols) {
       if (callback(symbol, file.type)) {
         return;
       }
     }
   }
+  ASSERT_FALSE(error);
 }
 
 // Check if dumped symbols in perf.data matches our expectation.
@@ -712,8 +714,9 @@ class RecordingAppHelper {
 
   bool RecordData(const std::string& record_cmd) {
     std::vector<std::string> args = android::base::Split(record_cmd, " ");
-    args.emplace_back("-o");
-    args.emplace_back(perf_data_file_.path);
+    // record_cmd may end with child command. We should put output options before it.
+    args.emplace(args.begin(), "-o");
+    args.emplace(args.begin() + 1, perf_data_file_.path);
     return RecordCmd()->Run(args);
   }
 
@@ -728,6 +731,8 @@ class RecordingAppHelper {
     ProcessSymbolsInPerfDataFile(perf_data_file_.path, callback);
     return success;
   }
+
+  void DumpData() { CreateCommandInstance("report")->Run({"-i", perf_data_file_.path}); }
 
   std::string GetDataPath() const { return perf_data_file_.path; }
 
@@ -751,7 +756,10 @@ static void TestRecordingApps(const std::string& app_name, const std::string& ap
     return strstr(name, expected_class_name.c_str()) != nullptr &&
            strstr(name, expected_method_name.c_str()) != nullptr;
   };
-  ASSERT_TRUE(helper.CheckData(process_symbol));
+  if (!helper.CheckData(process_symbol)) {
+    helper.DumpData();
+    FAIL() << "Expected Java symbol doesn't exist in the profiling data";
+  }
 
   // Check app_package_name and app_type.
   auto reader = RecordFileReader::CreateInstance(helper.GetDataPath());
@@ -766,7 +774,9 @@ static void TestRecordingApps(const std::string& app_name, const std::string& ap
   reader.reset(nullptr);
 
   // Check that simpleperf can't execute child command in app uid.
-  ASSERT_FALSE(helper.RecordData("--app " + app_name + " -e " + GetDefaultEvent() + " sleep 1"));
+  if (!IsRoot()) {
+    ASSERT_FALSE(helper.RecordData("--app " + app_name + " -e " + GetDefaultEvent() + " sleep 1"));
+  }
 }
 
 TEST(record_cmd, app_option_for_debuggable_app) {
