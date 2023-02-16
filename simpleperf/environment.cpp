@@ -829,9 +829,22 @@ void AllowMoreOpenedFiles() {
   // On Android <= O, the hard limit is 4096, and the soft limit is 1024.
   // On Android >= P, both the hard and soft limit are 32768.
   rlimit limit;
-  if (getrlimit(RLIMIT_NOFILE, &limit) == 0) {
-    limit.rlim_cur = limit.rlim_max;
-    setrlimit(RLIMIT_NOFILE, &limit);
+  if (getrlimit(RLIMIT_NOFILE, &limit) != 0) {
+    return;
+  }
+  rlim_t new_limit = limit.rlim_max;
+  if (IsRoot()) {
+    rlim_t sysctl_nr_open = 0;
+    if (ReadUintFromProcFile("/proc/sys/fs/nr_open", &sysctl_nr_open) &&
+        sysctl_nr_open > new_limit) {
+      new_limit = sysctl_nr_open;
+    }
+  }
+  if (limit.rlim_cur < new_limit) {
+    limit.rlim_cur = limit.rlim_max = new_limit;
+    if (setrlimit(RLIMIT_NOFILE, &limit) == 0) {
+      LOG(DEBUG) << "increased open file limit to " << new_limit;
+    }
   }
 }
 
