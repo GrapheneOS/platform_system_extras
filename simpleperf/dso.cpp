@@ -267,6 +267,9 @@ void Dso::SetDemangle(bool demangle) {
 }
 
 extern "C" char* __cxa_demangle(const char* mangled_name, char* buf, size_t* n, int* status);
+#if defined(__linux__) || defined(__darwin__)
+extern "C" char* rustc_demangle(const char* mangled, char* out, size_t* len, int* status);
+#endif
 
 std::string Dso::Demangle(const std::string& name) {
   if (!demangle_) {
@@ -278,19 +281,35 @@ std::string Dso::Demangle(const std::string& name) {
   if (is_linker_symbol) {
     mangled_str += linker_prefix.size();
   }
-  std::string result = name;
-  char* demangled_name = __cxa_demangle(mangled_str, nullptr, nullptr, &status);
-  if (status == 0) {
-    if (is_linker_symbol) {
-      result = std::string("[linker]") + demangled_name;
-    } else {
-      result = demangled_name;
+
+  if (mangled_str[0] == '_') {
+    char* demangled_name = nullptr;
+    int status = -2;  // -2 means name didn't demangle.
+    if (mangled_str[1] == 'Z') {
+      demangled_name = __cxa_demangle(mangled_str, nullptr, nullptr, &status);
+#if defined(__linux__) || defined(__darwin__)
+    } else if (mangled_str[1] == 'R') {
+      demangled_name = rustc_demangle(mangled_str, nullptr, nullptr, &status);
+#endif
     }
-    free(demangled_name);
-  } else if (is_linker_symbol) {
-    result = std::string("[linker]") + mangled_str;
+    if (status == 0) {
+      // demangled successfully
+      std::string result;
+      if (is_linker_symbol) {
+        result = std::string("[linker]") + demangled_name;
+      } else {
+        result = demangled_name;
+      }
+      free(demangled_name);
+      return result;
+    }
   }
-  return result;
+
+  // failed to demangle
+  if (is_linker_symbol) {
+    return std::string("[linker]") + mangled_str;
+  }
+  return name;
 }
 
 bool Dso::SetSymFsDir(const std::string& symfs_dir) {
@@ -624,7 +643,8 @@ class ElfDso : public Dso {
     }
     if ((status == ElfStatus::FILE_NOT_FOUND || status == ElfStatus::FILE_MALFORMED) &&
         build_id.IsEmpty()) {
-      // This is likely to be a file wongly thought of as an ELF file, maybe due to stack unwinding.
+      // This is likely to be a file wongly thought of as an ELF file, maybe due to stack
+      // unwinding.
       log_level = android::base::DEBUG;
     }
     ReportReadElfSymbolResult(status, path_, GetDebugFilePath(), log_level);
@@ -870,10 +890,9 @@ class KernelModuleDso : public Dso {
     // need to know its relative position in the module memory. There are two ways:
     // 1. Read the kernel module file to calculate the relative position of .text section. It
     // is relatively complex and depends on both PLT entries and the kernel version.
-    // 2. Find a module symbol in .text section, get its address in memory from /proc/kallsyms, and
-    // its vaddr_in_file from the kernel module file. Then other symbols in .text section can be
-    // mapped in the same way.
-    // Below we use the second method.
+    // 2. Find a module symbol in .text section, get its address in memory from /proc/kallsyms,
+    // and its vaddr_in_file from the kernel module file. Then other symbols in .text section can
+    // be mapped in the same way. Below we use the second method.
 
     // 1. Select a module symbol in /proc/kallsyms.
     kernel_dso_->LoadSymbols();
