@@ -141,6 +141,7 @@ cc_defaults {
                 "libprocinfo",
                 "libevent",
                 "libc++fs",
+                "librustc_demangle_static",
             ],
         },
         linux_glibc_x86_64: {
@@ -186,6 +187,7 @@ cc_defaults {
             static_libs: [
                 "libc++fs",
                 "libdexfile_support",
+                "librustc_demangle_static",
             ],
             runtime_libs: [
                 "libdexfile", // libdexfile_support dependency

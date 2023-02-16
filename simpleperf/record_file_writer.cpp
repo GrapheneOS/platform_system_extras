@@ -368,7 +368,13 @@ bool RecordFileWriter::WriteFileFeature(const FileFeature& file) {
     proto::FileFeature::Symbol* proto_symbol = proto_file.add_symbol();
     proto_symbol->set_vaddr(symbol.addr);
     proto_symbol->set_len(symbol.len);
-    proto_symbol->set_name(symbol.Name());
+    // Store demangled names for rust symbols. Because simpleperf on windows host doesn't know
+    // how to demangle them.
+    if (strncmp(symbol.Name(), "_R", 2) == 0) {
+      proto_symbol->set_name(symbol.DemangledName());
+    } else {
+      proto_symbol->set_name(symbol.Name());
+    }
   };
   for (const Symbol& symbol : file.symbols) {
     write_symbol(symbol);
