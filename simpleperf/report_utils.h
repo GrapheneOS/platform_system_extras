@@ -93,7 +93,7 @@ struct CallChainReportEntry {
 
 class CallChainReportBuilder {
  public:
-  CallChainReportBuilder(ThreadTree& thread_tree) : thread_tree_(thread_tree) {}
+  CallChainReportBuilder(ThreadTree& thread_tree);
   // If true, remove interpreter frames both before and after a Java frame.
   // Default is true.
   void SetRemoveArtFrame(bool enable) { remove_art_frame_ = enable; }
@@ -119,6 +119,7 @@ class CallChainReportBuilder {
 
   ThreadTree& thread_tree_;
   bool remove_art_frame_ = true;
+  bool remove_r8_synthesized_frame_ = false;
   bool convert_jit_frame_ = true;
   bool java_method_initialized_ = false;
   std::unordered_map<std::string, JavaMethod> java_method_map_;
