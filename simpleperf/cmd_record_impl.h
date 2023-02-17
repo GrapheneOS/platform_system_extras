@@ -76,6 +76,7 @@ inline const OptionFormatMap& GetRecordCmdOptionFormats() {
         {"--post-unwind", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"--post-unwind=no", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"--post-unwind=yes", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--user-buffer-size", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"--size-limit", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"--start_profiling_fd",
          {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::CHECK_FD}},
