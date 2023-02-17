@@ -111,8 +111,8 @@ constexpr size_t DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE = 8 * 1024 * 1024;
 // Currently, the record buffer size in user-space is set to match the kernel buffer size on a
 // 8 core system. For system-wide recording, it is 8K pages * 4K page_size * 8 cores = 256MB.
 // For non system-wide recording, it is 1K pages * 4K page_size * 8 cores = 64MB.
-static constexpr size_t kRecordBufferSize = 64 * 1024 * 1024;
-static constexpr size_t kSystemWideRecordBufferSize = 256 * 1024 * 1024;
+static constexpr size_t kDefaultRecordBufferSize = 64 * 1024 * 1024;
+static constexpr size_t kDefaultSystemWideRecordBufferSize = 256 * 1024 * 1024;
 
 static constexpr size_t kDefaultAuxBufferSize = 4 * 1024 * 1024;
 
@@ -215,9 +215,12 @@ class RecordCommand : public Command {
 "             This option requires at least one branch type among any, any_call,\n"
 "             any_ret, ind_call.\n"
 "-b           Enable taken branch stack sampling. Same as '-j any'.\n"
-"-m mmap_pages   Set the size of the buffer used to receiving sample data from\n"
-"                the kernel. It should be a power of 2. If not set, the max\n"
-"                possible value <= 1024 will be used.\n"
+"-m mmap_pages   Set pages used in the kernel to cache sample data for each cpu.\n"
+"                It should be a power of 2. If not set, the max possible value <= 1024\n"
+"                will be used.\n"
+"--user-buffer-size <buffer_size> Set buffer size in userspace to cache sample data.\n"
+"                                 By default, it is 64M for process recording and 256M\n"
+"                                 for system wide recording.\n"
 "--aux-buffer-size <buffer_size>  Set aux buffer size, only used in cs-etm event type.\n"
 "                                 Need to be power of 2 and page size aligned.\n"
 "                                 Used memory size is (buffer_size * (cpu_count + 1).\n"
@@ -405,6 +408,7 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
   EventSelectionSet event_selection_set_;
 
   std::pair<size_t, size_t> mmap_page_range_;
+  std::optional<size_t> user_buffer_size_;
   size_t aux_buffer_size_ = kDefaultAuxBufferSize;
 
   ThreadTree thread_tree_;
@@ -607,8 +611,13 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   if (!event_selection_set_.OpenEventFiles(cpus_)) {
     return false;
   }
-  size_t record_buffer_size =
-      system_wide_collection_ ? kSystemWideRecordBufferSize : kRecordBufferSize;
+  size_t record_buffer_size = 0;
+  if (user_buffer_size_.has_value()) {
+    record_buffer_size = user_buffer_size_.value();
+  } else {
+    record_buffer_size =
+        system_wide_collection_ ? kDefaultSystemWideRecordBufferSize : kDefaultRecordBufferSize;
+  }
   if (!event_selection_set_.MmapEventFiles(mmap_page_range_.first, mmap_page_range_.second,
                                            aux_buffer_size_, record_buffer_size,
                                            allow_cutting_samples_, exclude_perf_)) {
@@ -1009,6 +1018,15 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   }
   if (options.PullValue("--post-unwind=no")) {
     post_unwind_ = false;
+  }
+
+  if (auto value = options.PullValue("--user-buffer-size"); value) {
+    uint64_t v = value->uint_value;
+    if (v > std::numeric_limits<size_t>::max() || v == 0) {
+      LOG(ERROR) << "invalid user buffer size: " << v;
+      return false;
+    }
+    user_buffer_size_ = static_cast<size_t>(v);
   }
 
   if (!options.PullUintValue("--size-limit", &size_limit_in_bytes_, 1)) {
