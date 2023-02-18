@@ -1248,3 +1248,7 @@ TEST(record_cmd, add_counter_option) {
   }));
   ASSERT_TRUE(has_sample);
 }
+
+TEST(record_cmd, user_buffer_size_option) {
+  ASSERT_TRUE(RunRecordCmd({"--user-buffer-size", "256M"}));
+}
