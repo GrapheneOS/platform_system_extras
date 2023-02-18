@@ -236,6 +236,9 @@ RecordReadThread::RecordReadThread(size_t record_buffer_size, const perf_event_a
   }
   record_buffer_low_level_ = std::min(record_buffer_size / 4, kDefaultLowBufferLevel);
   record_buffer_critical_level_ = std::min(record_buffer_size / 6, kDefaultCriticalBufferLevel);
+  LOG(VERBOSE) << "user buffer size = " << record_buffer_size
+               << ", low_level size = " << record_buffer_low_level_
+               << ", critical_level size = " << record_buffer_critical_level_;
   if (!allow_cutting_samples) {
     record_buffer_low_level_ = record_buffer_critical_level_;
   }
