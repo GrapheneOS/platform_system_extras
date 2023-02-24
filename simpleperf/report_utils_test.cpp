@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+#include <stdlib.h>
+
 #include <string>
 #include <vector>
 
@@ -362,13 +364,12 @@ TEST_F(CallChainReportBuilderTest, add_proguard_mapping_file) {
   ASSERT_EQ(entries[2].execution_type, CallChainExecutionType::JIT_JVM_METHOD);
 }
 
-TEST_F(CallChainReportBuilderTest, add_proguard_mapping_file_synthesized_frame) {
+TEST_F(CallChainReportBuilderTest, not_remove_synthesized_frame_by_default) {
   std::vector<uint64_t> fake_ips = {
       0x2200,  // 2200,  // obfuscated_class.obfuscated_java_method
       0x3200,  // 3200,  // obfuscated_class.obfuscated_java_method2
   };
 
-  // Synthesized frames are removed.
   TemporaryFile tmpfile;
   ASSERT_TRUE(android::base::WriteStringToFile(
       "android.support.v4.app.RemoteActionCompatParcelizer -> obfuscated_class:\n"
@@ -379,7 +380,49 @@ TEST_F(CallChainReportBuilderTest, add_proguard_mapping_file_synthesized_frame) 
       "android.support.v4.app.RemoteActionCompatParcelizer.read2(androidx.versionedparcelable."
       "VersionedParcel) -> obfuscated_java_method2",
       tmpfile.path));
+
+  // By default, synthesized frames are kept.
   CallChainReportBuilder builder(thread_tree);
+  builder.AddProguardMappingFile(tmpfile.path);
+  std::vector<CallChainReportEntry> entries = builder.Build(thread, fake_ips, 0);
+  ASSERT_EQ(entries.size(), 2);
+  ASSERT_EQ(entries[0].ip, 0x2200);
+  ASSERT_STREQ(entries[0].symbol->DemangledName(),
+               "android.support.v4.app.RemoteActionCompatParcelizer.read");
+  ASSERT_EQ(entries[0].dso->Path(), fake_dex_file_path);
+  ASSERT_EQ(entries[0].vaddr_in_file, 0x200);
+  ASSERT_EQ(entries[0].execution_type, CallChainExecutionType::INTERPRETED_JVM_METHOD);
+  ASSERT_EQ(entries[1].ip, 0x3200);
+  ASSERT_STREQ(entries[1].symbol->DemangledName(),
+               "android.support.v4.app.RemoteActionCompatParcelizer.read2");
+  ASSERT_EQ(entries[1].dso->Path(), fake_jit_cache_path);
+  ASSERT_EQ(entries[1].vaddr_in_file, 0x3200);
+  ASSERT_EQ(entries[1].execution_type, CallChainExecutionType::JIT_JVM_METHOD);
+}
+
+TEST_F(CallChainReportBuilderTest, remove_synthesized_frame_with_env_variable) {
+  // Windows doesn't support setenv and unsetenv. So don't test on it.
+#if !defined(__WIN32)
+  std::vector<uint64_t> fake_ips = {
+      0x2200,  // 2200,  // obfuscated_class.obfuscated_java_method
+      0x3200,  // 3200,  // obfuscated_class.obfuscated_java_method2
+  };
+
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(android::base::WriteStringToFile(
+      "android.support.v4.app.RemoteActionCompatParcelizer -> obfuscated_class:\n"
+      "    13:13:androidx.core.app.RemoteActionCompat read(androidx.versionedparcelable.Versioned"
+      "Parcel) -> obfuscated_java_method\n"
+      "      # {\"id\":\"com.android.tools.r8.synthesized\"}\n"
+      "    13:13:androidx.core.app.RemoteActionCompat "
+      "android.support.v4.app.RemoteActionCompatParcelizer.read2(androidx.versionedparcelable."
+      "VersionedParcel) -> obfuscated_java_method2",
+      tmpfile.path));
+
+  // With environment variable set, synthesized frames are removed.
+  ASSERT_EQ(setenv("REMOVE_R8_SYNTHESIZED_FRAME", "1", 1), 0);
+  CallChainReportBuilder builder(thread_tree);
+  ASSERT_EQ(unsetenv("REMOVE_R8_SYNTHESIZED_FRAME"), 0);
   builder.AddProguardMappingFile(tmpfile.path);
   std::vector<CallChainReportEntry> entries = builder.Build(thread, fake_ips, 0);
   ASSERT_EQ(entries.size(), 1);
@@ -389,6 +432,7 @@ TEST_F(CallChainReportBuilderTest, add_proguard_mapping_file_synthesized_frame) 
   ASSERT_EQ(entries[0].dso->Path(), fake_jit_cache_path);
   ASSERT_EQ(entries[0].vaddr_in_file, 0x3200);
   ASSERT_EQ(entries[0].execution_type, CallChainExecutionType::JIT_JVM_METHOD);
+#endif  // !defined(__WIN32)
 }
 
 TEST_F(CallChainReportBuilderTest, add_proguard_mapping_file_for_jit_method_with_signature) {
