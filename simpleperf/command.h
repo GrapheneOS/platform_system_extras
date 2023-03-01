@@ -117,6 +117,14 @@ struct OptionValueMap {
     return res;
   }
 
+  std::vector<std::string> PullStringValues(const OptionName& name) {
+    std::vector<std::string> res;
+    for (const auto& value : PullValues(name)) {
+      res.emplace_back(*value.str_value);
+    }
+    return res;
+  }
+
   std::vector<OptionValue> PullValues(const OptionName& name) {
     auto pair = values.equal_range(name);
     if (pair.first != pair.second) {

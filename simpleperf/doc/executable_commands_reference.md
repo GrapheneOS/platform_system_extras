@@ -206,15 +206,23 @@ process to run the new command and then monitor the child process.
 # Stat process 11904 and 11905.
 $ simpleperf stat -p 11904,11905 --duration 10
 
+# Stat processes with name containing "chrome".
+$ simpleperf stat -p chrome --duration 10
+# Stat processes with name containing part matching regex "chrome:(privileged|sandboxed)".
+$ simpleperf stat -p "chrome:(privileged|sandboxed)" --duration 10
+
 # Stat thread 11904 and 11905.
 $ simpleperf stat -t 11904,11905 --duration 10
 
 # Start a child process running `ls`, and stat it.
 $ simpleperf stat ls
 
-# Stat the process of an Android application. This only works for debuggable apps on non-rooted
-# devices.
-$ simpleperf stat --app simpleperf.example.cpp
+# Stat the process of an Android application. On non-root devices, this only works for debuggable
+# or profileable from shell apps.
+$ simpleperf stat --app simpleperf.example.cpp --duration 10
+
+# Stat only selected thread 11904 in an app.
+$ simpleperf stat --app simpleperf.example.cpp -t 11904 --duration 10
 
 # Stat system wide using -a.
 $ simpleperf stat -a --duration 10
@@ -362,15 +370,23 @@ The way to select target in record command is similar to that in the stat comman
 # Record process 11904 and 11905.
 $ simpleperf record -p 11904,11905 --duration 10
 
+# Record processes with name containing "chrome".
+$ simpleperf record -p chrome --duration 10
+# Record processes with name containing part matching regex "chrome:(privileged|sandboxed)".
+$ simpleperf record -p "chrome:(privileged|sandboxed)" --duration 10
+
 # Record thread 11904 and 11905.
 $ simpleperf record -t 11904,11905 --duration 10
 
 # Record a child process running `ls`.
 $ simpleperf record ls
 
-# Record the process of an Android application. This only works for debuggable apps on non-rooted
-# devices.
-$ simpleperf record --app simpleperf.example.cpp
+# Record the process of an Android application. On non-root devices, this only works for debuggable
+# or profileable from shell apps.
+$ simpleperf record --app simpleperf.example.cpp --duration 10
+
+# Record only selected thread 11904 in an app.
+$ simpleperf record --app simpleperf.example.cpp -t 11904 --duration 10
 
 # Record system wide.
 $ simpleperf record -a --duration 10
