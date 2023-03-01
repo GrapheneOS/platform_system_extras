@@ -380,8 +380,10 @@ class StatCommand : public Command {
 "-o output_filename  Write report to output_filename instead of standard output.\n"
 "--per-core       Print counters for each cpu core.\n"
 "--per-thread     Print counters for each thread.\n"
-"-p pid1,pid2,... Stat events on existing processes. Mutually exclusive with -a.\n"
-"-t tid1,tid2,... Stat events on existing threads. Mutually exclusive with -a.\n"
+"-p pid_or_process_name_regex1,pid_or_process_name_regex2,...\n"
+"                      Stat events on existing processes. Processes are searched either by pid\n"
+"                      or process name regex. Mutually exclusive with -a.\n"
+"-t tid1,tid2,...      Stat events on existing threads. Mutually exclusive with -a.\n"
 "--print-hw-counter    Test and print CPU PMU hardware counters available on the device.\n"
 "--sort key1,key2,...  Select keys used to sort the report, used when --per-thread\n"
 "                      or --per-core appears. The appearance order of keys decides\n"
@@ -690,8 +692,8 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
   report_per_core_ = options.PullBoolValue("--per-core");
   report_per_thread_ = options.PullBoolValue("--per-thread");
 
-  for (const OptionValue& value : options.PullValues("-p")) {
-    if (auto pids = GetTidsFromString(*value.str_value, true); pids) {
+  if (auto strs = options.PullStringValues("-p"); !strs.empty()) {
+    if (auto pids = GetPidsFromStrings(strs, true, true); pids) {
       event_selection_set_.AddMonitoredProcesses(pids.value());
     } else {
       return false;
