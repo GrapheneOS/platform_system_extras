@@ -146,8 +146,9 @@ class RecordCommand : public Command {
 "                      On non-rooted devices, the app must be debuggable,\n"
 "                      because we use run-as to switch to the app's context.\n"
 #endif
-"-p pid1,pid2,...       Record events on existing processes. Mutually exclusive\n"
-"                       with -a.\n"
+"-p pid_or_process_name_regex1,pid_or_process_name_regex2,...\n"
+"                      Record events on existing processes. Processes are searched either by pid\n"
+"                      or process name regex. Mutually exclusive with -a.\n"
 "-t tid1,tid2,... Record events on existing threads. Mutually exclusive with -a.\n"
 "\n"
 "Select monitored event types:\n"
@@ -1001,8 +1002,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     out_fd_.reset(static_cast<int>(value->uint_value));
   }
 
-  for (const OptionValue& value : options.PullValues("-p")) {
-    if (auto pids = GetTidsFromString(*value.str_value, true); pids) {
+  if (auto strs = options.PullStringValues("-p"); !strs.empty()) {
+    if (auto pids = GetPidsFromStrings(strs, true, true); pids) {
       event_selection_set_.AddMonitoredProcesses(pids.value());
     } else {
       return false;

@@ -248,8 +248,8 @@ RecordFilter::~RecordFilter() {}
 bool RecordFilter::ParseOptions(OptionValueMap& options) {
   for (bool exclude : {true, false}) {
     std::string prefix = exclude ? "--exclude-" : "--include-";
-    for (const OptionValue& value : options.PullValues(prefix + "pid")) {
-      if (auto pids = GetTidsFromString(*value.str_value, false); pids) {
+    if (auto strs = options.PullStringValues(prefix + "pid"); !strs.empty()) {
+      if (auto pids = GetPidsFromStrings(strs, false, false); pids) {
         AddPids(pids.value(), exclude);
       } else {
         return false;

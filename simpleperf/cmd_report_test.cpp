@@ -227,7 +227,7 @@ TEST_F(ReportCommandTest, wrong_pid_filter_option) {
         Report(PERF_DATA_WITH_MULTIPLE_PIDS_AND_TIDS, {"--pids", "2,bogus"});
         exit(success ? 0 : 1);
       },
-      testing::ExitedWithCode(1), "Invalid tid 'bogus'");
+      testing::ExitedWithCode(1), "invalid pid: bogus");
 }
 
 TEST_F(ReportCommandTest, tid_filter_option) {
