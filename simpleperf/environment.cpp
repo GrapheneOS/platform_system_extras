@@ -955,7 +955,9 @@ std::string GetCompleteProcessName(pid_t pid) {
   if (pos != std::string::npos) {
     argv0.resize(pos);
   }
-  return android::base::Basename(argv0);
+  // argv0 can be empty if the process is in zombie state. In that case, we don't want to pass argv0
+  // to Basename(), which returns ".".
+  return argv0.empty() ? std::string() : android::base::Basename(argv0);
 }
 
 const char* GetTraceFsDir() {
