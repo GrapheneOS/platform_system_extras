@@ -252,6 +252,9 @@ std::string GetSimpleperfVersion();
 
 std::optional<std::set<int>> GetCpusFromString(const std::string& s);
 std::optional<std::set<pid_t>> GetTidsFromString(const std::string& s, bool check_if_exists);
+std::optional<std::set<pid_t>> GetPidsFromStrings(const std::vector<std::string>& strs,
+                                                  bool check_if_exists,
+                                                  bool support_progress_name_regex);
 
 template <typename T>
 std::optional<std::set<T>> ParseUintVector(const std::string& s) {

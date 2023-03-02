@@ -662,8 +662,8 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
     return false;
   }
 
-  for (const OptionValue& value : options.PullValues("--pids")) {
-    if (auto pids = GetTidsFromString(*value.str_value, false); pids) {
+  if (auto strs = options.PullStringValues("--pids"); !strs.empty()) {
+    if (auto pids = GetPidsFromStrings(strs, false, false); pids) {
       record_filter_.AddPids(pids.value(), false);
     } else {
       return false;
