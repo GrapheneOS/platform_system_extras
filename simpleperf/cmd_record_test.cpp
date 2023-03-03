@@ -1252,3 +1252,21 @@ TEST(record_cmd, add_counter_option) {
 TEST(record_cmd, user_buffer_size_option) {
   ASSERT_TRUE(RunRecordCmd({"--user-buffer-size", "256M"}));
 }
+
+TEST(record_cmd, record_process_name) {
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run({"-e", GetDefaultEvent(), "-o", tmpfile.path, "sleep", SLEEP_SEC}));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader);
+  bool has_comm = false;
+  ASSERT_TRUE(reader->ReadDataSection([&](std::unique_ptr<Record> r) {
+    if (r->type() == PERF_RECORD_COMM) {
+      CommRecord* cr = static_cast<CommRecord*>(r.get());
+      if (strcmp(cr->comm, "sleep") == 0) {
+        has_comm = true;
+      }
+    }
+    return true;
+  }));
+  ASSERT_TRUE(has_comm);
+}
