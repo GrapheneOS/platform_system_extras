@@ -874,6 +874,17 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
                      << "or increasing sample period(-c).";
       }
     }
+    if (sample_record_count_ + record_stat.lost_samples != 0) {
+      uint64_t userspace_lost_samples = record_stat.lost_samples + record_stat.cut_stack_samples;
+      double userspace_lost_percent = static_cast<double>(userspace_lost_samples) /
+                                      (sample_record_count_ + record_stat.lost_samples);
+      constexpr double USERSPACE_LOST_PERCENT_WARNING_BAR = 0.1;
+      if (userspace_lost_percent >= USERSPACE_LOST_PERCENT_WARNING_BAR) {
+        LOG(WARNING) << "Lost/Cut " << (userspace_lost_percent * 100)
+                     << "% of samples in user space, "
+                     << "consider increasing userspace buffer size(--user-buffer-size).";
+      }
+    }
     if (callchain_joiner_) {
       callchain_joiner_->DumpStat();
     }
