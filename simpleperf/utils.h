@@ -37,6 +37,10 @@
 
 namespace simpleperf {
 
+static constexpr size_t kKilobyte = 1024;
+static constexpr size_t kMegabyte = 1024 * kKilobyte;
+static constexpr uint64_t kGigabyte = 1024 * kMegabyte;
+
 static inline uint64_t AlignDown(uint64_t value, uint64_t alignment) {
   return value & ~(alignment - 1);
 }

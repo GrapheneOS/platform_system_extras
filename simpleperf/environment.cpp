@@ -241,6 +241,16 @@ bool CanRecordRawData() {
 #endif
 }
 
+std::optional<uint64_t> GetMemorySize() {
+  std::unique_ptr<FILE, decltype(&fclose)> fp(fopen("/proc/meminfo", "r"), fclose);
+  uint64_t size;
+  if (fp && fscanf(fp.get(), "MemTotal:%" PRIu64 " k", &size) == 1) {
+    return size * kKilobyte;
+  }
+  PLOG(ERROR) << "failed to get memory size";
+  return std::nullopt;
+}
+
 static const char* GetLimitLevelDescription(int limit_level) {
   switch (limit_level) {
     case -1:

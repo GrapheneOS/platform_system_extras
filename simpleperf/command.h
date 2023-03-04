@@ -169,7 +169,7 @@ class Command {
 
   const std::string& ShortHelpString() const { return short_help_string_; }
 
-  const std::string LongHelpString() const { return long_help_string_; }
+  virtual std::string LongHelpString() const { return long_help_string_; }
 
   virtual bool Run(const std::vector<std::string>&) { return false; }
   virtual void Run(const std::vector<std::string>& args, int* exit_code) {
@@ -203,7 +203,6 @@ class Command {
   bool NextArgumentOrError(const std::vector<std::string>& args, size_t* pi);
   void ReportUnknownOption(const std::vector<std::string>& args, size_t i);
 
- private:
   const std::string name_;
   const std::string short_help_string_;
   const std::string long_help_string_;
