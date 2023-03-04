@@ -80,8 +80,8 @@ constexpr size_t DESIRED_PAGES_IN_MAPPED_BUFFER = 1024;
 // buffer size on a 8 core system. For system-wide recording, it is 8K pages *
 // 4K page_size * 8 cores = 256MB. For non system-wide recording, it is 1K pages
 // * 4K page_size * 8 cores = 64MB.
-static constexpr size_t kRecordBufferSize = 64 * 1024 * 1024;
-static constexpr size_t kSystemWideRecordBufferSize = 256 * 1024 * 1024;
+static constexpr size_t kRecordBufferSize = 64 * kMegabyte;
+static constexpr size_t kSystemWideRecordBufferSize = 256 * kMegabyte;
 
 class MonitorCommand : public Command {
  public:

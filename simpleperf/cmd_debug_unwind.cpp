@@ -425,7 +425,7 @@ class TestFileGenerator : public RecordFileProcessor {
     }
     std::unordered_set<int> feature_types_to_copy = {
         PerfFileFormat::FEAT_ARCH, PerfFileFormat::FEAT_CMDLINE, PerfFileFormat::FEAT_META_INFO};
-    const size_t BUFFER_SIZE = 64 * 1024;
+    const size_t BUFFER_SIZE = 64 * kKilobyte;
     std::string buffer(BUFFER_SIZE, '\0');
     for (const auto& p : reader_->FeatureSectionDescriptors()) {
       auto feat_type = p.first;
