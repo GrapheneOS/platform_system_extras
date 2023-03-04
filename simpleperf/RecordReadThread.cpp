@@ -29,8 +29,8 @@
 
 namespace simpleperf {
 
-static constexpr size_t kDefaultLowBufferLevel = 10 * 1024 * 1024u;
-static constexpr size_t kDefaultCriticalBufferLevel = 5 * 1024 * 1024u;
+static constexpr size_t kDefaultLowBufferLevel = 10 * kMegabyte;
+static constexpr size_t kDefaultCriticalBufferLevel = 5 * kMegabyte;
 
 RecordBuffer::RecordBuffer(size_t buffer_size)
     : read_head_(0), write_head_(0), buffer_size_(buffer_size), buffer_(new char[buffer_size]) {}
