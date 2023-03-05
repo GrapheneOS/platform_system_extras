@@ -98,23 +98,17 @@ static std::unordered_map<std::string, int> clockid_map = {
 
 // The max size of records dumped by kernel is 65535, and dump stack size
 // should be a multiply of 8, so MAX_DUMP_STACK_SIZE is 65528.
-constexpr uint32_t MAX_DUMP_STACK_SIZE = 65528;
+static constexpr uint32_t MAX_DUMP_STACK_SIZE = 65528;
 
 // The max allowed pages in mapped buffer is decided by rlimit(RLIMIT_MEMLOCK).
 // Here 1024 is a desired value for pages in mapped buffer. If mapped
 // successfully, the buffer size = 1024 * 4K (page size) = 4M.
-constexpr size_t DESIRED_PAGES_IN_MAPPED_BUFFER = 1024;
+static constexpr size_t DESIRED_PAGES_IN_MAPPED_BUFFER = 1024;
 
 // Cache size used by CallChainJoiner to cache call chains in memory.
-constexpr size_t DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE = 8 * 1024 * 1024;
+static constexpr size_t DEFAULT_CALL_CHAIN_JOINER_CACHE_SIZE = 8 * kMegabyte;
 
-// Currently, the record buffer size in user-space is set to match the kernel buffer size on a
-// 8 core system. For system-wide recording, it is 8K pages * 4K page_size * 8 cores = 256MB.
-// For non system-wide recording, it is 1K pages * 4K page_size * 8 cores = 64MB.
-static constexpr size_t kDefaultRecordBufferSize = 64 * 1024 * 1024;
-static constexpr size_t kDefaultSystemWideRecordBufferSize = 256 * 1024 * 1024;
-
-static constexpr size_t kDefaultAuxBufferSize = 4 * 1024 * 1024;
+static constexpr size_t kDefaultAuxBufferSize = 4 * kMegabyte;
 
 // On Pixel 3, it takes about 1ms to enable ETM, and 16-40ms to disable ETM and copy 4M ETM data.
 // So make default period to 100ms.
@@ -127,6 +121,30 @@ struct TimeStat {
   uint64_t finish_recording_time = 0;
   uint64_t post_process_time = 0;
 };
+
+std::optional<size_t> GetDefaultRecordBufferSize(bool system_wide_recording) {
+  // Currently, the record buffer size in user-space is set to match the kernel buffer size on a
+  // 8 core system. For system-wide recording, it is 8K pages * 4K page_size * 8 cores = 256MB.
+  // For non system-wide recording, it is 1K pages * 4K page_size * 8 cores = 64MB.
+  // But on devices with memory >= 4GB, we increase buffer size to 256MB. This reduces the chance
+  // of cutting samples, which can cause broken callchains.
+  static constexpr size_t kLowMemoryRecordBufferSize = 64 * kMegabyte;
+  static constexpr size_t kHighMemoryRecordBufferSize = 256 * kMegabyte;
+  static constexpr size_t kSystemWideRecordBufferSize = 256 * kMegabyte;
+  // Ideally we can use >= 4GB here. But the memory size shown in /proc/meminfo is like to be 3.x GB
+  // on a device with 4GB memory. So we have to use <= 3GB.
+  static constexpr uint64_t kLowMemoryLimit = 3 * kGigabyte;
+
+  if (system_wide_recording) {
+    return kSystemWideRecordBufferSize;
+  }
+  auto device_memory = GetMemorySize();
+  if (!device_memory.has_value()) {
+    return std::nullopt;
+  }
+  return device_memory.value() <= kLowMemoryLimit ? kLowMemoryRecordBufferSize
+                                                  : kHighMemoryRecordBufferSize;
+}
 
 class RecordCommand : public Command {
  public:
@@ -220,8 +238,7 @@ class RecordCommand : public Command {
 "                It should be a power of 2. If not set, the max possible value <= 1024\n"
 "                will be used.\n"
 "--user-buffer-size <buffer_size> Set buffer size in userspace to cache sample data.\n"
-"                                 By default, it is 64M for process recording and 256M\n"
-"                                 for system wide recording.\n"
+"                                 By default, it is %s.\n"
 "--aux-buffer-size <buffer_size>  Set aux buffer size, only used in cs-etm event type.\n"
 "                                 Need to be power of 2 and page size aligned.\n"
 "                                 Used memory size is (buffer_size * (cpu_count + 1).\n"
@@ -338,6 +355,7 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
     signal(SIGPIPE, SIG_IGN);
   }
 
+  std::string LongHelpString() const override;
   void Run(const std::vector<std::string>& args, int* exit_code) override;
   bool Run(const std::vector<std::string>& args) override {
     int exit_code;
@@ -453,6 +471,27 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
   bool use_cmd_exit_code_ = false;
   std::vector<std::string> add_counters_;
 };
+
+std::string RecordCommand::LongHelpString() const {
+  uint64_t process_buffer_size = 0;
+  uint64_t system_wide_buffer_size = 0;
+  if (auto size = GetDefaultRecordBufferSize(false); size) {
+    process_buffer_size = size.value() / kMegabyte;
+  }
+  if (auto size = GetDefaultRecordBufferSize(true); size) {
+    system_wide_buffer_size = size.value() / kMegabyte;
+  }
+  std::string buffer_size_str;
+  if (process_buffer_size == system_wide_buffer_size) {
+    buffer_size_str = android::base::StringPrintf("%" PRIu64 "M", process_buffer_size);
+  } else {
+    buffer_size_str =
+        android::base::StringPrintf("%" PRIu64 "M for process recording and %" PRIu64
+                                    "M\n                                 for system wide recording",
+                                    process_buffer_size, system_wide_buffer_size);
+  }
+  return android::base::StringPrintf(long_help_string_.c_str(), buffer_size_str.c_str());
+}
 
 void RecordCommand::Run(const std::vector<std::string>& args, int* exit_code) {
   *exit_code = 1;
@@ -616,8 +655,11 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   if (user_buffer_size_.has_value()) {
     record_buffer_size = user_buffer_size_.value();
   } else {
-    record_buffer_size =
-        system_wide_collection_ ? kDefaultSystemWideRecordBufferSize : kDefaultRecordBufferSize;
+    auto default_size = GetDefaultRecordBufferSize(system_wide_collection_);
+    if (!default_size.has_value()) {
+      return false;
+    }
+    record_buffer_size = default_size.value();
   }
   if (!event_selection_set_.MmapEventFiles(mmap_page_range_.first, mmap_page_range_.second,
                                            aux_buffer_size_, record_buffer_size,
@@ -830,6 +872,17 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
                      << "consider increasing mmap_pages(-m), "
                      << "or decreasing sample frequency(-f), "
                      << "or increasing sample period(-c).";
+      }
+    }
+    if (sample_record_count_ + record_stat.lost_samples != 0) {
+      uint64_t userspace_lost_samples = record_stat.lost_samples + record_stat.cut_stack_samples;
+      double userspace_lost_percent = static_cast<double>(userspace_lost_samples) /
+                                      (sample_record_count_ + record_stat.lost_samples);
+      constexpr double USERSPACE_LOST_PERCENT_WARNING_BAR = 0.1;
+      if (userspace_lost_percent >= USERSPACE_LOST_PERCENT_WARNING_BAR) {
+        LOG(WARNING) << "Lost/Cut " << (userspace_lost_percent * 100)
+                     << "% of samples in user space, "
+                     << "consider increasing userspace buffer size(--user-buffer-size).";
       }
     }
     if (callchain_joiner_) {
