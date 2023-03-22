@@ -227,7 +227,7 @@ class TestExampleJavaTraceOffCpu(TestExampleBase):
                 ("RunFunction", 20, 20),
                 ("SleepFunction", 20, 0),
                 ("line 24", 1, 0),
-                ("line 32", 20, 0)])
+                ("line 31", 20, 0)])
         self.run_cmd([INFERNO_SCRIPT, "-sc"])
         self.check_inferno_report_html(
             [('simpleperf.example.java.SleepActivity$1.run', 80),
