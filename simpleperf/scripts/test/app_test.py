@@ -62,6 +62,9 @@ class TestExampleBase(TestBase):
 
     def setUp(self):
         super(TestExampleBase, self).setUp()
+        if TestHelper.android_version == 8 and (
+                'ExampleJava' in self.id() or 'ExampleKotlin' in self.id()):
+            self.skipTest('Profiling java code needs wrap.sh on Android O (8.x)')
         if 'TraceOffCpu' in self.id() and not TestHelper.is_trace_offcpu_supported():
             self.skipTest('trace-offcpu is not supported on device')
         # Use testcase_dir to share a common perf.data for reporting. So we don't need to
