@@ -255,6 +255,7 @@ class BinaryCacheBuilder:
         self.binaries = {}
 
     def build_binary_cache(self, perf_data_path: str, symfs_dirs: List[Union[Path, str]]) -> bool:
+        self.binary_cache_dir.mkdir(exist_ok=True)
         self.collect_used_binaries(perf_data_path)
         if not self.copy_binaries_from_symfs_dirs(symfs_dirs):
             return False
