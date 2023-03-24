@@ -1764,11 +1764,12 @@ std::unique_ptr<RecordFileReader> RecordCommand::MoveRecordFile(const std::strin
     return nullptr;
   }
   record_file_writer_.reset();
-  {
-    std::error_code ec;
-    std::filesystem::rename(record_filename_, old_filename, ec);
-    if (ec) {
-      LOG(ERROR) << "Failed to rename: " << ec.message();
+  std::error_code ec;
+  std::filesystem::rename(record_filename_, old_filename, ec);
+  if (ec) {
+    LOG(DEBUG) << "Failed to rename: " << ec.message();
+    // rename() fails on x86 emulator for Android N. So add a fallback to mv command.
+    if (!Workload::RunCmd({"mv", record_filename_, old_filename})) {
       return nullptr;
     }
   }
