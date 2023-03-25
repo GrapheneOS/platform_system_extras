@@ -1768,7 +1768,10 @@ std::unique_ptr<RecordFileReader> RecordCommand::MoveRecordFile(const std::strin
   std::filesystem::rename(record_filename_, old_filename, ec);
   if (ec) {
     LOG(DEBUG) << "Failed to rename: " << ec.message();
-    // rename() fails on x86 emulator for Android N. So add a fallback to mv command.
+    // rename() fails on Android N x86 emulator, which uses kernel 3.10. Because rename() in bionic
+    // uses renameat2 syscall, which isn't support on kernel < 3.15. So add a fallback to mv
+    // command. The mv command can also work with other situations when rename() doesn't work.
+    // So we'd like to keep it as a fallback to rename().
     if (!Workload::RunCmd({"mv", record_filename_, old_filename})) {
       return nullptr;
     }
