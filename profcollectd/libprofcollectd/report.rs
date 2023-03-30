@@ -79,14 +79,17 @@ fn get_report_filename(node_id: &MacAddr6) -> Result<String> {
     let since_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
     let ts =
         Timestamp::from_unix(&*UUID_CONTEXT, since_epoch.as_secs(), since_epoch.subsec_nanos());
-    let uuid = Uuid::new_v1(ts, node_id.as_bytes())?;
+    let uuid = Uuid::new_v1(
+        ts,
+        node_id.as_bytes().try_into().expect("Invalid number of bytes in V1 UUID"),
+    );
     Ok(uuid.to_string())
 }
 
 /// Get report creation timestamp through its filename (version 1 UUID).
 pub fn get_report_ts(filename: &str) -> Result<SystemTime> {
     let uuid_ts = Uuid::parse_str(filename)?
-        .to_timestamp()
+        .get_timestamp()
         .ok_or_else(|| anyhow!("filename is not a valid V1 UUID."))?
         .to_unix();
     Ok(SystemTime::UNIX_EPOCH + Duration::new(uuid_ts.0, uuid_ts.1))
