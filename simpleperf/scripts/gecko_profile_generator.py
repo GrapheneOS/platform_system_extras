@@ -114,6 +114,13 @@ CATEGORIES = [
         "color": 'green',
         "subcategories": ['Other']
     },
+    {
+        "name": 'Off-CPU',
+        # Follow Brendan Gregg's Flamegraph convention: blue for off-CPU
+        # https://github.com/brendangregg/FlameGraph/blob/810687f180f3c4929b5d965f54817a5218c9d89b/flamegraph.pl#L470
+        "color": 'blue',
+        "subcategories": ['Other']
+    },
     # Not used by this exporter yet, but some Firefox Profiler code assumes
     # there is an 'Other' category by searching for a category with
     # color=grey, so include this.
@@ -197,12 +204,19 @@ class Thread:
         # Heuristic: kernel code contains "kallsyms" as the library name.
         if "kallsyms" in frame_str or ".ko" in frame_str:
             category = 1
+            if frame_str.startswith("__schedule "):
+                category = 5
         elif ".so" in frame_str:
             category = 2
         elif ".vdex" in frame_str:
             category = 3
         elif ".oat" in frame_str:
             category = 4
+        # Heuristic: empirically, off-CPU profiles mostly measure off-CPU time
+        # accounted to the linux kernel __schedule function, which handles
+        # blocking. This only works if we have kernel symbol (kallsyms)
+        # access though.
+        # https://cs.android.com/android/kernel/superproject/+/common-android-mainline:common/kernel/sched/core.c;l=6593;drc=0c99414a07ddaa18d8eb4be90b551d2687cbde2f
 
         self.frameTable.append(Frame(
             string_id=string_id,
