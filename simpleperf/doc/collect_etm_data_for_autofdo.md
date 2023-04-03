@@ -157,6 +157,25 @@ Step 4: Use AutoFDO data to build optimized binary.
 ```sh
 (host) <AOSP>$ mkdir toolchain/pgo-profiles/sampling/
 (host) <AOSP>$ cp etm_test_loop.afdo toolchain/pgo-profiles/sampling/
+(host) <AOSP>$ vi toolchain/pgo-profiles/sampling/Android.bp
+# edit Android.bp to add a fdo_profile module
+# soong_namespace {}
+#
+# fdo_profile {
+#    name: "etm_test_loop_afdo",
+#    profile: ["etm_test_loop.afdo"],
+# }
+```
+
+`soong_namespace` is added to support fdo_profile modules with the same name
+
+In a product config mk file, update `PRODUCT_AFDO_PROFILES` with
+
+```make
+PRODUCT_AFDO_PROFILES += etm_test_loop://toolchain/pgo-profiles/sampling:etm_test_loop_afdo
+```
+
+```sh
 (host) <AOSP>$ vi system/extras/simpleperf/runtest/Android.bp
 # edit Android.bp to enable afdo for etm_test_loop.
 # cc_binary {
