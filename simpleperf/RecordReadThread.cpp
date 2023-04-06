@@ -533,7 +533,7 @@ void RecordReadThread::PushRecordToRecordBuffer(KernelRecordReader* kernel_recor
     if (free_size < record_buffer_critical_level_) {
       // When the free size in record buffer is below critical level, drop sample records to save
       // space for more important records (like mmap or fork records).
-      stat_.lost_samples++;
+      stat_.userspace_lost_samples++;
       return;
     }
     size_t stack_size_limit = stack_size_in_sample_record_;
@@ -580,10 +580,10 @@ void RecordReadThread::PushRecordToRecordBuffer(KernelRecordReader* kernel_recor
           memcpy(p + pos + new_stack_size, &new_stack_size, sizeof(uint64_t));
           record_buffer_.FinishWrite();
           if (new_stack_size < dyn_stack_size) {
-            stat_.cut_stack_samples++;
+            stat_.userspace_cut_stack_samples++;
           }
         } else {
-          stat_.lost_samples++;
+          stat_.userspace_lost_samples++;
         }
         return;
       }
@@ -603,13 +603,18 @@ void RecordReadThread::PushRecordToRecordBuffer(KernelRecordReader* kernel_recor
         // only after we have collected the aux data.
         event_fds_disabled_by_kernel_.insert(kernel_record_reader->GetEventFd());
       }
+    } else if (header.type == PERF_RECORD_LOST) {
+      LostRecord r;
+      if (r.Parse(attr_, p, p + header.size)) {
+        stat_.kernelspace_lost_records += static_cast<size_t>(r.lost);
+      }
     }
     record_buffer_.FinishWrite();
   } else {
     if (header.type == PERF_RECORD_SAMPLE) {
-      stat_.lost_samples++;
+      stat_.userspace_lost_samples++;
     } else {
-      stat_.lost_non_samples++;
+      stat_.userspace_lost_non_samples++;
     }
   }
 }
