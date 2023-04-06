@@ -340,7 +340,6 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
         mmap_page_range_(std::make_pair(1, DESIRED_PAGES_IN_MAPPED_BUFFER)),
         record_filename_("perf.data"),
         sample_record_count_(0),
-        lost_record_count_(0),
         in_app_context_(false),
         trace_offcpu_(false),
         exclude_kernel_callchain_(false),
@@ -437,7 +436,6 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
   android::base::unique_fd stop_signal_fd_;
 
   uint64_t sample_record_count_;
-  uint64_t lost_record_count_;
   android::base::unique_fd start_profiling_fd_;
   bool stdio_controls_profiling_ = false;
 
@@ -853,36 +851,55 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
       LOG(INFO) << "Aux data lost in user space: " << record_stat.lost_aux_data_size;
     }
   } else {
-    std::string cut_samples;
-    if (record_stat.cut_stack_samples > 0) {
-      cut_samples = android::base::StringPrintf(" (cut %zu)", record_stat.cut_stack_samples);
+    // Here we report all lost records as samples. This isn't accurate. Because records like
+    // MmapRecords are not samples. But It's easier for users to understand.
+    size_t userspace_lost_samples =
+        record_stat.userspace_lost_samples + record_stat.userspace_lost_non_samples;
+    size_t lost_samples = record_stat.kernelspace_lost_records + userspace_lost_samples;
+
+    std::stringstream os;
+    os << "Samples recorded: " << sample_record_count_;
+    if (record_stat.userspace_cut_stack_samples > 0) {
+      os << " (cut " << record_stat.userspace_cut_stack_samples << ")";
     }
-    lost_record_count_ += record_stat.lost_samples + record_stat.lost_non_samples;
-    LOG(INFO) << "Samples recorded: " << sample_record_count_ << cut_samples
-              << ". Samples lost: " << lost_record_count_ << ".";
-    LOG(DEBUG) << "In user space, dropped " << record_stat.lost_samples << " samples, "
-               << record_stat.lost_non_samples << " non samples, cut stack of "
-               << record_stat.cut_stack_samples << " samples.";
-    if (sample_record_count_ + lost_record_count_ != 0) {
-      double lost_percent =
-          static_cast<double>(lost_record_count_) / (lost_record_count_ + sample_record_count_);
-      constexpr double LOST_PERCENT_WARNING_BAR = 0.1;
-      if (lost_percent >= LOST_PERCENT_WARNING_BAR) {
-        LOG(WARNING) << "Lost " << (lost_percent * 100) << "% of samples, "
-                     << "consider increasing mmap_pages(-m), "
+    os << ". Samples lost: " << lost_samples;
+    if (lost_samples != 0) {
+      os << " (kernelspace: " << record_stat.kernelspace_lost_records
+         << ", userspace: " << userspace_lost_samples << ")";
+    }
+    os << ".";
+    LOG(INFO) << os.str();
+
+    LOG(DEBUG) << "Record stat: kernelspace_lost_records=" << record_stat.kernelspace_lost_records
+               << ", userspace_lost_samples=" << record_stat.userspace_lost_samples
+               << ", userspace_lost_non_samples=" << record_stat.userspace_lost_non_samples
+               << ", userspace_cut_stack_samples=" << record_stat.userspace_cut_stack_samples;
+
+    if (sample_record_count_ + record_stat.kernelspace_lost_records != 0) {
+      double kernelspace_lost_percent =
+          static_cast<double>(record_stat.kernelspace_lost_records) /
+          (record_stat.kernelspace_lost_records + sample_record_count_);
+      constexpr double KERNELSPACE_LOST_PERCENT_WARNING_BAR = 0.1;
+      if (kernelspace_lost_percent >= KERNELSPACE_LOST_PERCENT_WARNING_BAR) {
+        LOG(WARNING) << "Lost " << (kernelspace_lost_percent * 100)
+                     << "% of samples in kernel space, "
+                     << "consider increasing kernel buffer size(-m), "
                      << "or decreasing sample frequency(-f), "
                      << "or increasing sample period(-c).";
       }
     }
-    if (sample_record_count_ + record_stat.lost_samples != 0) {
-      uint64_t userspace_lost_samples = record_stat.lost_samples + record_stat.cut_stack_samples;
-      double userspace_lost_percent = static_cast<double>(userspace_lost_samples) /
-                                      (sample_record_count_ + record_stat.lost_samples);
+    size_t userspace_lost_cut_samples =
+        userspace_lost_samples + record_stat.userspace_cut_stack_samples;
+    if (sample_record_count_ + userspace_lost_cut_samples != 0) {
+      double userspace_lost_percent = static_cast<double>(userspace_lost_cut_samples) /
+                                      (sample_record_count_ + userspace_lost_cut_samples);
       constexpr double USERSPACE_LOST_PERCENT_WARNING_BAR = 0.1;
       if (userspace_lost_percent >= USERSPACE_LOST_PERCENT_WARNING_BAR) {
         LOG(WARNING) << "Lost/Cut " << (userspace_lost_percent * 100)
                      << "% of samples in user space, "
-                     << "consider increasing userspace buffer size(--user-buffer-size).";
+                     << "consider increasing userspace buffer size(--user-buffer-size), "
+                     << "or decreasing sample frequency(-f), "
+                     << "or increasing sample period(-c).";
       }
     }
     if (callchain_joiner_) {
@@ -1559,8 +1576,6 @@ bool RecordCommand::SaveRecordAfterUnwinding(Record* record) {
       return true;
     }
     sample_record_count_++;
-  } else if (record->type() == PERF_RECORD_LOST) {
-    lost_record_count_ += static_cast<LostRecord*>(record)->lost;
   } else {
     thread_tree_.Update(*record);
   }
@@ -1578,8 +1593,6 @@ bool RecordCommand::SaveRecordWithoutUnwinding(Record* record) {
       return true;
     }
     sample_record_count_++;
-  } else if (record->type() == PERF_RECORD_LOST) {
-    lost_record_count_ += static_cast<LostRecord*>(record)->lost;
   }
   return record_file_writer_->WriteRecord(*record);
 }
@@ -1832,7 +1845,6 @@ bool RecordCommand::PostUnwindRecords() {
     return false;
   }
   sample_record_count_ = 0;
-  lost_record_count_ = 0;
   auto callback = [this](std::unique_ptr<Record> record) {
     return SaveRecordAfterUnwinding(record.get());
   };
@@ -2089,6 +2101,15 @@ bool RecordCommand::DumpMetaInfoFeature(bool kernel_symbols_available) {
   if (dwarf_callchain_sampling_ && !unwind_dwarf_callchain_) {
     OfflineUnwinder::CollectMetaInfo(&info_map);
   }
+  auto record_stat = event_selection_set_.GetRecordStat();
+  info_map["record_stat"] = android::base::StringPrintf(
+      "sample_record_count=%" PRIu64
+      ",kernelspace_lost_records=%zu,userspace_lost_samples=%zu,"
+      "userspace_lost_non_samples=%zu,userspace_cut_stack_samples=%zu",
+      sample_record_count_, record_stat.kernelspace_lost_records,
+      record_stat.userspace_lost_samples, record_stat.userspace_lost_non_samples,
+      record_stat.userspace_cut_stack_samples);
+
   return record_file_writer_->WriteMetaInfoFeature(info_map);
 }
 
