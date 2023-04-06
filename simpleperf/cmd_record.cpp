@@ -2098,6 +2098,15 @@ bool RecordCommand::DumpMetaInfoFeature(bool kernel_symbols_available) {
   if (dwarf_callchain_sampling_ && !unwind_dwarf_callchain_) {
     OfflineUnwinder::CollectMetaInfo(&info_map);
   }
+  auto record_stat = event_selection_set_.GetRecordStat();
+  info_map["record_stat"] = android::base::StringPrintf(
+      "sample_record_count=%" PRIu64
+      ",kernelspace_lost_records=%zu,userspace_lost_samples=%zu,"
+      "userspace_lost_non_samples=%zu,userspace_cut_stack_samples=%zu",
+      sample_record_count_, record_stat.kernelspace_lost_records,
+      record_stat.userspace_lost_samples, record_stat.userspace_lost_non_samples,
+      record_stat.userspace_cut_stack_samples);
+
   return record_file_writer_->WriteMetaInfoFeature(info_map);
 }
 

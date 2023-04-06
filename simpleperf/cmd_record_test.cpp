@@ -512,6 +512,7 @@ TEST(record_cmd, record_meta_info_feature) {
   auto& info_map = reader->GetMetaInfoFeature();
   ASSERT_NE(info_map.find("simpleperf_version"), info_map.end());
   ASSERT_NE(info_map.find("timestamp"), info_map.end());
+  ASSERT_NE(info_map.find("record_stat"), info_map.end());
 #if defined(__ANDROID__)
   ASSERT_NE(info_map.find("product_props"), info_map.end());
   ASSERT_NE(info_map.find("android_version"), info_map.end());
