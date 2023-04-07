@@ -48,6 +48,7 @@ bool IsCpuSupported(const perf_event_attr& attr);
 // Return event name with modifier if the event is found, otherwise return "unknown".
 // This function is slow for using linear search, so only used when reporting.
 std::string GetEventNameByAttr(const perf_event_attr& attr);
+void ReplaceRegAndStackWithCallChain(perf_event_attr& attr);
 
 inline bool operator==(const perf_event_attr& attr1, const perf_event_attr& attr2) {
   return memcmp(&attr1, &attr2, sizeof(perf_event_attr)) == 0;

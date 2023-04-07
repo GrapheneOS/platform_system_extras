@@ -1371,6 +1371,12 @@ bool RecordCommand::SetEventSelectionFlags() {
 
 bool RecordCommand::CreateAndInitRecordFile() {
   EventAttrIds attrs = event_selection_set_.GetEventAttrWithId();
+  bool remove_regs_and_stacks = unwind_dwarf_callchain_ && !post_unwind_;
+  if (remove_regs_and_stacks) {
+    for (auto& attr : attrs) {
+      ReplaceRegAndStackWithCallChain(attr.attr);
+    }
+  }
   record_file_writer_ = CreateRecordFile(record_filename_, attrs);
   if (record_file_writer_ == nullptr) {
     return false;
@@ -1841,6 +1847,15 @@ bool RecordCommand::PostUnwindRecords() {
   if (!reader) {
     return false;
   }
+  // Write new event attrs without regs and stacks fields.
+  EventAttrIds attrs = reader->AttrSection();
+  for (auto& attr : attrs) {
+    ReplaceRegAndStackWithCallChain(attr.attr);
+  }
+  if (!record_file_writer_->WriteAttrSection(attrs)) {
+    return false;
+  }
+
   sample_record_count_ = 0;
   auto callback = [this](std::unique_ptr<Record> record) {
     return SaveRecordAfterUnwinding(record.get());

@@ -257,7 +257,16 @@ TEST(record_cmd, dwarf_callchain_sampling) {
   ASSERT_TRUE(RunRecordCmd({"-p", pid, "--call-graph", "dwarf"}));
   ASSERT_TRUE(RunRecordCmd({"-p", pid, "--call-graph", "dwarf,16384"}));
   ASSERT_FALSE(RunRecordCmd({"-p", pid, "--call-graph", "dwarf,65536"}));
-  ASSERT_TRUE(RunRecordCmd({"-p", pid, "-g"}));
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({"-p", pid, "-g"}, tmpfile.path));
+  auto reader = RecordFileReader::CreateInstance(tmpfile.path);
+  ASSERT_TRUE(reader);
+  const EventAttrIds& attrs = reader->AttrSection();
+  ASSERT_GT(attrs.size(), 0);
+  // Check that reg and stack fields are removed after unwinding.
+  for (const auto& attr : attrs) {
+    ASSERT_EQ(attr.attr.sample_type & (PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER), 0);
+  }
 }
 
 TEST(record_cmd, system_wide_dwarf_callchain_sampling) {

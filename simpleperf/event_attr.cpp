@@ -254,4 +254,11 @@ std::string GetEventNameByAttr(const perf_event_attr& attr) {
   return name;
 }
 
+void ReplaceRegAndStackWithCallChain(perf_event_attr& attr) {
+  attr.sample_type &= ~(PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER);
+  attr.exclude_callchain_user = 0;
+  attr.sample_regs_user = 0;
+  attr.sample_stack_user = 0;
+}
+
 }  // namespace simpleperf
