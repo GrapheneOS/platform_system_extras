@@ -618,6 +618,7 @@ class AutoFDOWriter {
       }
 
       // Write the binary path in comment.
+      fprintf(output_fp.get(), "// build_id: %s\n", key.build_id.ToString().c_str());
       fprintf(output_fp.get(), "// %s\n\n", key.path.c_str());
     }
     return true;
