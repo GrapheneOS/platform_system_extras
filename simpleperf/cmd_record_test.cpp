@@ -98,15 +98,15 @@ static void CheckEventType(const std::string& record_file, const std::string& ev
   ASSERT_TRUE(type != nullptr);
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(record_file);
   ASSERT_TRUE(reader);
-  std::vector<EventAttrWithId> attrs = reader->AttrSection();
-  for (auto& attr : attrs) {
-    if (attr.attr->type == type->type && attr.attr->config == type->config) {
-      if (attr.attr->freq == 0) {
-        ASSERT_EQ(sample_period, attr.attr->sample_period);
+  for (const auto& attr_with_id : reader->AttrSection()) {
+    const perf_event_attr& attr = attr_with_id.attr;
+    if (attr.type == type->type && attr.config == type->config) {
+      if (attr.freq == 0) {
+        ASSERT_EQ(sample_period, attr.sample_period);
         ASSERT_EQ(sample_freq, 0u);
       } else {
         ASSERT_EQ(sample_period, 0u);
-        ASSERT_EQ(sample_freq, attr.attr->sample_freq);
+        ASSERT_EQ(sample_freq, attr.sample_freq);
       }
       return;
     }
@@ -204,10 +204,10 @@ TEST(record_cmd, rN_event) {
   ASSERT_TRUE(RunRecordCmd({"-e", event_name}, tmpfile.path));
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
   ASSERT_TRUE(reader);
-  std::vector<EventAttrWithId> attrs = reader->AttrSection();
+  const EventAttrIds& attrs = reader->AttrSection();
   ASSERT_EQ(1u, attrs.size());
-  ASSERT_EQ(PERF_TYPE_RAW, attrs[0].attr->type);
-  ASSERT_EQ(event_number, attrs[0].attr->config);
+  ASSERT_EQ(PERF_TYPE_RAW, attrs[0].attr.type);
+  ASSERT_EQ(event_number, attrs[0].attr.config);
 }
 
 TEST(record_cmd, branch_sampling) {
@@ -552,7 +552,7 @@ TEST(record_cmd, trace_offcpu_option) {
   auto info_map = reader->GetMetaInfoFeature();
   ASSERT_EQ(info_map["trace_offcpu"], "true");
   if (IsSwitchRecordSupported()) {
-    ASSERT_EQ(reader->AttrSection()[0].attr->context_switch, 1);
+    ASSERT_EQ(reader->AttrSection()[0].attr.context_switch, 1);
   }
   // Release recording environment in perf.data, to avoid affecting tests below.
   reader.reset();
@@ -944,9 +944,9 @@ TEST(record_cmd, cs_etm_event) {
 
   // cs-etm uses sample period instead of sample freq.
   ASSERT_EQ(reader->AttrSection().size(), 1u);
-  const perf_event_attr* attr = reader->AttrSection()[0].attr;
-  ASSERT_EQ(attr->freq, 0);
-  ASSERT_EQ(attr->sample_period, 1);
+  const perf_event_attr& attr = reader->AttrSection()[0].attr;
+  ASSERT_EQ(attr.freq, 0);
+  ASSERT_EQ(attr.sample_period, 1);
 
   bool has_auxtrace_info = false;
   bool has_auxtrace = false;
