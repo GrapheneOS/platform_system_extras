@@ -75,7 +75,6 @@ cc_defaults {
 
     static_libs: [
         "liballoc_parser",
-        "libasync_safe",
     ],
 }
 

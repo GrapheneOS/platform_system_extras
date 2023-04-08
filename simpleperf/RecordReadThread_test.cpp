@@ -370,9 +370,9 @@ TEST_F(RecordReadThreadTest, process_sample_record) {
   thread.SetBufferLevels(record_buffer_size, record_buffer_size);
   read_record(r);
   ASSERT_FALSE(r);
-  ASSERT_EQ(thread.GetStat().lost_samples, 1u);
-  ASSERT_EQ(thread.GetStat().lost_non_samples, 0u);
-  ASSERT_EQ(thread.GetStat().cut_stack_samples, 1u);
+  ASSERT_EQ(thread.GetStat().userspace_lost_samples, 1u);
+  ASSERT_EQ(thread.GetStat().userspace_lost_non_samples, 0u);
+  ASSERT_EQ(thread.GetStat().userspace_cut_stack_samples, 1u);
 }
 
 // Test that the data notification exists until the RecordBuffer is empty. So we can read all
@@ -421,9 +421,9 @@ TEST_F(RecordReadThreadTest, no_cut_samples) {
     received_samples++;
   }
   ASSERT_GT(received_samples, 0u);
-  ASSERT_GT(thread.GetStat().lost_samples, 0u);
-  ASSERT_EQ(thread.GetStat().lost_samples, total_samples - received_samples);
-  ASSERT_EQ(thread.GetStat().cut_stack_samples, 0u);
+  ASSERT_GT(thread.GetStat().userspace_lost_samples, 0u);
+  ASSERT_EQ(thread.GetStat().userspace_lost_samples, total_samples - received_samples);
+  ASSERT_EQ(thread.GetStat().userspace_cut_stack_samples, 0u);
 }
 
 TEST_F(RecordReadThreadTest, exclude_perf) {
