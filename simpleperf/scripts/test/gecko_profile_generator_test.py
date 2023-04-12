@@ -63,6 +63,20 @@ class TestGeckoProfileGenerator(TestBase):
             json.dumps(got, sort_keys=True, indent=2),
             json.dumps(want, sort_keys=True, indent=2))
 
+    def test_golden_jit(self):
+        output = self.run_generator('perf_with_jit_symbol.data', ['--remove-gaps', '0'])
+        got = json.loads(output)
+        golden_path = TestHelper.testdata_path('perf_with_jit_symbol.gecko.json')
+        with open(golden_path) as f:
+            want = json.load(f)
+        # Golden data is formatted with `jq` tool (https://stedolan.github.io/jq/).
+        # Regenerate golden data by running:
+        # $ apt install jq
+        # $ ./gecko_profile_generator.py --remove-gaps 0 -i ../testdata/perf_with_jit_symbol.data | jq > test/script_testdata/perf_with_jit_symbol.gecko.json
+        self.assertEqual(
+            json.dumps(got, sort_keys=True, indent=2),
+            json.dumps(want, sort_keys=True, indent=2))
+
     def test_sample_filters(self):
         def get_threads_for_filter(filter: str) -> Set[int]:
             report = self.run_generator('perf_display_bitmaps.data',
