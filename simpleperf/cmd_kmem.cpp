@@ -532,10 +532,9 @@ bool KmemCommand::PrepareToBuildSampleTree() {
 }
 
 void KmemCommand::ReadEventAttrsFromRecordFile() {
-  std::vector<EventAttrWithId> attrs = record_file_reader_->AttrSection();
-  for (const auto& attr_with_id : attrs) {
+  for (const EventAttrWithId& attr_with_id : record_file_reader_->AttrSection()) {
     EventAttrWithName attr;
-    attr.attr = *attr_with_id.attr;
+    attr.attr = attr_with_id.attr;
     attr.event_ids = attr_with_id.ids;
     attr.name = GetEventNameByAttr(attr.attr);
     event_attrs_.push_back(attr);

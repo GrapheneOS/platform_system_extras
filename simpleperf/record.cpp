@@ -713,8 +713,10 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, uint64_t id, uint64_t ip
 void SampleRecord::ReplaceRegAndStackWithCallChain(const std::vector<uint64_t>& ips) {
   uint32_t size_added_in_callchain = sizeof(uint64_t) * (ips.size() + 1);
   uint32_t size_reduced_in_reg_stack =
-      regs_user_data.reg_nr * sizeof(uint64_t) + stack_user_data.size + sizeof(uint64_t);
+      (regs_user_data.reg_nr + 1) * sizeof(uint64_t) + stack_user_data.size + sizeof(uint64_t) * 2;
+
   uint32_t new_size = size() + size_added_in_callchain - size_reduced_in_reg_stack;
+  sample_type &= ~(PERF_SAMPLE_STACK_USER | PERF_SAMPLE_REGS_USER);
   BuildBinaryWithNewCallChain(new_size, ips);
 }
 
