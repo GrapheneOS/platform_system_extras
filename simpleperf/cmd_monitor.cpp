@@ -252,7 +252,7 @@ bool MonitorCommand::PrepareMonitoring() {
 
   // Use first perf_event_attr and first event id to dump mmap and comm records.
   EventAttrWithId dumping_attr_id = event_selection_set_.GetEventAttrWithId()[0];
-  map_record_reader_.emplace(*dumping_attr_id.attr, dumping_attr_id.ids[0],
+  map_record_reader_.emplace(dumping_attr_id.attr, dumping_attr_id.ids[0],
                              event_selection_set_.RecordNotExecutableMaps());
   map_record_reader_->SetCallback([this](Record* r) { return ProcessRecord(r); });
 
