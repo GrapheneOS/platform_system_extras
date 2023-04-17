@@ -306,11 +306,11 @@ void DumpRecordCommand::DumpFileHeader() {
 }
 
 void DumpRecordCommand::DumpAttrSection() {
-  std::vector<EventAttrWithId> attrs = record_file_reader_->AttrSection();
+  const EventAttrIds& attrs = record_file_reader_->AttrSection();
   for (size_t i = 0; i < attrs.size(); ++i) {
     const auto& attr = attrs[i];
     printf("attr %zu:\n", i + 1);
-    DumpPerfEventAttr(*attr.attr, 1);
+    DumpPerfEventAttr(attr.attr, 1);
     if (!attr.ids.empty()) {
       printf("  ids:");
       for (const auto& id : attr.ids) {
@@ -440,16 +440,16 @@ bool DumpRecordCommand::ProcessTracingData(const TracingDataRecord& r) {
   if (!tracing) {
     return false;
   }
-  std::vector<EventAttrWithId> attrs = record_file_reader_->AttrSection();
+  const EventAttrIds& attrs = record_file_reader_->AttrSection();
   events_.resize(attrs.size());
   for (size_t i = 0; i < attrs.size(); i++) {
     auto& attr = attrs[i].attr;
     auto& event = events_[i];
 
-    if (attr->type != PERF_TYPE_TRACEPOINT) {
+    if (attr.type != PERF_TYPE_TRACEPOINT) {
       continue;
     }
-    TracingFormat format = tracing->GetTracingFormatHavingId(attr->config);
+    TracingFormat format = tracing->GetTracingFormatHavingId(attr.config);
     event.tp_fields = format.fields;
     // Decide dump function for each field.
     for (size_t j = 0; j < event.tp_fields.size(); j++) {
