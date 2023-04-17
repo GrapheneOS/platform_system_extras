@@ -522,7 +522,7 @@ bool ReportSampleCommand::OpenRecordFile() {
   if (auto it = meta_info.find("trace_offcpu"); it != meta_info.end()) {
     trace_offcpu_ = it->second == "true";
     if (trace_offcpu_) {
-      std::string event_name = GetEventNameByAttr(*record_file_reader_->AttrSection()[0].attr);
+      std::string event_name = GetEventNameByAttr(record_file_reader_->AttrSection()[0].attr);
       if (!android::base::StartsWith(event_name, "cpu-clock") &&
           !android::base::StartsWith(event_name, "task-clock")) {
         LOG(ERROR) << "Recording file " << record_filename_ << " is no longer supported. "
@@ -537,8 +537,8 @@ bool ReportSampleCommand::OpenRecordFile() {
   if (!record_filter_.CheckClock(record_file_reader_->GetClockId())) {
     return false;
   }
-  for (EventAttrWithId& attr : record_file_reader_->AttrSection()) {
-    event_types_.push_back(GetEventNameByAttr(*attr.attr));
+  for (const EventAttrWithId& attr : record_file_reader_->AttrSection()) {
+    event_types_.push_back(GetEventNameByAttr(attr.attr));
   }
   return true;
 }

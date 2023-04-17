@@ -104,11 +104,13 @@ TEST_F(RecordTest, SampleRecord_exclude_kernel_callchain) {
 }
 
 TEST_F(RecordTest, SampleRecord_ReplaceRegAndStackWithCallChain) {
-  event_attr.sample_type |= PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER;
+  event_attr.sample_type |= PERF_SAMPLE_CALLCHAIN;
   SampleRecord expected(event_attr, 0, 1, 2, 3, 4, 5, 6, {}, {1, PERF_CONTEXT_USER, 2, 3, 4, 5}, {},
                         0);
   for (size_t stack_size : {8, 1024}) {
+    event_attr.sample_type |= PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER;
     SampleRecord r(event_attr, 0, 1, 2, 3, 4, 5, 6, {}, {1}, std::vector<char>(stack_size), 10);
+    event_attr.sample_type &= ~(PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER);
     r.ReplaceRegAndStackWithCallChain({2, 3, 4, 5});
     CheckRecordMatchBinary(r);
     CheckRecordEqual(r, expected);
