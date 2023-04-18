@@ -77,7 +77,7 @@ TEST(RecordParser, smoke) {
   std::unique_ptr<RecordFileReader> reader =
       RecordFileReader::CreateInstance(GetTestData(PERF_DATA_NO_UNWIND));
   ASSERT_TRUE(reader);
-  RecordParser parser(*reader->AttrSection()[0].attr);
+  RecordParser parser(reader->AttrSection()[0].attr);
   auto process_record = [&](std::unique_ptr<Record> record) {
     if (record->type() == PERF_RECORD_MMAP || record->type() == PERF_RECORD_COMM ||
         record->type() == PERF_RECORD_FORK || record->type() == PERF_RECORD_SAMPLE) {

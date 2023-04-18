@@ -74,7 +74,7 @@ RecordFileWriter::~RecordFileWriter() {
   }
 }
 
-bool RecordFileWriter::WriteAttrSection(const std::vector<EventAttrWithId>& attr_ids) {
+bool RecordFileWriter::WriteAttrSection(const EventAttrIds& attr_ids) {
   if (attr_ids.empty()) {
     return false;
   }
@@ -102,7 +102,7 @@ bool RecordFileWriter::WriteAttrSection(const std::vector<EventAttrWithId>& attr
   }
   for (auto& attr_id : attr_ids) {
     FileAttr file_attr;
-    file_attr.attr = *attr_id.attr;
+    file_attr.attr = attr_id.attr;
     file_attr.ids.offset = id_section_offset;
     file_attr.ids.size = attr_id.ids.size() * sizeof(uint64_t);
     id_section_offset += file_attr.ids.size;
@@ -121,7 +121,7 @@ bool RecordFileWriter::WriteAttrSection(const std::vector<EventAttrWithId>& attr
   data_section_offset_ = data_section_offset;
 
   // Save event_attr for use when reading records.
-  event_attr_ = *attr_ids[0].attr;
+  event_attr_ = attr_ids[0].attr;
   return true;
 }
 
