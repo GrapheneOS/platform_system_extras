@@ -890,9 +890,11 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
     }
     size_t userspace_lost_cut_samples =
         userspace_lost_samples + record_stat.userspace_cut_stack_samples;
-    if (sample_record_count_ + userspace_lost_cut_samples != 0) {
+    size_t userspace_complete_samples =
+        sample_record_count_ - record_stat.userspace_cut_stack_samples;
+    if (userspace_complete_samples + userspace_lost_cut_samples != 0) {
       double userspace_lost_percent = static_cast<double>(userspace_lost_cut_samples) /
-                                      (sample_record_count_ + userspace_lost_cut_samples);
+                                      (userspace_complete_samples + userspace_lost_cut_samples);
       constexpr double USERSPACE_LOST_PERCENT_WARNING_BAR = 0.1;
       if (userspace_lost_percent >= USERSPACE_LOST_PERCENT_WARNING_BAR) {
         LOG(WARNING) << "Lost/Cut " << (userspace_lost_percent * 100)
