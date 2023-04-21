@@ -423,8 +423,9 @@ bool DumpRecordCommand::DumpAuxData(const AuxRecord& aux) {
   size_t size = aux.data->aux_size;
   if (size > 0) {
     std::vector<uint8_t> data;
-    if (!record_file_reader_->ReadAuxData(aux.Cpu(), aux.data->aux_offset, size, &data)) {
-      return false;
+    bool error = false;
+    if (!record_file_reader_->ReadAuxData(aux.Cpu(), aux.data->aux_offset, size, data, error)) {
+      return !error;
     }
     if (!etm_decoder_) {
       LOG(ERROR) << "ETMDecoder isn't created";

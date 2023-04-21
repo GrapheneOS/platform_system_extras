@@ -231,3 +231,11 @@ TEST(cmd_inject, report_warning_when_overflow) {
   ASSERT_NE(capture.str().find(WARNING_MSG), std::string::npos);
   ASSERT_NE(autofdo_data.find("106c->1074:18446744073709551615"), std::string::npos);
 }
+
+TEST(cmd_inject, accept_missing_aux_data) {
+  // Recorded with "-e cs-etm:u --user-buffer-size 64k sleep 1".
+  std::string perf_data = GetTestData("etm/perf_with_missing_aux_data.data");
+  TemporaryFile tmpfile;
+  close(tmpfile.release());
+  ASSERT_TRUE(RunInjectCmd({"--output", "branch-list", "-i", perf_data, "-o", tmpfile.path}));
+}
