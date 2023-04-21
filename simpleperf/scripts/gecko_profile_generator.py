@@ -129,6 +129,13 @@ CATEGORIES = [
         "color": 'grey',
         "subcategories": ['Other']
     },
+    {
+        "name": 'JIT',
+        # Follow Brendan Gregg's Flamegraph convention: green for Java/JIT
+        # https://github.com/brendangregg/FlameGraph/blob/810687f180f3c4929b5d965f54817a5218c9d89b/flamegraph.pl#L411
+        "color": 'green',
+        "subcategories": ['Other']
+    },
 ]
 
 
@@ -204,6 +211,11 @@ class Thread:
         # Heuristic: kernel code contains "kallsyms" as the library name.
         if "kallsyms" in frame_str or ".ko" in frame_str:
             category = 1
+            # Heuristic: empirically, off-CPU profiles mostly measure off-CPU
+            # time accounted to the linux kernel __schedule function, which
+            # handles blocking. This only works if we have kernel symbol
+            # (kallsyms) access though.  __schedule defined here:
+            # https://cs.android.com/android/kernel/superproject/+/common-android-mainline:common/kernel/sched/core.c;l=6593;drc=0c99414a07ddaa18d8eb4be90b551d2687cbde2f
             if frame_str.startswith("__schedule "):
                 category = 5
         elif ".so" in frame_str:
@@ -212,11 +224,10 @@ class Thread:
             category = 3
         elif ".oat" in frame_str:
             category = 4
-        # Heuristic: empirically, off-CPU profiles mostly measure off-CPU time
-        # accounted to the linux kernel __schedule function, which handles
-        # blocking. This only works if we have kernel symbol (kallsyms)
-        # access though.
-        # https://cs.android.com/android/kernel/superproject/+/common-android-mainline:common/kernel/sched/core.c;l=6593;drc=0c99414a07ddaa18d8eb4be90b551d2687cbde2f
+        # "[JIT app cache]" is returned for JIT code here:
+        # https://cs.android.com/android/platform/superproject/+/master:system/extras/simpleperf/dso.cpp;l=551;drc=4d8137f55782cc1e8cc93e4694ba3a7159d9a2bc
+        elif "[JIT app cache]" in frame_str:
+            category = 7
 
         self.frameTable.append(Frame(
             string_id=string_id,
