@@ -52,6 +52,13 @@
         "subcategories": [
           "Other"
         ]
+      },
+      {
+        "color": "green",
+        "name": "JIT",
+        "subcategories": [
+          "Other"
+        ]
       }
     ],
     "debug": 0,
