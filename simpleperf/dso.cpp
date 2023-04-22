@@ -573,8 +573,10 @@ class ElfDso : public Dso {
       if (elf) {
         min_vaddr_ = elf->ReadMinExecutableVaddr(&file_offset_of_min_vaddr_);
       } else {
-        LOG(WARNING) << "failed to read min virtual address of " << GetDebugFilePath() << ": "
-                     << status;
+        // This is likely to be a file wrongly thought of as an ELF file, due to stack unwinding.
+        // No need to report it by default.
+        LOG(DEBUG) << "failed to read min virtual address of " << GetDebugFilePath() << ": "
+                   << status;
       }
     }
     *min_vaddr = min_vaddr_;
@@ -637,14 +639,13 @@ class ElfDso : public Dso {
       status = elf->ParseSymbols(symbol_callback);
     }
     android::base::LogSeverity log_level = android::base::WARNING;
-    if (!symbols_.empty()) {
+    if (!symbols_.empty() || !symbols.empty()) {
       // We already have some symbols when recording.
       log_level = android::base::DEBUG;
     }
     if ((status == ElfStatus::FILE_NOT_FOUND || status == ElfStatus::FILE_MALFORMED) &&
         build_id.IsEmpty()) {
-      // This is likely to be a file wongly thought of as an ELF file, maybe due to stack
-      // unwinding.
+      // This is likely to be a file wrongly thought of as an ELF file, due to stack unwinding.
       log_level = android::base::DEBUG;
     }
     ReportReadElfSymbolResult(status, path_, GetDebugFilePath(), log_level);
