@@ -848,7 +848,8 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
   if (event_selection_set_.HasAuxTrace()) {
     LOG(INFO) << "Aux data traced: " << record_stat.aux_data_size;
     if (record_stat.lost_aux_data_size != 0) {
-      LOG(INFO) << "Aux data lost in user space: " << record_stat.lost_aux_data_size;
+      LOG(INFO) << "Aux data lost in user space: " << record_stat.lost_aux_data_size
+                << ", consider increasing userspace buffer size(--user-buffer-size).";
     }
   } else {
     // Here we report all lost records as samples. This isn't accurate. Because records like
