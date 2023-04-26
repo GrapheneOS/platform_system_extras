@@ -1727,9 +1727,11 @@ void RecordCommand::UpdateRecord(Record* record) {
 }
 
 bool RecordCommand::UnwindRecord(SampleRecord& r) {
-  if ((r.sample_type & PERF_SAMPLE_CALLCHAIN) && (r.sample_type & PERF_SAMPLE_REGS_USER) &&
-      (r.regs_user_data.reg_mask != 0) && (r.sample_type & PERF_SAMPLE_STACK_USER) &&
-      (r.GetValidStackSize() > 0)) {
+  if (!(r.sample_type & PERF_SAMPLE_CALLCHAIN) && (r.sample_type & PERF_SAMPLE_REGS_USER) &&
+      (r.regs_user_data.reg_mask != 0) && (r.sample_type & PERF_SAMPLE_STACK_USER)) {
+    return true;
+  }
+  if (r.GetValidStackSize() > 0) {
     ThreadEntry* thread = thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
     RegSet regs(r.regs_user_data.abi, r.regs_user_data.reg_mask, r.regs_user_data.regs);
     std::vector<uint64_t> ips;
@@ -1758,6 +1760,9 @@ bool RecordCommand::UnwindRecord(SampleRecord& r) {
                                          CallChainJoiner::ORIGINAL_OFFLINE, ips, sps)) {
       return false;
     }
+  } else {
+    // For kernel samples, we still need to remove user stack and register fields.
+    r.ReplaceRegAndStackWithCallChain({});
   }
   return true;
 }
