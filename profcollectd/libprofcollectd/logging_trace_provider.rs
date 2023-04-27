@@ -51,6 +51,9 @@ impl TraceProvider for LoggingTraceProvider {
         log::info!("Process event triggered");
         Ok(())
     }
+
+    fn set_log_file(&self, filename: &Path) {}
+    fn reset_log_file(&self) {}
 }
 
 impl LoggingTraceProvider {
