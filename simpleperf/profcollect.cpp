@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+#include <time.h>
+
+#include <android-base/file.h>
+#include <android-base/stringprintf.h>
+
 #include <wakelock/wakelock.h>
 #include <include/simpleperf_profcollect.hpp>
 
@@ -26,28 +31,34 @@
 using namespace simpleperf;
 
 bool HasDriverSupport() {
-  return ETMRecorder::GetInstance().IsETMDriverAvailable();
+  bool result = ETMRecorder::GetInstance().IsETMDriverAvailable();
+  LOG(INFO) << "HasDriverSupport result " << result;
+  return result;
 }
 
 bool HasDeviceSupport() {
   auto result = ETMRecorder::GetInstance().CheckEtmSupport();
   if (!result.ok()) {
-    LOG(DEBUG) << result.error();
+    LOG(INFO) << "HasDeviceSupport check failed: " << result.error();
     return false;
   }
   const EventType* type = FindEventTypeByName("cs-etm", false);
   if (type == nullptr) {
+    LOG(INFO) << "HasDeviceSupport check failed: no etm event";
     return false;
   }
-  return IsEventAttrSupported(CreateDefaultPerfEventAttr(*type), type->name);
+  bool ret = IsEventAttrSupported(CreateDefaultPerfEventAttr(*type), type->name);
+  LOG(INFO) << "HasDeviceSupport result " << ret;
+  return ret;
 }
 
 bool Record(const char* event_name, const char* output, float duration) {
+  LOG(INFO) << "Record " << event_name << ", duration " << duration << ", output " << output;
   // The kernel may panic when trying to hibernate or hotplug CPUs while collecting
   // ETM data. So get wakelock to keep the CPUs on.
   auto wakelock = android::wakelock::WakeLock::tryGet("profcollectd");
   if (!wakelock) {
-    LOG(ERROR) << "Failed to request wakelock.";
+    LOG(ERROR) << "Record failed: Failed to request wakelock.";
     return false;
   }
   auto recordCmd = CreateCommandInstance("record");
@@ -56,10 +67,14 @@ bool Record(const char* event_name, const char* output, float duration) {
   args.insert(args.end(), {"-e", event_name});
   args.insert(args.end(), {"--duration", std::to_string(duration)});
   args.insert(args.end(), {"-o", output});
-  return recordCmd->Run(args);
+  bool result = recordCmd->Run(args);
+  LOG(INFO) << "Record result " << result;
+  return result;
 }
 
 bool Inject(const char* traceInput, const char* profileOutput, const char* binary_filter) {
+  LOG(INFO) << "Inject traceInput " << traceInput << ", profileOutput " << profileOutput
+            << ", binary_filter " << binary_filter;
   auto injectCmd = CreateCommandInstance("inject");
   std::vector<std::string> args;
   args.insert(args.end(), {"-i", traceInput});
@@ -69,5 +84,42 @@ bool Inject(const char* traceInput, const char* profileOutput, const char* binar
   }
   args.insert(args.end(), {"--output", "branch-list"});
   args.emplace_back("--exclude-perf");
-  return injectCmd->Run(args);
+  bool result = injectCmd->Run(args);
+  LOG(INFO) << "Inject result " << result;
+  return result;
+}
+
+static android::base::unique_fd log_fd;
+static android::base::LogFunction saved_log_func;
+
+static void FileLogger(android::base::LogId id, android::base::LogSeverity severity,
+                       const char* tag, const char* file, unsigned int line, const char* message) {
+  if (log_fd.ok()) {
+    static const char log_characters[] = "VDIWEFF";
+    char severity_char = log_characters[severity];
+    struct tm now;
+    time_t t = time(nullptr);
+    localtime_r(&t, &now);
+    char timestamp[32];
+    strftime(timestamp, sizeof(timestamp), "%m-%d %H:%M:%S", &now);
+    std::string s = android::base::StringPrintf("%s %c %s %s:%u] %s\n", tag, severity_char,
+                                                timestamp, file, line, message);
+    WriteStringToFd(s, log_fd);
+  }
+  saved_log_func(id, severity, tag, file, line, message);
+}
+
+void SetLogFile(const char* filename) {
+  int fd = TEMP_FAILURE_RETRY(open(filename, O_APPEND | O_CREAT | O_WRONLY | O_CLOEXEC, 0600));
+  if (fd == -1) {
+    PLOG(ERROR) << "failed to open " << filename;
+    return;
+  }
+  log_fd.reset(fd);
+  saved_log_func = SetLogger(FileLogger);
+}
+
+void ResetLogFile() {
+  log_fd.reset();
+  SetLogger(std::move(saved_log_func));
 }

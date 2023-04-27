@@ -32,6 +32,8 @@ pub trait TraceProvider {
     fn is_ready(&self) -> bool;
     fn trace(&self, trace_dir: &Path, tag: &str, sampling_period: &Duration);
     fn process(&self, trace_dir: &Path, profile_dir: &Path, binary_filter: &str) -> Result<()>;
+    fn set_log_file(&self, filename: &Path);
+    fn reset_log_file(&self);
 }
 
 pub fn get_trace_provider() -> Result<Arc<Mutex<dyn TraceProvider + Send>>> {
