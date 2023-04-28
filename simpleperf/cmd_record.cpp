@@ -373,8 +373,8 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
   bool TraceOffCpu();
   bool SetEventSelectionFlags();
   bool CreateAndInitRecordFile();
-  std::unique_ptr<RecordFileWriter> CreateRecordFile(
-      const std::string& filename, const std::vector<EventAttrWithId>& override_attrs);
+  std::unique_ptr<RecordFileWriter> CreateRecordFile(const std::string& filename,
+                                                     const EventAttrIds& attrs);
   bool DumpKernelSymbol();
   bool DumpTracingData();
   bool DumpMaps();
@@ -890,9 +890,11 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
     }
     size_t userspace_lost_cut_samples =
         userspace_lost_samples + record_stat.userspace_cut_stack_samples;
-    if (sample_record_count_ + userspace_lost_cut_samples != 0) {
+    size_t userspace_complete_samples =
+        sample_record_count_ - record_stat.userspace_cut_stack_samples;
+    if (userspace_complete_samples + userspace_lost_cut_samples != 0) {
       double userspace_lost_percent = static_cast<double>(userspace_lost_cut_samples) /
-                                      (sample_record_count_ + userspace_lost_cut_samples);
+                                      (userspace_complete_samples + userspace_lost_cut_samples);
       constexpr double USERSPACE_LOST_PERCENT_WARNING_BAR = 0.1;
       if (userspace_lost_percent >= USERSPACE_LOST_PERCENT_WARNING_BAR) {
         LOG(WARNING) << "Lost/Cut " << (userspace_lost_percent * 100)
@@ -1370,32 +1372,35 @@ bool RecordCommand::SetEventSelectionFlags() {
 }
 
 bool RecordCommand::CreateAndInitRecordFile() {
-  record_file_writer_ =
-      CreateRecordFile(record_filename_, event_selection_set_.GetEventAttrWithId());
+  EventAttrIds attrs = event_selection_set_.GetEventAttrWithId();
+  bool remove_regs_and_stacks = unwind_dwarf_callchain_ && !post_unwind_;
+  if (remove_regs_and_stacks) {
+    for (auto& attr : attrs) {
+      ReplaceRegAndStackWithCallChain(attr.attr);
+    }
+  }
+  record_file_writer_ = CreateRecordFile(record_filename_, attrs);
   if (record_file_writer_ == nullptr) {
     return false;
   }
   // Use first perf_event_attr and first event id to dump mmap and comm records.
-  dumping_attr_id_ = event_selection_set_.GetEventAttrWithId()[0];
+  CHECK(!attrs.empty());
+  dumping_attr_id_ = attrs[0];
   CHECK(!dumping_attr_id_.ids.empty());
-  map_record_reader_.emplace(*dumping_attr_id_.attr, dumping_attr_id_.ids[0],
+  map_record_reader_.emplace(dumping_attr_id_.attr, dumping_attr_id_.ids[0],
                              event_selection_set_.RecordNotExecutableMaps());
   map_record_reader_->SetCallback([this](Record* r) { return ProcessRecord(r); });
 
   return DumpKernelSymbol() && DumpTracingData() && DumpMaps() && DumpAuxTraceInfo();
 }
 
-std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(
-    const std::string& filename, const std::vector<EventAttrWithId>& attrs) {
+std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(const std::string& filename,
+                                                                  const EventAttrIds& attrs) {
   std::unique_ptr<RecordFileWriter> writer = RecordFileWriter::CreateInstance(filename);
-  if (writer == nullptr) {
-    return nullptr;
+  if (writer != nullptr && writer->WriteAttrSection(attrs)) {
+    return writer;
   }
-
-  if (!writer->WriteAttrSection(attrs)) {
-    return nullptr;
-  }
-  return writer;
+  return nullptr;
 }
 
 bool RecordCommand::DumpKernelSymbol() {
@@ -1603,7 +1608,7 @@ bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_i
     if (info.type == JITDebugInfo::JIT_DEBUG_JIT_CODE) {
       uint64_t timestamp =
           jit_debug_reader_->SyncWithRecords() ? info.timestamp : last_record_timestamp_;
-      Mmap2Record record(*dumping_attr_id_.attr, false, info.pid, info.pid, info.jit_code_addr,
+      Mmap2Record record(dumping_attr_id_.attr, false, info.pid, info.pid, info.jit_code_addr,
                          info.jit_code_len, info.file_offset, map_flags::PROT_JIT_SYMFILE_MAP,
                          info.file_path, dumping_attr_id_.ids[0], timestamp);
       if (!ProcessRecord(&record)) {
@@ -1614,7 +1619,7 @@ bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_i
         ThreadMmap& map = *info.extracted_dex_file_map;
         uint64_t timestamp =
             jit_debug_reader_->SyncWithRecords() ? info.timestamp : last_record_timestamp_;
-        Mmap2Record record(*dumping_attr_id_.attr, false, info.pid, info.pid, map.start_addr,
+        Mmap2Record record(dumping_attr_id_.attr, false, info.pid, info.pid, map.start_addr,
                            map.len, map.pgoff, map.prot, map.name, dumping_attr_id_.ids[0],
                            timestamp);
         if (!ProcessRecord(&record)) {
@@ -1722,9 +1727,11 @@ void RecordCommand::UpdateRecord(Record* record) {
 }
 
 bool RecordCommand::UnwindRecord(SampleRecord& r) {
-  if ((r.sample_type & PERF_SAMPLE_CALLCHAIN) && (r.sample_type & PERF_SAMPLE_REGS_USER) &&
-      (r.regs_user_data.reg_mask != 0) && (r.sample_type & PERF_SAMPLE_STACK_USER) &&
-      (r.GetValidStackSize() > 0)) {
+  if (!(r.sample_type & PERF_SAMPLE_CALLCHAIN) && (r.sample_type & PERF_SAMPLE_REGS_USER) &&
+      (r.regs_user_data.reg_mask != 0) && (r.sample_type & PERF_SAMPLE_STACK_USER)) {
+    return true;
+  }
+  if (r.GetValidStackSize() > 0) {
     ThreadEntry* thread = thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
     RegSet regs(r.regs_user_data.abi, r.regs_user_data.reg_mask, r.regs_user_data.regs);
     std::vector<uint64_t> ips;
@@ -1753,6 +1760,9 @@ bool RecordCommand::UnwindRecord(SampleRecord& r) {
                                          CallChainJoiner::ORIGINAL_OFFLINE, ips, sps)) {
       return false;
     }
+  } else {
+    // For kernel samples, we still need to remove user stack and register fields.
+    r.ReplaceRegAndStackWithCallChain({});
   }
   return true;
 }
@@ -1844,6 +1854,15 @@ bool RecordCommand::PostUnwindRecords() {
   if (!reader) {
     return false;
   }
+  // Write new event attrs without regs and stacks fields.
+  EventAttrIds attrs = reader->AttrSection();
+  for (auto& attr : attrs) {
+    ReplaceRegAndStackWithCallChain(attr.attr);
+  }
+  if (!record_file_writer_->WriteAttrSection(attrs)) {
+    return false;
+  }
+
   sample_record_count_ = 0;
   auto callback = [this](std::unique_ptr<Record> record) {
     return SaveRecordAfterUnwinding(record.get());

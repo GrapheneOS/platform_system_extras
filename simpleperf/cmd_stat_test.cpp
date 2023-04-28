@@ -233,12 +233,12 @@ TEST(stat_cmd, sample_speed_should_be_zero) {
   ASSERT_TRUE(set.AddEventType("cpu-cycles"));
   set.AddMonitoredProcesses({getpid()});
   ASSERT_TRUE(set.OpenEventFiles({-1}));
-  std::vector<EventAttrWithId> attrs = set.GetEventAttrWithId();
+  const EventAttrIds& attrs = set.GetEventAttrWithId();
   ASSERT_GT(attrs.size(), 0u);
   for (auto& attr : attrs) {
-    ASSERT_EQ(attr.attr->sample_period, 0u);
-    ASSERT_EQ(attr.attr->sample_freq, 0u);
-    ASSERT_EQ(attr.attr->freq, 0u);
+    ASSERT_EQ(attr.attr.sample_period, 0u);
+    ASSERT_EQ(attr.attr.sample_freq, 0u);
+    ASSERT_EQ(attr.attr.freq, 0u);
   }
 }
 

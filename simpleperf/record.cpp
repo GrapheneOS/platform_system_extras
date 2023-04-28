@@ -557,6 +557,8 @@ bool SampleRecord::Parse(const perf_event_attr& attr, char* p, char* end) {
     MoveFromBinaryFormat(regs_user_data.abi, p);
     if (regs_user_data.abi == 0) {
       regs_user_data.reg_mask = 0;
+      regs_user_data.reg_nr = 0;
+      regs_user_data.regs = nullptr;
     } else {
       regs_user_data.reg_mask = attr.sample_regs_user;
       size_t bit_nr = __builtin_popcountll(regs_user_data.reg_mask);
@@ -580,7 +582,7 @@ bool SampleRecord::Parse(const perf_event_attr& attr, char* p, char* end) {
   }
   // TODO: Add parsing of other PERF_SAMPLE_*.
   if (UNLIKELY(p < end)) {
-    LOG(DEBUG) << "Record has " << end - p << " bytes left\n";
+    LOG(DEBUG) << "Sample (" << time_data.time << ") has " << end - p << " bytes left";
   }
   return true;
 }
@@ -711,10 +713,16 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, uint64_t id, uint64_t ip
 }
 
 void SampleRecord::ReplaceRegAndStackWithCallChain(const std::vector<uint64_t>& ips) {
-  uint32_t size_added_in_callchain = sizeof(uint64_t) * (ips.size() + 1);
-  uint32_t size_reduced_in_reg_stack =
-      regs_user_data.reg_nr * sizeof(uint64_t) + stack_user_data.size + sizeof(uint64_t);
-  uint32_t new_size = size() + size_added_in_callchain - size_reduced_in_reg_stack;
+  uint32_t add_size_in_callchain = ips.empty() ? 0 : sizeof(uint64_t) * (ips.size() + 1);
+  uint32_t reduce_size_in_reg = (regs_user_data.reg_nr + 1) * sizeof(uint64_t);
+  uint32_t reduce_size_in_stack =
+      stack_user_data.size == 0 ? sizeof(uint64_t) : (stack_user_data.size + 2 * sizeof(uint64_t));
+  uint32_t reduce_size = reduce_size_in_reg + reduce_size_in_stack;
+
+  uint32_t new_size = size() + add_size_in_callchain;
+  CHECK_GT(new_size, reduce_size);
+  new_size -= reduce_size;
+  sample_type &= ~(PERF_SAMPLE_STACK_USER | PERF_SAMPLE_REGS_USER);
   BuildBinaryWithNewCallChain(new_size, ips);
 }
 
@@ -816,16 +824,21 @@ void SampleRecord::BuildBinaryWithNewCallChain(uint32_t new_size,
     memcpy(p, &raw_data.size, sizeof(uint32_t));
   }
   uint64_t* p64 = reinterpret_cast<uint64_t*>(p);
-  p64 -= ips.size();
-  memcpy(p64, ips.data(), ips.size() * sizeof(uint64_t));
-  *--p64 = PERF_CONTEXT_USER;
-  if (callchain_data.ip_nr > 0) {
-    p64 -= callchain_data.ip_nr;
-    memcpy(p64, callchain_data.ips, callchain_data.ip_nr * sizeof(uint64_t));
+  if (!ips.empty()) {
+    p64 -= ips.size();
+    memcpy(p64, ips.data(), ips.size() * sizeof(uint64_t));
+    *--p64 = PERF_CONTEXT_USER;
   }
-  callchain_data.ips = p64;
-  callchain_data.ip_nr += 1 + ips.size();
-  *--p64 = callchain_data.ip_nr;
+  p64 -= callchain_data.ip_nr;
+  if (p64 != callchain_data.ips) {
+    memcpy(p64, callchain_data.ips, callchain_data.ip_nr * sizeof(uint64_t));
+    callchain_data.ips = p64;
+  }
+  p64--;
+  if (!ips.empty()) {
+    callchain_data.ip_nr += 1 + ips.size();
+    *p64 = callchain_data.ip_nr;
+  }
   CHECK_EQ(callchain_pos, static_cast<size_t>(reinterpret_cast<char*>(p64) - new_binary))
       << "record time " << time_data.time;
   if (new_binary != binary_) {

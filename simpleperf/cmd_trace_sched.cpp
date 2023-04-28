@@ -192,9 +192,9 @@ bool TraceSchedCommand::ParseSchedEvents(const std::string& record_file_path) {
     return false;
   }
   const EventType* event = FindEventTypeByName("sched:sched_stat_runtime");
-  std::vector<EventAttrWithId> attrs = reader->AttrSection();
-  if (attrs.size() != 1u || attrs[0].attr->type != event->type ||
-      attrs[0].attr->config != event->config) {
+  const EventAttrIds& attrs = reader->AttrSection();
+  if (attrs.size() != 1u || attrs[0].attr.type != event->type ||
+      attrs[0].attr.config != event->config) {
     LOG(ERROR) << "sched:sched_stat_runtime isn't recorded in " << record_file_path;
     return false;
   }

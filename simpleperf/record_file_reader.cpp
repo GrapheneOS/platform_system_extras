@@ -166,42 +166,42 @@ bool RecordFileReader::ReadAttrSection() {
     PLOG(ERROR) << "fseek() failed";
     return false;
   }
+  event_attrs_.resize(attr_count);
+  std::vector<SectionDesc> id_sections(attr_count);
+  size_t attr_size_in_file = header_.attr_size - sizeof(SectionDesc);
   for (size_t i = 0; i < attr_count; ++i) {
     std::vector<char> buf(header_.attr_size);
     if (!Read(buf.data(), buf.size())) {
       return false;
     }
-    // The size of perf_event_attr is changing between different linux kernel versions.
-    // Make sure we copy correct data to memory.
-    FileAttr attr;
-    memset(&attr, 0, sizeof(attr));
-    size_t section_desc_size = sizeof(attr.ids);
-    size_t perf_event_attr_size = header_.attr_size - section_desc_size;
-    memcpy(&attr.attr, &buf[0], std::min(sizeof(attr.attr), perf_event_attr_size));
-    memcpy(&attr.ids, &buf[perf_event_attr_size], section_desc_size);
-    if (!CheckSectionDesc(attr.ids, 0, sizeof(uint64_t))) {
+    // The struct perf_event_attr is defined in a Linux header file. It can be extended in newer
+    // kernel versions with more fields and a bigger size. To disable these extensions, set their
+    // values to zero. So to copy perf_event_attr from file to memory safely, ensure the copy
+    // doesn't overflow the file or memory, and set the values of any extra fields in memory to
+    // zero.
+    if (attr_size_in_file >= sizeof(perf_event_attr)) {
+      memcpy(&event_attrs_[i].attr, &buf[0], sizeof(perf_event_attr));
+    } else {
+      memset(&event_attrs_[i].attr, 0, sizeof(perf_event_attr));
+      memcpy(&event_attrs_[i].attr, &buf[0], attr_size_in_file);
+    }
+    memcpy(&id_sections[i], &buf[attr_size_in_file], sizeof(SectionDesc));
+    if (!CheckSectionDesc(id_sections[i], 0, sizeof(uint64_t))) {
       LOG(ERROR) << "invalid attr section in " << filename_;
       return false;
     }
-    file_attrs_.push_back(attr);
   }
-  if (file_attrs_.size() > 1) {
-    std::vector<perf_event_attr> attrs;
-    for (const auto& file_attr : file_attrs_) {
-      attrs.push_back(file_attr.attr);
-    }
-    if (!GetCommonEventIdPositionsForAttrs(attrs, &event_id_pos_in_sample_records_,
+  if (event_attrs_.size() > 1) {
+    if (!GetCommonEventIdPositionsForAttrs(event_attrs_, &event_id_pos_in_sample_records_,
                                            &event_id_reverse_pos_in_non_sample_records_)) {
       return false;
     }
   }
-  for (size_t i = 0; i < file_attrs_.size(); ++i) {
-    std::vector<uint64_t> ids;
-    if (!ReadIdsForAttr(file_attrs_[i], &ids)) {
+  for (size_t i = 0; i < attr_count; ++i) {
+    if (!ReadIdSection(id_sections[i], &event_attrs_[i].ids)) {
       return false;
     }
-    event_ids_for_file_attrs_.push_back(ids);
-    for (auto id : ids) {
+    for (auto id : event_attrs_[i].ids) {
       event_id_to_attr_map_[id] = i;
     }
   }
@@ -237,14 +237,14 @@ bool RecordFileReader::ReadFeatureSectionDescriptors() {
   return true;
 }
 
-bool RecordFileReader::ReadIdsForAttr(const FileAttr& attr, std::vector<uint64_t>* ids) {
-  size_t id_count = attr.ids.size / sizeof(uint64_t);
-  if (fseek(record_fp_, attr.ids.offset, SEEK_SET) != 0) {
+bool RecordFileReader::ReadIdSection(const SectionDesc& section, std::vector<uint64_t>* ids) {
+  size_t id_count = section.size / sizeof(uint64_t);
+  if (fseek(record_fp_, section.offset, SEEK_SET) != 0) {
     PLOG(ERROR) << "fseek() failed";
     return false;
   }
   ids->resize(id_count);
-  if (!Read(ids->data(), attr.ids.size)) {
+  if (!Read(ids->data(), section.size)) {
     return false;
   }
   return true;
@@ -342,8 +342,8 @@ std::unique_ptr<Record> RecordFileReader::ReadRecord() {
     read_record_size_ += header.size;
   }
 
-  const perf_event_attr* attr = &file_attrs_[0].attr;
-  if (file_attrs_.size() > 1 && header.type < PERF_RECORD_USER_DEFINED_TYPE_START) {
+  const perf_event_attr* attr = &event_attrs_[0].attr;
+  if (event_attrs_.size() > 1 && header.type < PERF_RECORD_USER_DEFINED_TYPE_START) {
     bool has_event_id = false;
     uint64_t event_id;
     if (header.type == PERF_RECORD_SAMPLE) {
@@ -361,7 +361,7 @@ std::unique_ptr<Record> RecordFileReader::ReadRecord() {
     if (has_event_id) {
       auto it = event_id_to_attr_map_.find(event_id);
       if (it != event_id_to_attr_map_.end()) {
-        attr = &file_attrs_[it->second].attr;
+        attr = &event_attrs_[it->second].attr;
       }
     }
   }
@@ -401,8 +401,9 @@ bool RecordFileReader::ReadAtOffset(uint64_t offset, void* buf, size_t len) {
 
 void RecordFileReader::ProcessEventIdRecord(const EventIdRecord& r) {
   for (size_t i = 0; i < r.count; ++i) {
-    event_ids_for_file_attrs_[r.data[i].attr_id].push_back(r.data[i].event_id);
-    event_id_to_attr_map_[r.data[i].event_id] = r.data[i].attr_id;
+    const auto& data = r.data[i];
+    event_attrs_[data.attr_id].ids.push_back(data.event_id);
+    event_id_to_attr_map_[data.event_id] = data.attr_id;
   }
 }
 
@@ -489,7 +490,7 @@ std::vector<BuildIdRecord> RecordFileReader::ReadBuildIdFeature() {
     memcpy(binary.get(), p, header->size);
     p += header->size;
     BuildIdRecord record;
-    if (!record.Parse(file_attrs_[0].attr, binary.get(), binary.get() + header->size)) {
+    if (!record.Parse(event_attrs_[0].attr, binary.get(), binary.get() + header->size)) {
       return {};
     }
     binary.release();
@@ -811,7 +812,7 @@ bool RecordFileReader::BuildAuxDataLocation() {
       return false;
     }
     AuxTraceRecord auxtrace;
-    if (!auxtrace.Parse(file_attrs_[0].attr, buf.get(), buf.get() + AuxTraceRecord::Size())) {
+    if (!auxtrace.Parse(event_attrs_[0].attr, buf.get(), buf.get() + AuxTraceRecord::Size())) {
       return false;
     }
     AuxDataLocation location(auxtrace.data->offset, auxtrace.data->aux_size,
