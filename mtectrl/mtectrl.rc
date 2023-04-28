@@ -25,3 +25,6 @@ on early-init && property:ro.arm64.memtag.bootctl_supported=1
 
 on shutdown && property:ro.arm64.memtag.bootctl_supported=1
   exec -- /system/bin/mtectrl ${arm64.memtag.bootctl:-none} ${persist.device_config.runtime_native_boot.bootloader_override:-default}
+
+on property:persist.device_config.runtime_native_boot.bootloader_override=force_on
+  setprop persist.sys.mte.permissive 1
