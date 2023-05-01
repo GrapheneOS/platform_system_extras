@@ -60,30 +60,27 @@ ssize_t process(fec_handle *f, uint8_t *buf, size_t count, uint64_t offset,
     }
 
     uint64_t start = (offset / FEC_BLOCKSIZE) * FEC_BLOCKSIZE;
-    size_t blocks = fec_div_round_up(count, FEC_BLOCKSIZE);
+    size_t blocks = fec_div_round_up(offset + count - start, FEC_BLOCKSIZE);
 
-    size_t count_per_thread = fec_div_round_up(blocks, threads) * FEC_BLOCKSIZE;
-    size_t max_threads = fec_div_round_up(count, count_per_thread);
-
-    if ((size_t)threads > max_threads) {
-        threads = (int)max_threads;
+    /* start at most one thread per block we're accessing */
+    if ((size_t)threads > blocks) {
+        threads = (int)blocks;
     }
 
+    size_t count_per_thread = fec_div_round_up(blocks, threads) * FEC_BLOCKSIZE;
     size_t left = count;
     uint64_t pos = offset;
     uint64_t end = start + count_per_thread;
 
-    debug("%d threads, %zu bytes per thread (total %zu)", threads,
-        count_per_thread, count);
+    debug("max %d threads, %zu bytes per thread (total %zu spanning %zu blocks)", threads,
+          count_per_thread, count, blocks);
 
     std::vector<pthread_t> handles;
     process_info info[threads];
     ssize_t rc = 0;
 
     /* start threads to process queue */
-    for (int i = 0; i < threads; ++i) {
-        check(left > 0);
-
+    for (int i = 0; i < threads && left > 0; ++i) {
         info[i].id = i;
         info[i].f = f;
         info[i].buf = &buf[pos - offset];
@@ -111,8 +108,6 @@ ssize_t process(fec_handle *f, uint8_t *buf, size_t count, uint64_t offset,
         left -= info[i].count;
     }
 
-    check(left == 0);
-
     ssize_t nread = 0;
 
     /* wait for all threads to complete */
@@ -130,7 +125,7 @@ ssize_t process(fec_handle *f, uint8_t *buf, size_t count, uint64_t offset,
         }
     }
 
-    if (rc == -1) {
+    if (left > 0 || rc == -1) {
         errno = EIO;
         return -1;
     }

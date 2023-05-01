@@ -215,6 +215,16 @@ TEST_F(FecUnitTest, VerityImage_FecRead) {
 
     ASSERT_EQ(1024, fec_pread(handle, read_data.data(), 1024, corrupt_offset));
     ASSERT_EQ(std::vector<uint8_t>(1024, 255), read_data);
+
+    // Unaligned read that spans two blocks
+    ASSERT_EQ(678, fec_pread(handle, read_data.data(), 678, corrupt_offset - 123));
+    ASSERT_EQ(std::vector<uint8_t>(123, 254),
+              std::vector<uint8_t>(read_data.begin(), read_data.begin() + 123));
+    ASSERT_EQ(std::vector<uint8_t>(555, 255),
+              std::vector<uint8_t>(read_data.begin() + 123, read_data.begin() + 678));
+
+    std::vector<uint8_t> large_data(53388, 0);
+    ASSERT_EQ(53388, fec_pread(handle, large_data.data(), 53388, 385132));
 }
 
 TEST_F(FecUnitTest, LoadAvbImage_HashtreeFooter) {
