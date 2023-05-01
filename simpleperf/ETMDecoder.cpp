@@ -181,10 +181,8 @@ class PacketSink : public IPktDataIn<EtmV4ITrcPacket> {
 // For each trace_id, when given an addr, find the thread and map it belongs to.
 class MapLocator : public PacketCallback {
  public:
-  MapLocator(ThreadTree& thread_tree)
+  MapLocator(ETMThreadTree& thread_tree)
       : PacketCallback(PacketCallback::MAP_LOCATOR), thread_tree_(thread_tree) {}
-
-  ThreadTree& GetThreadTree() { return thread_tree_; }
 
   // Return current thread id of a trace_id. If not available, return -1.
   pid_t GetTid(uint8_t trace_id) const { return trace_data_[trace_id].tid; }
@@ -245,7 +243,7 @@ class MapLocator : public PacketCallback {
     bool use_vmid = false;  // use vmid for PID
   };
 
-  ThreadTree& thread_tree_;
+  ETMThreadTree& thread_tree_;
   TraceData trace_data_[256];
 };
 
@@ -649,7 +647,11 @@ class BranchListParser : public PacketCallback {
 // 2. Supports dumping data at different stages.
 class ETMDecoderImpl : public ETMDecoder {
  public:
-  ETMDecoderImpl(ThreadTree& thread_tree) : thread_tree_(thread_tree) {}
+  ETMDecoderImpl(ETMThreadTree& thread_tree) : thread_tree_(thread_tree) {
+    // If the aux record for a thread is processed after it's thread exit record, we can't find
+    // the thread's maps when processing ETM data. To handle this, disable thread exit records.
+    thread_tree.DisableThreadExitRecords();
+  }
 
   void CreateDecodeTree(const AuxTraceInfoRecord& auxtrace_info) {
     uint8_t trace_id = 0;
@@ -803,7 +805,7 @@ class ETMDecoderImpl : public ETMDecoder {
   }
 
   // map ip address to binary path and binary offset
-  ThreadTree& thread_tree_;
+  ETMThreadTree& thread_tree_;
   // handle to build OpenCSD decoder
   ETMV4IDecodeTree decode_tree_;
   // map from cpu to trace id
@@ -840,7 +842,7 @@ bool ParseEtmDumpOption(const std::string& s, ETMDumpOption* option) {
 }
 
 std::unique_ptr<ETMDecoder> ETMDecoder::Create(const AuxTraceInfoRecord& auxtrace_info,
-                                               ThreadTree& thread_tree) {
+                                               ETMThreadTree& thread_tree) {
   auto decoder = std::make_unique<ETMDecoderImpl>(thread_tree);
   decoder->CreateDecodeTree(auxtrace_info);
   return std::unique_ptr<ETMDecoder>(decoder.release());
