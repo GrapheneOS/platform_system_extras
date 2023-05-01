@@ -47,6 +47,7 @@ inline const OptionFormatMap& GetRecordCmdOptionFormats() {
         {"--clockid", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"--cpu", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"--cpu-percent", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--decode-etm", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"--duration", {OptionValueType::DOUBLE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"-e", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
         {"--exclude-perf", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
