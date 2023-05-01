@@ -1065,6 +1065,14 @@ TEST(record_cmd, decode_etm_option) {
   ASSERT_TRUE(RunRecordCmd({"-e", "cs-etm", "--decode-etm", "--exclude-perf"}));
 }
 
+TEST(record_cmd, binary_option) {
+  if (!ETMRecorder::GetInstance().CheckEtmSupport().ok()) {
+    GTEST_LOG_(INFO) << "Omit this test since etm isn't supported on this device";
+    return;
+  }
+  ASSERT_TRUE(RunRecordCmd({"-e", "cs-etm", "--decode-etm", "--binary", ".*"}));
+}
+
 TEST(record_cmd, pmu_event_option) {
   TEST_REQUIRE_PMU_COUNTER();
   TEST_REQUIRE_HW_COUNTER();
