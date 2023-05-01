@@ -164,6 +164,9 @@ class PerfDataReader {
     if (!record_file_reader_) {
       return false;
     }
+    if (record_file_reader_->HasFeature(PerfFileFormat::FEAT_ETM_BRANCH_LIST)) {
+      return ProcessETMBranchListFeature();
+    }
     if (exclude_perf_) {
       const auto& info_map = record_file_reader_->GetMetaInfoFeature();
       if (auto it = info_map.find("recording_process"); it == info_map.end()) {
@@ -196,6 +199,32 @@ class PerfDataReader {
   }
 
  private:
+  bool ProcessETMBranchListFeature() {
+    if (exclude_perf_) {
+      LOG(WARNING) << "--exclude-perf has no effect on perf.data with etm branch list";
+    }
+    if (autofdo_callback_) {
+      LOG(ERROR) << "convert to autofdo format isn't support on perf.data with etm branch list";
+      return false;
+    }
+    CHECK(branch_list_callback_);
+    std::string s;
+    if (!record_file_reader_->ReadFeatureSection(PerfFileFormat::FEAT_ETM_BRANCH_LIST, &s)) {
+      return false;
+    }
+    BranchListBinaryMap binary_map;
+    if (!StringToBranchListBinaryMap(s, binary_map)) {
+      return false;
+    }
+    for (auto& [key, binary] : binary_map) {
+      if (!binary_filter_.Filter(key.path)) {
+        continue;
+      }
+      branch_list_callback_(key, binary);
+    }
+    return true;
+  }
+
   bool ProcessRecord(Record* r) {
     thread_tree_.GetThreadTree().Update(*r);
     if (r->type() == PERF_RECORD_AUXTRACE_INFO) {

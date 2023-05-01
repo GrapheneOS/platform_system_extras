@@ -409,6 +409,7 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
   bool DumpMetaInfoFeature(bool kernel_symbols_available);
   bool DumpDebugUnwindFeature(const std::unordered_set<Dso*>& dso_set);
   void CollectHitFileInfo(const SampleRecord& r, std::unordered_set<Dso*>* dso_set);
+  bool DumpETMBranchListFeature();
 
   std::unique_ptr<SampleSpeed> sample_speed_;
   bool system_wide_collection_;
@@ -1996,6 +1997,9 @@ bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args)
   if (keep_failed_unwinding_debug_info_) {
     feature_count += 2;
   }
+  if (etm_branch_list_generator_) {
+    feature_count++;
+  }
   if (!record_file_writer_->BeginWriteFeatures(feature_count)) {
     return false;
   }
@@ -2036,6 +2040,9 @@ bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args)
     return false;
   }
   if (keep_failed_unwinding_debug_info_ && !DumpDebugUnwindFeature(debug_unwinding_files)) {
+    return false;
+  }
+  if (etm_branch_list_generator_ && !DumpETMBranchListFeature()) {
     return false;
   }
 
@@ -2175,6 +2182,16 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r, std::unordered_set
       dso_set->insert(dso);
     }
   }
+}
+
+bool RecordCommand::DumpETMBranchListFeature() {
+  BranchListBinaryMap binary_map = etm_branch_list_generator_->GetBranchListBinaryMap();
+  std::string s;
+  if (!BranchListBinaryMapToString(binary_map, s)) {
+    return false;
+  }
+  return record_file_writer_->WriteFeature(PerfFileFormat::FEAT_ETM_BRANCH_LIST, s.data(),
+                                           s.size());
 }
 
 }  // namespace
