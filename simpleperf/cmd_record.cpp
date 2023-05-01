@@ -49,6 +49,7 @@
 #include <unwindstack/Error.h>
 
 #include "CallChainJoiner.h"
+#include "ETMBranchListFile.h"
 #include "ETMRecorder.h"
 #include "IOEventLoop.h"
 #include "JITDebugReader.h"
@@ -239,29 +240,9 @@ class RecordCommand : public Command {
 "                will be used.\n"
 "--user-buffer-size <buffer_size> Set buffer size in userspace to cache sample data.\n"
 "                                 By default, it is %s.\n"
-"--aux-buffer-size <buffer_size>  Set aux buffer size, only used in cs-etm event type.\n"
-"                                 Need to be power of 2 and page size aligned.\n"
-"                                 Used memory size is (buffer_size * (cpu_count + 1).\n"
-"                                 Default is 4M.\n"
 "--no-inherit  Don't record created child threads/processes.\n"
 "--cpu-percent <percent>  Set the max percent of cpu time used for recording.\n"
 "                         percent is in range [1-100], default is 25.\n"
-"--addr-filter filter_str1,filter_str2,...\n"
-"                Provide address filters for cs-etm instruction tracing.\n"
-"                filter_str accepts below formats:\n"
-"                  'filter  <addr-range>'  -- trace instructions in a range\n"
-"                  'start <addr>'          -- start tracing when ip is <addr>\n"
-"                  'stop <addr>'           -- stop tracing when ip is <addr>\n"
-"                <addr-range> accepts below formats:\n"
-"                  <file_path>                            -- code sections in a binary file\n"
-"                  <vaddr_start>-<vaddr_end>@<file_path>  -- part of a binary file\n"
-"                  <kernel_addr_start>-<kernel_addr_end>  -- part of kernel space\n"
-"                <addr> accepts below formats:\n"
-"                  <vaddr>@<file_path>      -- virtual addr in a binary file\n"
-"                  <kernel_addr>            -- a kernel address\n"
-"                Examples:\n"
-"                  'filter 0x456-0x480@/system/lib/libc.so'\n"
-"                  'start 0x456@/system/lib/libc.so,stop 0x480@/system/lib/libc.so'\n"
 "\n"
 "--tp-filter filter_string    Set filter_string for the previous tracepoint event.\n"
 "                             Format is in Documentation/trace/events.rst in the kernel.\n"
@@ -307,6 +288,29 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
 "                 This option is used to provide files with symbol table and\n"
 "                 debug information, which are used for unwinding and dumping symbols.\n"
 "--add-meta-info key=value     Add extra meta info, which will be stored in the recording file.\n"
+"\n"
+"ETM recording options:\n"
+"--addr-filter filter_str1,filter_str2,...\n"
+"                Provide address filters for cs-etm instruction tracing.\n"
+"                filter_str accepts below formats:\n"
+"                  'filter  <addr-range>'  -- trace instructions in a range\n"
+"                  'start <addr>'          -- start tracing when ip is <addr>\n"
+"                  'stop <addr>'           -- stop tracing when ip is <addr>\n"
+"                <addr-range> accepts below formats:\n"
+"                  <file_path>                            -- code sections in a binary file\n"
+"                  <vaddr_start>-<vaddr_end>@<file_path>  -- part of a binary file\n"
+"                  <kernel_addr_start>-<kernel_addr_end>  -- part of kernel space\n"
+"                <addr> accepts below formats:\n"
+"                  <vaddr>@<file_path>      -- virtual addr in a binary file\n"
+"                  <kernel_addr>            -- a kernel address\n"
+"                Examples:\n"
+"                  'filter 0x456-0x480@/system/lib/libc.so'\n"
+"                  'start 0x456@/system/lib/libc.so,stop 0x480@/system/lib/libc.so'\n"
+"--aux-buffer-size <buffer_size>  Set aux buffer size, only used in cs-etm event type.\n"
+"                                 Need to be power of 2 and page size aligned.\n"
+"                                 Used memory size is (buffer_size * (cpu_count + 1).\n"
+"                                 Default is 4M.\n"
+"--decode-etm                     Convert ETM data into branch lists while recording.\n"
 "\n"
 "Other options:\n"
 "--exit-with-parent            Stop recording when the thread starting simpleperf dies.\n"
@@ -468,6 +472,8 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
   std::unordered_map<std::string, std::string> extra_meta_info_;
   bool use_cmd_exit_code_ = false;
   std::vector<std::string> add_counters_;
+
+  std::unique_ptr<ETMBranchListGenerator> etm_branch_list_generator_;
 };
 
 std::string RecordCommand::LongHelpString() const {
@@ -1004,6 +1010,10 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     return false;
   }
 
+  if (options.PullBoolValue("--decode-etm")) {
+    etm_branch_list_generator_ = ETMBranchListGenerator::Create(system_wide_collection_);
+  }
+
   if (!options.PullDoubleValue("--duration", &duration_in_sec_, 1e-9)) {
     return false;
   }
@@ -1443,9 +1453,11 @@ bool RecordCommand::DumpMaps() {
     // For system wide recording:
     //   If not aux tracing, only dump kernel maps. Maps of a process is dumped when needed (the
     //   first time a sample hits that process).
-    //   If aux tracing, we don't know which maps will be needed, so dump all process maps. To
-    //   reduce pre recording time, we dump process maps in map record thread while recording.
-    if (event_selection_set_.HasAuxTrace()) {
+    //   If aux tracing with decoding etm data, the maps are dumped by etm_branch_list_generator.
+    //   If aux tracing without decoding etm data, we don't know which maps will be needed, so dump
+    //   all process maps. To reduce pre recording time, we dump process maps in map record thread
+    //   while recording.
+    if (event_selection_set_.HasAuxTrace() && !etm_branch_list_generator_) {
       map_record_thread_.emplace(*map_record_reader_);
       return true;
     }
@@ -1501,6 +1513,15 @@ bool RecordCommand::ProcessRecord(Record* record) {
   // filters don't work in system wide collection.
   if (record->type() == PERF_RECORD_SAMPLE) {
     if (!record_filter_.Check(static_cast<SampleRecord*>(record))) {
+      return true;
+    }
+  }
+  if (etm_branch_list_generator_) {
+    bool consumed = false;
+    if (!etm_branch_list_generator_->ProcessRecord(*record, consumed)) {
+      return false;
+    }
+    if (consumed) {
       return true;
     }
   }
@@ -2034,34 +2055,9 @@ bool RecordCommand::DumpBuildIdFeature() {
     if (!dso->HasDumpId() && !event_selection_set_.HasAuxTrace()) {
       continue;
     }
-    if (dso->type() == DSO_KERNEL) {
-      if (!GetKernelBuildId(&build_id)) {
-        continue;
-      }
-      build_id_records.push_back(BuildIdRecord(true, UINT_MAX, build_id, dso->Path()));
-    } else if (dso->type() == DSO_KERNEL_MODULE) {
-      bool has_build_id = false;
-      if (android::base::EndsWith(dso->Path(), ".ko")) {
-        has_build_id = GetBuildIdFromDsoPath(dso->Path(), &build_id);
-      } else if (const std::string& path = dso->Path();
-                 path.size() > 2 && path[0] == '[' && path.back() == ']') {
-        // For kernel modules that we can't find the corresponding file, read build id from /sysfs.
-        has_build_id = GetModuleBuildId(path.substr(1, path.size() - 2), &build_id);
-      }
-      if (has_build_id) {
-        build_id_records.push_back(BuildIdRecord(true, UINT_MAX, build_id, dso->Path()));
-      } else {
-        LOG(DEBUG) << "Can't read build_id for module " << dso->Path();
-      }
-    } else if (dso->type() == DSO_ELF_FILE) {
-      if (dso->Path() == DEFAULT_EXECNAME_FOR_THREAD_MMAP || dso->IsForJavaMethod()) {
-        continue;
-      }
-      if (!GetBuildIdFromDsoPath(dso->Path(), &build_id)) {
-        LOG(DEBUG) << "Can't read build_id from file " << dso->Path();
-        continue;
-      }
-      build_id_records.push_back(BuildIdRecord(false, UINT_MAX, build_id, dso->Path()));
+    if (GetBuildId(*dso, build_id)) {
+      bool in_kernel = dso->type() == DSO_KERNEL || dso->type() == DSO_KERNEL_MODULE;
+      build_id_records.emplace_back(in_kernel, UINT_MAX, build_id, dso->Path());
     }
   }
   if (!record_file_writer_->WriteBuildIdFeature(build_id_records)) {
