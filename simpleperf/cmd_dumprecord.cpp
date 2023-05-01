@@ -178,6 +178,18 @@ ExtractFieldFn GetExtractFieldFunction(const TracingField& field) {
   return ExtractUnknownField;
 }
 
+class ETMThreadTreeForDumpCmd : public ETMThreadTree {
+ public:
+  ETMThreadTreeForDumpCmd(ThreadTree& thread_tree) : thread_tree_(thread_tree) {}
+
+  void DisableThreadExitRecords() override { thread_tree_.DisableThreadExitRecords(); }
+  const ThreadEntry* FindThread(int tid) override { return thread_tree_.FindThread(tid); }
+  const MapSet& GetKernelMaps() override { return thread_tree_.GetKernelMaps(); }
+
+ private:
+  ThreadTree& thread_tree_;
+};
+
 class DumpRecordCommand : public Command {
  public:
   DumpRecordCommand()
@@ -212,6 +224,7 @@ class DumpRecordCommand : public Command {
 
   std::unique_ptr<RecordFileReader> record_file_reader_;
   std::unique_ptr<ETMDecoder> etm_decoder_;
+  std::unique_ptr<ETMThreadTree> etm_thread_tree_;
   ThreadTree thread_tree_;
 
   std::vector<EventInfo> events_;
@@ -344,7 +357,8 @@ bool DumpRecordCommand::ProcessRecord(Record* r) {
       ProcessCallChainRecord(*static_cast<CallChainRecord*>(r));
       break;
     case PERF_RECORD_AUXTRACE_INFO: {
-      etm_decoder_ = ETMDecoder::Create(*static_cast<AuxTraceInfoRecord*>(r), thread_tree_);
+      etm_thread_tree_.reset(new ETMThreadTreeForDumpCmd(thread_tree_));
+      etm_decoder_ = ETMDecoder::Create(*static_cast<AuxTraceInfoRecord*>(r), *etm_thread_tree_);
       if (etm_decoder_) {
         etm_decoder_->EnableDump(etm_dump_option_);
       } else {
