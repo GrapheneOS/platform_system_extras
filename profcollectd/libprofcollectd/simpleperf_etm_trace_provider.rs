@@ -38,12 +38,13 @@ impl TraceProvider for SimpleperfEtmTraceProvider {
         simpleperf_profcollect::has_device_support()
     }
 
-    fn trace(&self, trace_dir: &Path, tag: &str, sampling_period: &Duration) {
+    fn trace(&self, trace_dir: &Path, tag: &str, sampling_period: &Duration, binary_filter: &str) {
         let trace_file = trace_provider::get_path(trace_dir, tag, ETM_TRACEFILE_EXTENSION);
 
         simpleperf_profcollect::record(
             &trace_file,
             sampling_period,
+            binary_filter,
             simpleperf_profcollect::RecordScope::BOTH,
         );
     }
