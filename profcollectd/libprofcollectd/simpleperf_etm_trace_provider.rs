@@ -76,6 +76,14 @@ impl TraceProvider for SimpleperfEtmTraceProvider {
             .filter(is_etm_extension)
             .try_for_each(process_trace_file)
     }
+
+    fn set_log_file(&self, filename: &Path) {
+        simpleperf_profcollect::set_log_file(filename);
+    }
+
+    fn reset_log_file(&self) {
+        simpleperf_profcollect::reset_log_file();
+    }
 }
 
 impl SimpleperfEtmTraceProvider {
