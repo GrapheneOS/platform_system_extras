@@ -132,6 +132,7 @@ impl ProfcollectdBinderService {
             clear_data()?;
 
             write(*CONFIG_FILE, new_config.to_string())?;
+            new_scheduler.clear_trace_log()?;
         }
 
         // Clear profile reports out of rentention period.
