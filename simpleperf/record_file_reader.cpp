@@ -60,6 +60,7 @@ static const std::map<int, std::string> feature_name_map = {
     {FEAT_DEBUG_UNWIND, "debug_unwind"},
     {FEAT_DEBUG_UNWIND_FILE, "debug_unwind_file"},
     {FEAT_FILE2, "file2"},
+    {FEAT_ETM_BRANCH_LIST, "etm_branch_list"},
 };
 
 std::string GetFeatureName(int feature_id) {

@@ -242,6 +242,7 @@ cc_defaults {
         "command.cpp",
         "dso.cpp",
         "etm_branch_list.proto",
+        "ETMBranchListFile.cpp",
         "event_attr.cpp",
         "event_type.cpp",
         "kallsyms.cpp",
