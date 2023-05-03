@@ -74,6 +74,7 @@ impl Scheduler {
                                 &TRACE_OUTPUT_DIR,
                                 "periodic",
                                 &config.sampling_period,
+                                &config.binary_filter,
                             );
                         }
                     }
@@ -96,7 +97,12 @@ impl Scheduler {
     pub fn one_shot(&self, config: &Config, tag: &str) -> Result<()> {
         let trace_provider = self.trace_provider.clone();
         if check_space_limit(&TRACE_OUTPUT_DIR, config)? {
-            trace_provider.lock().unwrap().trace(&TRACE_OUTPUT_DIR, tag, &config.sampling_period);
+            trace_provider.lock().unwrap().trace(
+                &TRACE_OUTPUT_DIR,
+                tag,
+                &config.sampling_period,
+                &config.binary_filter,
+            );
         }
         Ok(())
     }
