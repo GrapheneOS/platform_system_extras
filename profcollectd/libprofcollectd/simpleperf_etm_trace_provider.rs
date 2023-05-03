@@ -40,13 +40,15 @@ impl TraceProvider for SimpleperfEtmTraceProvider {
 
     fn trace(&self, trace_dir: &Path, tag: &str, sampling_period: &Duration, binary_filter: &str) {
         let trace_file = trace_provider::get_path(trace_dir, tag, ETM_TRACEFILE_EXTENSION);
+        // Record ETM data for kernel space only when it's not filtered out by binary_filter. So we
+        // can get more ETM data for user space when ETM data for kernel space isn't needed.
+        let record_scope = if binary_filter.contains("kernel") {
+            simpleperf_profcollect::RecordScope::BOTH
+        } else {
+            simpleperf_profcollect::RecordScope::USERSPACE
+        };
 
-        simpleperf_profcollect::record(
-            &trace_file,
-            sampling_period,
-            binary_filter,
-            simpleperf_profcollect::RecordScope::BOTH,
-        );
+        simpleperf_profcollect::record(&trace_file, sampling_period, binary_filter, record_scope);
     }
 
     fn process(&self, trace_dir: &Path, profile_dir: &Path, binary_filter: &str) -> Result<()> {
