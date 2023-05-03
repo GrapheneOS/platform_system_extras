@@ -411,8 +411,10 @@ void ThreadTree::Update(const Record& record) {
     const ForkRecord& r = *static_cast<const ForkRecord*>(&record);
     ForkThread(r.data->pid, r.data->tid, r.data->ppid, r.data->ptid);
   } else if (record.type() == PERF_RECORD_EXIT) {
-    const ExitRecord& r = *static_cast<const ExitRecord*>(&record);
-    ExitThread(r.data->pid, r.data->tid);
+    if (!disable_thread_exit_records_) {
+      const ExitRecord& r = *static_cast<const ExitRecord*>(&record);
+      ExitThread(r.data->pid, r.data->tid);
+    }
   } else if (record.type() == SIMPLE_PERF_RECORD_KERNEL_SYMBOL) {
     const auto& r = *static_cast<const KernelSymbolRecord*>(&record);
     Dso::SetKallsyms(std::string(r.kallsyms, r.kallsyms_size));
