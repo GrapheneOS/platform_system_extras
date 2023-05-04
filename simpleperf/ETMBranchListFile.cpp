@@ -222,9 +222,13 @@ class ETMThreadTreeWhenRecording : public ETMThreadTree {
 
 class ETMBranchListGeneratorImpl : public ETMBranchListGenerator {
  public:
-  ETMBranchListGeneratorImpl(bool dump_maps_from_proc) : thread_tree_(dump_maps_from_proc) {}
+  ETMBranchListGeneratorImpl(bool dump_maps_from_proc)
+      : thread_tree_(dump_maps_from_proc), binary_filter_(nullptr) {}
 
   void SetExcludePid(pid_t pid) override { thread_tree_.ExcludePid(pid); }
+  void SetBinaryFilter(const RegEx* binary_name_regex) override {
+    binary_filter_.SetRegex(binary_name_regex);
+  }
 
   bool ProcessRecord(const Record& r, bool& consumed) override;
   BranchListBinaryMap GetBranchListBinaryMap() override;
@@ -250,6 +254,7 @@ class ETMBranchListGeneratorImpl : public ETMBranchListGenerator {
 
   ETMThreadTreeWhenRecording thread_tree_;
   uint64_t kernel_map_start_addr_ = 0;
+  BinaryFilter binary_filter_;
   std::map<uint32_t, PerCpuData> cpu_map_;
   std::unique_ptr<ETMDecoder> etm_decoder_;
   std::unordered_map<Dso*, BranchListBinaryInfo> branch_list_binary_map_;
@@ -341,6 +346,9 @@ bool ETMBranchListGeneratorImpl::ProcessAuxTraceRecord(const AuxTraceRecord& r) 
 }
 
 void ETMBranchListGeneratorImpl::ProcessBranchList(const ETMBranchList& branch_list) {
+  if (!binary_filter_.Filter(branch_list.dso)) {
+    return;
+  }
   auto& branch_map = branch_list_binary_map_[branch_list.dso].branch_map;
   ++branch_map[branch_list.addr][branch_list.branch];
 }

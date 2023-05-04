@@ -40,6 +40,7 @@ inline const OptionFormatMap& GetRecordCmdOptionFormats() {
         {"--app", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::NOT_ALLOWED}},
         {"--aux-buffer-size", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"-b", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--binary", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"-c", {OptionValueType::UINT, OptionType::ORDERED, AppRunnerType::ALLOWED}},
         {"--call-graph", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
         {"--callchain-joiner-min-matching-nodes",
