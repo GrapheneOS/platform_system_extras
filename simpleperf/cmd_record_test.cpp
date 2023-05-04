@@ -1062,6 +1062,7 @@ TEST(record_cmd, decode_etm_option) {
     return;
   }
   ASSERT_TRUE(RunRecordCmd({"-e", "cs-etm", "--decode-etm"}));
+  ASSERT_TRUE(RunRecordCmd({"-e", "cs-etm", "--decode-etm", "--exclude-perf"}));
 }
 
 TEST(record_cmd, pmu_event_option) {
