@@ -160,4 +160,211 @@ bool StringToBranchListBinaryMap(const std::string& s, BranchListBinaryMap& bina
   return true;
 }
 
+class ETMThreadTreeWhenRecording : public ETMThreadTree {
+ public:
+  ETMThreadTreeWhenRecording(bool dump_maps_from_proc)
+      : dump_maps_from_proc_(dump_maps_from_proc) {}
+
+  ThreadTree& GetThreadTree() { return thread_tree_; }
+
+  const ThreadEntry* FindThread(int tid) override {
+    const ThreadEntry* thread = thread_tree_.FindThread(tid);
+    if (thread == nullptr) {
+      if (dump_maps_from_proc_) {
+        thread = FindThreadFromProc(tid);
+      }
+      if (thread == nullptr) {
+        return nullptr;
+      }
+    }
+
+    if (dump_maps_from_proc_) {
+      DumpMapsFromProc(thread->pid);
+    }
+    return thread;
+  }
+
+  void DisableThreadExitRecords() override { thread_tree_.DisableThreadExitRecords(); }
+  const MapSet& GetKernelMaps() override { return thread_tree_.GetKernelMaps(); }
+
+ private:
+  const ThreadEntry* FindThreadFromProc(int tid) {
+    std::string comm;
+    pid_t pid;
+    if (ReadThreadNameAndPid(tid, &comm, &pid)) {
+      thread_tree_.SetThreadName(pid, tid, comm);
+      return thread_tree_.FindThread(tid);
+    }
+    return nullptr;
+  }
+
+  void DumpMapsFromProc(int pid) {
+    if (dumped_processes_.count(pid) == 0) {
+      dumped_processes_.insert(pid);
+      std::vector<ThreadMmap> maps;
+      if (GetThreadMmapsInProcess(pid, &maps)) {
+        for (const auto& map : maps) {
+          thread_tree_.AddThreadMap(pid, pid, map.start_addr, map.len, map.pgoff, map.name);
+        }
+      }
+    }
+  }
+
+  ThreadTree thread_tree_;
+  bool dump_maps_from_proc_;
+  std::unordered_set<int> dumped_processes_;
+};
+
+class ETMBranchListGeneratorImpl : public ETMBranchListGenerator {
+ public:
+  ETMBranchListGeneratorImpl(bool dump_maps_from_proc) : thread_tree_(dump_maps_from_proc) {}
+
+  bool ProcessRecord(const Record& r, bool& consumed) override;
+  BranchListBinaryMap GetBranchListBinaryMap() override;
+
+ private:
+  struct AuxRecordData {
+    uint64_t start;
+    uint64_t end;
+    bool formatted;
+    AuxRecordData(uint64_t start, uint64_t end, bool formatted)
+        : start(start), end(end), formatted(formatted) {}
+  };
+
+  struct PerCpuData {
+    std::vector<uint8_t> aux_data;
+    uint64_t data_offset = 0;
+    std::queue<AuxRecordData> aux_records;
+  };
+
+  bool ProcessAuxRecord(const AuxRecord& r);
+  bool ProcessAuxTraceRecord(const AuxTraceRecord& r);
+  void ProcessBranchList(const ETMBranchList& branch_list);
+
+  ETMThreadTreeWhenRecording thread_tree_;
+  uint64_t kernel_map_start_addr_ = 0;
+  std::map<uint32_t, PerCpuData> cpu_map_;
+  std::unique_ptr<ETMDecoder> etm_decoder_;
+  std::unordered_map<Dso*, BranchListBinaryInfo> branch_list_binary_map_;
+};
+
+bool ETMBranchListGeneratorImpl::ProcessRecord(const Record& r, bool& consumed) {
+  consumed = true;  // No need to store any records.
+  uint32_t type = r.type();
+  if (type == PERF_RECORD_AUXTRACE_INFO) {
+    etm_decoder_ = ETMDecoder::Create(*static_cast<const AuxTraceInfoRecord*>(&r), thread_tree_);
+    if (!etm_decoder_) {
+      return false;
+    }
+    etm_decoder_->RegisterCallback(
+        [this](const ETMBranchList& branch) { ProcessBranchList(branch); });
+    return true;
+  }
+  if (type == PERF_RECORD_AUX) {
+    return ProcessAuxRecord(*static_cast<const AuxRecord*>(&r));
+  }
+  if (type == PERF_RECORD_AUXTRACE) {
+    return ProcessAuxTraceRecord(*static_cast<const AuxTraceRecord*>(&r));
+  }
+  if (type == PERF_RECORD_MMAP && r.InKernel()) {
+    auto& mmap_r = *static_cast<const MmapRecord*>(&r);
+    if (android::base::StartsWith(mmap_r.filename, DEFAULT_KERNEL_MMAP_NAME)) {
+      kernel_map_start_addr_ = mmap_r.data->addr;
+    }
+  }
+  thread_tree_.GetThreadTree().Update(r);
+  return true;
+}
+
+bool ETMBranchListGeneratorImpl::ProcessAuxRecord(const AuxRecord& r) {
+  OverflowResult result = SafeAdd(r.data->aux_offset, r.data->aux_size);
+  if (result.overflow || r.data->aux_size > SIZE_MAX) {
+    LOG(ERROR) << "invalid aux record";
+    return false;
+  }
+  size_t size = r.data->aux_size;
+  uint64_t start = r.data->aux_offset;
+  uint64_t end = result.value;
+  PerCpuData& data = cpu_map_[r.Cpu()];
+  if (start >= data.data_offset && end <= data.data_offset + data.aux_data.size()) {
+    // The ETM data is available. Process it now.
+    uint8_t* p = data.aux_data.data() + (start - data.data_offset);
+    if (!etm_decoder_) {
+      LOG(ERROR) << "ETMDecoder isn't created";
+      return false;
+    }
+    return etm_decoder_->ProcessData(p, size, !r.Unformatted(), r.Cpu());
+  }
+  // The ETM data isn't available. Put the aux record into queue.
+  data.aux_records.emplace(start, end, !r.Unformatted());
+  return true;
+}
+
+bool ETMBranchListGeneratorImpl::ProcessAuxTraceRecord(const AuxTraceRecord& r) {
+  OverflowResult result = SafeAdd(r.data->offset, r.data->aux_size);
+  if (result.overflow || r.data->aux_size > SIZE_MAX) {
+    LOG(ERROR) << "invalid auxtrace record";
+    return false;
+  }
+  size_t size = r.data->aux_size;
+  uint64_t start = r.data->offset;
+  uint64_t end = result.value;
+  PerCpuData& data = cpu_map_[r.Cpu()];
+  data.data_offset = start;
+  CHECK(r.location.addr != nullptr);
+  data.aux_data.resize(size);
+  memcpy(data.aux_data.data(), r.location.addr, size);
+
+  // Process cached aux records.
+  while (!data.aux_records.empty() && data.aux_records.front().start < end) {
+    const AuxRecordData& aux = data.aux_records.front();
+    if (aux.start >= start && aux.end <= end) {
+      uint8_t* p = data.aux_data.data() + (aux.start - start);
+      if (!etm_decoder_) {
+        LOG(ERROR) << "ETMDecoder isn't created";
+        return false;
+      }
+      if (!etm_decoder_->ProcessData(p, aux.end - aux.start, aux.formatted, r.Cpu())) {
+        return false;
+      }
+    }
+    data.aux_records.pop();
+  }
+  return true;
+}
+
+void ETMBranchListGeneratorImpl::ProcessBranchList(const ETMBranchList& branch_list) {
+  auto& branch_map = branch_list_binary_map_[branch_list.dso].branch_map;
+  ++branch_map[branch_list.addr][branch_list.branch];
+}
+
+BranchListBinaryMap ETMBranchListGeneratorImpl::GetBranchListBinaryMap() {
+  BranchListBinaryMap binary_map;
+  for (auto& p : branch_list_binary_map_) {
+    Dso* dso = p.first;
+    BranchListBinaryInfo& binary = p.second;
+    binary.dso_type = dso->type();
+    BuildId build_id;
+    GetBuildId(*dso, build_id);
+    BinaryKey key(dso->Path(), build_id);
+    if (binary.dso_type == DSO_KERNEL) {
+      if (kernel_map_start_addr_ == 0) {
+        LOG(WARNING) << "Can't convert kernel ip addresses without kernel start addr. So remove "
+                        "branches for the kernel.";
+        continue;
+      }
+      key.kernel_start_addr = kernel_map_start_addr_;
+    }
+    binary_map[key] = std::move(binary);
+  }
+  return binary_map;
+}
+
+std::unique_ptr<ETMBranchListGenerator> ETMBranchListGenerator::Create(bool dump_maps_from_proc) {
+  return std::unique_ptr<ETMBranchListGenerator>(
+      new ETMBranchListGeneratorImpl(dump_maps_from_proc));
+}
+
+ETMBranchListGenerator::~ETMBranchListGenerator() {}
+
 }  // namespace simpleperf

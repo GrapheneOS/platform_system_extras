@@ -550,6 +550,7 @@ struct AuxTraceRecord : public Record {
   AuxTraceRecord(uint64_t aux_size, uint64_t offset, uint32_t idx, uint32_t tid, uint32_t cpu);
 
   bool Parse(const perf_event_attr& attr, char* p, char* end) override;
+  uint32_t Cpu() const override { return data->cpu; }
   static size_t Size() { return sizeof(perf_event_header) + sizeof(DataType); }
 
  protected:

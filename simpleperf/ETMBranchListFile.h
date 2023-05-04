@@ -104,6 +104,16 @@ using BranchListBinaryMap = std::unordered_map<BinaryKey, BranchListBinaryInfo, 
 bool BranchListBinaryMapToString(const BranchListBinaryMap& binary_map, std::string& s);
 bool StringToBranchListBinaryMap(const std::string& s, BranchListBinaryMap& binary_map);
 
+// Convert ETM data into branch lists while recording.
+class ETMBranchListGenerator {
+ public:
+  static std::unique_ptr<ETMBranchListGenerator> Create(bool dump_maps_from_proc);
+
+  virtual ~ETMBranchListGenerator();
+  virtual bool ProcessRecord(const Record& r, bool& consumed) = 0;
+  virtual BranchListBinaryMap GetBranchListBinaryMap() = 0;
+};
+
 // for testing
 std::string BranchToProtoString(const std::vector<bool>& branch);
 std::vector<bool> ProtoStringToBranch(const std::string& s, size_t bit_size);
