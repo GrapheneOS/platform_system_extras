@@ -491,4 +491,11 @@ OverflowResult SafeAdd(uint64_t a, uint64_t b) {
   return result;
 }
 
+void OverflowSafeAdd(uint64_t& dest, uint64_t add) {
+  if (__builtin_add_overflow(dest, add, &dest)) {
+    LOG(WARNING) << "Branch count overflow happened.";
+    dest = UINT64_MAX;
+  }
+}
+
 }  // namespace simpleperf

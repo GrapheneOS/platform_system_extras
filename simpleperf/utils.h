@@ -288,6 +288,7 @@ struct OverflowResult {
 };
 
 OverflowResult SafeAdd(uint64_t a, uint64_t b);
+void OverflowSafeAdd(uint64_t& dest, uint64_t add);
 
 }  // namespace simpleperf
 
