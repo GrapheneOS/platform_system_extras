@@ -17,6 +17,7 @@
 #pragma once
 
 #include "ETMDecoder.h"
+#include "RegEx.h"
 #include "thread_tree.h"
 #include "utils.h"
 
@@ -104,6 +105,34 @@ using BranchListBinaryMap = std::unordered_map<BinaryKey, BranchListBinaryInfo, 
 bool BranchListBinaryMapToString(const BranchListBinaryMap& binary_map, std::string& s);
 bool StringToBranchListBinaryMap(const std::string& s, BranchListBinaryMap& binary_map);
 
+class BinaryFilter {
+ public:
+  BinaryFilter(const RegEx* binary_name_regex) : binary_name_regex_(binary_name_regex) {}
+
+  void SetRegex(const RegEx* binary_name_regex) {
+    binary_name_regex_ = binary_name_regex;
+    dso_filter_cache_.clear();
+  }
+
+  bool Filter(Dso* dso) {
+    auto lookup = dso_filter_cache_.find(dso);
+    if (lookup != dso_filter_cache_.end()) {
+      return lookup->second;
+    }
+    bool match = Filter(dso->Path());
+    dso_filter_cache_.insert({dso, match});
+    return match;
+  }
+
+  bool Filter(const std::string& path) {
+    return binary_name_regex_ == nullptr || binary_name_regex_->Search(path);
+  }
+
+ private:
+  const RegEx* binary_name_regex_;
+  std::unordered_map<Dso*, bool> dso_filter_cache_;
+};
+
 // Convert ETM data into branch lists while recording.
 class ETMBranchListGenerator {
  public:
@@ -111,6 +140,7 @@ class ETMBranchListGenerator {
 
   virtual ~ETMBranchListGenerator();
   virtual void SetExcludePid(pid_t pid) = 0;
+  virtual void SetBinaryFilter(const RegEx* binary_name_regex) = 0;
   virtual bool ProcessRecord(const Record& r, bool& consumed) = 0;
   virtual BranchListBinaryMap GetBranchListBinaryMap() = 0;
 };

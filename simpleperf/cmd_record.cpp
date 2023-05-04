@@ -311,6 +311,8 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
 "                                 Used memory size is (buffer_size * (cpu_count + 1).\n"
 "                                 Default is 4M.\n"
 "--decode-etm                     Convert ETM data into branch lists while recording.\n"
+"--binary binary_name             Used with --decode-etm to only generate data for binaries\n"
+"                                 matching binary_name regex.\n"
 "\n"
 "Other options:\n"
 "--exit-with-parent            Stop recording when the thread starting simpleperf dies.\n"
@@ -475,6 +477,7 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
   std::vector<std::string> add_counters_;
 
   std::unique_ptr<ETMBranchListGenerator> etm_branch_list_generator_;
+  std::unique_ptr<RegEx> binary_name_regex_;
 };
 
 std::string RecordCommand::LongHelpString() const {
@@ -759,6 +762,9 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
       if (exclude_perf_) {
         etm_branch_list_generator_->SetExcludePid(getpid());
       }
+      if (binary_name_regex_) {
+        etm_branch_list_generator_->SetBinaryFilter(binary_name_regex_.get());
+      }
     }
   }
   return true;
@@ -984,6 +990,13 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
 
   if (options.PullValue("-b")) {
     branch_sampling_ = branch_sampling_type_map["any"];
+  }
+
+  if (auto value = options.PullValue("--binary"); value) {
+    binary_name_regex_ = RegEx::Create(*value->str_value);
+    if (binary_name_regex_ == nullptr) {
+      return false;
+    }
   }
 
   if (!options.PullUintValue("--callchain-joiner-min-matching-nodes",
