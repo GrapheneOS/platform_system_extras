@@ -60,6 +60,7 @@ static const std::map<int, std::string> feature_name_map = {
     {FEAT_DEBUG_UNWIND, "debug_unwind"},
     {FEAT_DEBUG_UNWIND_FILE, "debug_unwind_file"},
     {FEAT_FILE2, "file2"},
+    {FEAT_ETM_BRANCH_LIST, "etm_branch_list"},
 };
 
 std::string GetFeatureName(int feature_id) {
@@ -754,18 +755,22 @@ bool RecordFileReader::LoadBuildIdAndFileFeatures(ThreadTree& thread_tree) {
 }
 
 bool RecordFileReader::ReadAuxData(uint32_t cpu, uint64_t aux_offset, size_t size,
-                                   std::vector<uint8_t>* buf) {
+                                   std::vector<uint8_t>& buf, bool& error) {
+  error = false;
   long saved_pos = ftell(record_fp_);
   if (saved_pos == -1) {
     PLOG(ERROR) << "ftell() failed";
+    error = true;
     return false;
   }
   OverflowResult aux_end = SafeAdd(aux_offset, size);
   if (aux_end.overflow) {
     LOG(ERROR) << "aux_end overflow";
+    error = true;
     return false;
   }
   if (aux_data_location_.empty() && !BuildAuxDataLocation()) {
+    error = true;
     return false;
   }
   AuxDataLocation* location = nullptr;
@@ -783,18 +788,21 @@ bool RecordFileReader::ReadAuxData(uint32_t cpu, uint64_t aux_offset, size_t siz
     }
   }
   if (location == nullptr) {
-    LOG(ERROR) << "failed to find file offset of aux data: cpu " << cpu << ", aux_offset "
-               << aux_offset << ", size " << size;
+    // ETM data can be dropped when recording if the userspace buffer is full. This isn't an error.
+    LOG(INFO) << "aux data is missing: cpu " << cpu << ", aux_offset " << aux_offset << ", size "
+              << size << ". Probably the data is lost when recording.";
     return false;
   }
-  if (buf->size() < size) {
-    buf->resize(size);
+  if (buf.size() < size) {
+    buf.resize(size);
   }
-  if (!ReadAtOffset(aux_offset - location->aux_offset + location->file_offset, buf->data(), size)) {
+  if (!ReadAtOffset(aux_offset - location->aux_offset + location->file_offset, buf.data(), size)) {
+    error = true;
     return false;
   }
   if (fseek(record_fp_, saved_pos, SEEK_SET) != 0) {
     PLOG(ERROR) << "fseek() failed";
+    error = true;
     return false;
   }
   return true;
@@ -802,10 +810,6 @@ bool RecordFileReader::ReadAuxData(uint32_t cpu, uint64_t aux_offset, size_t siz
 
 bool RecordFileReader::BuildAuxDataLocation() {
   std::vector<uint64_t> auxtrace_offset = ReadAuxTraceFeature();
-  if (auxtrace_offset.empty()) {
-    LOG(ERROR) << "failed to read auxtrace feature section";
-    return false;
-  }
   std::unique_ptr<char[]> buf(new char[AuxTraceRecord::Size()]);
   for (auto offset : auxtrace_offset) {
     if (!ReadAtOffset(offset, buf.get(), AuxTraceRecord::Size())) {

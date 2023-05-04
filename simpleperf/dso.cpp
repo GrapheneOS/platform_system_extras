@@ -1025,4 +1025,30 @@ bool GetBuildIdFromDsoPath(const std::string& dso_path, BuildId* build_id) {
   return false;
 }
 
+bool GetBuildId(const Dso& dso, BuildId& build_id) {
+  if (dso.type() == DSO_KERNEL) {
+    if (GetKernelBuildId(&build_id)) {
+      return true;
+    }
+  } else if (dso.type() == DSO_KERNEL_MODULE) {
+    bool has_build_id = false;
+    if (android::base::EndsWith(dso.Path(), ".ko")) {
+      return GetBuildIdFromDsoPath(dso.Path(), &build_id);
+    }
+    if (const std::string& path = dso.Path();
+        path.size() > 2 && path[0] == '[' && path.back() == ']') {
+      // For kernel modules that we can't find the corresponding file, read build id from /sysfs.
+      return GetModuleBuildId(path.substr(1, path.size() - 2), &build_id);
+    }
+  } else if (dso.type() == DSO_ELF_FILE) {
+    if (dso.Path() == DEFAULT_EXECNAME_FOR_THREAD_MMAP || dso.IsForJavaMethod()) {
+      return false;
+    }
+    if (GetBuildIdFromDsoPath(dso.Path(), &build_id)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace simpleperf
