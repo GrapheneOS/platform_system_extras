@@ -89,19 +89,24 @@ struct AutoFDOBinaryInfo {
 using AutoFDOBinaryCallback = std::function<void(const BinaryKey&, AutoFDOBinaryInfo&)>;
 using BranchListBinaryCallback = std::function<void(const BinaryKey&, BranchListBinaryInfo&)>;
 
-class ThreadTreeWithFilter : public ThreadTree {
+class ETMThreadTreeWithFilter : public ETMThreadTree {
  public:
   void ExcludePid(pid_t pid) { exclude_pid_ = pid; }
+  ThreadTree& GetThreadTree() { return thread_tree_; }
+  void DisableThreadExitRecords() override { thread_tree_.DisableThreadExitRecords(); }
 
-  ThreadEntry* FindThread(int tid) const override {
-    ThreadEntry* thread = ThreadTree::FindThread(tid);
+  const ThreadEntry* FindThread(int tid) override {
+    const ThreadEntry* thread = thread_tree_.FindThread(tid);
     if (thread != nullptr && exclude_pid_ && thread->pid == exclude_pid_) {
       return nullptr;
     }
     return thread;
   }
 
+  const MapSet& GetKernelMaps() override { return thread_tree_.GetKernelMaps(); }
+
  private:
+  ThreadTree thread_tree_;
   std::optional<pid_t> exclude_pid_;
 };
 
@@ -173,7 +178,7 @@ class PerfDataReader {
         thread_tree_.ExcludePid(pid);
       }
     }
-    if (!record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_)) {
+    if (!record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_.GetThreadTree())) {
       return false;
     }
     if (!record_file_reader_->ReadDataSection([this](auto r) { return ProcessRecord(r.get()); })) {
@@ -192,7 +197,7 @@ class PerfDataReader {
 
  private:
   bool ProcessRecord(Record* r) {
-    thread_tree_.Update(*r);
+    thread_tree_.GetThreadTree().Update(*r);
     if (r->type() == PERF_RECORD_AUXTRACE_INFO) {
       etm_decoder_ = ETMDecoder::Create(*static_cast<AuxTraceInfoRecord*>(r), thread_tree_);
       if (!etm_decoder_) {
@@ -293,7 +298,7 @@ class PerfDataReader {
   std::vector<uint8_t> aux_data_buffer_;
   std::unique_ptr<ETMDecoder> etm_decoder_;
   std::unique_ptr<RecordFileReader> record_file_reader_;
-  ThreadTreeWithFilter thread_tree_;
+  ETMThreadTreeWithFilter thread_tree_;
   uint64_t kernel_map_start_addr_ = 0;
   // Store results for AutoFDO.
   std::unordered_map<Dso*, AutoFDOBinaryInfo> autofdo_binary_map_;
