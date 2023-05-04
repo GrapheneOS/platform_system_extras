@@ -52,8 +52,9 @@ bool HasDeviceSupport() {
   return ret;
 }
 
-bool Record(const char* event_name, const char* output, float duration) {
-  LOG(INFO) << "Record " << event_name << ", duration " << duration << ", output " << output;
+bool Record(const char* event_name, const char* output, float duration, const char* binary_filter) {
+  LOG(INFO) << "Record " << event_name << ", duration " << duration << ", output " << output
+            << ", binary_filter " << binary_filter;
   // The kernel may panic when trying to hibernate or hotplug CPUs while collecting
   // ETM data. So get wakelock to keep the CPUs on.
   auto wakelock = android::wakelock::WakeLock::tryGet("profcollectd");
@@ -62,11 +63,17 @@ bool Record(const char* event_name, const char* output, float duration) {
     return false;
   }
   auto recordCmd = CreateCommandInstance("record");
-  std::vector<std::string> args;
-  args.push_back("-a");
-  args.insert(args.end(), {"-e", event_name});
-  args.insert(args.end(), {"--duration", std::to_string(duration)});
-  args.insert(args.end(), {"-o", output});
+  std::vector<std::string> args = {"-a",
+                                   "-e",
+                                   event_name,
+                                   "--duration",
+                                   std::to_string(duration),
+                                   "--decode-etm",
+                                   "--exclude-perf",
+                                   "--binary",
+                                   binary_filter,
+                                   "-o",
+                                   output};
   bool result = recordCmd->Run(args);
   LOG(INFO) << "Record result " << result;
   return result;
@@ -76,14 +83,8 @@ bool Inject(const char* traceInput, const char* profileOutput, const char* binar
   LOG(INFO) << "Inject traceInput " << traceInput << ", profileOutput " << profileOutput
             << ", binary_filter " << binary_filter;
   auto injectCmd = CreateCommandInstance("inject");
-  std::vector<std::string> args;
-  args.insert(args.end(), {"-i", traceInput});
-  args.insert(args.end(), {"-o", profileOutput});
-  if (binary_filter) {
-    args.insert(args.end(), {"--binary", binary_filter});
-  }
-  args.insert(args.end(), {"--output", "branch-list"});
-  args.emplace_back("--exclude-perf");
+  std::vector<std::string> args = {"-i",       traceInput,    "-o",       profileOutput,
+                                   "--output", "branch-list", "--binary", binary_filter};
   bool result = injectCmd->Run(args);
   LOG(INFO) << "Inject result " << result;
   return result;
