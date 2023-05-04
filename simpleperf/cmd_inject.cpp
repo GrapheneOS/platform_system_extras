@@ -317,10 +317,10 @@ class PerfDataReader {
       }
       size_t aux_size = aux->data->aux_size;
       if (aux_size > 0) {
+        bool error = false;
         if (!record_file_reader_->ReadAuxData(aux->Cpu(), aux->data->aux_offset, aux_size,
-                                              &aux_data_buffer_)) {
-          LOG(ERROR) << "failed to read aux data in " << filename_;
-          return false;
+                                              aux_data_buffer_, error)) {
+          return !error;
         }
         if (!etm_decoder_) {
           LOG(ERROR) << "ETMDecoder isn't created";
