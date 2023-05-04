@@ -76,3 +76,18 @@ pub fn process(trace_path: &Path, profile_path: &Path, binary_filter: &str) {
         );
     }
 }
+
+/// Save logs in file.
+pub fn set_log_file(filename: &Path) {
+    let log_file = path_to_cstr(filename);
+    unsafe {
+        simpleperf_profcollect_bindgen::SetLogFile(log_file.as_ptr());
+    }
+}
+
+/// Stop using log file.
+pub fn reset_log_file() {
+    unsafe {
+        simpleperf_profcollect_bindgen::ResetLogFile();
+    }
+}
