@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,15 +14,22 @@
  * limitations under the License.
  */
 
-#pragma once
+#include <gtest/gtest.h>
 
-#include <string>
-#include <vector>
+#include "ETMBranchListFile.h"
 
-namespace simpleperf {
+using namespace simpleperf;
 
-std::string BranchToProtoString(const std::vector<bool>& branch);
-
-std::vector<bool> ProtoStringToBranch(const std::string& s, size_t bit_size);
-
-}  // namespace simpleperf
+TEST(ETMBranchListFile, branch_to_proto_string) {
+  std::vector<bool> branch;
+  for (size_t i = 0; i < 100; i++) {
+    branch.push_back(i % 2 == 0);
+    std::string s = BranchToProtoString(branch);
+    for (size_t j = 0; j <= i; j++) {
+      bool b = s[j >> 3] & (1 << (j & 7));
+      ASSERT_EQ(b, branch[j]);
+    }
+    std::vector<bool> branch2 = ProtoStringToBranch(s, branch.size());
+    ASSERT_EQ(branch, branch2);
+  }
+}
