@@ -166,6 +166,7 @@ class ETMThreadTreeWhenRecording : public ETMThreadTree {
       : dump_maps_from_proc_(dump_maps_from_proc) {}
 
   ThreadTree& GetThreadTree() { return thread_tree_; }
+  void ExcludePid(pid_t pid) { exclude_pid_ = pid; }
 
   const ThreadEntry* FindThread(int tid) override {
     const ThreadEntry* thread = thread_tree_.FindThread(tid);
@@ -176,6 +177,9 @@ class ETMThreadTreeWhenRecording : public ETMThreadTree {
       if (thread == nullptr) {
         return nullptr;
       }
+    }
+    if (exclude_pid_ && exclude_pid_ == thread->pid) {
+      return nullptr;
     }
 
     if (dump_maps_from_proc_) {
@@ -213,11 +217,14 @@ class ETMThreadTreeWhenRecording : public ETMThreadTree {
   ThreadTree thread_tree_;
   bool dump_maps_from_proc_;
   std::unordered_set<int> dumped_processes_;
+  std::optional<pid_t> exclude_pid_;
 };
 
 class ETMBranchListGeneratorImpl : public ETMBranchListGenerator {
  public:
   ETMBranchListGeneratorImpl(bool dump_maps_from_proc) : thread_tree_(dump_maps_from_proc) {}
+
+  void SetExcludePid(pid_t pid) override { thread_tree_.ExcludePid(pid); }
 
   bool ProcessRecord(const Record& r, bool& consumed) override;
   BranchListBinaryMap GetBranchListBinaryMap() override;
