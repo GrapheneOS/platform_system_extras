@@ -726,7 +726,7 @@ class RecordingAppHelper {
     std::vector<std::string> args = android::base::Split(record_cmd, " ");
     // record_cmd may end with child command. We should put output options before it.
     args.emplace(args.begin(), "-o");
-    args.emplace(args.begin() + 1, perf_data_file_.path);
+    args.emplace(args.begin() + 1, GetDataPath());
     return RecordCmd()->Run(args);
   }
 
@@ -738,11 +738,14 @@ class RecordingAppHelper {
       }
       return success;
     };
-    ProcessSymbolsInPerfDataFile(perf_data_file_.path, callback);
+    ProcessSymbolsInPerfDataFile(GetDataPath(), callback);
+    if (!success) {
+      DumpData();
+    }
     return success;
   }
 
-  void DumpData() { CreateCommandInstance("report")->Run({"-i", perf_data_file_.path}); }
+  void DumpData() { CreateCommandInstance("report")->Run({"-i", GetDataPath()}); }
 
   std::string GetDataPath() const { return perf_data_file_.path; }
 
@@ -766,10 +769,7 @@ static void TestRecordingApps(const std::string& app_name, const std::string& ap
     return strstr(name, expected_class_name.c_str()) != nullptr &&
            strstr(name, expected_method_name.c_str()) != nullptr;
   };
-  if (!helper.CheckData(process_symbol)) {
-    helper.DumpData();
-    FAIL() << "Expected Java symbol doesn't exist in the profiling data";
-  }
+  ASSERT_TRUE(helper.CheckData(process_symbol));
 
   // Check app_package_name and app_type.
   auto reader = RecordFileReader::CreateInstance(helper.GetDataPath());
@@ -835,15 +835,18 @@ TEST(record_cmd, record_java_app) {
   }
 
   // Check perf.data by looking for java symbols.
+  const char* java_symbols[] = {
+      "androidx.test.runner",
+      "androidx.test.espresso",
+      "android.app.ActivityThread.main",
+  };
   auto process_symbol = [&](const char* name) {
-#if !defined(IN_CTS_TEST)
-    const char* expected_name_with_keyguard = "androidx.test.runner";  // when screen is locked
-    if (strstr(name, expected_name_with_keyguard) != nullptr) {
-      return true;
+    for (const char* java_symbol : java_symbols) {
+      if (strstr(name, java_symbol) != nullptr) {
+        return true;
+      }
     }
-#endif
-    const char* expected_name = "androidx.test.espresso";  // when screen stays awake
-    return strstr(name, expected_name) != nullptr;
+    return false;
   };
   ASSERT_TRUE(helper.CheckData(process_symbol));
 #else
