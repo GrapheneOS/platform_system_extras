@@ -754,6 +754,12 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     if (!loop->AddPeriodicEvent(SecondToTimeval(kDefaultEtmDataFlushPeriodInSec), etm_flush)) {
       return false;
     }
+
+    if (etm_branch_list_generator_) {
+      if (exclude_perf_) {
+        etm_branch_list_generator_->SetExcludePid(getpid());
+      }
+    }
   }
   return true;
 }

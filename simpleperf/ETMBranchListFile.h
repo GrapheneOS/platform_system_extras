@@ -110,6 +110,7 @@ class ETMBranchListGenerator {
   static std::unique_ptr<ETMBranchListGenerator> Create(bool dump_maps_from_proc);
 
   virtual ~ETMBranchListGenerator();
+  virtual void SetExcludePid(pid_t pid) = 0;
   virtual bool ProcessRecord(const Record& r, bool& consumed) = 0;
   virtual BranchListBinaryMap GetBranchListBinaryMap() = 0;
 };
