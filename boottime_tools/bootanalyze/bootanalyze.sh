@@ -25,6 +25,7 @@ CONFIG_YMAL="$ANDROID_BUILD_TOP/system/extras/boottime_tools/bootanalyze/config.
     $ANDROID_BUILD_TOP/system/extras/boottime_tools/bootanalyze/bootanalyze.sh
 
 Flags:
+-a : Uses "adb reboot" (instead of "adb shell su root svc power reboot") command to reboot
 -b : If set grabs bootchart
 -w : If set grabs carwatchdog perf stats
 '
@@ -52,11 +53,15 @@ fi
 echo "RESULTS_DIR=$RESULTS_DIR"
 mkdir -p $RESULTS_DIR
 
+ADB_REBOOT_FLAG=""
 BOOTCHART_FLAG=""
 CARWATCHDOG_FLAG=""
 
-while getopts 'bw' OPTION; do
+while getopts 'abw' OPTION; do
   case "$OPTION" in
+    a)
+      ADB_REBOOT_FLAG="-a"
+      ;;
     b)
       BOOTCHART_FLAG="-b"
       ;;
@@ -78,6 +83,7 @@ if [[ -z $LOOPS ]]; then
 	LOOPS=1
 fi
 echo "Analyzing boot-time for LOOPS=$LOOPS"
+BOOTCHART_TGZ="/tmp/android-bootchart/bootchart.tgz"
 START=1
 
 SLEEP_SEC=20
@@ -85,9 +91,17 @@ for (( l=$START; l<=$LOOPS; l++ )); do
     echo "Loop: $l"
     SECONDS=0
     mkdir $RESULTS_DIR/$l
-    $SCRIPT_DIR/bootanalyze.py -c $CONFIG_YMAL -G 4M -r $BOOTCHART_FLAG $CARWATCHDOG_FLAG -o "$RESULTS_DIR/$l" > "$RESULTS_DIR/$l/boot.txt"
+    $SCRIPT_DIR/bootanalyze.py -c $CONFIG_YMAL -G 4M -r \
+        $ADB_REBOOT_FLAG $BOOTCHART_FLAG $CARWATCHDOG_FLAG \
+        -o "$RESULTS_DIR/$l" 1> "$RESULTS_DIR/$l/boot.txt"
+    if [[ $? -ne 0 ]]; then
+        echo "bootanalyze.py failed"
+        exit 1
+    fi
     echo "$SECONDS sec."
-    cp /tmp/android-bootchart/bootchart.tgz "$RESULTS_DIR/$l/bootchart.tgz"
+    if [ -f "$BOOTCHART_TGZ" ]; then
+        cp $BOOTCHART_TGZ "$RESULTS_DIR/$l/bootchart.tgz"
+    fi
     echo "Sleep for $SLEEP_SEC sec."
     sleep $SLEEP_SEC
 done
