@@ -32,11 +32,18 @@ use zip::ZipWriter;
 
 use crate::config::Config;
 
+pub const NO_USAGE_SETTING: i32 = -1;
+
 lazy_static! {
     pub static ref UUID_CONTEXT: Context = Context::new(0);
 }
 
-pub fn pack_report(profile: &Path, report: &Path, config: &Config) -> Result<String> {
+pub fn pack_report(
+    profile: &Path,
+    report: &Path,
+    config: &Config,
+    usage_setting: i32,
+) -> Result<String> {
     let mut report = PathBuf::from(report);
     let report_filename = get_report_filename(&config.node_id)?;
     report.push(&report_filename);
@@ -70,6 +77,11 @@ pub fn pack_report(profile: &Path, report: &Path, config: &Config) -> Result<Str
             zip.write_all(&buffer)?;
             Ok(())
         })?;
+
+    if usage_setting != NO_USAGE_SETTING {
+        zip.start_file("usage_setting", options)?;
+        zip.write_all(usage_setting.to_string().as_bytes())?;
+    }
     zip.finish()?;
 
     Ok(report_filename)
