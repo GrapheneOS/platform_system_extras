@@ -388,9 +388,10 @@ bool SetPerfEventLimits(uint64_t sample_freq, size_t cpu_percent, uint64_t mlock
   }
   // Wait for init process to change perf event limits based on properties.
   const size_t max_wait_us = 3 * 1000000;
+  const size_t interval_us = 10000;
   int finish_mask = 0;
-  for (size_t i = 0; i < max_wait_us && finish_mask != 7; ++i) {
-    usleep(1);  // Wait 1us to avoid busy loop.
+  for (size_t i = 0; i < max_wait_us && finish_mask != 7; i += interval_us) {
+    usleep(interval_us);  // Wait 10ms to avoid busy loop.
     if ((finish_mask & 1) == 0) {
       uint64_t freq;
       if (!GetMaxSampleFrequency(&freq) || freq == sample_freq) {
