@@ -74,16 +74,17 @@ void ReadSymbol(std::string_view content, std::vector<Symbol>* symbols) {
     return;
   }
 
-  auto name = ConsumeWord(content);
-  if (!name) {
+  // Interpret the rest of the line as the symbol name, after stripping leading
+  // and trailing spaces.
+  size_t symbol_begin = content.find_first_not_of(" \t");
+  if (symbol_begin == content.npos) {
     return;
   }
+  size_t symbol_end = content.find_last_not_of(" \t") + 1;
 
-  if (ConsumeWord(content)) {
-    return;
-  }
+  auto name = content.substr(symbol_begin, symbol_end - symbol_begin);
 
-  symbols->emplace_back(name.value(), addr.value(), size.value());
+  symbols->emplace_back(name, addr.value(), size.value());
 }
 
 }  // namespace

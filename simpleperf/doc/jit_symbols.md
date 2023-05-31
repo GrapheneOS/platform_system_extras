@@ -44,6 +44,9 @@ For example:
 0x20002004 0x8 jit_symbol_three
 ```
 
+All characters after the symbol size and until the end of the line are parsed as the symbol name,
+with leading and trailing spaces removed. This means spaces are allowed in symbol names themselves.
+
 ### Known issues
 
 Current implementation gets confused if memory pages where JIT symbols reside are reused by mapping
