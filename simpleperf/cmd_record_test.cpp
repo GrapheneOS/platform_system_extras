@@ -269,24 +269,10 @@ bool IsInNativeAbi() {
   return in_native_abi == 1;
 }
 
-static bool InCloudAndroid() {
-#if defined(__i386__) || defined(__x86_64__)
-#if defined(__ANDROID__)
-  std::string prop_value = android::base::GetProperty("ro.build.flavor", "");
-  if (android::base::StartsWith(prop_value, "cf_x86_phone") ||
-      android::base::StartsWith(prop_value, "aosp_cf_x86_phone")) {
-    return true;
-  }
-#endif
-#endif
-  return false;
-}
-
 bool HasTracepointEvents() {
   static int has_tracepoint_events = -1;
   if (has_tracepoint_events == -1) {
-    // Cloud Android doesn't support tracepoint events.
-    has_tracepoint_events = InCloudAndroid() ? 0 : 1;
+    has_tracepoint_events = (GetTraceFsDir() != nullptr) ? 1 : 0;
   }
   return has_tracepoint_events == 1;
 }
@@ -294,9 +280,15 @@ bool HasTracepointEvents() {
 bool HasHardwareCounter() {
   static int has_hw_counter = -1;
   if (has_hw_counter == -1) {
-    // Cloud Android doesn't have hardware counters.
-    has_hw_counter = InCloudAndroid() ? 0 : 1;
-#if defined(__arm__)
+    has_hw_counter = 1;
+#if defined(__x86__) || defined(__x86_64__)
+    // On x86 and x86_64, it's likely to run on an emulator or vm without hardware perf counters.
+    // It's hard to enumerate them all. So check the support at runtime.
+    const EventType* type = FindEventTypeByName("cpu-cycles", false);
+    CHECK(type != nullptr);
+    perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
+    has_hw_counter = IsEventAttrSupported(attr, "cpu-cycles") ? 1 : 0;
+#elif defined(__arm__)
     std::string cpu_info;
     if (android::base::ReadFileToString("/proc/cpuinfo", &cpu_info)) {
       std::string hardware = GetHardwareFromCpuInfo(cpu_info);
@@ -307,7 +299,7 @@ bool HasHardwareCounter() {
         has_hw_counter = 0;
       }
     }
-#endif
+#endif  // defined(__arm__)
   }
   return has_hw_counter == 1;
 }
