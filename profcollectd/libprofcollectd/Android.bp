@@ -56,7 +56,7 @@ rust_library {
         "libzip",
     ],
     rlibs: [
-        "libprofcollect_libflags_rust",
+        "libflags_rust",
         "libsimpleperf_profcollect_rust",
     ],
     shared_libs: ["libsimpleperf_profcollect"],
