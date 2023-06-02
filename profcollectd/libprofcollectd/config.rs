@@ -115,7 +115,7 @@ where
     T::Err: Error + Send + Sync + 'static,
 {
     let default_value = default_value.to_string();
-    let config = profcollect_libflags_rust::GetServerConfigurableFlag(
+    let config = flags_rust::GetServerConfigurableFlag(
         PROFCOLLECT_CONFIG_NAMESPACE,
         key,
         &default_value,
