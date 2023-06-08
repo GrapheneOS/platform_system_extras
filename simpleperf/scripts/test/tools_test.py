@@ -207,7 +207,7 @@ system/extras/simpleperf/runtest/two_functions.cpp:21:3
                 'expected_items': [
                     ('main', 0),
                     ('two_functions.cpp:20', 0),
-                    ('1134:      	add	x29, sp, #16', 0x1134),
+                    ('1134:      	add	x29, sp, #0x10', 0x1134),
                 ],
             },
             '/simpleperf_runtest_two_functions_arm': {
@@ -225,7 +225,7 @@ system/extras/simpleperf/runtest/two_functions.cpp:21:3
                 'expected_items': [
                     ('main', 0),
                     ('two_functions.cpp:20', 0),
-                    (r'19f0:      	movl	%eax, 9314(%rip)', 0x19f0),
+                    (r'19f0:      	movl	%eax, 0x2462(%rip)', 0x19f0),
                 ],
             },
             '/simpleperf_runtest_two_functions_x86': {
@@ -234,7 +234,7 @@ system/extras/simpleperf/runtest/two_functions.cpp:21:3
                 'expected_items': [
                     ('main', 0),
                     ('two_functions.cpp:20', 0),
-                    (r'16f7:      	cmpl	$100000000, %ecx', 0x16f7),
+                    (r'16f7:      	cmpl	$0x5f5e100, %ecx', 0x16f7),
                 ],
             },
         }
