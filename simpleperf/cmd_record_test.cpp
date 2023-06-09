@@ -281,25 +281,27 @@ bool HasHardwareCounter() {
   static int has_hw_counter = -1;
   if (has_hw_counter == -1) {
     has_hw_counter = 1;
-#if defined(__x86__) || defined(__x86_64__)
-    // On x86 and x86_64, it's likely to run on an emulator or vm without hardware perf counters.
-    // It's hard to enumerate them all. So check the support at runtime.
-    const EventType* type = FindEventTypeByName("cpu-cycles", false);
-    CHECK(type != nullptr);
-    perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
-    has_hw_counter = IsEventAttrSupported(attr, "cpu-cycles") ? 1 : 0;
-#elif defined(__arm__)
-    std::string cpu_info;
-    if (android::base::ReadFileToString("/proc/cpuinfo", &cpu_info)) {
-      std::string hardware = GetHardwareFromCpuInfo(cpu_info);
-      if (std::regex_search(hardware, std::regex(R"(i\.MX6.*Quad)")) ||
-          std::regex_search(hardware, std::regex(R"(SC7731e)")) ||
-          std::regex_search(hardware, std::regex(R"(Qualcomm Technologies, Inc MSM8909)")) ||
-          std::regex_search(hardware, std::regex(R"(Broadcom STB \(Flattened Device Tree\))"))) {
-        has_hw_counter = 0;
+    auto arch = GetBuildArch();
+    if (arch == ARCH_X86_64 || arch == ARCH_X86_32 || !IsInNativeAbi()) {
+      // On x86 and x86_64, or when we are not in native abi, it's likely to run on an emulator or
+      // vm without hardware perf counters. It's hard to enumerate them all. So check the support
+      // at runtime.
+      const EventType* type = FindEventTypeByName("cpu-cycles", false);
+      CHECK(type != nullptr);
+      perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
+      has_hw_counter = IsEventAttrSupported(attr, "cpu-cycles") ? 1 : 0;
+    } else if (arch == ARCH_ARM) {
+      std::string cpu_info;
+      if (android::base::ReadFileToString("/proc/cpuinfo", &cpu_info)) {
+        std::string hardware = GetHardwareFromCpuInfo(cpu_info);
+        if (std::regex_search(hardware, std::regex(R"(i\.MX6.*Quad)")) ||
+            std::regex_search(hardware, std::regex(R"(SC7731e)")) ||
+            std::regex_search(hardware, std::regex(R"(Qualcomm Technologies, Inc MSM8909)")) ||
+            std::regex_search(hardware, std::regex(R"(Broadcom STB \(Flattened Device Tree\))"))) {
+          has_hw_counter = 0;
+        }
       }
     }
-#endif  // defined(__arm__)
   }
   return has_hw_counter == 1;
 }
