@@ -109,13 +109,18 @@ class BinarySourceFromDevice(BinarySource):
         else:
             logging.info('pull file to binary_cache: %s to %s', path, binary_cache_file)
             target_dir = binary_cache_file.parent
-            if not target_dir.is_dir():
-                os.makedirs(target_dir)
-            if binary_cache_file.is_file():
-                binary_cache_file.unlink()
-            self.pull_file_from_device(path, binary_cache_file)
+            try:
+                os.makedirs(target_dir, exist_ok=True)
+                if binary_cache_file.is_file():
+                    binary_cache_file.unlink()
+                success = self.pull_file_from_device(path, binary_cache_file)
+            except FileNotFoundError:
+                # It happens on windows when the filename or extension is too long.
+                success = False
+            if not success:
+                logging.warning('failed to pull %s from device', path)
 
-    def pull_file_from_device(self, device_path: str, host_path: Path):
+    def pull_file_from_device(self, device_path: str, host_path: Path) -> bool:
         if self.adb.run(['pull', device_path, str(host_path)]):
             return True
         # On non-root devices, we can't pull /data/app/XXX/base.odex directly.
@@ -125,7 +130,6 @@ class BinarySourceFromDevice(BinarySource):
                 self.adb.run(['pull', '/data/local/tmp/' + filename, host_path])):
             self.adb.run(['shell', 'rm', '/data/local/tmp/' + filename])
             return True
-        logging.warning('failed to pull %s from device', device_path)
         return False
 
     def pull_kernel_symbols(self, file_path: Path):
