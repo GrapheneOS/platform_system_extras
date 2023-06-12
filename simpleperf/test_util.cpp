@@ -80,9 +80,10 @@ bool HasHardwareCounter() {
     bool is_emulator = android::base::StartsWith(fingerprint, "google/sdk_gphone") ||
                        android::base::StartsWith(fingerprint, "generic/cf");
 
-    if (arch == ARCH_X86_64 || arch == ARCH_X86_32 || is_emulator) {
-      // On x86 and x86_64, it's likely to run on an emulator or vm without hardware perf
-      // counters. It's hard to enumerate them all. So check the support at runtime.
+    if (arch == ARCH_X86_64 || arch == ARCH_X86_32 || !IsInNativeAbi() || is_emulator) {
+      // On x86 and x86_64, or when we are not in native abi, it's likely to run on an emulator or
+      // vm without hardware perf counters. It's hard to enumerate them all. So check the support
+      // at runtime.
       const simpleperf::EventType* type = simpleperf::FindEventTypeByName("cpu-cycles", false);
       CHECK(type != nullptr);
       perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
