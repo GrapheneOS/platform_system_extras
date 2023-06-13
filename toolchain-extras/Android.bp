@@ -98,7 +98,10 @@ cc_library_static {
 cc_library_static {
     name: "libprofile-clang-extras_cfi_support",
     defaults: ["libprofile-clang-platform-defaults"],
-
+    apex_available: [
+        "//apex_available:platform",
+        "//apex_available:anyapex",
+    ],
     sanitize: {
         cfi: true,
         config: {
