@@ -210,7 +210,7 @@ class RecordCommand : public Command {
 "--call-graph fp | dwarf[,<dump_stack_size>]\n"
 "             Enable call graph recording. Use frame pointer or dwarf debug\n"
 "             frame as the method to parse call graph in stack.\n"
-"             Default is dwarf,65528.\n"
+"             Default is no call graph. Default dump_stack_size with -g is 65528.\n"
 "-g           Same as '--call-graph dwarf'.\n"
 "--clockid clock_id      Generate timestamps of samples using selected clock.\n"
 "                        Possible values are: realtime, monotonic,\n"
