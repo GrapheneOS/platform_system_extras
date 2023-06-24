@@ -202,22 +202,24 @@ TEST(cmd_report_sample, show_art_jni_methods) {
 
 TEST(cmd_report_sample, show_unwinding_result) {
   std::string data;
-  GetProtobufReport("perf_with_failed_unwinding_debug_info.data", &data, {"--show-callchain"});
+  GetProtobufReport("perf_with_failed_unwinding_debug_info.data", &data,
+                    {"--show-callchain", "--remove-gaps", "0"});
   ASSERT_NE(data.find("error_code: ERROR_INVALID_MAP"), std::string::npos);
 }
 
 TEST(cmd_report_sample, proguard_mapping_file_option) {
   std::string data;
   // Symbols aren't de-obfuscated without proguard mapping file.
-  GetProtobufReport("perf_need_proguard_mapping.data", &data, {"--show-callchain"});
+  GetProtobufReport("perf_need_proguard_mapping.data", &data,
+                    {"--show-callchain", "--remove-gaps", "0"});
   ASSERT_EQ(data.find("androidx.fragment.app.FragmentActivity.startActivityForResult"),
             std::string::npos);
   ASSERT_EQ(data.find("com.example.android.displayingbitmaps.ui.ImageGridFragment.onItemClick"),
             std::string::npos);
   // Symbols are de-obfuscated with proguard mapping file.
-  GetProtobufReport(
-      "perf_need_proguard_mapping.data", &data,
-      {"--show-callchain", "--proguard-mapping-file", GetTestData("proguard_mapping.txt")});
+  GetProtobufReport("perf_need_proguard_mapping.data", &data,
+                    {"--show-callchain", "--proguard-mapping-file",
+                     GetTestData("proguard_mapping.txt"), "--remove-gaps", "0"});
   ASSERT_NE(data.find("androidx.fragment.app.FragmentActivity.startActivityForResult"),
             std::string::npos);
   ASSERT_NE(data.find("com.example.android.displayingbitmaps.ui.ImageGridFragment.onItemClick"),
@@ -274,4 +276,26 @@ TEST(cmd_report_sample, filter_file_option) {
   GetProtobufReport("perf_display_bitmaps.data", &data, {"--filter-file", tmpfile.path});
   ASSERT_NE(data.find("thread_id: 31881"), std::string::npos);
   ASSERT_EQ(data.find("thread_id: 31850"), std::string::npos);
+}
+
+TEST(cmd_report_sample, remove_gaps_option) {
+  auto get_sample_count = [](const std::string& s) {
+    size_t count = 0;
+    ssize_t pos = 0;
+    while ((pos = s.find("\nsample ", pos)) != s.npos) {
+      ++count;
+      pos += strlen("\nsample ");
+    }
+    return count;
+  };
+
+  std::string data;
+  // By default, `--remove-gaps 3` is used.
+  GetProtobufReport("perf_display_bitmaps.data", &data, {"--show-callchain"});
+  ASSERT_EQ(get_sample_count(data), 517);
+  ASSERT_NE(data.find("sample_count: 517"), std::string::npos) << data;
+  // We can disable removing gaps by using `--remove-gaps 0`.
+  GetProtobufReport("perf_display_bitmaps.data", &data, {"--show-callchain", "--remove-gaps", "0"});
+  ASSERT_EQ(get_sample_count(data), 525);
+  ASSERT_NE(data.find("sample_count: 525"), std::string::npos);
 }
