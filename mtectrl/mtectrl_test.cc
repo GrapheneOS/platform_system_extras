@@ -42,6 +42,9 @@ std::string GetMisc() {
 std::string TestProperty() {
   return android::base::GetProperty("arm64.memtag.test_bootctl", "");
 }
+std::string TestFlag() {
+  return android::base::GetProperty("arm64.memtag.test_bootctl_loaded", "");
+}
 }  // namespace
 
 class MteCtrlTest : public ::testing::Test {
@@ -52,6 +55,7 @@ class MteCtrlTest : public ::testing::Test {
     CHECK(ftruncate(fd, sizeof(misc_memtag_message)) != -1);
     close(fd);
     android::base::SetProperty("arm64.memtag.test_bootctl", "INVALID");
+    android::base::SetProperty("arm64.memtag.test_bootctl_loaded", "0");
   }
   void TearDown() override {
     CHECK(unlink("/data/local/tmp/misc_memtag") == 0);
@@ -85,16 +89,18 @@ TEST_F(MteCtrlTest, set_memtag_force_off) {
 
 TEST_F(MteCtrlTest, read_memtag) {
   ASSERT_EQ(mtectrl("memtag"), 0);
-  ASSERT_EQ(mtectrl("-s arm64.memtag.test_bootctl"), 0);
+  ASSERT_EQ(mtectrl("-s arm64.memtag.test_bootctl -f arm64.memtag.test_bootctl_loaded"), 0);
   EXPECT_EQ(TestProperty(), "memtag");
+  EXPECT_EQ(TestFlag(), "1");
 }
 
 TEST_F(MteCtrlTest, read_invalid_memtag_message) {
   misc_memtag_message m = {.version = 1, .magic = 0xffff, .memtag_mode = MISC_MEMTAG_MODE_MEMTAG};
   std::string m_str(reinterpret_cast<char*>(&m), sizeof(m));
   android::base::WriteStringToFile(m_str, "/data/local/tmp/misc_memtag");
-  ASSERT_EQ(mtectrl("-s arm64.memtag.test_bootctl"), 0);
-  EXPECT_EQ(TestProperty(), "");
+  ASSERT_EQ(mtectrl("-s arm64.memtag.test_bootctl -f arm64.memtag.test_bootctl_loaded"), 0);
+  EXPECT_EQ(TestProperty(), "none");
+  EXPECT_EQ(TestFlag(), "1");
 }
 
 TEST_F(MteCtrlTest, read_invalid_memtag_mode) {
@@ -103,8 +109,9 @@ TEST_F(MteCtrlTest, read_invalid_memtag_mode) {
                            .memtag_mode = MISC_MEMTAG_MODE_MEMTAG | 1u << 31};
   std::string m_str(reinterpret_cast<char*>(&m), sizeof(m));
   android::base::WriteStringToFile(m_str, "/data/local/tmp/misc_memtag");
-  ASSERT_NE(mtectrl("-s arm64.memtag.test_bootctl"), 0);
+  ASSERT_NE(mtectrl("-s arm64.memtag.test_bootctl -f arm64.memtag.test_bootctl_loaded"), 0);
   EXPECT_EQ(TestProperty(), "memtag");
+  EXPECT_EQ(TestFlag(), "1");
 }
 
 TEST_F(MteCtrlTest, set_read_memtag) {
@@ -124,8 +131,9 @@ TEST_F(MteCtrlTest, override) {
 }
 
 TEST_F(MteCtrlTest, read_empty) {
-  ASSERT_EQ(mtectrl("-s arm64.memtag.test_bootctl"), 0);
-  EXPECT_EQ(TestProperty(), "");
+  ASSERT_EQ(mtectrl("-s arm64.memtag.test_bootctl -f arm64.memtag.test_bootctl_loaded"), 0);
+  EXPECT_EQ(TestProperty(), "none");
+  EXPECT_EQ(TestFlag(), "1");
 }
 
 TEST_F(MteCtrlTest, force_off_invalid_mode) {
