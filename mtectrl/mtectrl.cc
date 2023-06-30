@@ -47,6 +47,7 @@ bool UpdateProp(const char* prop_name, const misc_memtag_message& m) {
   if (CheckAndUnset(mode, MISC_MEMTAG_MODE_MEMTAG_KERNEL_ONCE))
     AddItem(&prop_str, "memtag-kernel-once");
   if (CheckAndUnset(mode, MISC_MEMTAG_MODE_MEMTAG_OFF)) AddItem(&prop_str, "memtag-off");
+  if (prop_str.empty()) prop_str = "none";
   if (android::base::GetProperty(prop_name, "") != prop_str)
     android::base::SetProperty(prop_name, prop_str);
   if (mode) {
@@ -68,6 +69,7 @@ void PrintUsage(const char* progname) {
       << "USAGE: " << progname
       << "\n"
          "      [-s PROPERTY_NAME]\n"
+         "      [-f PROPERTY_NAME]\n"
          "      [none,][memtag,][memtag-once,][memtag-kernel,][memtag-kernel-once,][memtag-off,]\n"
          "      [default|force_on|force_off]\n"
          "      [-t PATH_TO_FAKE_MISC_PARTITION]\n"
@@ -76,6 +78,9 @@ void PrintUsage(const char* progname) {
          "  -s PROPERTY_NAME\n"
          "      Sets the system property 'PROPERTY_NAME' to the new MTE mode (if provided), or to\n"
          "      the current value from the /misc partition.\n"
+         "  -f PROPERTY_NAME\n"
+         "      Used in combination with -s without a new MTE mode and sets the system property\n"
+         "      'PROPERTY_NAME' to 1 after reading the current value from the /misc partition\n"
          "  [none,][memtag,][memtag-once,][memtag-kernel,][memtag-kernel-once,][memtag-off,]\n"
          "      A set of MTE options to be applied, if provided. Multiple options may be\n"
          "      specified as a ','-delimited list, e.g. 'memtag,memtag-kernel'.\n"
@@ -138,8 +143,30 @@ bool HandleOverride(const std::string& override_value, misc_memtag_message* m) {
   return true;
 }
 
+int DoSetProp(const std::function<bool(misc_memtag_message*, std::string*)>& read_memtag_message,
+              const char* set_prop) {
+  // -s <property> is given on its own. This means we want to read the state
+  // of the misc partition into the property.
+  std::string err;
+  misc_memtag_message m = {};
+  if (!read_memtag_message(&m, &err)) {
+    LOG(ERROR) << "Failed to read memtag message: " << err;
+    return 1;
+  }
+  if (m.magic != MISC_MEMTAG_MAGIC_HEADER || m.version != MISC_MEMTAG_MESSAGE_VERSION) {
+    // This should not fail by construction.
+    CHECK(UpdateProp(set_prop, {}));
+    // This is an expected case, as the partition gets initialized to all zero.
+    return 0;
+  }
+  // Unlike above, setting the system property here can fail if the misc partition
+  // was corrupted by another program (e.g. the bootloader).
+  return UpdateProp(set_prop, m) ? 0 : 1;
+}
+
 int main(int argc, char** argv) {
   const char* set_prop = nullptr;
+  const char* flag_prop = nullptr;
   int opt;
   std::function<bool(misc_memtag_message*, std::string*)> read_memtag_message =
       ReadMiscMemtagMessage;
@@ -147,7 +174,7 @@ int main(int argc, char** argv) {
       WriteMiscMemtagMessage;
 
   android::base::unique_fd fake_partition_fd;
-  while ((opt = getopt(argc, argv, "s:t:")) != -1) {
+  while ((opt = getopt(argc, argv, "s:t:f:")) != -1) {
     switch (opt) {
       case 's':
         // Set property in argument to state of misc partition. If given by
@@ -157,6 +184,9 @@ int main(int argc, char** argv) {
         // Otherwise, applies new state and then sets property to newly applied
         // state.
         set_prop = optarg;
+        break;
+      case 'f':
+        flag_prop = optarg;
         break;
       case 't': {
         // Use different fake misc partition for testing.
@@ -184,35 +214,22 @@ int main(int argc, char** argv) {
   const char* value = optind < argc ? argv[optind++] : nullptr;
   const char* override_value = optind < argc ? argv[optind++] : nullptr;
 
-  if (optind != argc) {  // Unknown argument.
+  if ((optind != argc) ||       // Unknown argument.
+      (value && flag_prop) ||   // -f is only valid when no value given
+      (!value && !set_prop)) {  // value must be given if -s is not
     PrintUsage(argv[0]);
     return 1;
   }
 
   if (!value && set_prop) {
-    // -s <property> is given on its own. This means we want to read the state
-    // of the misc partition into the property.
-    std::string err;
-    misc_memtag_message m = {};
-    if (!read_memtag_message(&m, &err)) {
-      LOG(ERROR) << "Failed to read memtag message: " << err;
-      return 1;
+    int ret = DoSetProp(read_memtag_message, set_prop);
+    if (flag_prop) {
+      android::base::SetProperty(flag_prop, "1");
     }
-    if (m.magic != MISC_MEMTAG_MAGIC_HEADER || m.version != MISC_MEMTAG_MESSAGE_VERSION) {
-      // This should not fail by construction.
-      CHECK(UpdateProp(set_prop, {}));
-      // This is an expected case, as the partition gets initialized to all zero.
-      return 0;
-    }
-    // Unlike above, setting the system property here can fail if the misc partition
-    // was corrupted by another program (e.g. the bootloader).
-    return UpdateProp(set_prop, m) ? 0 : 1;
+    return ret;
   }
 
-  if (!value) {
-    PrintUsage(argv[0]);
-    return 1;
-  }
+  CHECK(value);
 
   misc_memtag_message m = {.version = MISC_MEMTAG_MESSAGE_VERSION,
                            .magic = MISC_MEMTAG_MAGIC_HEADER};
