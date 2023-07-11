@@ -80,11 +80,6 @@ cc_defaults {
             compile_multilib: "both",
         },
     },
-    arch: {
-        riscv64: {
-            enabled: false,
-        },
-    },
 }
 
 // linked as a separate library because using OpenCSD headers needs to enable exception
