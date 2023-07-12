@@ -54,6 +54,7 @@ cc_defaults {
                 "-DUSE_BIONIC_UAPI_HEADERS",
                 "-fvisibility=hidden",
             ],
+            compile_multilib: "64",
             include_dirs: ["bionic/libc/kernel"],
         },
         darwin: {
@@ -63,6 +64,9 @@ cc_defaults {
         windows: {
             cflags: ["-DNO_LIBDEXFILE_SUPPORT"],
             local_include_dirs: ["nonlinux_support/include"],
+        },
+        android: {
+            compile_multilib: "both",
         },
     },
     arch: {
@@ -305,7 +309,6 @@ cc_library_static {
         "libsimpleperf_srcs",
         "simpleperf_static_libs",
     ],
-    compile_multilib: "both",
     proto: {
         type: "lite",
     },
@@ -336,6 +339,7 @@ cc_binary {
     static_libs: ["libsimpleperf"],
     target: {
         android: {
+            compile_multilib: "first",
             shared_libs: [
                 "libLLVM_android",
             ],
@@ -391,19 +395,17 @@ cc_binary {
     dist: {
         targets: ["simpleperf"],
     },
+    multilib: {
+        lib32: {
+            suffix: "32",
+        },
+    },
     srcs: [
         "main.cpp",
     ],
     static_libs: [
         "libsimpleperf",
     ],
-
-    compile_multilib: "both",
-    multilib: {
-        lib64: {
-            suffix: "64",
-        },
-    },
 
     target: {
         android: {
@@ -431,6 +433,9 @@ cc_binary {
             dist: {
                 dir: "simpleperf/android/x86_64",
             },
+        },
+        host: {
+            stem: "simpleperf",
         },
         darwin: {
             dist: {
