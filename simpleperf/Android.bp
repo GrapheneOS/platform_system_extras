@@ -32,18 +32,29 @@ license {
 }
 
 cc_defaults {
-    name: "libsimpleperf_elf_read_static_reqs_defaults",
-    static_libs: [
-        "libLLVMObject",
-        "libLLVMBitReader",
-        "libLLVMMC",
-        "libLLVMMCParser",
-        "libLLVMCore",
-        "libLLVMSupport",
-        "liblzma",
-        "libz",
-        "libziparchive",
-    ],
+    name: "libsimpleperf_readelf_defaults",
+    target: {
+        android: {
+            static_libs: [
+                "libsimpleperf_readelf",
+            ],
+        },
+        host: {
+            // libsimpleperf_readelf on host depends on prebuilt libc++. So use old llvm
+            // libraries until we switch to prebuilt libc++.
+            cflags: [
+                "-DUSE_OLD_LLVM",
+            ],
+            static_libs: [
+                "libLLVMObject",
+                "libLLVMBitReader",
+                "libLLVMMC",
+                "libLLVMMCParser",
+                "libLLVMCore",
+                "libLLVMSupport",
+            ],
+        },
+    },
 }
 
 cc_defaults {
@@ -54,6 +65,7 @@ cc_defaults {
                 "-DUSE_BIONIC_UAPI_HEADERS",
                 "-fvisibility=hidden",
             ],
+            compile_multilib: "64",
             include_dirs: ["bionic/libc/kernel"],
         },
         darwin: {
@@ -64,10 +76,8 @@ cc_defaults {
             cflags: ["-DNO_LIBDEXFILE_SUPPORT"],
             local_include_dirs: ["nonlinux_support/include"],
         },
-    },
-    arch: {
-        riscv64: {
-            enabled: false,
+        android: {
+            compile_multilib: "both",
         },
     },
 }
@@ -77,7 +87,7 @@ cc_library_static {
     name: "libsimpleperf_etm_decoder",
     defaults: [
         "simpleperf_cflags",
-        "libsimpleperf_elf_read_static_reqs_defaults",
+        "libsimpleperf_readelf_defaults",
     ],
     host_supported: true,
     srcs: ["ETMDecoder.cpp"],
@@ -120,7 +130,7 @@ cc_library_static {
 cc_defaults {
     name: "simpleperf_static_libs",
     defaults: [
-        "libsimpleperf_elf_read_static_reqs_defaults",
+        "libsimpleperf_readelf_defaults",
         "simpleperf_cflags",
     ],
     host_supported: true,
@@ -129,9 +139,12 @@ cc_defaults {
         "libsimpleperf_regex",
         "libbase",
         "liblog",
+        "liblzma",
         "libutils",
         "libprotobuf-cpp-lite",
         "libopencsd_decoder",
+        "libz",
+        "libziparchive",
     ],
     target: {
         linux: {
@@ -162,12 +175,15 @@ cc_defaults {
     name: "simpleperf_shared_libs",
     defaults: [
         "simpleperf_cflags",
+        "libsimpleperf_readelf_defaults",
     ],
     host_supported: true,
     shared_libs: [
         "libbase",
+        "liblog",
         "liblzma",
         "libprotobuf-cpp-lite",
+        "libz",
         "libziparchive",
     ],
     static_libs: [
@@ -180,7 +196,6 @@ cc_defaults {
             shared_libs: [
                 "libcutils",
                 "libevent",
-                "liblog",
                 "libprocinfo",
                 "libunwindstack",
             ],
@@ -193,39 +208,11 @@ cc_defaults {
                 "libdexfile", // libdexfile_support dependency
             ],
         },
-        host: {
-            static_libs: [
-                "libLLVMObject",
-                "libLLVMBitReader",
-                "libLLVMMC",
-                "libLLVMMCParser",
-                "libLLVMCore",
-                "libLLVMSupport",
-            ],
-        },
         windows: {
             enabled: true,
         },
     },
     use_version_lib: true,
-}
-
-cc_defaults {
-    name: "simpleperf_libs_for_tests",
-    defaults: ["simpleperf_shared_libs"],
-    target: {
-        android: {
-            // 32-bit libLLVM_android isn't shipped on device. So use static llvm libs in tests.
-            static_libs: [
-                "libLLVMObject",
-                "libLLVMBitReader",
-                "libLLVMMC",
-                "libLLVMMCParser",
-                "libLLVMCore",
-                "libLLVMSupport",
-            ],
-        },
-    },
 }
 
 cc_defaults {
@@ -305,7 +292,6 @@ cc_library_static {
         "libsimpleperf_srcs",
         "simpleperf_static_libs",
     ],
-    compile_multilib: "both",
     proto: {
         type: "lite",
     },
@@ -336,9 +322,7 @@ cc_binary {
     static_libs: ["libsimpleperf"],
     target: {
         android: {
-            shared_libs: [
-                "libLLVM_android",
-            ],
+            compile_multilib: "first",
         },
     },
     init_rc: ["simpleperf.rc"],
@@ -351,7 +335,6 @@ cc_library {
     host_supported: false,
     static_libs: ["libsimpleperf"],
     shared_libs: [
-        "libLLVM_android",
         "libpower",
     ],
 }
@@ -391,19 +374,17 @@ cc_binary {
     dist: {
         targets: ["simpleperf"],
     },
+    multilib: {
+        lib32: {
+            suffix: "32",
+        },
+    },
     srcs: [
         "main.cpp",
     ],
     static_libs: [
         "libsimpleperf",
     ],
-
-    compile_multilib: "both",
-    multilib: {
-        lib64: {
-            suffix: "64",
-        },
-    },
 
     target: {
         android: {
@@ -431,6 +412,9 @@ cc_binary {
             dist: {
                 dir: "simpleperf/android/x86_64",
             },
+        },
+        host: {
+            stem: "simpleperf",
         },
         darwin: {
             dist: {
@@ -647,7 +631,7 @@ cc_test {
     name: "simpleperf_unit_test",
     defaults: [
         "simpleperf_test_srcs",
-        "simpleperf_libs_for_tests",
+        "simpleperf_shared_libs",
     ],
     static_libs: [
         "libgmock",
@@ -669,7 +653,7 @@ cc_test {
 cc_test {
     name: "simpleperf_cpu_hotplug_test",
     defaults: [
-        "simpleperf_libs_for_tests",
+        "simpleperf_shared_libs",
     ],
     test_options: {
         unit_test: true,
@@ -695,7 +679,7 @@ cc_library_static {
     name: "libsimpleperf_cts_test",
     defaults: [
         "simpleperf_test_srcs",
-        "simpleperf_libs_for_tests",
+        "simpleperf_shared_libs",
     ],
     host_supported: false,
     cflags: [
@@ -714,7 +698,7 @@ cc_library_static {
 cc_test {
     name: "simpleperf_record_test",
     defaults: [
-        "simpleperf_libs_for_tests",
+        "simpleperf_shared_libs",
     ],
     srcs: [
         "record_lib_test.cpp",
