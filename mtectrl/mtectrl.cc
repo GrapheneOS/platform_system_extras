@@ -47,6 +47,7 @@ bool UpdateProp(const char* prop_name, const misc_memtag_message& m) {
   if (CheckAndUnset(mode, MISC_MEMTAG_MODE_MEMTAG_KERNEL_ONCE))
     AddItem(&prop_str, "memtag-kernel-once");
   if (CheckAndUnset(mode, MISC_MEMTAG_MODE_MEMTAG_OFF)) AddItem(&prop_str, "memtag-off");
+  if (CheckAndUnset(mode, MISC_MEMTAG_MODE_FORCED)) AddItem(&prop_str, "forced");
   if (android::base::GetProperty(prop_name, "") != prop_str)
     android::base::SetProperty(prop_name, prop_str);
   if (mode) {
@@ -89,6 +90,9 @@ void PrintUsage(const char* progname) {
          "        - memtag-kernel-once: MTE is enabled in the kernel, only for the next reboot.\n"
          "        - memtag-off: MTE is persistently disabled in both userspace and kernel upon \n"
          "                      the next reboot.\n"
+         "        - forced: the current state is the result of force_on or force_off in the next\n"
+         "                  argument. When the next argument is set back to \"default\", the\n"
+         "                  state will be cleared.\n"
          "  [default|force_on|force_off]\n"
          "      An alternative method of configuring the MTE options to be applied, if provided.\n"
          "      This control is generally to be used by device_config only, and it overwrites\n"
@@ -116,6 +120,8 @@ int StringToMode(const char* value) {
       memtag_mode |= MISC_MEMTAG_MODE_MEMTAG_KERNEL_ONCE;
     } else if (field == "memtag-off") {
       memtag_mode |= MISC_MEMTAG_MODE_MEMTAG_OFF;
+    } else if (field == "forced") {
+      memtag_mode |= MISC_MEMTAG_MODE_FORCED;
     } else if (field != "none") {
       LOG(ERROR) << "Unknown value for mode: " << field;
       return -1;
@@ -124,15 +130,103 @@ int StringToMode(const char* value) {
   return memtag_mode;
 }
 
+// Handles the override flag and applies it to the memtag message.
+// The logic is as follows:
+// If the override changes the configuration (i.e., if MTE was not enabled
+// through MODE_MEMTAG and the override is force_on, or MTE was not
+// disabled through MEMTAG_OFF and the override is force_off), the MTE
+// state is considered FORCED. In that case, if the override gets reset
+// to "default" (i.e. no override), the default state of memtag config
+// is restored. The theory for this is that disabling the override should
+// only keep the non-default state if it has been active throughout the
+// override, not restore it if it had been dormant for the duration of the
+// override.
+//
+// State machine diagrams of the MTE state and the effect of override below:
+//
+//                      default,force_off
+//                           ┌───┐
+//                           │   │
+//                        ┌──┴───▼───┐
+//                        │memtag-off│
+//                        └─────┬────┘
+//                              │
+//                     force_on │   ┌────┐
+//                              │   │    │ force_on
+//             force_off┌───────▼───┴─┐  │
+//             ┌────────┤memtag,forced│◄─┘
+//             │        └▲─────────┬──┘
+// force_off   │         │         │
+//   ┌────┐    │ force_on│         │ default
+//   │    │    │         │         │
+//   │  ┌─┴────▼─────────┴┐       ┌▼──────┐
+//   └─►│memtag-off,forced├───────►none   │
+//      └─────────────────┘default└───────┘
+//
+//
+//
+//                      default,force_on
+//                           ┌───┐
+//                           │   │
+//                        ┌──┴───▼───┐
+//                        │memtag    │
+//                        └─────┬────┘
+//                              │
+//                     force_off│       ┌────┐
+//                              │       │    │ force_off
+//             force_on ┌───────┴───────┴─┐  │
+//             ┌────────┤memtag-off,forced◄──┘
+//             │        └▲─────────┬──────┘
+// force_on    │         │         │
+//   ┌────┐    │force_off│         │ default
+//   │    │    │         │         │
+//   │  ┌─┴────▼─────────┴┐       ┌▼──────┐
+//   └─►│memtag,forced    ├───────►none   │
+//      └─────────────────┘default└───────┘
+//
+//
+//
+//                           default
+//                            ┌───┐
+//                            │   │
+//              force_off  ┌──┴───▼───┐
+//           ┌─────────────┤none      │
+//           │             └─────┬────┘
+//           │                   │
+//           │          force_on │   ┌────┐
+//           │                   │   │    │ force_on
+//           │  force_off┌───────▼───┴─┐  │
+//           │  ┌────────┤memtag,forced│◄─┘
+//           │  │        └▲─────────┬──┘
+//  force_off│  │         │         │
+//    ┌────┐ │  │ force_on│         │ default
+//    │    │ │  │         │         │
+//    │  ┌─┴─▼──▼─────────┴┐       ┌▼──────┐
+//    └─►│memtag-off,forced├───────►none   │
+//       └─────────────────┘default└───────┘
 bool HandleOverride(const std::string& override_value, misc_memtag_message* m) {
   if (override_value == "force_off") {
     // If the force_off override is active, only allow MEMTAG_MODE_MEMTAG_ONCE.
+    if ((m->memtag_mode & MISC_MEMTAG_MODE_MEMTAG_OFF) == 0) {
+      m->memtag_mode |= MISC_MEMTAG_MODE_FORCED;
+    }
     m->memtag_mode |= MISC_MEMTAG_MODE_MEMTAG_OFF;
     m->memtag_mode &= ~MISC_MEMTAG_MODE_MEMTAG;
   } else if (override_value == "force_on") {
+    if ((m->memtag_mode & MISC_MEMTAG_MODE_MEMTAG) == 0) {
+      m->memtag_mode |= MISC_MEMTAG_MODE_FORCED;
+    }
     m->memtag_mode |= MISC_MEMTAG_MODE_MEMTAG;
     m->memtag_mode &= ~MISC_MEMTAG_MODE_MEMTAG_OFF;
-  } else if (!override_value.empty() && override_value != "default") {
+  } else if (override_value.empty() || override_value == "default") {
+    // The mode changed from forced_on or forced_off to default, which means we
+    // restore the normal state.
+    if (m->memtag_mode & MISC_MEMTAG_MODE_FORCED) {
+      m->memtag_mode &= ~MISC_MEMTAG_MODE_MEMTAG;
+      m->memtag_mode &= ~MISC_MEMTAG_MODE_MEMTAG_OFF;
+      m->memtag_mode &= ~MISC_MEMTAG_MODE_FORCED;
+    }
+  } else {
     return false;
   }
   return true;
