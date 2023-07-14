@@ -144,6 +144,31 @@ TEST_F(MteCtrlTest, set_read_force_off) {
   EXPECT_EQ(TestProperty(), "");
 }
 
+TEST_F(MteCtrlTest, set_read_force_off_none) {
+  Boot({});
+  SetMemtagProp("none");
+  SetOverrideProp("force_off");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off,forced");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "");
+}
+
+TEST_F(MteCtrlTest, set_read_force_off_and_on) {
+  Boot({});
+  SetMemtagProp("memtag,memtag-once");
+  SetOverrideProp("force_off");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off,forced");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "");
+  SetOverrideProp("force_on");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag,forced");
+}
+
 TEST_F(MteCtrlTest, set_read_force_off_already) {
   Boot({});
   SetMemtagProp("memtag-off,memtag-once");
@@ -153,6 +178,20 @@ TEST_F(MteCtrlTest, set_read_force_off_already) {
   SetOverrideProp("default");
   Reboot();
   EXPECT_EQ(TestProperty(), "memtag-off");
+}
+
+TEST_F(MteCtrlTest, set_read_force_off_and_on_already) {
+  Boot({});
+  SetMemtagProp("memtag-off,memtag-once");
+  SetOverrideProp("force_off");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off");
+  SetOverrideProp("force_on");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag,forced");
 }
 
 TEST_F(MteCtrlTest, set_read_force_on) {
@@ -166,6 +205,31 @@ TEST_F(MteCtrlTest, set_read_force_on) {
   EXPECT_EQ(TestProperty(), "");
 }
 
+TEST_F(MteCtrlTest, set_read_force_on_none) {
+  Boot({});
+  SetMemtagProp("none");
+  SetOverrideProp("force_on");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag,forced");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "");
+}
+
+TEST_F(MteCtrlTest, set_read_force_on_and_off) {
+  Boot({});
+  SetMemtagProp("memtag-once");
+  SetOverrideProp("force_on");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag,forced");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "");
+  SetOverrideProp("force_off");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off,forced");
+}
+
 TEST_F(MteCtrlTest, set_read_force_on_already) {
   Boot({});
   SetMemtagProp("memtag,memtag-once");
@@ -175,6 +239,20 @@ TEST_F(MteCtrlTest, set_read_force_on_already) {
   SetOverrideProp("default");
   Reboot();
   EXPECT_EQ(TestProperty(), "memtag");
+}
+
+TEST_F(MteCtrlTest, set_read_force_on_and_off_already) {
+  Boot({});
+  SetMemtagProp("memtag,memtag-once");
+  SetOverrideProp("force_on");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag");
+  SetOverrideProp("force_off");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off,forced");
 }
 
 TEST_F(MteCtrlTest, override) {
