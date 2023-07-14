@@ -28,12 +28,14 @@ fn path_to_cstr(path: &Path) -> CString {
 /// Returns whether the system has etm driver. ETM driver should be available immediately
 /// after boot.
 pub fn has_driver_support() -> bool {
+    // SAFETY: This is always safe to call.
     unsafe { simpleperf_profcollect_bindgen::HasDriverSupport() }
 }
 
 /// Returns whether the system has etm device. ETM device may not be available immediately
 /// after boot.
 pub fn has_device_support() -> bool {
+    // SAFETY: This is always safe to call.
     unsafe { simpleperf_profcollect_bindgen::HasDeviceSupport() }
 }
 
@@ -58,6 +60,8 @@ pub fn record(trace_file: &Path, duration: &Duration, binary_filter: &str, scope
     let duration = duration.as_secs_f32();
     let binary_filter = CString::new(binary_filter).unwrap();
 
+    // SAFETY: All three pointers are valid C strings, as expected by the function, and aren't
+    // retained after it returns.
     unsafe {
         simpleperf_profcollect_bindgen::Record(
             event_name.as_ptr(),
@@ -74,6 +78,8 @@ pub fn process(trace_path: &Path, profile_path: &Path, binary_filter: &str) {
     let profile_path = path_to_cstr(profile_path);
     let binary_filter = CString::new(binary_filter).unwrap();
 
+    // SAFETY: All three pointers are valid C strings, as expected by the function, and aren't
+    // retained after it returns.
     unsafe {
         simpleperf_profcollect_bindgen::Inject(
             trace_path.as_ptr(),
@@ -86,6 +92,7 @@ pub fn process(trace_path: &Path, profile_path: &Path, binary_filter: &str) {
 /// Save logs in file.
 pub fn set_log_file(filename: &Path) {
     let log_file = path_to_cstr(filename);
+    // SAFETY: The pointer is a valid C string, and isn't retained after the function call returns.
     unsafe {
         simpleperf_profcollect_bindgen::SetLogFile(log_file.as_ptr());
     }
@@ -93,6 +100,7 @@ pub fn set_log_file(filename: &Path) {
 
 /// Stop using log file.
 pub fn reset_log_file() {
+    // SAFETY: This is always safe to call.
     unsafe {
         simpleperf_profcollect_bindgen::ResetLogFile();
     }
