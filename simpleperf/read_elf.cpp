@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <version>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
@@ -684,3 +685,17 @@ __attribute__((weak)) extern "C" int del_curterm(struct term*) {
 __attribute__((weak)) extern "C" int tigetnum(char*) {
   return -1;
 }
+
+// libsimpleperf_readelf.a may depend on __libcpp_verbose_abort(), which isn't available
+// in the old libc++ used in platform. So define a custom version here, as instructed in
+// https://github.com/llvm/llvm-project/blob/main/libcxx/docs/UsingLibcxx.rst.
+_LIBCPP_BEGIN_NAMESPACE_STD
+void __libcpp_verbose_abort(char const* format, ...) {
+  va_list list;
+  va_start(list, format);
+  vfprintf(stderr, format, list);
+  va_end(list);
+
+  abort();
+}
+_LIBCPP_END_NAMESPACE_STD
