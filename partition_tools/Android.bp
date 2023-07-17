@@ -147,7 +147,11 @@ cc_binary {
 
 cc_binary {
     name: "lpdumpd",
-    defaults: ["lp_defaults"],
+    defaults: [
+        "lp_defaults",
+        "libsnapshot_cow_defaults",
+        "libsnapshot_hal_deps",
+    ],
     init_rc: ["lpdumpd.rc"],
     shared_libs: [
         "libbase",
@@ -156,7 +160,15 @@ cc_binary {
         "liblp",
         "liblpdump",
         "liblpdump_interface-cpp",
+        "libprotobuf-cpp-lite",
         "libutils",
+    ],
+    static_libs: [
+        "libc++fs",
+        "libfs_mgr_binder",
+        "libsnapshot",
+        "libsnapshot_cow",
+        "update_metadata-protos",
     ],
     srcs: [
         "lpdumpd.cc",
