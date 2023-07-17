@@ -1,0 +1,11 @@
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+rust_binary {
+    name: "libatrace_rust_example",
+    srcs: ["src/main.rs"],
+    rustlibs: [
+        "libatrace_rust",
+    ],
+}
