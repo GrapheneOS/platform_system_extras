@@ -183,32 +183,14 @@ const std::vector<std::string> GetAllCommandNames() {
   return names;
 }
 
-extern void RegisterBootRecordCommand();
-extern void RegisterDumpRecordCommand();
-extern void RegisterHelpCommand();
-extern void RegisterInjectCommand();
-extern void RegisterListCommand();
-extern void RegisterKmemCommand();
-extern void RegisterMergeCommand();
-extern void RegisterRecordCommand();
-extern void RegisterReportCommand();
-extern void RegisterReportSampleCommand();
-extern void RegisterStatCommand();
-extern void RegisterDebugUnwindCommand();
-extern void RegisterTraceSchedCommand();
-extern void RegisterAPICommands();
-extern void RegisterMonitorCommand();
-
-class CommandRegister {
- public:
-  CommandRegister() {
-    RegisterDumpRecordCommand();
-    RegisterHelpCommand();
-    RegisterInjectCommand();
-    RegisterKmemCommand();
-    RegisterMergeCommand();
-    RegisterReportCommand();
-    RegisterReportSampleCommand();
+void RegisterAllCommands() {
+  RegisterDumpRecordCommand();
+  RegisterHelpCommand();
+  RegisterInjectCommand();
+  RegisterKmemCommand();
+  RegisterMergeCommand();
+  RegisterReportCommand();
+  RegisterReportSampleCommand();
 #if defined(__linux__)
     RegisterListCommand();
     RegisterRecordCommand();
@@ -221,10 +203,7 @@ class CommandRegister {
     RegisterBootRecordCommand();
 #endif
 #endif
-  }
-};
-
-CommandRegister command_register;
+}
 
 static void StderrLogger(android::base::LogId, android::base::LogSeverity severity, const char*,
                          const char* file, unsigned int line, const char* message) {
