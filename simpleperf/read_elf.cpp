@@ -33,7 +33,6 @@
 #pragma clang diagnostic ignored "-Wunused-parameter"
 
 #include <llvm/ADT/StringRef.h>
-#include <llvm/Object/Binary.h>
 #include <llvm/Object/ELFObjectFile.h>
 #include <llvm/Object/ObjectFile.h>
 
@@ -143,8 +142,7 @@ namespace {
 
 struct BinaryWrapper {
   std::unique_ptr<llvm::MemoryBuffer> buffer;
-  std::unique_ptr<llvm::object::Binary> binary;
-  llvm::object::ObjectFile* obj = nullptr;
+  std::unique_ptr<llvm::object::ObjectFile> obj;
 };
 
 static ElfStatus OpenObjectFile(const std::string& filename, uint64_t file_offset,
@@ -170,31 +168,24 @@ static ElfStatus OpenObjectFile(const std::string& filename, uint64_t file_offse
   if (!buffer_or_err) {
     return ElfStatus::READ_FAILED;
   }
-  auto binary_or_err = llvm::object::createBinary(buffer_or_err.get()->getMemBufferRef());
-  if (!binary_or_err) {
+  auto obj_or_err =
+      llvm::object::ObjectFile::createObjectFile(buffer_or_err.get()->getMemBufferRef());
+  if (!obj_or_err) {
     return ElfStatus::READ_FAILED;
   }
   wrapper->buffer = std::move(buffer_or_err.get());
-  wrapper->binary = std::move(binary_or_err.get());
-  wrapper->obj = llvm::dyn_cast<llvm::object::ObjectFile>(wrapper->binary.get());
-  if (wrapper->obj == nullptr) {
-    return ElfStatus::FILE_MALFORMED;
-  }
+  wrapper->obj = std::move(obj_or_err.get());
   return ElfStatus::NO_ERROR;
 }
 
 static ElfStatus OpenObjectFileInMemory(const char* data, size_t size, BinaryWrapper* wrapper) {
   auto buffer = llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(data, size));
-  auto binary_or_err = llvm::object::createBinary(buffer->getMemBufferRef());
-  if (!binary_or_err) {
+  auto obj_or_err = llvm::object::ObjectFile::createObjectFile(buffer->getMemBufferRef());
+  if (!obj_or_err) {
     return ElfStatus::FILE_MALFORMED;
   }
   wrapper->buffer = std::move(buffer);
-  wrapper->binary = std::move(binary_or_err.get());
-  wrapper->obj = llvm::dyn_cast<llvm::object::ObjectFile>(wrapper->binary.get());
-  if (wrapper->obj == nullptr) {
-    return ElfStatus::FILE_MALFORMED;
-  }
+  wrapper->obj = std::move(obj_or_err.get());
   return ElfStatus::NO_ERROR;
 }
 
@@ -590,11 +581,11 @@ class ElfFileImpl<llvm::object::ELFObjectFile<ELFT>> : public ElfFile {
 };
 
 std::unique_ptr<ElfFile> CreateElfFileImpl(BinaryWrapper&& wrapper, ElfStatus* status) {
-  if (auto obj = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(wrapper.obj)) {
+  if (auto obj = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(wrapper.obj.get())) {
     return std::unique_ptr<ElfFile>(
         new ElfFileImpl<llvm::object::ELF32LEObjectFile>(std::move(wrapper), obj));
   }
-  if (auto obj = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(wrapper.obj)) {
+  if (auto obj = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(wrapper.obj.get())) {
     return std::unique_ptr<ElfFile>(
         new ElfFileImpl<llvm::object::ELF64LEObjectFile>(std::move(wrapper), obj));
   }
