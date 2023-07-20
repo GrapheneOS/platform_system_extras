@@ -54,6 +54,9 @@ cc_defaults {
                 "libLLVMSupport",
             ],
         },
+        linux: {
+            ldflags: ["-Wl,--exclude-libs=libsimpleperf_readelf.a"],
+        },
     },
 }
 
@@ -333,6 +336,7 @@ cc_library {
     defaults: ["simpleperf_shared_libs"],
     srcs: ["profcollect.cpp"],
     host_supported: false,
+    ldflags: ["-Wl,--exclude-libs=ALL"],
     static_libs: ["libsimpleperf"],
     shared_libs: [
         "libpower",

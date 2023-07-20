@@ -212,7 +212,24 @@ class Command {
 
 void RegisterCommand(const std::string& cmd_name,
                      const std::function<std::unique_ptr<Command>(void)>& callback);
+void RegisterBootRecordCommand();
+void RegisterDumpRecordCommand();
+void RegisterHelpCommand();
+void RegisterInjectCommand();
+void RegisterListCommand();
+void RegisterKmemCommand();
+void RegisterMergeCommand();
+void RegisterRecordCommand();
+void RegisterReportCommand();
+void RegisterReportSampleCommand();
+void RegisterStatCommand();
+void RegisterDebugUnwindCommand();
+void RegisterTraceSchedCommand();
+void RegisterAPICommands();
+void RegisterMonitorCommand();
+void RegisterAllCommands();
 void UnRegisterCommand(const std::string& cmd_name);
+
 std::unique_ptr<Command> CreateCommandInstance(const std::string& cmd_name);
 const std::vector<std::string> GetAllCommandNames();
 bool RunSimpleperfCmd(int argc, char** argv);
