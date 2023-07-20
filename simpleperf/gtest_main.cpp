@@ -70,6 +70,7 @@ class ScopedEnablingPerf {
 #endif  // defined(__ANDROID__)
 
 int main(int argc, char** argv) {
+  RegisterAllCommands();
   // To test profiling apps, simpleperf_unit_test needs to copy itself to the app's directory,
   // and run the binary as simpleperf executable.
   if (android::base::Basename(argv[0]) == "simpleperf") {

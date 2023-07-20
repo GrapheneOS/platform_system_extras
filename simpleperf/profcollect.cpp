@@ -30,6 +30,20 @@
 
 using namespace simpleperf;
 
+namespace {
+
+class CommandRegister {
+ public:
+  CommandRegister() {
+    RegisterRecordCommand();
+    RegisterInjectCommand();
+  }
+};
+
+CommandRegister command_register;
+
+}  // namespace
+
 bool HasDriverSupport() {
   bool result = ETMRecorder::GetInstance().IsETMDriverAvailable();
   LOG(INFO) << "HasDriverSupport result " << result;
