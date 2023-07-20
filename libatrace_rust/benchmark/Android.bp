@@ -1,0 +1,37 @@
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+rust_binary {
+    name: "libatrace_rust_benchmark",
+    srcs: ["src/atrace_benchmark.rs"],
+    rustlibs: [
+        "libatrace_rust",
+        "libcriterion",
+    ],
+    static_libs: [
+        "libatrace_benchmark_trace_enabler",
+    ],
+}
+
+cc_binary {
+    name: "libatrace_rust_benchmark_cc",
+    srcs: ["src/atrace_benchmark.cc"],
+    shared_libs: [
+        "libcutils",
+        "liblog",
+    ],
+    static_libs: [
+        "libgoogle-benchmark-main",
+        "libatrace_benchmark_trace_enabler",
+    ],
+}
+
+cc_library_static {
+    name: "libatrace_benchmark_trace_enabler",
+    srcs: ["src/trace_enabler.cc"],
+    shared_libs: [
+        "libcutils",
+        "liblog",
+    ],
+}
