@@ -76,5 +76,6 @@ int main(int argc, char** argv) {
     return 1;
   }
 #endif
+  RegisterAllCommands();
   return RunSimpleperfCmd(argc, argv) ? 0 : 1;
 }
