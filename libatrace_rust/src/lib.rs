@@ -85,10 +85,22 @@ pub mod tags {
     const_assert_eq!(AtraceTag::Thermal.bits(), cutils_trace_bindgen::ATRACE_TAG_LAST as u64);
 }
 
+/// Test if a given tag is currently enabled.
+///
+/// It can be used as a guard condition around more expensive trace calculations.
+pub fn atrace_is_tag_enabled(tag: AtraceTag) -> bool {
+    // SAFETY: No pointers are transferred.
+    unsafe { trace_bind::atrace_is_tag_enabled_wrap(tag.bits()) != 0 }
+}
+
 /// Trace the beginning of a context. `name` is used to identify the context.
 ///
 /// This is often used to time function execution.
 pub fn atrace_begin(tag: AtraceTag, name: &str) {
+    if !atrace_is_tag_enabled(tag) {
+        return;
+    }
+
     let name_cstr = CString::new(name.as_bytes()).expect("CString::new failed");
     // SAFETY: The function does not accept the pointer ownership, only reads its contents.
     // The passed string is guaranteed to be null-terminated by CString.
@@ -130,6 +142,9 @@ mod tests {
         /// Implement this trait in the test with mocking logic and checks in implemented functions.
         /// Default implementations panic.
         pub trait ATraceMocker {
+            fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
+                panic!("Unexpected call");
+            }
             fn atrace_begin_wrap(&mut self, _tag: u64, _name: *const c_char) {
                 panic!("Unexpected call");
             }
@@ -195,6 +210,9 @@ mod tests {
         // The functions are marked as unsafe to match the binding interface, won't compile otherwise.
         // The mocker methods themselves are not marked as unsafe.
 
+        pub unsafe fn atrace_is_tag_enabled_wrap(tag: u64) -> u64 {
+            with_mocker(|m| m.atrace_is_tag_enabled_wrap(tag))
+        }
         pub unsafe fn atrace_begin_wrap(tag: u64, name: *const c_char) {
             with_mocker(|m| m.atrace_begin_wrap(tag, name))
         }
@@ -207,13 +225,16 @@ mod tests {
     fn forwards_trace_begin() {
         #[derive(Default)]
         struct CallCheck {
-            called_count: u32,
+            begin_count: u32,
         }
 
         impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
+                1
+            }
             fn atrace_begin_wrap(&mut self, tag: u64, name: *const c_char) {
-                self.called_count += 1;
-                assert!(self.called_count < 2);
+                self.begin_count += 1;
+                assert!(self.begin_count < 2);
                 assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_APP as u64);
                 // SAFETY: If the code under test is correct, the pointer is guaranteed to satisfy
                 // the requirements of `CStr::from_ptr`. If the code is not correct, this section is
@@ -224,7 +245,7 @@ mod tests {
             }
 
             fn finish(&self) {
-                assert_eq!(self.called_count, 1);
+                assert_eq!(self.begin_count, 1);
             }
         }
 
@@ -236,21 +257,50 @@ mod tests {
     }
 
     #[test]
+    fn trace_begin_not_called_with_disabled_tag() {
+        #[derive(Default)]
+        struct CallCheck {
+            is_tag_enabled_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
+                self.is_tag_enabled_count += 1;
+                assert!(self.is_tag_enabled_count < 2);
+                0
+            }
+            fn atrace_begin_wrap(&mut self, _tag: u64, _name: *const c_char) {
+                panic!("Begin should not be called with disabled tag.")
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.is_tag_enabled_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        atrace_begin(AtraceTag::App, "Ignore me");
+
+        mock_atrace::mocker_finish();
+    }
+
+    #[test]
     fn forwards_trace_end() {
         #[derive(Default)]
         struct CallCheck {
-            called_count: u32,
+            end_count: u32,
         }
 
         impl mock_atrace::ATraceMocker for CallCheck {
             fn atrace_end_wrap(&mut self, tag: u64) {
-                self.called_count += 1;
-                assert!(self.called_count < 2);
+                self.end_count += 1;
+                assert!(self.end_count < 2);
                 assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_APP as u64);
             }
 
             fn finish(&self) {
-                assert_eq!(self.called_count, 1);
+                assert_eq!(self.end_count, 1);
             }
         }
 
@@ -265,13 +315,16 @@ mod tests {
     fn can_combine_tags() {
         #[derive(Default)]
         struct CallCheck {
-            called_count: u32,
+            begin_count: u32,
         }
 
         impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
+                1
+            }
             fn atrace_begin_wrap(&mut self, tag: u64, _name: *const c_char) {
-                self.called_count += 1;
-                assert!(self.called_count < 2);
+                self.begin_count += 1;
+                assert!(self.begin_count < 2);
                 assert_eq!(
                     tag,
                     (cutils_trace_bindgen::ATRACE_TAG_HAL | cutils_trace_bindgen::ATRACE_TAG_CAMERA)
@@ -280,13 +333,41 @@ mod tests {
             }
 
             fn finish(&self) {
-                assert_eq!(self.called_count, 1);
+                assert_eq!(self.begin_count, 1);
             }
         }
 
         let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
 
         atrace_begin(AtraceTag::Hal | AtraceTag::Camera, "foo");
+
+        mock_atrace::mocker_finish();
+    }
+
+    #[test]
+    fn forwards_is_tag_enabled() {
+        #[derive(Default)]
+        struct CallCheck {
+            is_tag_enabled_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled_wrap(&mut self, tag: u64) -> u64 {
+                self.is_tag_enabled_count += 1;
+                assert!(self.is_tag_enabled_count < 2);
+                assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_ADB as u64);
+                1
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.is_tag_enabled_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        let res = atrace_is_tag_enabled(AtraceTag::Adb);
+        assert!(res);
 
         mock_atrace::mocker_finish();
     }
