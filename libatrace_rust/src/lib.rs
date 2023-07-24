@@ -86,6 +86,23 @@ pub mod tags {
     const_assert_eq!(AtraceTag::Thermal.bits(), cutils_trace_bindgen::ATRACE_TAG_LAST as u64);
 }
 
+/// RAII guard to close an event with tag.
+pub struct ScopedEvent {
+    tag: AtraceTag,
+}
+
+impl Drop for ScopedEvent {
+    fn drop(&mut self) {
+        atrace_end(self.tag);
+    }
+}
+
+/// Begins an event via `atrace_begin` and returns a guard that calls `atrace_end` when dropped.
+pub fn begin_scoped_event(tag: AtraceTag, name: &str) -> ScopedEvent {
+    atrace_begin(tag, name);
+    ScopedEvent { tag }
+}
+
 /// Set whether tracing is enabled for the current process. This is used to prevent tracing within
 /// the Zygote process.
 pub fn atrace_set_tracing_enabled(enabled: bool) {
@@ -1037,6 +1054,73 @@ mod tests {
         let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
 
         atrace_int64(AtraceTag::App, "Test Name", 64);
+
+        mock_atrace::mocker_finish();
+    }
+
+    #[test]
+    fn scoped_event_starts_and_ends_in_order() {
+        #[derive(Default)]
+        struct CallCheck {
+            begin_count: u32,
+            end_count: u32,
+            instant_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
+                1
+            }
+
+            fn atrace_begin_wrap(&mut self, tag: u64, name: *const c_char) {
+                assert_eq!(self.end_count, 0);
+                assert_eq!(self.instant_count, 0);
+
+                self.begin_count += 1;
+                assert!(self.begin_count < 2);
+                assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_APP as u64);
+                // SAFETY: If the code under test is correct, the pointer is guaranteed to satisfy
+                // the requirements of `CStr::from_ptr`. If the code is not correct, this section is
+                // unsafe and will hopefully fail the test.
+                unsafe {
+                    assert_eq!(
+                        CStr::from_ptr(name).to_str().expect("to_str failed"),
+                        "Scoped Event"
+                    );
+                }
+            }
+
+            fn atrace_instant_wrap(&mut self, _tag: u64, _name: *const c_char) {
+                // We don't care about the contents of the event, we only use it to check begin/end ordering.
+                assert_eq!(self.begin_count, 1);
+                assert_eq!(self.end_count, 0);
+
+                self.instant_count += 1;
+                assert!(self.instant_count < 2);
+            }
+
+            fn atrace_end_wrap(&mut self, tag: u64) {
+                assert_eq!(self.begin_count, 1);
+                assert_eq!(self.instant_count, 1);
+
+                self.end_count += 1;
+                assert!(self.end_count < 2);
+                assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_APP as u64);
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.begin_count, 1);
+                assert_eq!(self.end_count, 1);
+                assert_eq!(self.instant_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        {
+            let _event_guard = begin_scoped_event(AtraceTag::App, "Scoped Event");
+            atrace_instant(AtraceTag::App, "Instant event called within scoped event");
+        }
 
         mock_atrace::mocker_finish();
     }
