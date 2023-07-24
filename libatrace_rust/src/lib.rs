@@ -76,6 +76,7 @@ pub mod tags {
             const Rro             = cutils_trace_bindgen::ATRACE_TAG_RRO as u64;
             const Thermal         = cutils_trace_bindgen::ATRACE_TAG_THERMAL as u64;
             const Last            = cutils_trace_bindgen::ATRACE_TAG_LAST as u64;
+            const NotReady        = cutils_trace_bindgen::ATRACE_TAG_NOT_READY as u64;
             const ValidMask       = cutils_trace_bindgen::ATRACE_TAG_VALID_MASK as u64;
         }
     }
@@ -83,6 +84,33 @@ pub mod tags {
     // Assertion to keep tags in sync. If it fails, it means there are new tags added to
     // cutils/trace.h. Add them to the tags above and update the assertion.
     const_assert_eq!(AtraceTag::Thermal.bits(), cutils_trace_bindgen::ATRACE_TAG_LAST as u64);
+}
+
+/// Set whether tracing is enabled for the current process. This is used to prevent tracing within
+/// the Zygote process.
+pub fn atrace_set_tracing_enabled(enabled: bool) {
+    // SAFETY: No pointers are transferred.
+    unsafe {
+        trace_bind::atrace_set_tracing_enabled(enabled);
+    }
+}
+
+/// `atrace_init` readies the process for tracing by opening the trace_marker file.
+/// Calling any trace function causes this to be run, so calling it is optional.
+/// This can be explicitly run to avoid setup delay on first trace function.
+pub fn atrace_init() {
+    // SAFETY: Call with no arguments.
+    unsafe {
+        trace_bind::atrace_init();
+    }
+}
+
+/// Returns enabled tags as a bitmask.
+///
+/// The tag mask is converted into an `AtraceTag`, keeping flags that do not correspond to a tag.
+pub fn atrace_get_enabled_tags() -> AtraceTag {
+    // SAFETY: Call with no arguments that returns a 64-bit int.
+    unsafe { AtraceTag::from_bits_retain(trace_bind::atrace_get_enabled_tags()) }
 }
 
 /// Test if a given tag is currently enabled.
@@ -142,6 +170,15 @@ mod tests {
         /// Implement this trait in the test with mocking logic and checks in implemented functions.
         /// Default implementations panic.
         pub trait ATraceMocker {
+            fn atrace_set_tracing_enabled(&mut self, _enabled: bool) {
+                panic!("Unexpected call");
+            }
+            fn atrace_init(&mut self) {
+                panic!("Unexpected call");
+            }
+            fn atrace_get_enabled_tags(&mut self) -> u64 {
+                panic!("Unexpected call");
+            }
             fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
                 panic!("Unexpected call");
             }
@@ -210,6 +247,15 @@ mod tests {
         // The functions are marked as unsafe to match the binding interface, won't compile otherwise.
         // The mocker methods themselves are not marked as unsafe.
 
+        pub unsafe fn atrace_set_tracing_enabled(enabled: bool) {
+            with_mocker(|m| m.atrace_set_tracing_enabled(enabled))
+        }
+        pub unsafe fn atrace_init() {
+            with_mocker(|m| m.atrace_init())
+        }
+        pub unsafe fn atrace_get_enabled_tags() -> u64 {
+            with_mocker(|m| m.atrace_get_enabled_tags())
+        }
         pub unsafe fn atrace_is_tag_enabled_wrap(tag: u64) -> u64 {
             with_mocker(|m| m.atrace_is_tag_enabled_wrap(tag))
         }
@@ -219,6 +265,86 @@ mod tests {
         pub unsafe fn atrace_end_wrap(tag: u64) {
             with_mocker(|m| m.atrace_end_wrap(tag))
         }
+    }
+
+    #[test]
+    fn forwards_set_tracing_enabled() {
+        #[derive(Default)]
+        struct CallCheck {
+            set_tracing_enabled_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_set_tracing_enabled(&mut self, enabled: bool) {
+                self.set_tracing_enabled_count += 1;
+                assert!(self.set_tracing_enabled_count < 2);
+                assert!(enabled);
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.set_tracing_enabled_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        atrace_set_tracing_enabled(true);
+
+        mock_atrace::mocker_finish();
+    }
+
+    #[test]
+    fn forwards_atrace_init() {
+        #[derive(Default)]
+        struct CallCheck {
+            init_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_init(&mut self) {
+                self.init_count += 1;
+                assert!(self.init_count < 2);
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.init_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        atrace_init();
+
+        mock_atrace::mocker_finish();
+    }
+
+    #[test]
+    fn forwards_atrace_get_enabled_tags() {
+        #[derive(Default)]
+        struct CallCheck {
+            get_enabled_tags_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_get_enabled_tags(&mut self) -> u64 {
+                self.get_enabled_tags_count += 1;
+                assert!(self.get_enabled_tags_count < 2);
+                (cutils_trace_bindgen::ATRACE_TAG_HAL | cutils_trace_bindgen::ATRACE_TAG_GRAPHICS)
+                    as u64
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.get_enabled_tags_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        let res = atrace_get_enabled_tags();
+
+        assert_eq!(res, AtraceTag::Hal | AtraceTag::Graphics);
+
+        mock_atrace::mocker_finish();
     }
 
     #[test]

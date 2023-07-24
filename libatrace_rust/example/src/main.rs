@@ -17,6 +17,8 @@
 use atrace::AtraceTag;
 
 fn main() {
+    let enabled_tags = atrace::atrace_get_enabled_tags();
+    println!("Enabled tags: {:?}", enabled_tags);
     println!("Calling atrace_begin and sleeping for 1 sec...");
     atrace::atrace_begin(AtraceTag::App, "Hello tracing!");
     std::thread::sleep(std::time::Duration::from_secs(1));
