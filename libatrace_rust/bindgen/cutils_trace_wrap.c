@@ -23,3 +23,40 @@ void atrace_begin_wrap(uint64_t tag, const char* name) {
 void atrace_end_wrap(uint64_t tag) {
     atrace_end(tag);
 }
+
+uint64_t atrace_is_tag_enabled_wrap(uint64_t tag) {
+    return atrace_is_tag_enabled(tag);
+}
+
+void atrace_async_begin_wrap(uint64_t tag, const char* name, int32_t cookie) {
+    atrace_async_begin(tag, name, cookie);
+}
+
+void atrace_async_end_wrap(uint64_t tag, const char* name, int32_t cookie) {
+    atrace_async_end(tag, name, cookie);
+}
+
+void atrace_async_for_track_begin_wrap(uint64_t tag, const char* track_name, const char* name,
+                                       int32_t cookie) {
+    atrace_async_for_track_begin(tag, track_name, name, cookie);
+}
+
+void atrace_async_for_track_end_wrap(uint64_t tag, const char* track_name, int32_t cookie) {
+    atrace_async_for_track_end(tag, track_name, cookie);
+}
+
+void atrace_instant_wrap(uint64_t tag, const char* name) {
+    atrace_instant(tag, name);
+}
+
+void atrace_instant_for_track_wrap(uint64_t tag, const char* track_name, const char* name) {
+    atrace_instant_for_track(tag, track_name, name);
+}
+
+void atrace_int_wrap(uint64_t tag, const char* name, int32_t value) {
+    atrace_int(tag, name, value);
+}
+
+void atrace_int64_wrap(uint64_t tag, const char* name, int64_t value) {
+    atrace_int64(tag, name, value);
+}
