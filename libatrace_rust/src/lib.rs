@@ -226,6 +226,81 @@ pub fn atrace_async_for_track_end(tag: AtraceTag, track_name: &str, cookie: i32)
     }
 }
 
+/// Trace an instantaneous context. `name` is used to identify the context.
+///
+/// An "instant" is an event with no defined duration. Visually is displayed like a single marker
+/// in the timeline (rather than a span, in the case of begin/end events).
+///
+/// By default, instant events are added into a dedicated track that has the same name of the event.
+/// Use `atrace_instant_for_track` to put different instant events into the same timeline track/row.
+pub fn atrace_instant(tag: AtraceTag, name: &str) {
+    if !atrace_is_tag_enabled(tag) {
+        return;
+    }
+
+    let name_cstr = CString::new(name.as_bytes()).expect("CString::new failed");
+    // SAFETY: The function does not accept the pointer ownership, only reads its contents.
+    // The passed string is guaranteed to be null-terminated by CString.
+    unsafe {
+        trace_bind::atrace_instant_wrap(tag.bits(), name_cstr.as_ptr());
+    }
+}
+
+/// Trace an instantaneous context. `name` is used to identify the context. `track_name` is the name
+/// of the row where the event should be recorded.
+///
+/// An "instant" is an event with no defined duration. Visually is displayed like a single marker
+/// in the timeline (rather than a span, in the case of begin/end events).
+pub fn atrace_instant_for_track(tag: AtraceTag, track_name: &str, name: &str) {
+    if !atrace_is_tag_enabled(tag) {
+        return;
+    }
+
+    let name_cstr = CString::new(name.as_bytes()).expect("CString::new failed");
+    let track_name_cstr = CString::new(track_name.as_bytes()).expect("CString::new failed");
+    // SAFETY: The function does not accept the pointer ownership, only reads its contents.
+    // The passed string is guaranteed to be null-terminated by CString.
+    unsafe {
+        trace_bind::atrace_instant_for_track_wrap(
+            tag.bits(),
+            track_name_cstr.as_ptr(),
+            name_cstr.as_ptr(),
+        );
+    }
+}
+
+/// Traces an integer counter value. `name` is used to identify the counter.
+///
+/// This can be used to track how a value changes over time.
+pub fn atrace_int(tag: AtraceTag, name: &str, value: i32) {
+    if !atrace_is_tag_enabled(tag) {
+        return;
+    }
+
+    let name_cstr = CString::new(name.as_bytes()).expect("CString::new failed");
+    // SAFETY: The function does not accept the pointer ownership, only reads its contents.
+    // The passed string is guaranteed to be null-terminated by CString.
+    unsafe {
+        trace_bind::atrace_int_wrap(tag.bits(), name_cstr.as_ptr(), value);
+    }
+}
+
+/// Traces a 64-bit integer counter value. `name` is used to identify the counter.
+///
+/// This can be used to track how a value changes over time.
+pub fn atrace_int64(tag: AtraceTag, name: &str, value: i64) {
+    if !atrace_is_tag_enabled(tag) {
+        return;
+    }
+
+    let name_cstr = CString::new(name.as_bytes()).expect("CString::new failed");
+    // SAFETY: The function does not accept the pointer ownership, only reads its contents.
+    // The passed string is guaranteed to be null-terminated by CString.
+    unsafe {
+        trace_bind::atrace_int64_wrap(tag.bits(), name_cstr.as_ptr(), value);
+    }
+}
+
 #[cfg(test)]
 use self::tests::mock_atrace as trace_bind;
 
@@ -288,6 +363,23 @@ mod tests {
                 _track_name: *const c_char,
                 _cookie: i32,
             ) {
+                panic!("Unexpected call");
+            }
+            fn atrace_instant_wrap(&mut self, _tag: u64, _name: *const c_char) {
+                panic!("Unexpected call");
+            }
+            fn atrace_instant_for_track_wrap(
+                &mut self,
+                _tag: u64,
+                _track_name: *const c_char,
+                _name: *const c_char,
+            ) {
+                panic!("Unexpected call");
+            }
+            fn atrace_int_wrap(&mut self, _tag: u64, _name: *const c_char, _value: i32) {
+                panic!("Unexpected call");
+            }
+            fn atrace_int64_wrap(&mut self, _tag: u64, _name: *const c_char, _value: i64) {
                 panic!("Unexpected call");
             }
 
@@ -387,6 +479,22 @@ mod tests {
             cookie: i32,
         ) {
             with_mocker(|m| m.atrace_async_for_track_end_wrap(tag, track_name, cookie))
+        }
+        pub unsafe fn atrace_instant_wrap(tag: u64, name: *const c_char) {
+            with_mocker(|m| m.atrace_instant_wrap(tag, name))
+        }
+        pub unsafe fn atrace_instant_for_track_wrap(
+            tag: u64,
+            track_name: *const c_char,
+            name: *const c_char,
+        ) {
+            with_mocker(|m| m.atrace_instant_for_track_wrap(tag, track_name, name))
+        }
+        pub unsafe fn atrace_int_wrap(tag: u64, name: *const c_char, value: i32) {
+            with_mocker(|m| m.atrace_int_wrap(tag, name, value))
+        }
+        pub unsafe fn atrace_int64_wrap(tag: u64, name: *const c_char, value: i64) {
+            with_mocker(|m| m.atrace_int64_wrap(tag, name, value))
         }
     }
 
@@ -778,6 +886,157 @@ mod tests {
         let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
 
         atrace_async_for_track_end(AtraceTag::App, "Track", 123);
+
+        mock_atrace::mocker_finish();
+    }
+
+    #[test]
+    fn forwards_trace_instant() {
+        #[derive(Default)]
+        struct CallCheck {
+            trace_instant_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
+                1
+            }
+            fn atrace_instant_wrap(&mut self, tag: u64, name: *const c_char) {
+                self.trace_instant_count += 1;
+                assert!(self.trace_instant_count < 2);
+                assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_APP as u64);
+                // SAFETY: If the code under test is correct, the pointer is guaranteed to satisfy
+                // the requirements of `CStr::from_ptr`. If the code is not correct, this section is
+                // unsafe and will hopefully fail the test.
+                unsafe {
+                    assert_eq!(CStr::from_ptr(name).to_str().expect("to_str failed"), "Test Name");
+                }
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.trace_instant_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        atrace_instant(AtraceTag::App, "Test Name");
+
+        mock_atrace::mocker_finish();
+    }
+
+    #[test]
+    fn forwards_trace_instant_for_track() {
+        #[derive(Default)]
+        struct CallCheck {
+            trace_instant_for_track_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
+                1
+            }
+            fn atrace_instant_for_track_wrap(
+                &mut self,
+                tag: u64,
+                track_name: *const c_char,
+                name: *const c_char,
+            ) {
+                self.trace_instant_for_track_count += 1;
+                assert!(self.trace_instant_for_track_count < 2);
+                assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_APP as u64);
+                // SAFETY: If the code under test is correct, the pointer is guaranteed to satisfy
+                // the requirements of `CStr::from_ptr`. If the code is not correct, this section is
+                // unsafe and will hopefully fail the test.
+                unsafe {
+                    assert_eq!(
+                        CStr::from_ptr(track_name).to_str().expect("to_str failed"),
+                        "Track"
+                    );
+                    assert_eq!(CStr::from_ptr(name).to_str().expect("to_str failed"), "Test Name");
+                }
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.trace_instant_for_track_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        atrace_instant_for_track(AtraceTag::App, "Track", "Test Name");
+
+        mock_atrace::mocker_finish();
+    }
+
+    #[test]
+    fn forwards_trace_int() {
+        #[derive(Default)]
+        struct CallCheck {
+            trace_int_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
+                1
+            }
+            fn atrace_int_wrap(&mut self, tag: u64, name: *const c_char, value: i32) {
+                self.trace_int_count += 1;
+                assert!(self.trace_int_count < 2);
+                assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_APP as u64);
+                // SAFETY: If the code under test is correct, the pointer is guaranteed to satisfy
+                // the requirements of `CStr::from_ptr`. If the code is not correct, this section is
+                // unsafe and will hopefully fail the test.
+                unsafe {
+                    assert_eq!(CStr::from_ptr(name).to_str().expect("to_str failed"), "Test Name");
+                }
+                assert_eq!(value, 32);
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.trace_int_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        atrace_int(AtraceTag::App, "Test Name", 32);
+
+        mock_atrace::mocker_finish();
+    }
+
+    #[test]
+    fn forwards_trace_int64() {
+        #[derive(Default)]
+        struct CallCheck {
+            trace_int64_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
+                1
+            }
+            fn atrace_int64_wrap(&mut self, tag: u64, name: *const c_char, value: i64) {
+                self.trace_int64_count += 1;
+                assert!(self.trace_int64_count < 2);
+                assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_APP as u64);
+                // SAFETY: If the code under test is correct, the pointer is guaranteed to satisfy
+                // the requirements of `CStr::from_ptr`. If the code is not correct, this section is
+                // unsafe and will hopefully fail the test.
+                unsafe {
+                    assert_eq!(CStr::from_ptr(name).to_str().expect("to_str failed"), "Test Name");
+                }
+                assert_eq!(value, 64);
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.trace_int64_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        atrace_int64(AtraceTag::App, "Test Name", 64);
 
         mock_atrace::mocker_finish();
     }

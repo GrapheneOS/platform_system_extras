@@ -34,6 +34,15 @@ fn spawn_async_event_with_track() -> JoinHandle<()> {
     })
 }
 
+fn spawn_counter_thread() -> JoinHandle<()> {
+    std::thread::spawn(|| {
+        for i in 1..=10 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            atrace::atrace_int(AtraceTag::App, "Count of i", i);
+        }
+    })
+}
+
 fn main() {
     let enabled_tags = atrace::atrace_get_enabled_tags();
     println!("Enabled tags: {:?}", enabled_tags);
@@ -41,6 +50,9 @@ fn main() {
     println!("Spawning async trace events");
     let async_event_handler = spawn_async_event();
     let async_event_with_track_handler = spawn_async_event_with_track();
+    let counter_thread_handler = spawn_counter_thread();
+
+    atrace::atrace_instant(AtraceTag::App, "Instant event");
 
     println!("Calling atrace_begin and sleeping for 1 sec...");
     atrace::atrace_begin(AtraceTag::App, "Hello tracing!");
@@ -50,6 +62,7 @@ fn main() {
     println!("Joining async events...");
     async_event_handler.join().unwrap();
     async_event_with_track_handler.join().unwrap();
+    counter_thread_handler.join().unwrap();
 
     println!("Done!");
 }
