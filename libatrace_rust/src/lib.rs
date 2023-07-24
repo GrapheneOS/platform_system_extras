@@ -147,6 +147,85 @@ pub fn atrace_end(tag: AtraceTag) {
     }
 }
 
+/// Trace the beginning of an asynchronous event. Unlike `atrace_begin`/`atrace_end` contexts,
+/// asynchronous events do not need to be nested.
+///
+/// The name describes the event, and the cookie provides a unique identifier for distinguishing
+/// simultaneous events.
+///
+/// The name and cookie used to begin an event must be used to end it.
+pub fn atrace_async_begin(tag: AtraceTag, name: &str, cookie: i32) {
+    if !atrace_is_tag_enabled(tag) {
+        return;
+    }
+
+    let name_cstr = CString::new(name.as_bytes()).expect("CString::new failed");
+    // SAFETY: The function does not accept the pointer ownership, only reads its contents.
+    // The passed string is guaranteed to be null-terminated by CString.
+    unsafe {
+        trace_bind::atrace_async_begin_wrap(tag.bits(), name_cstr.as_ptr(), cookie);
+    }
+}
+
+/// Trace the end of an asynchronous event.
+///
+/// This should have a corresponding `atrace_async_begin`.
+pub fn atrace_async_end(tag: AtraceTag, name: &str, cookie: i32) {
+    if !atrace_is_tag_enabled(tag) {
+        return;
+    }
+
+    let name_cstr = CString::new(name.as_bytes()).expect("CString::new failed");
+    // SAFETY: The function does not accept the pointer ownership, only reads its contents.
+    // The passed string is guaranteed to be null-terminated by CString.
+    unsafe {
+        trace_bind::atrace_async_end_wrap(tag.bits(), name_cstr.as_ptr(), cookie);
+    }
+}
+
+/// Trace the beginning of an asynchronous event.
+///
+/// In addition to the name and a cookie as in `atrace_async_begin`/`atrace_async_end`, a track name
+/// argument is provided, which is the name of the row where this async event should be recorded.
+///
+/// The track name, name, and cookie used to begin an event must be used to end it.
+///
+/// The cookie here must be unique on the track_name level, not the name level.
+pub fn atrace_async_for_track_begin(tag: AtraceTag, track_name: &str, name: &str, cookie: i32) {
+    if !atrace_is_tag_enabled(tag) {
+        return;
+    }
+
+    let name_cstr = CString::new(name.as_bytes()).expect("CString::new failed");
+    let track_name_cstr = CString::new(track_name.as_bytes()).expect("CString::new failed");
+    // SAFETY: The function does not accept the pointer ownership, only reads its contents.
+    // The passed strings are guaranteed to be null-terminated by CString.
+    unsafe {
+        trace_bind::atrace_async_for_track_begin_wrap(
+            tag.bits(),
+            track_name_cstr.as_ptr(),
+            name_cstr.as_ptr(),
+            cookie,
+        );
+    }
+}
+
+/// Trace the end of an asynchronous event.
+///
+/// This should correspond to a previous `atrace_async_for_track_begin`.
+pub fn atrace_async_for_track_end(tag: AtraceTag, track_name: &str, cookie: i32) {
+    if !atrace_is_tag_enabled(tag) {
+        return;
+    }
+
+    let track_name_cstr = CString::new(track_name.as_bytes()).expect("CString::new failed");
+    // SAFETY: The function does not accept the pointer ownership, only reads its contents.
+    // The passed string is guaranteed to be null-terminated by CString.
+    unsafe {
+        trace_bind::atrace_async_for_track_end_wrap(tag.bits(), track_name_cstr.as_ptr(), cookie);
+    }
+}
+
 #[cfg(test)]
 use self::tests::mock_atrace as trace_bind;
 
@@ -186,6 +265,29 @@ mod tests {
                 panic!("Unexpected call");
             }
             fn atrace_end_wrap(&mut self, _tag: u64) {
+                panic!("Unexpected call");
+            }
+            fn atrace_async_begin_wrap(&mut self, _tag: u64, _name: *const c_char, _cookie: i32) {
+                panic!("Unexpected call");
+            }
+            fn atrace_async_end_wrap(&mut self, _tag: u64, _name: *const c_char, _cookie: i32) {
+                panic!("Unexpected call");
+            }
+            fn atrace_async_for_track_begin_wrap(
+                &mut self,
+                _tag: u64,
+                _track_name: *const c_char,
+                _name: *const c_char,
+                _cookie: i32,
+            ) {
+                panic!("Unexpected call");
+            }
+            fn atrace_async_for_track_end_wrap(
+                &mut self,
+                _tag: u64,
+                _track_name: *const c_char,
+                _cookie: i32,
+            ) {
                 panic!("Unexpected call");
             }
 
@@ -265,6 +367,27 @@ mod tests {
         pub unsafe fn atrace_end_wrap(tag: u64) {
             with_mocker(|m| m.atrace_end_wrap(tag))
         }
+        pub unsafe fn atrace_async_begin_wrap(tag: u64, name: *const c_char, cookie: i32) {
+            with_mocker(|m| m.atrace_async_begin_wrap(tag, name, cookie))
+        }
+        pub unsafe fn atrace_async_end_wrap(tag: u64, name: *const c_char, cookie: i32) {
+            with_mocker(|m| m.atrace_async_end_wrap(tag, name, cookie))
+        }
+        pub unsafe fn atrace_async_for_track_begin_wrap(
+            tag: u64,
+            track_name: *const c_char,
+            name: *const c_char,
+            cookie: i32,
+        ) {
+            with_mocker(|m| m.atrace_async_for_track_begin_wrap(tag, track_name, name, cookie))
+        }
+        pub unsafe fn atrace_async_for_track_end_wrap(
+            tag: u64,
+            track_name: *const c_char,
+            cookie: i32,
+        ) {
+            with_mocker(|m| m.atrace_async_for_track_end_wrap(tag, track_name, cookie))
+        }
     }
 
     #[test]
@@ -341,7 +464,6 @@ mod tests {
         let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
 
         let res = atrace_get_enabled_tags();
-
         assert_eq!(res, AtraceTag::Hal | AtraceTag::Graphics);
 
         mock_atrace::mocker_finish();
@@ -494,6 +616,168 @@ mod tests {
 
         let res = atrace_is_tag_enabled(AtraceTag::Adb);
         assert!(res);
+
+        mock_atrace::mocker_finish();
+    }
+
+    #[test]
+    fn forwards_async_begin() {
+        #[derive(Default)]
+        struct CallCheck {
+            async_begin_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
+                1
+            }
+            fn atrace_async_begin_wrap(&mut self, tag: u64, name: *const c_char, cookie: i32) {
+                self.async_begin_count += 1;
+                assert!(self.async_begin_count < 2);
+                assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_APP as u64);
+                // SAFETY: If the code under test is correct, the pointer is guaranteed to satisfy
+                // the requirements of `CStr::from_ptr`. If the code is not correct, this section is
+                // unsafe and will hopefully fail the test.
+                unsafe {
+                    assert_eq!(CStr::from_ptr(name).to_str().expect("to_str failed"), "Test Name");
+                }
+                assert_eq!(cookie, 123);
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.async_begin_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        atrace_async_begin(AtraceTag::App, "Test Name", 123);
+
+        mock_atrace::mocker_finish();
+    }
+
+    #[test]
+    fn forwards_async_end() {
+        #[derive(Default)]
+        struct CallCheck {
+            async_end_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
+                1
+            }
+            fn atrace_async_end_wrap(&mut self, tag: u64, name: *const c_char, cookie: i32) {
+                self.async_end_count += 1;
+                assert!(self.async_end_count < 2);
+                assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_APP as u64);
+                // SAFETY: If the code under test is correct, the pointer is guaranteed to satisfy
+                // the requirements of `CStr::from_ptr`. If the code is not correct, this section is
+                // unsafe and will hopefully fail the test.
+                unsafe {
+                    assert_eq!(CStr::from_ptr(name).to_str().expect("to_str failed"), "Test Name");
+                }
+                assert_eq!(cookie, 123);
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.async_end_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        atrace_async_end(AtraceTag::App, "Test Name", 123);
+
+        mock_atrace::mocker_finish();
+    }
+
+    #[test]
+    fn forwards_async_for_track_begin() {
+        #[derive(Default)]
+        struct CallCheck {
+            async_for_track_begin_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
+                1
+            }
+            fn atrace_async_for_track_begin_wrap(
+                &mut self,
+                tag: u64,
+                track_name: *const c_char,
+                name: *const c_char,
+                cookie: i32,
+            ) {
+                self.async_for_track_begin_count += 1;
+                assert!(self.async_for_track_begin_count < 2);
+                assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_APP as u64);
+                // SAFETY: If the code under test is correct, the pointer is guaranteed to satisfy
+                // the requirements of `CStr::from_ptr`. If the code is not correct, this section is
+                // unsafe and will hopefully fail the test.
+                unsafe {
+                    assert_eq!(
+                        CStr::from_ptr(track_name).to_str().expect("to_str failed"),
+                        "Track"
+                    );
+                    assert_eq!(CStr::from_ptr(name).to_str().expect("to_str failed"), "Test Name");
+                }
+                assert_eq!(cookie, 123);
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.async_for_track_begin_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        atrace_async_for_track_begin(AtraceTag::App, "Track", "Test Name", 123);
+
+        mock_atrace::mocker_finish();
+    }
+
+    #[test]
+    fn forwards_async_for_track_end() {
+        #[derive(Default)]
+        struct CallCheck {
+            async_for_track_end_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
+                1
+            }
+            fn atrace_async_for_track_end_wrap(
+                &mut self,
+                tag: u64,
+                track_name: *const c_char,
+                cookie: i32,
+            ) {
+                self.async_for_track_end_count += 1;
+                assert!(self.async_for_track_end_count < 2);
+                assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_APP as u64);
+                // SAFETY: If the code under test is correct, the pointer is guaranteed to satisfy
+                // the requirements of `CStr::from_ptr`. If the code is not correct, this section is
+                // unsafe and will hopefully fail the test.
+                unsafe {
+                    assert_eq!(
+                        CStr::from_ptr(track_name).to_str().expect("to_str failed"),
+                        "Track"
+                    );
+                }
+                assert_eq!(cookie, 123);
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.async_for_track_end_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        atrace_async_for_track_end(AtraceTag::App, "Track", 123);
 
         mock_atrace::mocker_finish();
     }
