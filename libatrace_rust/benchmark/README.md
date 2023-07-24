@@ -36,12 +36,12 @@ device may be different but we expect similar relative performance between Rust 
 Rust results from `libatrace_rust_benchmark 2>&1 | grep time`:
 
 ```text
-tracing_off_begin/10    time:   [91.195 ns 91.648 ns 92.193 ns]
-tracing_off_begin/1000  time:   [289.50 ns 290.57 ns 291.76 ns]
-tracing_off_end         time:   [6.0455 ns 6.0998 ns 6.1644 ns]
-tracing_on_begin/10     time:   [1.2285 µs 1.2330 µs 1.2379 µs]
-tracing_on_begin/1000   time:   [1.4667 µs 1.4709 µs 1.4754 µs]
-tracing_on_end          time:   [1.1344 µs 1.1444 µs 1.1543 µs]
+tracing_off_begin/10    time:   [6.0211 ns 6.0382 ns 6.0607 ns]
+tracing_off_begin/1000  time:   [6.0119 ns 6.0418 ns 6.0823 ns]
+tracing_off_end         time:   [6.5417 ns 6.6801 ns 6.8131 ns]
+tracing_on_begin/10     time:   [1.2847 µs 1.2929 µs 1.3044 µs]
+tracing_on_begin/1000   time:   [1.5395 µs 1.5476 µs 1.5580 µs]
+tracing_on_end          time:   [1.1153 µs 1.1208 µs 1.1276 µs]
 ```
 
 C++ results from `libatrace_rust_benchmark_cc`:
