@@ -44,6 +44,8 @@ fn spawn_counter_thread() -> JoinHandle<()> {
 }
 
 fn main() {
+    atrace::trace_method!(AtraceTag::App);
+
     let _scoped_event = atrace::begin_scoped_event(AtraceTag::App, "Example main");
 
     let enabled_tags = atrace::atrace_get_enabled_tags();
