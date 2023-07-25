@@ -225,7 +225,7 @@ pub fn atrace_async_end(tag: AtraceTag, name: &str, cookie: i32) {
 /// In addition to the name and a cookie as in `atrace_async_begin`/`atrace_async_end`, a track name
 /// argument is provided, which is the name of the row where this async event should be recorded.
 ///
-/// The track name, name, and cookie used to begin an event must be used to end it.
+/// The track name and cookie used to begin an event must be used to end it.
 ///
 /// The cookie here must be unique on the track_name level, not the name level.
 pub fn atrace_async_for_track_begin(tag: AtraceTag, track_name: &str, name: &str, cookie: i32) {
