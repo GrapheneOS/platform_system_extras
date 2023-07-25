@@ -19,6 +19,7 @@
 
 #include <inttypes.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
