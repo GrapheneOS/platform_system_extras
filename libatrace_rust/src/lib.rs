@@ -103,6 +103,26 @@ pub fn begin_scoped_event(tag: AtraceTag, name: &str) -> ScopedEvent {
     ScopedEvent { tag }
 }
 
+/// Creates a scoped event with the current method name.
+#[macro_export]
+macro_rules! trace_method {
+    {$tag:expr} => {
+        let mut _atrace_trace_method_name: &'static str = "";
+        {
+            // Declares function f inside current function.
+            fn f() {}
+            fn type_name_of<T>(_: T) -> &'static str {
+                std::any::type_name::<T>()
+            }
+            // type name of f is struct_or_crate_name::calling_function_name::f
+            let name = type_name_of(f);
+            // Remove the third to last character ("::f")
+            _atrace_trace_method_name = &name[..name.len() - 3];
+        }
+        let _atrace_trace_method_guard = atrace::begin_scoped_event($tag, _atrace_trace_method_name);
+    };
+}
+
 /// Set whether tracing is enabled for the current process. This is used to prevent tracing within
 /// the Zygote process.
 pub fn atrace_set_tracing_enabled(enabled: bool) {
@@ -205,7 +225,7 @@ pub fn atrace_async_end(tag: AtraceTag, name: &str, cookie: i32) {
 /// In addition to the name and a cookie as in `atrace_async_begin`/`atrace_async_end`, a track name
 /// argument is provided, which is the name of the row where this async event should be recorded.
 ///
-/// The track name, name, and cookie used to begin an event must be used to end it.
+/// The track name and cookie used to begin an event must be used to end it.
 ///
 /// The cookie here must be unique on the track_name level, not the name level.
 pub fn atrace_async_for_track_begin(tag: AtraceTag, track_name: &str, name: &str, cookie: i32) {
@@ -1121,6 +1141,77 @@ mod tests {
             let _event_guard = begin_scoped_event(AtraceTag::App, "Scoped Event");
             atrace_instant(AtraceTag::App, "Instant event called within scoped event");
         }
+
+        mock_atrace::mocker_finish();
+    }
+
+    // Need to have this alias to make the macro work, since it calls atrace::begin_scoped_event.
+    use crate as atrace;
+    fn traced_method_for_test() {
+        trace_method!(AtraceTag::App);
+        atrace_instant(AtraceTag::App, "Instant event called within method");
+    }
+
+    #[test]
+    fn method_trace_starts_and_ends_in_order() {
+        #[derive(Default)]
+        struct CallCheck {
+            begin_count: u32,
+            end_count: u32,
+            instant_count: u32,
+        }
+
+        impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled_wrap(&mut self, _tag: u64) -> u64 {
+                1
+            }
+
+            fn atrace_begin_wrap(&mut self, tag: u64, name: *const c_char) {
+                assert_eq!(self.end_count, 0);
+                assert_eq!(self.instant_count, 0);
+
+                self.begin_count += 1;
+                assert!(self.begin_count < 2);
+                assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_APP as u64);
+                // SAFETY: If the code under test is correct, the pointer is guaranteed to satisfy
+                // the requirements of `CStr::from_ptr`. If the code is not correct, this section is
+                // unsafe and will hopefully fail the test.
+                unsafe {
+                    assert_eq!(
+                        CStr::from_ptr(name).to_str().expect("to_str failed"),
+                        "lib::tests::traced_method_for_test"
+                    );
+                }
+            }
+
+            fn atrace_instant_wrap(&mut self, _tag: u64, _name: *const c_char) {
+                // We don't care about the contents of the event, we only use it to check begin/end ordering.
+                assert_eq!(self.begin_count, 1);
+                assert_eq!(self.end_count, 0);
+
+                self.instant_count += 1;
+                assert!(self.instant_count < 2);
+            }
+
+            fn atrace_end_wrap(&mut self, tag: u64) {
+                assert_eq!(self.begin_count, 1);
+                assert_eq!(self.instant_count, 1);
+
+                self.end_count += 1;
+                assert!(self.end_count < 2);
+                assert_eq!(tag, cutils_trace_bindgen::ATRACE_TAG_APP as u64);
+            }
+
+            fn finish(&self) {
+                assert_eq!(self.begin_count, 1);
+                assert_eq!(self.end_count, 1);
+                assert_eq!(self.instant_count, 1);
+            }
+        }
+
+        let _guard = mock_atrace::set_scoped_mocker(CallCheck::default());
+
+        traced_method_for_test();
 
         mock_atrace::mocker_finish();
     }
