@@ -189,65 +189,6 @@ static ElfStatus OpenObjectFileInMemory(const char* data, size_t size, BinaryWra
   return ElfStatus::NO_ERROR;
 }
 
-#if defined(USE_OLD_LLVM)
-
-static inline llvm::Expected<uint32_t> GetSymbolFlags(const llvm::object::ELFSymbolRef& symbol) {
-  return symbol.getFlags();
-}
-
-static inline llvm::Expected<uint64_t> GetSymbolValue(const llvm::object::ELFSymbolRef& symbol) {
-  return symbol.getValue();
-}
-
-static inline llvm::Expected<llvm::StringRef> GetSectionName(
-    const llvm::object::SectionRef& section) {
-  llvm::StringRef name;
-  std::error_code err_code = section.getName(name);
-  if (err_code) {
-    return llvm::make_error<llvm::StringError>("", err_code);
-  }
-  return name;
-}
-
-static inline llvm::Expected<llvm::StringRef> GetSectionContents(
-    const llvm::object::SectionRef& section) {
-  llvm::StringRef data;
-  std::error_code err_code = section.getContents(data);
-  if (err_code) {
-    return llvm::make_error<llvm::StringError>("", err_code);
-  }
-  return data;
-}
-
-template <typename ELFT>
-static inline const llvm::object::ELFFile<ELFT>* GetELFFile(
-    const llvm::object::ELFObjectFile<ELFT>* obj) {
-  return obj->getELFFile();
-}
-
-template <typename ELFT>
-static inline const typename ELFT::Ehdr& GetELFHeader(const llvm::object::ELFFile<ELFT>* elf) {
-  return *elf->getHeader();
-}
-
-template <typename ELFT>
-static inline llvm::Expected<typename ELFT::PhdrRange> GetELFProgramHeaders(
-    const llvm::object::ELFFile<ELFT>* elf) {
-  return elf->program_headers();
-}
-
-template <typename ELFT>
-static inline llvm::Expected<llvm::StringRef> GetELFSectionName(
-    const llvm::object::ELFFile<ELFT>* elf, const typename ELFT::Shdr& section_header) {
-  llvm::ErrorOr<llvm::StringRef> result = elf->getSectionName(&section_header);
-  if (result) {
-    return result.get();
-  }
-  return llvm::make_error<llvm::StringError>("", result.getError());
-}
-
-#else  // !defined(USE_OLD_LLVM)
-
 static inline llvm::Expected<uint32_t> GetSymbolFlags(const llvm::object::ELFSymbolRef& symbol) {
   return symbol.getFlags();
 }
@@ -288,8 +229,6 @@ static inline llvm::Expected<llvm::StringRef> GetELFSectionName(
     const llvm::object::ELFFile<ELFT>* elf, const typename ELFT::Shdr& section_header) {
   return elf->getSectionName(section_header);
 }
-
-#endif  // !defined(USE_OLD_LLVM)
 
 void ReadSymbolTable(llvm::object::symbol_iterator sym_begin, llvm::object::symbol_iterator sym_end,
                      const std::function<void(const ElfFileSymbol&)>& callback, bool is_arm,
