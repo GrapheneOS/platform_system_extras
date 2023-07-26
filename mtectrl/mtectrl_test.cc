@@ -23,14 +23,51 @@
 #include <android-base/logging.h>
 #include <android-base/properties.h>
 #include <bootloader_message/bootloader_message.h>
+#include <string_view>
 
 namespace {
 using ::testing::StartsWith;
 
-int mtectrl(const char* arg) {
+int mtectrl(std::string_view arg) {
   std::string cmd = "mtectrl -t /data/local/tmp/misc_memtag ";
   cmd += arg;
   return system(cmd.c_str());
+}
+
+int RunMteCtrl() {
+  std::string arg = android::base::GetProperty("arm64.memtag.test_bootctl", "none");
+  arg += " ";
+  arg += android::base::GetProperty("arm64.memtag.test_bootctl_override", "default");
+  return mtectrl(arg);
+}
+
+void Boot(misc_memtag_message m) {
+  std::string m_str(reinterpret_cast<char*>(&m), sizeof(m));
+  android::base::WriteStringToFile(m_str, "/data/local/tmp/misc_memtag");
+  mtectrl("-s arm64.memtag.test_bootctl");
+  // arm64.memtag.test_bootctl got updated, so we trigger ourselves.
+  RunMteCtrl();
+}
+
+void Reboot() {
+  android::base::SetProperty("arm64.memtag.test_bootctl", "INVALID");
+  std::string m_str;
+  ASSERT_TRUE(android::base::ReadFileToString("/data/local/tmp/misc_memtag", &m_str));
+  misc_memtag_message m;
+  ASSERT_EQ(m_str.size(), sizeof(m));
+  memcpy(&m, m_str.c_str(), sizeof(m));
+  m.memtag_mode &= ~MISC_MEMTAG_MODE_MEMTAG_ONCE;
+  Boot(m);
+}
+
+void SetMemtagProp(const std::string& s) {
+  android::base::SetProperty("arm64.memtag.test_bootctl", s);
+  RunMteCtrl();
+}
+
+void SetOverrideProp(const std::string& s) {
+  android::base::SetProperty("arm64.memtag.test_bootctl_override", s);
+  RunMteCtrl();
 }
 
 std::string GetMisc() {
@@ -52,6 +89,7 @@ class MteCtrlTest : public ::testing::Test {
     CHECK(ftruncate(fd, sizeof(misc_memtag_message)) != -1);
     close(fd);
     android::base::SetProperty("arm64.memtag.test_bootctl", "INVALID");
+    android::base::SetProperty("arm64.memtag.test_bootctl_override", "");
   }
   void TearDown() override {
     CHECK(unlink("/data/local/tmp/misc_memtag") == 0);
@@ -64,36 +102,26 @@ TEST_F(MteCtrlTest, invalid) {
 }
 
 TEST_F(MteCtrlTest, set_once) {
-  ASSERT_EQ(mtectrl("memtag-once"), 0);
+  Boot({});
+  SetMemtagProp("memtag-once");
   EXPECT_THAT(GetMisc(), StartsWith("\x01\x5a\xfe\xfe\x5a\x02"));
 }
 
 TEST_F(MteCtrlTest, set_once_kernel) {
-  ASSERT_EQ(mtectrl("memtag-once,memtag-kernel"), 0);
+  Boot({});
+  SetMemtagProp("memtag-once,memtag-kernel");
   EXPECT_THAT(GetMisc(), StartsWith("\x01\x5a\xfe\xfe\x5a\x06"));
 }
 
-TEST_F(MteCtrlTest, set_memtag) {
-  ASSERT_EQ(mtectrl("memtag"), 0);
-  EXPECT_THAT(GetMisc(), StartsWith("\x01\x5a\xfe\xfe\x5a\x01"));
-}
-
-TEST_F(MteCtrlTest, set_memtag_force_off) {
-  ASSERT_EQ(mtectrl("memtag force_off"), 0);
-  EXPECT_THAT(GetMisc(), StartsWith("\x01\x5a\xfe\xfe\x5a\x10"));
-}
-
 TEST_F(MteCtrlTest, read_memtag) {
-  ASSERT_EQ(mtectrl("memtag"), 0);
-  ASSERT_EQ(mtectrl("-s arm64.memtag.test_bootctl"), 0);
+  Boot({});
+  SetMemtagProp("memtag");
   EXPECT_EQ(TestProperty(), "memtag");
 }
 
 TEST_F(MteCtrlTest, read_invalid_memtag_message) {
   misc_memtag_message m = {.version = 1, .magic = 0xffff, .memtag_mode = MISC_MEMTAG_MODE_MEMTAG};
-  std::string m_str(reinterpret_cast<char*>(&m), sizeof(m));
-  android::base::WriteStringToFile(m_str, "/data/local/tmp/misc_memtag");
-  ASSERT_EQ(mtectrl("-s arm64.memtag.test_bootctl"), 0);
+  Boot(m);
   EXPECT_EQ(TestProperty(), "");
 }
 
@@ -101,47 +129,176 @@ TEST_F(MteCtrlTest, read_invalid_memtag_mode) {
   misc_memtag_message m = {.version = MISC_MEMTAG_MESSAGE_VERSION,
                            .magic = MISC_MEMTAG_MAGIC_HEADER,
                            .memtag_mode = MISC_MEMTAG_MODE_MEMTAG | 1u << 31};
-  std::string m_str(reinterpret_cast<char*>(&m), sizeof(m));
-  android::base::WriteStringToFile(m_str, "/data/local/tmp/misc_memtag");
-  ASSERT_NE(mtectrl("-s arm64.memtag.test_bootctl"), 0);
-  EXPECT_EQ(TestProperty(), "memtag");
-}
-
-TEST_F(MteCtrlTest, set_read_memtag) {
-  ASSERT_EQ(mtectrl("-s arm64.memtag.test_bootctl memtag"), 0);
+  Boot(m);
   EXPECT_EQ(TestProperty(), "memtag");
 }
 
 TEST_F(MteCtrlTest, set_read_force_off) {
-  ASSERT_EQ(mtectrl("-s arm64.memtag.test_bootctl memtag,memtag-once force_off"), 0);
-  EXPECT_EQ(TestProperty(), "memtag-once,memtag-off");
+  Boot({});
+  SetMemtagProp("memtag,memtag-once");
+  SetOverrideProp("force_off");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off,forced");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "");
+}
+
+TEST_F(MteCtrlTest, set_read_force_off_none) {
+  Boot({});
+  SetMemtagProp("none");
+  SetOverrideProp("force_off");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off,forced");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "");
+}
+
+TEST_F(MteCtrlTest, set_read_force_off_and_on) {
+  Boot({});
+  SetMemtagProp("memtag,memtag-once");
+  SetOverrideProp("force_off");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off,forced");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "");
+  SetOverrideProp("force_on");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag,forced");
+}
+
+TEST_F(MteCtrlTest, set_read_force_off_already) {
+  Boot({});
+  SetMemtagProp("memtag-off,memtag-once");
+  SetOverrideProp("force_off");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off");
+}
+
+TEST_F(MteCtrlTest, set_read_force_off_and_on_already) {
+  Boot({});
+  SetMemtagProp("memtag-off,memtag-once");
+  SetOverrideProp("force_off");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off");
+  SetOverrideProp("force_on");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag,forced");
+}
+
+TEST_F(MteCtrlTest, set_read_force_on) {
+  Boot({});
+  SetMemtagProp("memtag-once");
+  SetOverrideProp("force_on");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag,forced");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "");
+}
+
+TEST_F(MteCtrlTest, set_read_force_on_none) {
+  Boot({});
+  SetMemtagProp("none");
+  SetOverrideProp("force_on");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag,forced");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "");
+}
+
+TEST_F(MteCtrlTest, set_read_force_on_and_off) {
+  Boot({});
+  SetMemtagProp("memtag-once");
+  SetOverrideProp("force_on");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag,forced");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "");
+  SetOverrideProp("force_off");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off,forced");
+}
+
+TEST_F(MteCtrlTest, set_read_force_on_already) {
+  Boot({});
+  SetMemtagProp("memtag,memtag-once");
+  SetOverrideProp("force_on");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag");
+}
+
+TEST_F(MteCtrlTest, set_read_force_on_and_off_already) {
+  Boot({});
+  SetMemtagProp("memtag,memtag-once");
+  SetOverrideProp("force_on");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag");
+  SetOverrideProp("force_off");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off,forced");
 }
 
 TEST_F(MteCtrlTest, override) {
-  ASSERT_EQ(mtectrl("memtag"), 0);
-  ASSERT_EQ(mtectrl("memtag-once"), 0);
+  Boot({});
+  SetMemtagProp(("memtag"));
+  SetMemtagProp(("memtag-once"));
   EXPECT_THAT(GetMisc(), StartsWith("\x01\x5a\xfe\xfe\x5a\x02"));
 }
 
 TEST_F(MteCtrlTest, read_empty) {
-  ASSERT_EQ(mtectrl("-s arm64.memtag.test_bootctl"), 0);
+  Boot({});
   EXPECT_EQ(TestProperty(), "");
 }
 
 TEST_F(MteCtrlTest, force_off_invalid_mode) {
-  mtectrl("-s arm64.memtag.test_bootctl memtag-invalid force_off");
-  EXPECT_EQ(TestProperty(), "memtag-off");
-  EXPECT_THAT(GetMisc(), StartsWith("\x01\x5a\xfe\xfe\x5a\x10"));
+  Boot({});
+  SetMemtagProp("memtag-invalid");
+  SetOverrideProp("force_off");
+  EXPECT_THAT(GetMisc(), StartsWith("\x01\x5a\xfe\xfe\x5a\x30"));
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag-off,forced");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "");
 }
 
 TEST_F(MteCtrlTest, force_on_invalid_mode) {
-  mtectrl("-s arm64.memtag.test_bootctl memtag-invalid force_on");
-  EXPECT_EQ(TestProperty(), "memtag");
-  EXPECT_THAT(GetMisc(), StartsWith("\x01\x5a\xfe\xfe\x5a\x01"));
+  Boot({});
+  SetMemtagProp("memtag-invalid");
+  SetOverrideProp("force_on");
+  EXPECT_THAT(GetMisc(), StartsWith("\x01\x5a\xfe\xfe\x5a\x21"));
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag,forced");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "");
 }
 
 TEST_F(MteCtrlTest, mode_invalid_override) {
-  mtectrl("-s arm64.memtag.test_bootctl memtag force_invalid");
-  EXPECT_EQ(TestProperty(), "memtag");
+  Boot({});
+  SetMemtagProp("memtag");
+  SetOverrideProp("force_invalid");
   EXPECT_THAT(GetMisc(), StartsWith("\x01\x5a\xfe\xfe\x5a\x01"));
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag");
+  SetOverrideProp("default");
+  Reboot();
+  EXPECT_EQ(TestProperty(), "memtag");
 }
