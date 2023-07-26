@@ -19,6 +19,7 @@
 #include <fcntl.h>
 
 #include <algorithm>
+#include <functional>
 #include <iterator>
 #include <string>
 #include <utility>
