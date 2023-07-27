@@ -56,7 +56,7 @@ static std::optional<bool> CanSampleRegsFor32BitABI() {
   return false;
 }
 
-bool IsInNativeAbi() {
+std::optional<bool> IsInNativeAbi() {
   static int in_native_abi = -1;
   if (in_native_abi == -1) {
     FILE* fp = popen("uname -m", "re");
@@ -76,9 +76,11 @@ bool IsInNativeAbi() {
       }
       if (GetTargetArch() == ARCH_ARM) {
         // If we can't get ARM registers in samples, probably we are running with a 32-bit
-        // translator on 64-bit only CPUs.
-        if (CanSampleRegsFor32BitABI() != std::optional<bool>(true)) {
-          in_native_abi = 0;
+        // translator on 64-bit only CPUs. Then we should make in_native_abi = 0.
+        if (auto result = CanSampleRegsFor32BitABI(); result.has_value()) {
+          in_native_abi = result.value() ? 1 : 0;
+        } else {
+          in_native_abi = 2;
         }
       }
     } else if (GetTargetArch() == ARCH_RISCV64) {
@@ -86,6 +88,9 @@ bool IsInNativeAbi() {
         in_native_abi = 0;
       }
     }
+  }
+  if (in_native_abi == 2) {
+    return std::nullopt;
   }
   return in_native_abi == 1;
 }
@@ -121,8 +126,9 @@ bool HasHardwareCounter() {
     bool is_emulator = android::base::StartsWith(fingerprint, "google/sdk_gphone") ||
                        android::base::StartsWith(fingerprint, "google/sdk_gpc") ||
                        android::base::StartsWith(fingerprint, "generic/cf");
+    bool in_native_abi = IsInNativeAbi() == std::optional(true);
 
-    if (arch == ARCH_X86_64 || arch == ARCH_X86_32 || !IsInNativeAbi() || is_emulator) {
+    if (arch == ARCH_X86_64 || arch == ARCH_X86_32 || !in_native_abi || is_emulator) {
       // On x86 and x86_64, or when we are not in native abi, it's likely to run on an emulator or
       // vm without hardware perf counters. It's hard to enumerate them all. So check the support
       // at runtime.
