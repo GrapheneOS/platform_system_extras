@@ -16,6 +16,7 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -68,11 +69,13 @@ void CheckElfFileSymbols(const std::map<std::string, ElfFileSymbol>& symbols);
 #define TEST_REQUIRE_HOST_ROOT() TEST_REQUIRE_ROOT()
 #endif
 
-bool IsInNativeAbi();
+std::optional<bool> IsInNativeAbi();
 // Used to skip tests not supposed to run on non-native ABIs.
 #define OMIT_TEST_ON_NON_NATIVE_ABIS()                                      \
   do {                                                                      \
-    if (!IsInNativeAbi()) {                                                 \
+    std::optional<bool> in_native_abi = IsInNativeAbi();                    \
+    ASSERT_TRUE(in_native_abi.has_value());                                 \
+    if (!in_native_abi.value()) {                                           \
       GTEST_LOG_(INFO) << "Skip this test as it only runs on native ABIs."; \
       return;                                                               \
     }                                                                       \
