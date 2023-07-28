@@ -17,13 +17,44 @@
 
 #include <stdio.h>
 
+#include <optional>
+
 #include <android-base/logging.h>
 #include <android-base/properties.h>
 
+#include "command.h"
 #include "event_attr.h"
 #include "event_fd.h"
 #include "event_type.h"
+#include "record_file.h"
 #include "test_util.h"
+
+#if defined(__linux__)
+
+static std::optional<bool> CanSampleRegsFor32BitABI() {
+  std::vector<std::unique_ptr<Workload>> workloads;
+  CreateProcesses(1, &workloads);
+  std::string pid = std::to_string(workloads[0]->GetPid());
+  std::unique_ptr<Command> cmd = CreateCommandInstance("record");
+  TemporaryFile tmpfile;
+  if (!cmd->Run({"-p", pid, "--call-graph", "dwarf,8", "--no-unwind", "-e", "cpu-clock:u",
+                 "--duration", "3", "-o", tmpfile.path})) {
+    return std::nullopt;
+  }
+  auto reader = RecordFileReader::CreateInstance(tmpfile.path);
+  if (!reader) {
+    return std::nullopt;
+  }
+  for (const std::unique_ptr<Record>& record : reader->DataSection()) {
+    if (record->type() == PERF_RECORD_SAMPLE) {
+      auto sample = static_cast<const SampleRecord*>(record.get());
+      if (sample->regs_user_data.abi == PERF_SAMPLE_REGS_ABI_32) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 bool IsInNativeAbi() {
   static int in_native_abi = -1;
@@ -43,6 +74,13 @@ bool IsInNativeAbi() {
       if (s.find("arm") == std::string::npos && s.find("aarch64") == std::string::npos) {
         in_native_abi = 0;
       }
+      if (GetTargetArch() == ARCH_ARM) {
+        // If we can't get ARM registers in samples, probably we are running with a 32-bit
+        // translator on 64-bit only CPUs.
+        if (CanSampleRegsFor32BitABI() != std::optional<bool>(true)) {
+          in_native_abi = 0;
+        }
+      }
     } else if (GetTargetArch() == ARCH_RISCV64) {
       if (s.find("riscv") == std::string::npos) {
         in_native_abi = 0;
@@ -52,7 +90,6 @@ bool IsInNativeAbi() {
   return in_native_abi == 1;
 }
 
-#if defined(__linux__)
 // Check if we can get a non-zero instruction event count by monitoring current thread.
 static bool HasNonZeroInstructionEventCount() {
   const simpleperf::EventType* type = simpleperf::FindEventTypeByName("instructions", false);
