@@ -790,6 +790,7 @@ static void TestRecordingApps(const std::string& app_name, const std::string& ap
 }
 
 TEST(record_cmd, app_option_for_debuggable_app) {
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   TEST_REQUIRE_APPS();
   SetRunInAppToolForTesting(true, false);
   TestRecordingApps("com.android.simpleperf.debuggable", "debuggable");
@@ -798,6 +799,7 @@ TEST(record_cmd, app_option_for_debuggable_app) {
 }
 
 TEST(record_cmd, app_option_for_profileable_app) {
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   TEST_REQUIRE_APPS();
   SetRunInAppToolForTesting(false, true);
   TestRecordingApps("com.android.simpleperf.profileable", "profileable");
@@ -827,6 +829,7 @@ static void RecordJavaApp(RecordingAppHelper& helper) {
 
 TEST(record_cmd, record_java_app) {
 #if defined(__ANDROID__)
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   RecordingAppHelper helper;
 
   RecordJavaApp(helper);
@@ -892,6 +895,7 @@ TEST(record_cmd, record_native_app) {
 TEST(record_cmd, check_trampoline_after_art_jni_methods) {
   // Test if art jni methods are called by art_jni_trampoline.
 #if defined(__ANDROID__)
+  OMIT_TEST_ON_NON_NATIVE_ABIS();
   RecordingAppHelper helper;
 
   RecordJavaApp(helper);
