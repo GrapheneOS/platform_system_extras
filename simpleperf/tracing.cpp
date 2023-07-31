@@ -279,7 +279,7 @@ enum class FormatParsingState {
 };
 
 // Parse lines like: field:char comm[16]; offset:8; size:16;  signed:1;
-static TracingField ParseTracingField(const std::string& s) {
+static std::optional<TracingField> ParseTracingField(const std::string& s) {
   TracingField field;
   std::string name;
   std::string value;
@@ -310,7 +310,8 @@ static TracingField ParseTracingField(const std::string& s) {
           size_t elem_count;
           // Array size may not be a number, like field:u32 rates[IEEE80211_NUM_BANDS].
           if (android::base::ParseUint(last_value_part.substr(left_bracket_pos + 1, len),
-                                       &elem_count)) {
+                                       &elem_count) &&
+              elem_count > 0) {
             field.elem_count = elem_count;
           }
         }
@@ -320,13 +321,20 @@ static TracingField ParseTracingField(const std::string& s) {
         field.elem_count = 1;
       }
     } else if (name == "offset") {
-      field.offset = static_cast<size_t>(strtoull(value.c_str(), nullptr, 10));
+      if (!android::base::ParseUint(value, &field.offset)) {
+        return std::nullopt;
+      }
     } else if (name == "size") {
-      size_t size = static_cast<size_t>(strtoull(value.c_str(), nullptr, 10));
-      CHECK_EQ(size % field.elem_count, 0u);
+      size_t size;
+      if (!android::base::ParseUint(value, &size) || size == 0 || size % field.elem_count != 0) {
+        return std::nullopt;
+      }
       field.elem_size = size / field.elem_count;
     } else if (name == "signed") {
-      int is_signed = static_cast<int>(strtoull(value.c_str(), nullptr, 10));
+      int is_signed;
+      if (!android::base::ParseInt(value, &is_signed, 0, 1)) {
+        return std::nullopt;
+      }
       field.is_signed = (is_signed == 1);
     }
   }
@@ -350,8 +358,10 @@ TracingFormat ParseTracingFormat(const std::string& data) {
       }
     } else if (state == FormatParsingState::READ_FIELDS) {
       if (size_t pos = s.find("field:"); pos != std::string::npos) {
-        TracingField field = ParseTracingField(s);
-        format.fields.push_back(field);
+        // Ignore errors parsing a field. Because it's not critical.
+        if (std::optional<TracingField> field = ParseTracingField(s); field.has_value()) {
+          format.fields.emplace_back(field.value());
+        }
       }
     }
   }
@@ -385,7 +395,7 @@ void Tracing::Dump(size_t indent) {
   tracing_file_->Dump(indent);
 }
 
-TracingFormat Tracing::GetTracingFormatHavingId(uint64_t trace_event_id) {
+std::optional<TracingFormat> Tracing::GetTracingFormatHavingId(uint64_t trace_event_id) {
   if (tracing_formats_.empty()) {
     tracing_formats_ = tracing_file_->LoadTracingFormatsFromEventFiles();
   }
@@ -394,8 +404,7 @@ TracingFormat Tracing::GetTracingFormatHavingId(uint64_t trace_event_id) {
       return format;
     }
   }
-  LOG(FATAL) << "no tracing format for id " << trace_event_id;
-  return TracingFormat();
+  return std::nullopt;
 }
 
 std::string Tracing::GetTracingEventNameHavingId(uint64_t trace_event_id) {

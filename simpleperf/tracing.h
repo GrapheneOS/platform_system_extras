@@ -67,23 +67,23 @@ struct StringTracingFieldPlace {
 struct TracingFormat {
   std::string system_name;
   std::string name;
-  uint64_t id;
+  uint64_t id = 0;
   std::vector<TracingField> fields;
 
-  void GetField(const std::string& name, TracingFieldPlace& place) {
+  void GetField(const std::string& name, TracingFieldPlace& place) const {
     const TracingField& field = GetField(name);
     place.offset = field.offset;
     place.size = field.elem_size;
   }
 
-  void GetField(const std::string& name, StringTracingFieldPlace& place) {
+  void GetField(const std::string& name, StringTracingFieldPlace& place) const {
     const TracingField& field = GetField(name);
     place.offset = field.offset;
     place.size = field.elem_count;
   }
 
  private:
-  const TracingField& GetField(const std::string& name) {
+  const TracingField& GetField(const std::string& name) const {
     for (const auto& field : fields) {
       if (field.name == name) {
         return field;
@@ -101,7 +101,7 @@ class Tracing {
   static std::unique_ptr<Tracing> Create(const std::vector<char>& data);
   ~Tracing();
   void Dump(size_t indent);
-  TracingFormat GetTracingFormatHavingId(uint64_t trace_event_id);
+  std::optional<TracingFormat> GetTracingFormatHavingId(uint64_t trace_event_id);
   std::string GetTracingEventNameHavingId(uint64_t trace_event_id);
   const std::string& GetKallsyms() const;
   uint32_t GetPageSize() const;
