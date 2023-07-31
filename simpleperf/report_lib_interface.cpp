@@ -523,8 +523,17 @@ void ReportLib::CreateEvents() {
     events_[i].attr = attrs[i].attr;
     events_[i].name = GetEventNameByAttr(events_[i].attr);
     EventInfo::TracingInfo& tracing_info = events_[i].tracing_info;
+    tracing_info.data_format.size = 0;
+    tracing_info.data_format.field_count = 0;
+    tracing_info.data_format.fields = nullptr;
+
     if (events_[i].attr.type == PERF_TYPE_TRACEPOINT && tracing_) {
-      TracingFormat format = tracing_->GetTracingFormatHavingId(events_[i].attr.config);
+      std::optional<TracingFormat> opt_format =
+          tracing_->GetTracingFormatHavingId(events_[i].attr.config);
+      if (!opt_format.has_value() || opt_format.value().fields.empty()) {
+        continue;
+      }
+      const TracingFormat& format = opt_format.value();
       tracing_info.field_names.resize(format.fields.size());
       tracing_info.fields.resize(format.fields.size());
       for (size_t i = 0; i < format.fields.size(); ++i) {
@@ -537,18 +546,10 @@ void ReportLib::CreateEvents() {
         field.is_signed = format.fields[i].is_signed;
         field.is_dynamic = format.fields[i].is_dynamic;
       }
-      if (tracing_info.fields.empty()) {
-        tracing_info.data_format.size = 0;
-      } else {
-        TracingFieldFormat& field = tracing_info.fields.back();
-        tracing_info.data_format.size = field.offset + field.elem_size * field.elem_count;
-      }
+      TracingFieldFormat& field = tracing_info.fields.back();
+      tracing_info.data_format.size = field.offset + field.elem_size * field.elem_count;
       tracing_info.data_format.field_count = tracing_info.fields.size();
       tracing_info.data_format.fields = &tracing_info.fields[0];
-    } else {
-      tracing_info.data_format.size = 0;
-      tracing_info.data_format.field_count = 0;
-      tracing_info.data_format.fields = nullptr;
     }
   }
 }

@@ -9,6 +9,13 @@ using namespace simpleperf;
 
 namespace {
 
+class CommandRegister {
+ public:
+  CommandRegister() { RegisterDumpRecordCommand(); }
+};
+
+CommandRegister command_register;
+
 void TestReportLib(const char* record_file) {
   ReportLib* report_lib = CreateReportLib();
   SetRecordFile(report_lib, record_file);
