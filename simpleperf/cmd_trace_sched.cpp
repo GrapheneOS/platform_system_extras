@@ -237,9 +237,12 @@ bool TraceSchedCommand::ProcessRecord(Record& record) {
       }
       const EventType* event = FindEventTypeByName("sched:sched_stat_runtime");
       CHECK(event != nullptr);
-      TracingFormat format = tracing->GetTracingFormatHavingId(event->config);
-      format.GetField("comm", tracing_field_comm_);
-      format.GetField("runtime", tracing_field_runtime_);
+      std::optional<TracingFormat> format = tracing->GetTracingFormatHavingId(event->config);
+      if (!format.has_value()) {
+        return false;
+      }
+      format.value().GetField("comm", tracing_field_comm_);
+      format.value().GetField("runtime", tracing_field_runtime_);
       break;
     }
   }
