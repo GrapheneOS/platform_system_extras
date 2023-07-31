@@ -465,8 +465,12 @@ bool DumpRecordCommand::ProcessTracingData(const TracingDataRecord& r) {
     if (attr.type != PERF_TYPE_TRACEPOINT) {
       continue;
     }
-    TracingFormat format = tracing->GetTracingFormatHavingId(attr.config);
-    event.tp_fields = format.fields;
+    std::optional<TracingFormat> format = tracing->GetTracingFormatHavingId(attr.config);
+    if (!format.has_value()) {
+      LOG(ERROR) << "failed to get tracing format";
+      return false;
+    }
+    event.tp_fields = format.value().fields;
     // Decide dump function for each field.
     for (size_t j = 0; j < event.tp_fields.size(); j++) {
       auto& field = event.tp_fields[j];
