@@ -605,7 +605,11 @@ bool KmemCommand::ProcessTracingData(const std::vector<char>& data) {
     if (attr.attr.type == PERF_TYPE_TRACEPOINT) {
       uint64_t trace_event_id = attr.attr.config;
       attr.name = tracing->GetTracingEventNameHavingId(trace_event_id);
-      TracingFormat format = tracing->GetTracingFormatHavingId(trace_event_id);
+      std::optional<TracingFormat> opt_format = tracing->GetTracingFormatHavingId(trace_event_id);
+      if (!opt_format.has_value()) {
+        return false;
+      }
+      const TracingFormat& format = opt_format.value();
       if (use_slab_) {
         if (format.name == "kmalloc" || format.name == "kmem_cache_alloc" ||
             format.name == "kmalloc_node" || format.name == "kmem_cache_alloc_node") {
