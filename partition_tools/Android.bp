@@ -156,18 +156,16 @@ cc_binary {
     shared_libs: [
         "libbase",
         "libbinder",
+        "libfs_mgr_binder",
         "liblog",
         "liblp",
         "liblpdump",
         "liblpdump_interface-cpp",
         "libprotobuf-cpp-lite",
+        "libsnapshot",
         "libutils",
     ],
     static_libs: [
-        "libc++fs",
-        "libfs_mgr_binder",
-        "libsnapshot",
-        "libsnapshot_cow",
         "update_metadata-protos",
     ],
     srcs: [
