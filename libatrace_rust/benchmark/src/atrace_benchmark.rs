@@ -23,6 +23,7 @@ extern "C" {
 }
 
 fn turn_tracing_off() {
+    // SAFETY: This call is always safe.
     unsafe {
         disable_app_atrace();
     }
@@ -30,6 +31,7 @@ fn turn_tracing_off() {
 
 fn turn_tracing_on() {
     let procname = std::ffi::CString::new(std::env::args().next().unwrap()).unwrap();
+    // SAFETY: `procname` is a valid C string and the function doesn't store it after it returns.
     unsafe {
         enable_atrace_for_single_app(procname.as_ptr());
     }
