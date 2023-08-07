@@ -787,6 +787,24 @@ class SourceFileSearcher(object):
         return os.path.join(best_matched_rparent[::-1], file_name)
 
 
+class AddrRange:
+    def __init__(self, start: int, len: int):
+        self.start = start
+        self.len = len
+
+    @property
+    def end(self) -> int:
+        return self.start + self.len
+
+    def is_in_range(self, addr: int) -> bool:
+        return addr >= self.start and addr < self.end
+
+
+class Disassembly:
+    def __init__(self):
+        self.lines: List[Tuple[str, int]] = []
+
+
 class Objdump(object):
     """ A wrapper of objdump to disassemble code. """
 
@@ -806,9 +824,8 @@ class Objdump(object):
             return None
         return (str(real_path), arch)
 
-    def disassemble_code(self, dso_info, start_addr, addr_len) -> List[Tuple[str, int]]:
-        """ Disassemble [start_addr, start_addr + addr_len] of dso_path.
-            Return a list of pair (disassemble_code_line, addr).
+    def disassemble_function(self, dso_info, addr_range: AddrRange) -> Optional[Disassembly]:
+        """ Disassemble code for an addr range in a binary.
         """
         real_path, arch = dso_info
         objdump_path = self.objdump_paths.get(arch)
@@ -818,15 +835,15 @@ class Objdump(object):
                 log_exit("Can't find llvm-objdump." + NDK_ERROR_MESSAGE)
             self.objdump_paths[arch] = objdump_path
 
-        # 3. Run objdump.
+        # Run objdump.
         args = [objdump_path, '-dlC', '--no-show-raw-insn',
-                '--start-address=0x%x' % start_addr,
-                '--stop-address=0x%x' % (start_addr + addr_len),
+                '--start-address=0x%x' % addr_range.start,
+                '--stop-address=0x%x' % (addr_range.end),
                 real_path]
         if arch == 'arm' and 'llvm-objdump' in objdump_path:
             args += ['--print-imm-hex']
         try:
-            subproc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            subproc = subprocess.Popen(args, stdout=subprocess.PIPE)
             (stdoutdata, _) = subproc.communicate()
             stdoutdata = bytes_to_str(stdoutdata)
         except OSError:
@@ -834,7 +851,7 @@ class Objdump(object):
 
         if not stdoutdata:
             return None
-        result = []
+        result = Disassembly()
         for line in stdoutdata.split('\n'):
             line = line.rstrip()  # Remove '\r' on Windows.
             items = line.split(':', 1)
@@ -842,7 +859,66 @@ class Objdump(object):
                 addr = int(items[0], 16)
             except ValueError:
                 addr = 0
-            result.append((line, addr))
+            result.lines.append((line, addr))
+        return result
+
+    def disassemble_functions(self, dso_info, sorted_addr_ranges: List[AddrRange]
+                              ) -> Optional[List[Disassembly]]:
+        """ Disassemble code for multiple addr ranges in a binary. sorted_addr_ranges should be
+            sorted by addr_range.start.
+        """
+        real_path, arch = dso_info
+        objdump_path = self.objdump_paths.get(arch)
+        if not objdump_path:
+            objdump_path = ToolFinder.find_tool_path('llvm-objdump', self.ndk_path, arch)
+            if not objdump_path:
+                log_exit("Can't find llvm-objdump." + NDK_ERROR_MESSAGE)
+            self.objdump_paths[arch] = objdump_path
+
+        # Run objdump.
+        args = [objdump_path, '-dlC', '--no-show-raw-insn', real_path]
+        if arch == 'arm' and 'llvm-objdump' in objdump_path:
+            args += ['--print-imm-hex']
+        current_id = 0
+        in_range = False
+        result = [Disassembly() for _ in sorted_addr_ranges]
+        try:
+            proc = subprocess.Popen(args, stdout=subprocess.PIPE, text=True)
+            while True:
+                line = proc.stdout.readline()
+                if not line:
+                    break
+                if current_id >= len(sorted_addr_ranges):
+                    continue
+                if line[0] == ' ':
+                    # may be an instruction, like: " 24a469c: stp x29, x30, [sp, #-0x60]!"
+                    items = line.split(':', 1)
+                    try:
+                        addr = int(items[0], 16)
+                    except (ValueError, IndexError):
+                        addr = 0
+                else:
+                    # may be a function start point, like "00000000024a4698 <DoWork()>:"
+                    items = line.split(maxsplit=1)
+                    try:
+                        addr = int(items[0], 16)
+                    except (ValueError, IndexError):
+                        addr = 0
+
+                if addr != 0:
+                    if in_range and not sorted_addr_ranges[current_id].is_in_range(addr):
+                        in_range = False
+                        current_id += 1
+                        if current_id == len(sorted_addr_ranges):
+                            continue
+                    if not in_range and sorted_addr_ranges[current_id].is_in_range(addr):
+                        in_range = True
+
+                if in_range:
+                    result[current_id].lines.append((line, addr))
+            proc.wait()
+        except OSError:
+            return None
         return result
 
 
