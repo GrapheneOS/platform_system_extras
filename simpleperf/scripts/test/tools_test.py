@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 
 from binary_cache_builder import BinaryCacheBuilder
-from simpleperf_utils import (Addr2Nearestline, BinaryFinder, Objdump, ReadElf,
+from simpleperf_utils import (Addr2Nearestline, AddrRange, BinaryFinder, Disassembly, Objdump, ReadElf,
                               SourceFileSearcher, is_windows, remove)
 from . test_utils import TestBase, TestHelper
 
@@ -244,22 +244,32 @@ system/extras/simpleperf/runtest/two_functions.cpp:21:3
             dso = test_map[dso_path]
             dso_info = objdump.get_dso_info(dso_path, None)
             self.assertIsNotNone(dso_info, dso_path)
-            disassemble_code = objdump.disassemble_code(dso_info, dso['start_addr'], dso['len'])
-            self.assertTrue(disassemble_code, dso_path)
-            i = 0
-            for expected_line, expected_addr in dso['expected_items']:
-                found = False
-                while i < len(disassemble_code):
-                    line, addr = disassemble_code[i]
-                    if addr == expected_addr and expected_line in line:
-                        found = True
-                        i += 1
-                        break
+            addr_range = AddrRange(dso['start_addr'], dso['len'])
+            disassembly = objdump.disassemble_function(dso_info, addr_range)
+            self.assertTrue(disassembly, dso_path)
+            self._check_disassembly(disassembly, dso_path, dso)
+
+            result = objdump.disassemble_functions(dso_info, [addr_range])
+            self.assertTrue(result, dso_path)
+            self.assertEqual(len(result), 1)
+            self._check_disassembly(result[0], dso_path, dso)
+
+    def _check_disassembly(self, disassembly: Disassembly, dso_path: str, dso) -> None:
+        disassemble_code = disassembly.lines
+        i = 0
+        for expected_line, expected_addr in dso['expected_items']:
+            found = False
+            while i < len(disassemble_code):
+                line, addr = disassemble_code[i]
+                if addr == expected_addr and expected_line in line:
+                    found = True
                     i += 1
-                if not found:
-                    s = '\n'.join('%s:0x%x' % item for item in disassemble_code)
-                    self.fail('for %s, %s:0x%x not found in disassemble code:\n%s' %
-                              (dso_path, expected_line, expected_addr, s))
+                    break
+                i += 1
+            if not found:
+                s = '\n'.join('%s:0x%x' % item for item in disassemble_code)
+                self.fail('for %s, %s:0x%x not found in disassemble code:\n%s' %
+                          (dso_path, expected_line, expected_addr, s))
 
     def test_readelf(self):
         test_map = {
