@@ -30,8 +30,8 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Un
 
 from simpleperf_report_lib import ReportLib, SymbolStruct
 from simpleperf_utils import (
-    Addr2Nearestline, BaseArgumentParser, BinaryFinder, get_script_dir, log_exit, Objdump,
-    open_report_in_browser, ReadElf, ReportLibOptions, SourceFileSearcher)
+    Addr2Nearestline, AddrRange, BaseArgumentParser, BinaryFinder, Disassembly, get_script_dir,
+    log_exit, Objdump, open_report_in_browser, ReadElf, ReportLibOptions, SourceFileSearcher)
 
 MAX_CALLSTACK_LENGTH = 750
 
@@ -792,6 +792,7 @@ class RecordData(object):
             lib_functions[function.lib_id].append(function)
 
         with ThreadPoolExecutor(jobs) as executor:
+            futures: List[Future] = []
             for lib_id, functions in lib_functions.items():
                 lib = self.libs.get_lib(lib_id)
                 if not filter_lib(lib.name):
@@ -799,16 +800,33 @@ class RecordData(object):
                 dso_info = objdump.get_dso_info(lib.name, lib.build_id)
                 if not dso_info:
                     continue
-                logging.info('Disassemble %s' % dso_info[0])
-                futures: List[Future] = []
-                for function in functions:
-                    futures.append(
-                        executor.submit(objdump.disassemble_code, dso_info,
-                                        function.start_addr, function.addr_len))
-                for i in range(len(functions)):
-                    # Call future.result() to report exceptions raised in the executor.
-                    functions[i].disassembly = futures[i].result()
+                # If there are not many functions, it's faster to disassemble them one by one.
+                # Otherwise it's faster to disassemble the whole binary.
+                if len(functions) < jobs:
+                    for function in functions:
+                        futures.append(executor.submit(self._disassemble_function, objdump,
+                                                       dso_info, function))
+                else:
+                    futures.append(executor.submit(self._disassemble_binary, objdump, dso_info,
+                                                   functions))
+
+            for future in futures:
+                future.result()
         self.gen_addr_hit_map_in_record_info = True
+
+    def _disassemble_function(self, objdump: Objdump, dso_info, function: Function):
+        result = objdump.disassemble_function(dso_info, AddrRange(function.start_addr,
+                                              function.addr_len))
+        if result:
+            function.disassembly = result.lines
+
+    def _disassemble_binary(self, objdump: Objdump, dso_info, functions: List[Function]):
+        functions.sort(key=lambda f: f.start_addr)
+        addr_ranges = [AddrRange(f.start_addr, f.addr_len) for f in functions]
+        result = objdump.disassemble_functions(dso_info, addr_ranges)
+        if result:
+            for i in range(len(functions)):
+                functions[i].disassembly = result[i].lines
 
     def gen_record_info(self) -> Dict[str, Any]:
         """ Return json data which will be used by report_html.js. """
