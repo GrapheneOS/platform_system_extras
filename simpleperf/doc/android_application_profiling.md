@@ -1,7 +1,7 @@
 # Android application profiling
 
 This section shows how to profile an Android application.
-Some examples are [Here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo/README.md).
+Some examples are [Here](https://android.googlesource.com/platform/system/extras/+/main/simpleperf/demo/README.md).
 
 Profiling an Android application involves three steps:
 1. Prepare an Android application.
@@ -104,7 +104,7 @@ To compile java code, we can pass app_profiler.py the --compile_java_code option
 On Android <= M, simpleperf doesn't support profiling Java code.
 
 
-Below I use application [SimpleperfExampleCpp](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo/SimpleperfExampleCpp).
+Below I use application [SimpleperfExampleCpp](https://android.googlesource.com/platform/system/extras/+/main/simpleperf/demo/SimpleperfExampleCpp).
 It builds an app-debug.apk for profiling.
 
 ```sh
@@ -303,7 +303,7 @@ Simpleperf supports controlling recording from application code. Below is the wo
 
 3. Run `api_profiler.py collect -p <package_name>` to collect profiling data files to host.
 
-Examples are CppApi and JavaApi in [demo](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/demo).
+Examples are CppApi and JavaApi in [demo](https://android.googlesource.com/platform/system/extras/+/main/simpleperf/demo).
 
 
 ## Parse profiling data manually
