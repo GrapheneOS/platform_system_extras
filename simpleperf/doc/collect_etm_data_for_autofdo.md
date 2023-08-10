@@ -103,8 +103,8 @@ Then we can use a.prof for PGO during compilation, via `-fprofile-sample-use=a.p
 ### A complete example: etm_test_loop.cpp
 
 `etm_test_loop.cpp` is an example to show the complete process.
-The source code is in [etm_test_loop.cpp](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/runtest/etm_test_loop.cpp).
-The build script is in [Android.bp](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/runtest/Android.bp).
+The source code is in [etm_test_loop.cpp](https://android.googlesource.com/platform/system/extras/+/main/simpleperf/runtest/etm_test_loop.cpp).
+The build script is in [Android.bp](https://android.googlesource.com/platform/system/extras/+/main/simpleperf/runtest/Android.bp).
 It builds an executable called `etm_test_loop`, which runs on device.
 
 Step 1: Build `etm_test_loop` binary.
@@ -193,7 +193,7 @@ before and after optimizing with AutoFDO data, we can see different preferences 
 ## Collect ETM data with a daemon
 
 Android also has a daemon collecting ETM data periodically. It only runs on userdebug and eng
-devices. The source code is in https://android.googlesource.com/platform/system/extras/+/master/profcollectd/.
+devices. The source code is in https://android.googlesource.com/platform/system/extras/+/main/profcollectd/.
 
 ## Support ETM in the kernel
 
