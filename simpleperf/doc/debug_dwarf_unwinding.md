@@ -2,7 +2,7 @@
 
 Dwarf unwinding is the default way of getting call graphs in simpleperf. In this process,
 simpleperf asks the kernel to add stack and register data to each sample. Then it uses
-[libunwindstack](https://cs.android.com/android/platform/superproject/+/master:system/unwinding/libunwindstack/)
+[libunwindstack](https://cs.android.com/android/platform/superproject/+/main:system/unwinding/libunwindstack/)
 to unwind the call stack. libunwindstack uses dwarf sections (like .debug_frame or .eh_frame) in
 elf files to know how to unwind the stack.
 
@@ -74,6 +74,6 @@ $ simpleperf record -g -o perf_unwind.data simpleperf debug-unwind --unwind-samp
 $ report_html.py -i perf_unwind.data
 
 # We can also add source code annotation in report.html.
-$ binary_cache_builder.py -i perf_unwind.data -lib <path to aosp-master>/out/target/product/<device-name>/symbols/system
-$ report_html.py -i perf_unwind.data --add_source_code --source_dirs <path to aosp-master>/system/
+$ binary_cache_builder.py -i perf_unwind.data -lib <path to aosp-main>/out/target/product/<device-name>/symbols/system
+$ report_html.py -i perf_unwind.data --add_source_code --source_dirs <path to aosp-main>/system/
 ```
