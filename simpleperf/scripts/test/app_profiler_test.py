@@ -16,6 +16,8 @@
 
 from app_profiler import NativeLibDownloader
 import shutil
+import subprocess
+import sys
 
 from simpleperf_utils import str_to_bytes, bytes_to_str, remove
 from . test_utils import TestBase, TestHelper, INFERNO_SCRIPT
@@ -52,6 +54,13 @@ class TestNativeProfiling(TestBase):
         if not self.is_rooted_device:
             return
         self.run_cmd(['app_profiler.py', '--system_wide', '-r', '--duration 1'])
+
+    def test_device_not_connected(self):
+        args = [sys.executable, TestHelper.script_path('app_profiler.py'), '-cmd', 'ls']
+        proc = subprocess.run(
+            args, env={'ANDROID_SERIAL': 'not_exist_device'},
+            stderr=subprocess.PIPE, text=True)
+        self.assertIn('No Android device is connected via ADB.', proc.stderr)
 
 
 class TestNativeLibDownloader(TestBase):

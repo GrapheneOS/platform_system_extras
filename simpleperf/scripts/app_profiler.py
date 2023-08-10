@@ -194,6 +194,8 @@ class ProfilerBase(object):
     def __init__(self, args):
         self.args = args
         self.adb = AdbHelper(enable_switch_to_root=not args.disable_adb_root)
+        if not self.adb.is_device_available():
+            log_exit('No Android device is connected via ADB.')
         self.is_root_device = self.adb.switch_to_root()
         self.android_version = self.adb.get_android_version()
         if self.android_version < 7:
@@ -335,10 +337,10 @@ class AppProfiler(ProfilerBase):
             result, ps_output = self.adb.run_and_return_output(
                 ['shell', 'ps', '-p', pid, '-o', 'USER'])
             if not result:
-              return None
+                return None
             uid = SHELL_PS_UID_PATTERN.search(ps_output).group(1)
             if uid == current_user.strip():
-              return int(pid)
+                return int(pid)
         return None
 
     def run_in_app_dir(self, args):
