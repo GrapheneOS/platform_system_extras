@@ -14,7 +14,7 @@
 #include <sys/mman.h>
 
 using namespace std;
-static const size_t pageSize = PAGE_SIZE;
+static const size_t pageSize = getpagesize();
 static size_t fsize = 1024 * (1ull << 20);
 static size_t pagesTotal = fsize / pageSize;
 
