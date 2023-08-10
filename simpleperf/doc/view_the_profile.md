@@ -310,7 +310,7 @@ Showing nodes accounting for 1.05s, 4.88% of 21.46s total
      1.05s  4.88%  4.88%      1.05s  4.88%  com.example.android.displayingbitmaps.util.ImageCache.addBitmapToCache
 ```
 
-For more information, see the [pprof README](https://github.com/google/pprof/blob/master/doc/README.md#interactive-terminal-use).
+For more information, see the [pprof README](https://github.com/google/pprof/blob/main/doc/README.md#interactive-terminal-use).
 
 
 ## Simpleperf Report Command Line
