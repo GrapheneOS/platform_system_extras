@@ -10,8 +10,8 @@ profile both Java and C++ code on Android. The simpleperf executable can run on 
 and Python scripts can be used on Android >= N.
 
 Simpleperf is part of the Android Open Source Project.
-The source code is [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/).
-The latest document is [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/README.md).
+The source code is [here](https://android.googlesource.com/platform/system/extras/+/main/simpleperf/).
+The latest document is [here](https://android.googlesource.com/platform/system/extras/+/main/simpleperf/doc/README.md).
 
 [TOC]
 
@@ -261,18 +261,18 @@ disassembly for C++ code and fully compiled Java code. Simpleperf supports two w
      libs with debug info. Do it with
      `binary_cache_builder.py -i perf.data -lib <dir_of_lib_with_debug_info>`.
    3) Use report_html.py to generate report.html with annotated source code and disassembly,
-     as described [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/scripts_reference.md#report_html_py).
+     as described [here](https://android.googlesource.com/platform/system/extras/+/main/simpleperf/doc/scripts_reference.md#report_html_py).
 
 2. Through pprof.
    1) Generate perf.data and binary_cache as above.
    2) Use pprof_proto_generator.py to generate pprof proto file. `pprof_proto_generator.py`.
-   3) Use pprof to report a function with annotated source code, as described [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/scripts_reference.md#pprof_proto_generator_py).
+   3) Use pprof to report a function with annotated source code, as described [here](https://android.googlesource.com/platform/system/extras/+/main/simpleperf/doc/scripts_reference.md#pprof_proto_generator_py).
 
 ## Bugs and contribution
 
 Bugs and feature requests can be submitted at https://github.com/android/ndk/issues.
 Patches can be uploaded to android-review.googlesource.com as [here](https://source.android.com/setup/contribute/),
-or sent to email addresses listed [here](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/OWNERS).
+or sent to email addresses listed [here](https://android.googlesource.com/platform/system/extras/+/main/simpleperf/OWNERS).
 
 If you want to compile simpleperf C++ source code, follow below steps:
 1. Download AOSP main branch as [here](https://source.android.com/setup/build/requirements).
@@ -286,7 +286,7 @@ $ mmma system/extras/simpleperf -j30
 If built successfully, out/target/product/generic_arm64/system/bin/simpleperf is for ARM64, and
 out/target/product/generic_arm64/system/bin/simpleperf32 is for ARM.
 
-The source code of simpleperf python scripts is in [system/extras/simpleperf/scripts](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/scripts/).
+The source code of simpleperf python scripts is in [system/extras/simpleperf/scripts](https://android.googlesource.com/platform/system/extras/+/main/simpleperf/scripts/).
 Most scripts rely on simpleperf binaries to work. To update binaries for scripts (using linux
 x86_64 host and android arm64 target as an example):
 ```sh
