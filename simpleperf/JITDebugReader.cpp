@@ -446,11 +446,14 @@ const JITDebugReader::DescriptorsLocation* JITDebugReader::GetDescriptorsLocatio
     LOG(ERROR) << "failed to read min_exec_vaddr from " << art_lib_path << ": " << status;
     return nullptr;
   }
+
+  const size_t kPageSize = getpagesize();
+  const size_t kPageMask = ~(kPageSize - 1);
   uint64_t file_offset;
   uint64_t min_vaddr_in_file = elf->ReadMinExecutableVaddr(&file_offset);
   // min_vaddr_in_file is the min vaddr of executable segments. It may not be page aligned.
-  // And dynamic linker will create map mapping to (segment.p_vaddr & PAGE_MASK).
-  uint64_t aligned_segment_vaddr = min_vaddr_in_file & PAGE_MASK;
+  // And dynamic linker will create map mapping to (segment.p_vaddr & kPageMask).
+  uint64_t aligned_segment_vaddr = min_vaddr_in_file & kPageMask;
   const char* jit_str = "__jit_debug_descriptor";
   const char* dex_str = "__dex_debug_descriptor";
   uint64_t jit_addr = 0u;
