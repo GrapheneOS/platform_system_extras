@@ -866,9 +866,9 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
   // 6. Show brief record result.
   auto record_stat = event_selection_set_.GetRecordStat();
   if (event_selection_set_.HasAuxTrace()) {
-    LOG(INFO) << "Aux data traced: " << record_stat.aux_data_size;
+    LOG(INFO) << "Aux data traced: " << ReadableCount(record_stat.aux_data_size);
     if (record_stat.lost_aux_data_size != 0) {
-      LOG(INFO) << "Aux data lost in user space: " << record_stat.lost_aux_data_size
+      LOG(INFO) << "Aux data lost in user space: " << ReadableCount(record_stat.lost_aux_data_size)
                 << ", consider increasing userspace buffer size(--user-buffer-size).";
     }
   } else {
@@ -879,23 +879,26 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
     size_t lost_samples = record_stat.kernelspace_lost_records + userspace_lost_samples;
 
     std::stringstream os;
-    os << "Samples recorded: " << sample_record_count_;
+    os << "Samples recorded: " << ReadableCount(sample_record_count_);
     if (record_stat.userspace_truncated_stack_samples > 0) {
-      os << " (" << record_stat.userspace_truncated_stack_samples << " with truncated stacks)";
+      os << " (" << ReadableCount(record_stat.userspace_truncated_stack_samples)
+         << " with truncated stacks)";
     }
-    os << ". Samples lost: " << lost_samples;
+    os << ". Samples lost: " << ReadableCount(lost_samples);
     if (lost_samples != 0) {
-      os << " (kernelspace: " << record_stat.kernelspace_lost_records
-         << ", userspace: " << userspace_lost_samples << ")";
+      os << " (kernelspace: " << ReadableCount(record_stat.kernelspace_lost_records)
+         << ", userspace: " << ReadableCount(userspace_lost_samples) << ")";
     }
     os << ".";
     LOG(INFO) << os.str();
 
-    LOG(DEBUG) << "Record stat: kernelspace_lost_records=" << record_stat.kernelspace_lost_records
-               << ", userspace_lost_samples=" << record_stat.userspace_lost_samples
-               << ", userspace_lost_non_samples=" << record_stat.userspace_lost_non_samples
+    LOG(DEBUG) << "Record stat: kernelspace_lost_records="
+               << ReadableCount(record_stat.kernelspace_lost_records)
+               << ", userspace_lost_samples=" << ReadableCount(record_stat.userspace_lost_samples)
+               << ", userspace_lost_non_samples="
+               << ReadableCount(record_stat.userspace_lost_non_samples)
                << ", userspace_truncated_stack_samples="
-               << record_stat.userspace_truncated_stack_samples;
+               << ReadableCount(record_stat.userspace_truncated_stack_samples);
 
     if (sample_record_count_ + record_stat.kernelspace_lost_records != 0) {
       double kernelspace_lost_percent =
