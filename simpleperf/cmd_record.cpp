@@ -264,10 +264,10 @@ class RecordCommand : public Command {
 "               When callchain joiner is used, set the matched nodes needed to join\n"
 "               callchains. The count should be >= 1. By default it is 1.\n"
 "--no-cut-samples   Simpleperf uses a record buffer to cache records received from the kernel.\n"
-"                   When the available space in the buffer reaches low level, it cuts part of\n"
-"                   the stack data in samples. When the available space reaches critical level,\n"
-"                   it drops all samples. This option makes simpleperf not cut samples when the\n"
-"                   available space reaches low level.\n"
+"                   When the available space in the buffer reaches low level, the stack data in\n"
+"                   samples is truncated to 1KB. When the available space reaches critical level,\n"
+"                   it drops all samples. This option makes simpleperf not truncate stack data\n"
+"                   when the available space reaches low level.\n"
 "--keep-failed-unwinding-result        Keep reasons for failed unwinding cases\n"
 "--keep-failed-unwinding-debug-info    Keep debug info for failed unwinding cases\n"
 "\n"
@@ -458,7 +458,7 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
   bool allow_callchain_joiner_;
   size_t callchain_joiner_min_matching_nodes_;
   std::unique_ptr<CallChainJoiner> callchain_joiner_;
-  bool allow_cutting_samples_ = true;
+  bool allow_truncating_samples_ = true;
 
   std::unique_ptr<JITDebugReader> jit_debug_reader_;
   uint64_t last_record_timestamp_;  // used to insert Mmap2Records for JIT debug info
@@ -672,7 +672,7 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   }
   if (!event_selection_set_.MmapEventFiles(mmap_page_range_.first, mmap_page_range_.second,
                                            aux_buffer_size_, record_buffer_size,
-                                           allow_cutting_samples_, exclude_perf_)) {
+                                           allow_truncating_samples_, exclude_perf_)) {
     return false;
   }
   auto callback = std::bind(&RecordCommand::ProcessRecord, this, std::placeholders::_1);
@@ -880,8 +880,8 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
 
     std::stringstream os;
     os << "Samples recorded: " << sample_record_count_;
-    if (record_stat.userspace_cut_stack_samples > 0) {
-      os << " (cut " << record_stat.userspace_cut_stack_samples << ")";
+    if (record_stat.userspace_truncated_stack_samples > 0) {
+      os << " (" << record_stat.userspace_truncated_stack_samples << " with truncated stacks)";
     }
     os << ". Samples lost: " << lost_samples;
     if (lost_samples != 0) {
@@ -894,7 +894,8 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
     LOG(DEBUG) << "Record stat: kernelspace_lost_records=" << record_stat.kernelspace_lost_records
                << ", userspace_lost_samples=" << record_stat.userspace_lost_samples
                << ", userspace_lost_non_samples=" << record_stat.userspace_lost_non_samples
-               << ", userspace_cut_stack_samples=" << record_stat.userspace_cut_stack_samples;
+               << ", userspace_truncated_stack_samples="
+               << record_stat.userspace_truncated_stack_samples;
 
     if (sample_record_count_ + record_stat.kernelspace_lost_records != 0) {
       double kernelspace_lost_percent =
@@ -909,16 +910,17 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
                      << "or increasing sample period(-c).";
       }
     }
-    size_t userspace_lost_cut_samples =
-        userspace_lost_samples + record_stat.userspace_cut_stack_samples;
+    size_t userspace_lost_truncated_samples =
+        userspace_lost_samples + record_stat.userspace_truncated_stack_samples;
     size_t userspace_complete_samples =
-        sample_record_count_ - record_stat.userspace_cut_stack_samples;
-    if (userspace_complete_samples + userspace_lost_cut_samples != 0) {
-      double userspace_lost_percent = static_cast<double>(userspace_lost_cut_samples) /
-                                      (userspace_complete_samples + userspace_lost_cut_samples);
+        sample_record_count_ - record_stat.userspace_truncated_stack_samples;
+    if (userspace_complete_samples + userspace_lost_truncated_samples != 0) {
+      double userspace_lost_percent =
+          static_cast<double>(userspace_lost_truncated_samples) /
+          (userspace_complete_samples + userspace_lost_truncated_samples);
       constexpr double USERSPACE_LOST_PERCENT_WARNING_BAR = 0.1;
       if (userspace_lost_percent >= USERSPACE_LOST_PERCENT_WARNING_BAR) {
-        LOG(WARNING) << "Lost/Cut " << (userspace_lost_percent * 100)
+        LOG(WARNING) << "Lost/Truncated " << (userspace_lost_percent * 100)
                      << "% of samples in user space, "
                      << "consider increasing userspace buffer size(--user-buffer-size), "
                      << "or decreasing sample frequency(-f), "
@@ -1086,7 +1088,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   }
 
   allow_callchain_joiner_ = !options.PullBoolValue("--no-callchain-joiner");
-  allow_cutting_samples_ = !options.PullBoolValue("--no-cut-samples");
+  allow_truncating_samples_ = !options.PullBoolValue("--no-cut-samples");
   can_dump_kernel_symbols_ = !options.PullBoolValue("--no-dump-kernel-symbols");
   dump_symbols_ = !options.PullBoolValue("--no-dump-symbols");
   if (auto value = options.PullValue("--no-inherit"); value) {
@@ -2148,10 +2150,10 @@ bool RecordCommand::DumpMetaInfoFeature(bool kernel_symbols_available) {
   info_map["record_stat"] = android::base::StringPrintf(
       "sample_record_count=%" PRIu64
       ",kernelspace_lost_records=%zu,userspace_lost_samples=%zu,"
-      "userspace_lost_non_samples=%zu,userspace_cut_stack_samples=%zu",
+      "userspace_lost_non_samples=%zu,userspace_truncated_stack_samples=%zu",
       sample_record_count_, record_stat.kernelspace_lost_records,
       record_stat.userspace_lost_samples, record_stat.userspace_lost_non_samples,
-      record_stat.userspace_cut_stack_samples);
+      record_stat.userspace_truncated_stack_samples);
 
   return record_file_writer_->WriteMetaInfoFeature(info_map);
 }
