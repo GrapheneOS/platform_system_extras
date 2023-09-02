@@ -172,18 +172,21 @@ For the missing stack data problem:
    well.
 
 2. Simpleperf stores samples in a buffer before unwinding them. If the bufer is low in free space,
-   simpleperf may decide to cut stack data for a sample to 1K. Hopefully, this can be recovered by
-   callchain joiner. But when a high percentage of samples are cut, many callchains can be broken.
-   We can tell if many samples are cut in the record command output, like:
+   simpleperf may decide to truncate stack data for a sample to 1K. Hopefully, this can be recovered
+   by callchain joiner. But when a high percentage of samples are truncated, many callchains can be
+   broken. We can tell if many samples are truncated in the record command output, like:
 
 ```sh
 $ simpleperf record ...
 simpleperf I cmd_record.cpp:809] Samples recorded: 105584 (cut 86291). Samples lost: 6501.
+
+$ simpleperf record ...
+simpleperf I cmd_record.cpp:894] Samples recorded: 7,365 (1,857 with truncated stacks).
 ```
 
-   There are two ways to avoid cutting samples. One is increasing the buffer size, like
+   There are two ways to avoid truncating samples. One is increasing the buffer size, like
    `--user-buffer-size 1G`. But `--user-buffer-size` is only available on latest simpleperf. If that
-   option isn't available, we can use `--no-cut-samples` to disable cutting samples.
+   option isn't available, we can use `--no-cut-samples` to disable truncating samples.
 
 For the missing DWARF call frame info problem:
 1. Most C++ code generates binaries containing call frame info, in .eh_frame or .ARM.exidx sections.
@@ -267,6 +270,39 @@ disassembly for C++ code and fully compiled Java code. Simpleperf supports two w
    1) Generate perf.data and binary_cache as above.
    2) Use pprof_proto_generator.py to generate pprof proto file. `pprof_proto_generator.py`.
    3) Use pprof to report a function with annotated source code, as described [here](https://android.googlesource.com/platform/system/extras/+/main/simpleperf/doc/scripts_reference.md#pprof_proto_generator_py).
+
+
+### Reduce lost samples and samples with truncated stack
+
+When using `simpleperf record`, we may see lost samples or samples with truncated stack data. Before
+saving samples to a file, simpleperf uses two buffers to cache samples in memory. One is a kernel
+buffer, the other is a userspace buffer. The kernel puts samples to the kernel buffer. Simpleperf
+moves samples from the kernel buffer to the userspace buffer before processing them. If a buffer
+overflows, we lose samples or get samples with truncated stack data. Below is an example.
+
+```sh
+$ simpleperf record -a --duration 1 -g --user-buffer-size 100k
+simpleperf I cmd_record.cpp:799] Recorded for 1.00814 seconds. Start post processing.
+simpleperf I cmd_record.cpp:894] Samples recorded: 79 (16 with truncated stacks).
+                                 Samples lost: 2,129 (kernelspace: 18, userspace: 2,111).
+simpleperf W cmd_record.cpp:911] Lost 18.5567% of samples in kernel space, consider increasing
+                                 kernel buffer size(-m), or decreasing sample frequency(-f), or
+                                 increasing sample period(-c).
+simpleperf W cmd_record.cpp:928] Lost/Truncated 97.1233% of samples in user space, consider
+                                 increasing userspace buffer size(--user-buffer-size), or
+                                 decreasing sample frequency(-f), or increasing sample period(-c).
+```
+
+In the above example, we get 79 samples, 16 of them are with truncated stack data. We lose 18
+samples in the kernel buffer, and lose 2111 samples in the userspace buffer.
+
+To reduce lost samples in the kernel buffer, we can increase kernel buffer size via `-m`. To reduce
+lost samples in the userspace buffer, or reduce samples with truncated stack data, we can increase
+userspace buffer size via `--user-buffer-size`.
+
+We can also reduce samples generated in a fixed time period, like reducing sample frequency using
+`-f`, reducing monitored threads, not monitoring multiple perf events at the same time.
+
 
 ## Bugs and contribution
 

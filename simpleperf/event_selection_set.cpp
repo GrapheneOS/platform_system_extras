@@ -792,10 +792,10 @@ bool EventSelectionSet::ReadCounters(std::vector<CountersInfo>* counters) {
 
 bool EventSelectionSet::MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pages,
                                        size_t aux_buffer_size, size_t record_buffer_size,
-                                       bool allow_cutting_samples, bool exclude_perf) {
+                                       bool allow_truncating_samples, bool exclude_perf) {
   record_read_thread_.reset(new simpleperf::RecordReadThread(
       record_buffer_size, groups_[0][0].event_attr, min_mmap_pages, max_mmap_pages, aux_buffer_size,
-      allow_cutting_samples, exclude_perf));
+      allow_truncating_samples, exclude_perf));
   return true;
 }
 
