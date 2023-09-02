@@ -91,6 +91,18 @@ static const std::unordered_map<std::string_view, std::pair<std::string_view, st
         {"raw-l2d-tlb-refill-rd", {"raw-l2d-tlb-rd", "level 2 data TLB refill rate, read"}},
 };
 
+std::string CounterSummary::ReadableCountValue(bool csv) {
+  if (type_name == "cpu-clock" || type_name == "task-clock") {
+    // Convert nanoseconds to milliseconds.
+    double value = count / 1e6;
+    return android::base::StringPrintf("%lf(ms)", value);
+  }
+  if (csv) {
+    return android::base::StringPrintf("%" PRIu64, count);
+  }
+  return ReadableCount(count);
+}
+
 const CounterSummary* CounterSummaries::FindSummary(const std::string& type_name,
                                                     const std::string& modifier,
                                                     const ThreadInfo* thread, int cpu) {
