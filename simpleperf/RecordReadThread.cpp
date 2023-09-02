@@ -223,7 +223,7 @@ bool KernelRecordReader::MoveToNextRecord(const RecordParser& parser) {
 
 RecordReadThread::RecordReadThread(size_t record_buffer_size, const perf_event_attr& attr,
                                    size_t min_mmap_pages, size_t max_mmap_pages,
-                                   size_t aux_buffer_size, bool allow_cutting_samples,
+                                   size_t aux_buffer_size, bool allow_truncating_samples,
                                    bool exclude_perf)
     : record_buffer_(record_buffer_size),
       record_parser_(attr),
@@ -239,7 +239,7 @@ RecordReadThread::RecordReadThread(size_t record_buffer_size, const perf_event_a
   LOG(VERBOSE) << "user buffer size = " << record_buffer_size
                << ", low_level size = " << record_buffer_low_level_
                << ", critical_level size = " << record_buffer_critical_level_;
-  if (!allow_cutting_samples) {
+  if (!allow_truncating_samples) {
     record_buffer_low_level_ = record_buffer_critical_level_;
   }
   if (exclude_perf) {
@@ -538,7 +538,7 @@ void RecordReadThread::PushRecordToRecordBuffer(KernelRecordReader* kernel_recor
     }
     size_t stack_size_limit = stack_size_in_sample_record_;
     if (free_size < record_buffer_low_level_) {
-      // When the free size in record buffer is below low level, cut the stack data in sample
+      // When the free size in record buffer is below low level, truncate the stack data in sample
       // records to 1K. This makes the unwinder unwind only part of the callchains, but hopefully
       // the call chain joiner can complete the callchains.
       stack_size_limit = 1024;
@@ -580,7 +580,7 @@ void RecordReadThread::PushRecordToRecordBuffer(KernelRecordReader* kernel_recor
           memcpy(p + pos + new_stack_size, &new_stack_size, sizeof(uint64_t));
           record_buffer_.FinishWrite();
           if (new_stack_size < dyn_stack_size) {
-            stat_.userspace_cut_stack_samples++;
+            stat_.userspace_truncated_stack_samples++;
           }
         } else {
           stat_.userspace_lost_samples++;

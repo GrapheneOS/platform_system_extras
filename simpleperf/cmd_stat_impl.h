@@ -131,28 +131,7 @@ struct CounterSummary {
   }
 
  private:
-  std::string ReadableCountValue(bool csv) {
-    if (type_name == "cpu-clock" || type_name == "task-clock") {
-      // Convert nanoseconds to milliseconds.
-      double value = count / 1e6;
-      return android::base::StringPrintf("%lf(ms)", value);
-    } else {
-      // Convert big numbers to human friendly mode. For example,
-      // 1000000 will be converted to 1,000,000.
-      std::string s = android::base::StringPrintf("%" PRIu64, count);
-      if (csv) {
-        return s;
-      } else {
-        for (size_t i = s.size() - 1, j = 1; i > 0; --i, ++j) {
-          if (j == 3) {
-            s.insert(s.begin() + i, ',');
-            j = 0;
-          }
-        }
-        return s;
-      }
-    }
-  }
+  std::string ReadableCountValue(bool csv);
 };
 
 BUILD_COMPARE_VALUE_FUNCTION_REVERSE(CompareSummaryCount, count);
