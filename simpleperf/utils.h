@@ -290,6 +290,8 @@ struct OverflowResult {
 OverflowResult SafeAdd(uint64_t a, uint64_t b);
 void OverflowSafeAdd(uint64_t& dest, uint64_t add);
 
+std::string ReadableCount(uint64_t count);
+
 }  // namespace simpleperf
 
 #endif  // SIMPLE_PERF_UTILS_H_
