@@ -42,16 +42,23 @@ if [ ! -f /dev/sys/fs/by-name/userdata/gc_urgent ]; then
   exit 0
 fi
 
+# If we have sufficient free segments, it doesn't matter how much extra
+# space is unusable, since we only need to make it to boot complete to
+# get that space back
+MIN_FREE_SEGMENT=500
+
 # Ideally we want to track unusable, as it directly measures what we
 # care about. If it's not present, dirty_segments is the best proxy.
 if [ -f /dev/sys/fs/by-name/userdata/unusable ]; then
   UNUSABLE=1
   METRIC="unusable blocks"
   THRESHOLD=25000
+  MAX_INCREASE=500
   read START < /dev/sys/fs/by-name/userdata/unusable
 else
   METRIC="dirty segments"
   THRESHOLD=200
+  MAX_INCREASE=5
   read START < /dev/sys/fs/by-name/userdata/dirty_segments
 fi
 
@@ -79,6 +86,7 @@ fi
 
 CURRENT=${START}
 TODO=$((${START}-${THRESHOLD}))
+CUTOFF=$((${START} + ${MAX_INCREASE}))
 while [ ${CURRENT} -gt ${THRESHOLD} ]; do
   log -pi -t checkpoint_gc ${METRIC}:${CURRENT} \(threshold:${THRESHOLD}\) mode:${GC_TYPE} GC_SLEEP:${GC_SLEEP}
   PROGRESS=`echo "(${START}-${CURRENT})/${TODO}"|bc -l`
@@ -91,6 +99,20 @@ while [ ${CURRENT} -gt ${THRESHOLD} ]; do
   else
     read CURRENT < /dev/sys/fs/by-name/userdata/dirty_segments
   fi
+
+  if [ ${CURRENT} -gt ${CUTOFF} ]; then
+    log -pw -t checkpoint_gc Garbage Collection is making no progress. Aborting checkpoint_gc attempt \(initial ${METRIC}: ${START}, now: ${CURRENT}\)
+    break
+  fi
+
+  read CURRENT_FREE_SEGMENTS < /dev/sys/fs/by-name/userdata/free_segments
+  read CURRENT_OVP < /dev/sys/fs/by-name/userdata/ovp_segments
+  CURRENT_FREE_SEG=$((${CURRENT_FREE_SEGMENTS}-${CURRENT_OVP}))
+  if [ ${CURRENT_FREE_SEG} -gt ${MIN_FREE_SEGMENT} ]; then
+    log -pi checkpoint_gc Sufficient free segments. Extra gc not needed.
+    break
+  fi
+
   sleep ${SLEEP}
   TIME=$((${TIME}+${SLEEP}))
   if [ ${TIME} -gt ${MAX_TIME} ]; then
