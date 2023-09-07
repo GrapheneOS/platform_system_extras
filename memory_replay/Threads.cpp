@@ -54,8 +54,8 @@ Threads::Threads(Pointers* pointers, size_t max_threads)
 
   void* memory = mmap(nullptr, data_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
   if (memory == MAP_FAILED) {
-    err(1, "Failed to map in memory for Threads: map size %zu, max threads %zu\n",
-        data_size_, max_threads_);
+    err(1, "Failed to map in memory for Threads: map size %zu, max threads %zu", data_size_,
+        max_threads_);
   }
 
   threads_ = new (memory) Thread[max_threads_];
@@ -71,18 +71,17 @@ Threads::~Threads() {
 
 Thread* Threads::CreateThread(pid_t tid) {
   if (num_threads_ == max_threads_) {
-    err(1, "Too many threads created, current max %zu.\n", num_threads_);
+    errx(1, "Too many threads created, current max %zu", num_threads_);
   }
   Thread* thread = FindEmptyEntry(tid);
   if (thread == nullptr) {
-    err(1, "No empty entries found, current max %zu, num threads %zu\n",
-          max_threads_, num_threads_);
+    errx(1, "No empty entries found, current max %zu, num threads %zu", max_threads_, num_threads_);
   }
   thread->tid_ = tid;
   thread->pointers_ = pointers_;
   thread->total_time_nsecs_ = 0;
   if ((errno = pthread_create(&thread->thread_id_, nullptr, ThreadRunner, thread)) != 0) {
-    err(1, "Failed to create thread %d: %s\n", tid, strerror(errno));
+    err(1, "Failed to create thread %d", tid);
   }
 
   num_threads_++;
@@ -136,8 +135,7 @@ Thread* Threads::FindEmptyEntry(pid_t tid) {
 void Threads::Finish(Thread* thread) {
   int ret = pthread_join(thread->thread_id_, nullptr);
   if (ret != 0) {
-    fprintf(stderr, "pthread_join failed: %s\n", strerror(ret));
-    exit(1);
+    err(1, "pthread_join failed");
   }
   total_time_nsecs_ += thread->total_time_nsecs_;
   thread->tid_ = 0;
