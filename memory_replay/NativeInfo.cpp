@@ -95,7 +95,7 @@ void NativePrintInfo(const char* preamble) {
 
   android::base::unique_fd smaps_fd(open("/proc/self/smaps", O_RDONLY));
   if (smaps_fd == -1) {
-    err(1, "Cannot open /proc/self/smaps: %s\n", strerror(errno));
+    err(1, "Cannot open /proc/self/smaps");
   }
 
   NativeGetInfo(smaps_fd, &rss_bytes, &va_bytes);
