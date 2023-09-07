@@ -142,7 +142,7 @@ static void GetTraceData(const std::string& filename, TraceDataType* trace_data)
   }
   void* map = mmap(nullptr, sizeof(void*) * trace_data->num_ptrs, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
   if (map == MAP_FAILED) {
-    err(1, "mmap failed\n");
+    err(1, "mmap failed");
   }
   trace_data->ptrs = reinterpret_cast<void**>(map);
 
