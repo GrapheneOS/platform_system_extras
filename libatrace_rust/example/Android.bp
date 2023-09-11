@@ -9,3 +9,13 @@ rust_binary {
         "libatrace_rust",
     ],
 }
+
+rust_binary {
+    name: "libatrace_tracing_subscriber_example",
+    srcs: ["src/tracing_subscriber_sample.rs"],
+    rustlibs: [
+        "libatrace_tracing_subscriber",
+        "libtracing_subscriber",
+        "libtracing",
+    ],
+}

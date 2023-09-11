@@ -3,6 +3,38 @@ package {
 }
 
 rust_defaults {
+    name: "libatrace_tracing_subscriber_defaults",
+    srcs: ["src/tracing_subscriber.rs"],
+    rustlibs: [
+        "libatrace_rust",
+        "libtracing",
+        "libtracing_subscriber",
+    ],
+}
+
+rust_library {
+    name: "libatrace_tracing_subscriber",
+    crate_name: "atrace_tracing_subscriber",
+    defaults: ["libatrace_tracing_subscriber_defaults"],
+    product_available: true,
+    vendor_available: true,
+    apex_available: [
+        "//apex_available:platform",
+        "//apex_available:anyapex",
+    ],
+}
+
+rust_test_host {
+    name: "libatrace_tracing_subscriber_inline_tests",
+    defaults: ["libatrace_tracing_subscriber_defaults"],
+    test_suites: ["general_tests"],
+    rustlibs: [
+        "libonce_cell",
+        "libthread_local",
+    ],
+}
+
+rust_defaults {
     name: "libatrace_rust_defaults",
     srcs: ["src/lib.rs"],
     rustlibs: [
@@ -16,6 +48,8 @@ rust_library {
     name: "libatrace_rust",
     crate_name: "atrace",
     defaults: ["libatrace_rust_defaults"],
+    // Host support is for unit tests.
+    host_supported: true,
     product_available: true,
     vendor_available: true,
     apex_available: [
