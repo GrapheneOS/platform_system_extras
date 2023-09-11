@@ -3,6 +3,10 @@
 Benchmarks to compare the performance of Rust ATrace bindings with directly calling the
 `libcutils` methods from C++.
 
+## Benchmarks
+
+### ATrace wrapper benchmarks
+
 There are two binaries implementing the same benchmarks:
 
 * `libatrace_rust_benchmark` (`atrace_benchmark.rs`) for Rust.
@@ -11,6 +15,14 @@ There are two binaries implementing the same benchmarks:
 The benchmarks emit ATrace events with tracing off and tracing on. `atrace_begin` is measured
 with short and long event names to check if the string length affects timings. For example,
 `tracing_on_begin/1000` measures `atrace_begin` with a 1000-character name and tracing enabled.
+
+### ATrace tracing subscriber benchmark
+
+There is a benchmark for the tracing crate subscriber - `libatrace_tracing_subscriber_benchmark`.
+We use it to check overhead over the base `libatrace_rust`.
+
+Similarly to the wrapper benchmarks, the subscriber is measured with tracing off and on. There are
+cases with and without extra fields to measure the cost of formatting.
 
 ## Running the benchmarks
 
@@ -32,6 +44,11 @@ events via API, since there's nothing receiving the events.
 
 The tests were done on a `aosp_cf_x86_64_phone-userdebug` Cuttlefish VM. Execution times on real
 device may be different but we expect similar relative performance between Rust wrappers and C.
+
+*If you notice that measurements with tracing off and tracing on have similar times, it might mean
+that enabling ATrace events failed and you need to debug the benchmark.*
+
+### ATrace wrapper benchmark results
 
 Rust results from `libatrace_rust_benchmark 2>&1 | grep time`:
 
@@ -58,5 +75,20 @@ BM_TracingOnAtraceBegin/1000        1151 ns         1142 ns       615781
 BM_TracingOnAtraceEnd               1076 ns         1069 ns       653646
 ```
 
-*If you notice that measurements with tracing off and tracing on have similar times, it might mean
-that enabling ATrace events failed and you need to debug the benchmark.*
+### ATrace tracing subscriber benchmark results
+
+The tracing subscriber time consists of the underlying `libatrace_rust` call plus the time spent in
+the subscriber itself.
+
+Results from `libatrace_tracing_subscriber_benchmark 2>&1 | grep time`:
+
+```text
+tracing_off_event       time:   [312.28 ns 314.32 ns 316.71 ns]
+tracing_off_event_args  time:   [2.1963 µs 2.2101 µs 2.2257 µs]
+tracing_off_span        time:   [686.20 ns 707.75 ns 727.21 ns]
+tracing_off_span_args   time:   [2.8813 µs 2.8928 µs 2.9044 µs]
+tracing_on_event        time:   [1.6981 µs 1.7117 µs 1.7264 µs]
+tracing_on_event_args   time:   [3.6242 µs 3.6466 µs 3.6718 µs]
+tracing_on_span         time:   [3.1288 µs 3.1446 µs 3.1612 µs]
+tracing_on_span_args    time:   [5.3117 µs 5.3344 µs 5.3598 µs]
+```
