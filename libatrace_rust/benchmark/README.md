@@ -48,7 +48,7 @@ device may be different but we expect similar relative performance between Rust 
 *If you notice that measurements with tracing off and tracing on have similar times, it might mean
 that enabling ATrace events failed and you need to debug the benchmark.*
 
-### ATrace wrapper benchmark results
+### ATrace wrapper
 
 Rust results from `libatrace_rust_benchmark 2>&1 | grep time`:
 
@@ -75,7 +75,7 @@ BM_TracingOnAtraceBegin/1000        1151 ns         1142 ns       615781
 BM_TracingOnAtraceEnd               1076 ns         1069 ns       653646
 ```
 
-### ATrace tracing subscriber benchmark results
+### ATrace tracing subscriber
 
 The tracing subscriber time consists of the underlying `libatrace_rust` call plus the time spent in
 the subscriber itself.
@@ -83,12 +83,12 @@ the subscriber itself.
 Results from `libatrace_tracing_subscriber_benchmark 2>&1 | grep time`:
 
 ```text
-tracing_off_event       time:   [312.28 ns 314.32 ns 316.71 ns]
-tracing_off_event_args  time:   [2.1963 µs 2.2101 µs 2.2257 µs]
-tracing_off_span        time:   [686.20 ns 707.75 ns 727.21 ns]
-tracing_off_span_args   time:   [2.8813 µs 2.8928 µs 2.9044 µs]
-tracing_on_event        time:   [1.6981 µs 1.7117 µs 1.7264 µs]
-tracing_on_event_args   time:   [3.6242 µs 3.6466 µs 3.6718 µs]
-tracing_on_span         time:   [3.1288 µs 3.1446 µs 3.1612 µs]
-tracing_on_span_args    time:   [5.3117 µs 5.3344 µs 5.3598 µs]
+tracing_off_event       time:   [298.67 ns 299.99 ns 301.52 ns]
+tracing_off_event_args  time:   [2.1225 µs 2.1429 µs 2.1647 µs]
+tracing_off_span        time:   [610.88 ns 619.88 ns 628.70 ns]
+tracing_off_span_args   time:   [2.6585 µs 2.6698 µs 2.6845 µs]
+tracing_on_event        time:   [1.6249 µs 1.6495 µs 1.6887 µs]
+tracing_on_event_args   time:   [3.5608 µs 3.5831 µs 3.6064 µs]
+tracing_on_span         time:   [3.1778 µs 3.1982 µs 3.2211 µs]
+tracing_on_span_args    time:   [5.4340 µs 5.4717 µs 5.5143 µs]
 ```
