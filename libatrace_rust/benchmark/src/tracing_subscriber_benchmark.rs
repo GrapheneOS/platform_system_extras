@@ -19,6 +19,10 @@ use atrace_tracing_subscriber::AtraceSubscriber;
 use criterion::Criterion;
 use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
 
+fn make_example_vec() -> Vec<i32> {
+    Vec::from([1, 2, 3, 4])
+}
+
 fn bench_with_subscriber<F>(c: &mut Criterion, name: &str, mut f: F)
 where
     F: FnMut(),
@@ -36,10 +40,11 @@ fn bench_tracing_off_event(c: &mut Criterion) {
 
 fn bench_tracing_off_event_args(c: &mut Criterion) {
     turn_tracing_off();
+    let v = make_example_vec();
     bench_with_subscriber(c, "tracing_off_event_args", || {
         tracing::info!(debug_arg1 = 123,
             debug_arg2 = "argument",
-            debug_arg3 = ?Vec::from([1, 2, 3, 4]),
+            debug_arg3 = ?v,
             debug_arg4 = "last",
             "bench info event")
     });
@@ -54,10 +59,11 @@ fn bench_tracing_off_span(c: &mut Criterion) {
 
 fn bench_tracing_off_span_args(c: &mut Criterion) {
     turn_tracing_off();
+    let v = make_example_vec();
     bench_with_subscriber(c, "tracing_off_span_args", || {
         let _entered = tracing::info_span!("bench info span", debug_arg1 = 123,
             debug_arg2 = "argument",
-            debug_arg3 = ?Vec::from([1, 2, 3, 4]),
+            debug_arg3 = ?v,
             debug_arg4 = "last")
         .entered();
     });
@@ -71,10 +77,11 @@ fn bench_tracing_on_event(c: &mut Criterion) {
 
 fn bench_tracing_on_event_args(c: &mut Criterion) {
     turn_tracing_on();
+    let v = make_example_vec();
     bench_with_subscriber(c, "tracing_on_event_args", || {
         tracing::info!(debug_arg1 = 123,
             debug_arg2 = "argument",
-            debug_arg3 = ?Vec::from([1, 2, 3, 4]),
+            debug_arg3 = ?v,
             debug_arg4 = "last",
             "bench info event")
     });
@@ -91,10 +98,11 @@ fn bench_tracing_on_span(c: &mut Criterion) {
 
 fn bench_tracing_on_span_args(c: &mut Criterion) {
     turn_tracing_on();
+    let v = make_example_vec();
     bench_with_subscriber(c, "tracing_on_span_args", || {
         let _entered = tracing::info_span!("bench info span", debug_arg1 = 123,
             debug_arg2 = "argument",
-            debug_arg3 = ?Vec::from([1, 2, 3, 4]),
+            debug_arg3 = ?v,
             debug_arg4 = "last")
         .entered();
     });
