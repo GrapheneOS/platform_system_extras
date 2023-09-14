@@ -33,15 +33,42 @@ where
     });
 }
 
+fn bench_with_filtering_subscriber<F>(c: &mut Criterion, name: &str, mut f: F)
+where
+    F: FnMut(),
+{
+    let subscriber = tracing_subscriber::registry().with(AtraceSubscriber::default().with_filter());
+    tracing::subscriber::with_default(subscriber, || {
+        c.bench_function(name, |b| b.iter(&mut f));
+    });
+}
+
 fn bench_tracing_off_event(c: &mut Criterion) {
     turn_tracing_off();
     bench_with_subscriber(c, "tracing_off_event", || tracing::info!("bench info event"));
+}
+
+fn bench_filtered_event(c: &mut Criterion) {
+    turn_tracing_off();
+    bench_with_filtering_subscriber(c, "filtered_event", || tracing::info!("bench info event"));
 }
 
 fn bench_tracing_off_event_args(c: &mut Criterion) {
     turn_tracing_off();
     let v = make_example_vec();
     bench_with_subscriber(c, "tracing_off_event_args", || {
+        tracing::info!(debug_arg1 = 123,
+            debug_arg2 = "argument",
+            debug_arg3 = ?v,
+            debug_arg4 = "last",
+            "bench info event")
+    });
+}
+
+fn bench_filtered_event_args(c: &mut Criterion) {
+    turn_tracing_off();
+    let v = make_example_vec();
+    bench_with_filtering_subscriber(c, "filtered_event_args", || {
         tracing::info!(debug_arg1 = 123,
             debug_arg2 = "argument",
             debug_arg3 = ?v,
@@ -57,10 +84,29 @@ fn bench_tracing_off_span(c: &mut Criterion) {
     });
 }
 
+fn bench_filtered_span(c: &mut Criterion) {
+    turn_tracing_off();
+    bench_with_filtering_subscriber(c, "filtered_span", || {
+        let _entered = tracing::info_span!("bench info span").entered();
+    });
+}
+
 fn bench_tracing_off_span_args(c: &mut Criterion) {
     turn_tracing_off();
     let v = make_example_vec();
     bench_with_subscriber(c, "tracing_off_span_args", || {
+        let _entered = tracing::info_span!("bench info span", debug_arg1 = 123,
+            debug_arg2 = "argument",
+            debug_arg3 = ?v,
+            debug_arg4 = "last")
+        .entered();
+    });
+}
+
+fn bench_filtered_span_args(c: &mut Criterion) {
+    turn_tracing_off();
+    let v = make_example_vec();
+    bench_with_filtering_subscriber(c, "filtered_span_args", || {
         let _entered = tracing::info_span!("bench info span", debug_arg1 = 123,
             debug_arg2 = "argument",
             debug_arg3 = ?v,
@@ -113,9 +159,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut criterion = new_criterion();
 
     bench_tracing_off_event(&mut criterion);
+    bench_filtered_event(&mut criterion);
     bench_tracing_off_event_args(&mut criterion);
+    bench_filtered_event_args(&mut criterion);
     bench_tracing_off_span(&mut criterion);
+    bench_filtered_span(&mut criterion);
     bench_tracing_off_span_args(&mut criterion);
+    bench_filtered_span_args(&mut criterion);
 
     bench_tracing_on_event(&mut criterion);
     bench_tracing_on_event_args(&mut criterion);
