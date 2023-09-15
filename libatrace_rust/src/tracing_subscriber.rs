@@ -15,18 +15,19 @@
 //! Tracing-subscriber layer for libatrace_rust.
 
 use ::atrace::AtraceTag;
-use tracing::{Event, Id, Subscriber};
-use tracing_subscriber::layer::{Context, Layer};
-use tracing_subscriber::registry::LookupSpan;
-
+use std::fmt::Write;
 use tracing::span::Attributes;
 use tracing::span::Record;
+use tracing::{Event, Id, Subscriber};
 use tracing_subscriber::field::Visit;
+use tracing_subscriber::layer::{Context, Layer};
+use tracing_subscriber::registry::LookupSpan;
 
 /// Subscriber layer that forwards events to ATrace.
 pub struct AtraceSubscriber {
     tag: AtraceTag,
     should_record_fields: bool,
+    should_filter: bool,
 }
 
 impl Default for AtraceSubscriber {
@@ -38,12 +39,144 @@ impl Default for AtraceSubscriber {
 impl AtraceSubscriber {
     /// Makes a new subscriber with tag.
     pub fn new(tag: AtraceTag) -> AtraceSubscriber {
-        AtraceSubscriber { tag, should_record_fields: true }
+        AtraceSubscriber { tag, should_filter: false, should_record_fields: true }
+    }
+
+    /// Enables event and span filtering. With filtering enabled, this layer would filter events for
+    /// all the layers of the subscriber.
+    /// Use this to speed up the subscriber if it's the only layer. Do not enable if you need other
+    /// layers to receive events when ATrace is disabled.
+    pub fn with_filter(self) -> AtraceSubscriber {
+        AtraceSubscriber { should_filter: true, ..self }
     }
 
     /// Disables recording of field values.
     pub fn without_fields(self) -> AtraceSubscriber {
-        AtraceSubscriber { tag: self.tag, should_record_fields: false }
+        AtraceSubscriber { should_record_fields: false, ..self }
+    }
+}
+
+// Internal methods.
+impl AtraceSubscriber {
+    /// Checks that events and spans should be recorded in the span/event notification.
+    fn should_process_event(&self) -> bool {
+        // If `should_filter == true` we don't need to check the tag - it was already checked by
+        // the layer filter in the `Layer::enabled()` method.
+        // The checks are done in this order:
+        //  * `Layer::register_callsite()` - once per callsite, the result is cached.
+        //  * `Layer::enabled()` - once per span or event construction if the callsite is enabled.
+        //  * `should_process_event()` - on every notification like new span, span enter/exit/record, event.
+        // The first two checks are global, i.e. affect other layers, and only enabled with `should_filter`.
+        // Read more:
+        // https://docs.rs/tracing-subscriber/latest/tracing_subscriber/layer/index.html#filtering-with-layers
+        self.should_filter || atrace::atrace_is_tag_enabled(self.tag)
+    }
+}
+
+impl<S: Subscriber + for<'lookup> LookupSpan<'lookup>> Layer<S> for AtraceSubscriber {
+    fn register_callsite(
+        &self,
+        _metadata: &'static tracing::Metadata<'static>,
+    ) -> tracing::subscriber::Interest {
+        if self.should_filter {
+            // When we return `Interest::sometimes()`, the `enabled()` method would get checked
+            // every time.
+            // We can't use callsite caching (`Interest::never()`) because there's no callback
+            // for when tracing gets enabled - we need to check it every time.
+            tracing::subscriber::Interest::sometimes()
+        } else {
+            // If we do not disable events in the layer, we always receive the notifications.
+            tracing::subscriber::Interest::always()
+        }
+    }
+
+    // When filtering in this layer is enabled, this method would get called on every event and span.
+    // This filter affects all layers, so if this method returns false, it would disable the event
+    // for others as well.
+    fn enabled(&self, _metadata: &tracing::Metadata<'_>, _ctx: Context<'_, S>) -> bool {
+        !self.should_filter || atrace::atrace_is_tag_enabled(self.tag)
+    }
+
+    fn on_new_span(&self, attrs: &Attributes, id: &Id, ctx: Context<S>) {
+        if !self.should_record_fields || attrs.fields().is_empty() || !self.should_process_event() {
+            return;
+        }
+
+        let span = ctx.span(id).unwrap();
+        let mut formatter = FieldFormatter::for_span(span.metadata().name());
+        attrs.record(&mut formatter);
+        span.extensions_mut().insert(formatter);
+    }
+
+    fn on_record(&self, span: &Id, values: &Record, ctx: Context<S>) {
+        if !self.should_record_fields || !self.should_process_event() {
+            return;
+        }
+
+        values
+            .record(ctx.span(span).unwrap().extensions_mut().get_mut::<FieldFormatter>().unwrap());
+    }
+
+    fn on_enter(&self, id: &Id, ctx: Context<S>) {
+        if !self.should_process_event() {
+            return;
+        }
+
+        let span = ctx.span(id).unwrap();
+        if span.fields().is_empty() || !self.should_record_fields {
+            atrace::atrace_begin(self.tag, span.metadata().name());
+        } else {
+            let span_extensions = span.extensions();
+            let formatter = span_extensions.get::<FieldFormatter>().unwrap();
+            atrace::atrace_begin(self.tag, formatter.as_str());
+        }
+    }
+
+    fn on_exit(&self, _id: &Id, _ctx: Context<S>) {
+        if !self.should_process_event() {
+            return;
+        }
+
+        atrace::atrace_end(self.tag);
+    }
+
+    fn on_event(&self, event: &Event, _ctx: Context<S>) {
+        if !self.should_process_event() {
+            return;
+        }
+
+        if self.should_record_fields {
+            let mut formatter = FieldFormatter::for_event();
+            event.record(&mut formatter);
+            atrace::atrace_instant(self.tag, formatter.as_str());
+        } else if let Some(field) = event.metadata().fields().field("message") {
+            struct MessageVisitor<'a> {
+                tag: AtraceTag,
+                field: &'a tracing::field::Field,
+            }
+            impl Visit for MessageVisitor<'_> {
+                fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+                    if field == self.field {
+                        atrace::atrace_instant(self.tag, value);
+                    }
+                }
+                fn record_debug(
+                    &mut self,
+                    field: &tracing::field::Field,
+                    value: &dyn std::fmt::Debug,
+                ) {
+                    if field == self.field {
+                        atrace::atrace_instant(self.tag, &format!("{:?}", value));
+                    }
+                }
+            }
+            event.record(&mut MessageVisitor { tag: self.tag, field: &field });
+        } else {
+            atrace::atrace_instant(
+                self.tag,
+                &format!("{} event", event.metadata().level().as_str()),
+            );
+        }
     }
 }
 
@@ -53,98 +186,46 @@ struct FieldFormatter {
 }
 
 impl FieldFormatter {
-    fn for_event() -> FieldFormatter {
-        FieldFormatter { is_event: true, s: String::new() }
+    fn new() -> FieldFormatter {
+        const DEFAULT_STR_CAPACITY: usize = 128; // Should fit most events without realloc.
+        FieldFormatter { is_event: true, s: String::with_capacity(DEFAULT_STR_CAPACITY) }
     }
-    fn for_span() -> FieldFormatter {
-        FieldFormatter { is_event: false, s: String::new() }
-    }
-}
 
-impl FieldFormatter {
-    fn as_string(&self) -> &String {
+    fn for_event() -> FieldFormatter {
+        FieldFormatter { is_event: true, ..FieldFormatter::new() }
+    }
+    fn for_span(span_name: &str) -> FieldFormatter {
+        let mut formatter = FieldFormatter { is_event: false, ..FieldFormatter::new() };
+        formatter.s.push_str(span_name);
+        formatter
+    }
+
+    fn as_str(&self) -> &str {
         &self.s
     }
-    fn is_empty(&self) -> bool {
-        self.s.is_empty()
+    fn add_delimeter_if_needed(&mut self) {
+        if !self.s.is_empty() {
+            self.s.push_str(", ");
+        }
     }
 }
 
 impl Visit for FieldFormatter {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        if !self.s.is_empty() {
-            self.s.push_str(", ");
-        }
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.add_delimeter_if_needed();
         if self.is_event && field.name() == "message" {
-            self.s.push_str(&format!("{:?}", value));
+            self.s.push_str(value);
         } else {
-            self.s.push_str(&format!("{} = {:?}", field.name(), value));
+            write!(&mut self.s, "{} = \"{}\"", field.name(), value).unwrap();
         }
     }
-}
-
-impl<S: Subscriber + for<'lookup> LookupSpan<'lookup>> Layer<S> for AtraceSubscriber {
-    fn on_new_span(&self, attrs: &Attributes, id: &Id, ctx: Context<S>) {
-        if self.should_record_fields {
-            let mut formatter = FieldFormatter::for_span();
-            attrs.record(&mut formatter);
-            ctx.span(id).unwrap().extensions_mut().insert(formatter)
-        }
-    }
-
-    fn on_record(&self, span: &Id, values: &Record, ctx: Context<S>) {
-        if self.should_record_fields {
-            values.record(
-                ctx.span(span).unwrap().extensions_mut().get_mut::<FieldFormatter>().unwrap(),
-            );
-        }
-    }
-
-    fn on_enter(&self, id: &Id, ctx: Context<S>) {
-        let span = ctx.span(id).unwrap();
-        let mut span_str = String::from(span.metadata().name());
-        if self.should_record_fields {
-            let span_extensions = span.extensions();
-            let formatter = span_extensions.get::<FieldFormatter>().unwrap();
-            if !formatter.is_empty() {
-                span_str.push_str(", ");
-                span_str.push_str(formatter.as_string());
-            }
-        }
-        atrace::atrace_begin(self.tag, &span_str);
-    }
-
-    fn on_exit(&self, _id: &Id, _ctx: Context<S>) {
-        atrace::atrace_end(self.tag);
-    }
-
-    fn on_event(&self, event: &Event, _ctx: Context<S>) {
-        let mut event_str = String::new();
-        if self.should_record_fields {
-            let mut formatter = FieldFormatter::for_event();
-            event.record(&mut formatter);
-            event_str = formatter.as_string().clone();
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.add_delimeter_if_needed();
+        if self.is_event && field.name() == "message" {
+            write!(&mut self.s, "{:?}", value).unwrap();
         } else {
-            struct MessageVisitor<'a> {
-                s: &'a mut String,
-            }
-            impl Visit for MessageVisitor<'_> {
-                fn record_debug(
-                    &mut self,
-                    field: &tracing::field::Field,
-                    value: &dyn std::fmt::Debug,
-                ) {
-                    if field.name() == "message" {
-                        self.s.push_str(&format!("{:?}", value));
-                    }
-                }
-            }
-            event.record(&mut MessageVisitor { s: &mut event_str });
+            write!(&mut self.s, "{} = {:?}", field.name(), value).unwrap();
         }
-        if event_str.is_empty() {
-            event_str = format!("{} event", event.metadata().level().as_str());
-        }
-        atrace::atrace_instant(self.tag, &event_str);
     }
 }
 
@@ -165,6 +246,10 @@ mod tests {
         /// Implement this trait in the test with mocking logic and checks in implemented functions.
         /// Default implementations panic.
         pub trait ATraceMocker {
+            fn atrace_is_tag_enabled(&mut self, _tag: AtraceTag) -> bool {
+                panic!("Unexpected call");
+            }
+
             fn atrace_begin(&mut self, _tag: AtraceTag, _name: &str) {
                 panic!("Unexpected call");
             }
@@ -233,6 +318,9 @@ mod tests {
 
         // Wrapped functions that forward calls into mocker.
 
+        pub fn atrace_is_tag_enabled(tag: AtraceTag) -> bool {
+            with_mocker(|m| m.atrace_is_tag_enabled(tag))
+        }
         pub fn atrace_begin(tag: AtraceTag, name: &str) {
             with_mocker(|m| m.atrace_begin(tag, name))
         }
@@ -253,6 +341,9 @@ mod tests {
             begin_count: u32,
         }
         impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled(&mut self, _tag: AtraceTag) -> bool {
+                true
+            }
             fn atrace_begin(&mut self, tag: AtraceTag, name: &str) {
                 self.begin_count += 1;
                 assert!(self.begin_count < 2);
@@ -283,6 +374,9 @@ mod tests {
             end_count: u32,
         }
         impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled(&mut self, _tag: AtraceTag) -> bool {
+                true
+            }
             fn atrace_begin(&mut self, _tag: AtraceTag, _name: &str) {}
             fn atrace_end(&mut self, tag: AtraceTag) {
                 self.end_count += 1;
@@ -316,6 +410,9 @@ mod tests {
             end_count: u32,
         }
         impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled(&mut self, _tag: AtraceTag) -> bool {
+                true
+            }
             fn atrace_begin(&mut self, _tag: AtraceTag, _name: &str) {
                 assert_eq!(self.end_count, 0);
                 assert_eq!(self.instant_count, 0);
@@ -365,6 +462,9 @@ mod tests {
             instant_count: u32,
         }
         impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled(&mut self, _tag: AtraceTag) -> bool {
+                true
+            }
             fn atrace_instant(&mut self, tag: AtraceTag, name: &str) {
                 self.instant_count += 1;
                 assert!(self.instant_count < 2);
@@ -394,6 +494,9 @@ mod tests {
             instant_count: u32,
         }
         impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled(&mut self, _tag: AtraceTag) -> bool {
+                true
+            }
             fn atrace_instant(&mut self, _tag: AtraceTag, name: &str) {
                 self.instant_count += 1;
                 assert!(self.instant_count < 2);
@@ -422,6 +525,9 @@ mod tests {
             instant_count: u32,
         }
         impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled(&mut self, _tag: AtraceTag) -> bool {
+                true
+            }
             fn atrace_instant(&mut self, _tag: AtraceTag, name: &str) {
                 self.instant_count += 1;
                 assert!(self.instant_count < 2);
@@ -452,6 +558,9 @@ mod tests {
             end_count: u32,
         }
         impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled(&mut self, _tag: AtraceTag) -> bool {
+                true
+            }
             fn atrace_begin(&mut self, tag: AtraceTag, _name: &str) {
                 self.begin_count += 1;
                 assert!(self.begin_count < 2);
@@ -496,6 +605,9 @@ mod tests {
             instant_count: u32,
         }
         impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled(&mut self, _tag: AtraceTag) -> bool {
+                true
+            }
             fn atrace_begin(&mut self, _tag: AtraceTag, name: &str) {
                 self.begin_count += 1;
                 assert!(self.begin_count < 2);
@@ -531,6 +643,9 @@ mod tests {
             instant_count: u32,
         }
         impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled(&mut self, _tag: AtraceTag) -> bool {
+                true
+            }
             fn atrace_instant(&mut self, _tag: AtraceTag, name: &str) {
                 self.instant_count += 1;
                 assert!(self.instant_count < 2);
@@ -558,6 +673,9 @@ mod tests {
             begin_count: u32,
         }
         impl mock_atrace::ATraceMocker for CallCheck {
+            fn atrace_is_tag_enabled(&mut self, _tag: AtraceTag) -> bool {
+                true
+            }
             fn atrace_begin(&mut self, _tag: AtraceTag, name: &str) {
                 self.begin_count += 1;
                 assert!(self.begin_count < 2);

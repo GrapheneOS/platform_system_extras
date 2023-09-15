@@ -22,7 +22,8 @@ There is a benchmark for the tracing crate subscriber - `libatrace_tracing_subsc
 We use it to check overhead over the base `libatrace_rust`.
 
 Similarly to the wrapper benchmarks, the subscriber is measured with tracing off and on. There are
-cases with and without extra fields to measure the cost of formatting.
+cases with and without extra fields to measure the cost of formatting. Cases that start with
+`filtered_` measure the subscriber in filtering mode with tracing disabled.
 
 ## Running the benchmarks
 
@@ -83,12 +84,16 @@ the subscriber itself.
 Results from `libatrace_tracing_subscriber_benchmark 2>&1 | grep time`:
 
 ```text
-tracing_off_event       time:   [298.67 ns 299.99 ns 301.52 ns]
-tracing_off_event_args  time:   [2.1225 µs 2.1429 µs 2.1647 µs]
-tracing_off_span        time:   [610.88 ns 619.88 ns 628.70 ns]
-tracing_off_span_args   time:   [2.6585 µs 2.6698 µs 2.6845 µs]
-tracing_on_event        time:   [1.6249 µs 1.6495 µs 1.6887 µs]
-tracing_on_event_args   time:   [3.5608 µs 3.5831 µs 3.6064 µs]
-tracing_on_span         time:   [3.1778 µs 3.1982 µs 3.2211 µs]
-tracing_on_span_args    time:   [5.4340 µs 5.4717 µs 5.5143 µs]
+tracing_off_event       time:   [47.444 ns 47.945 ns 48.585 ns]
+filtered_event          time:   [26.852 ns 26.942 ns 27.040 ns]
+tracing_off_event_args  time:   [80.597 ns 80.997 ns 81.475 ns]
+filtered_event_args     time:   [26.680 ns 26.782 ns 26.887 ns]
+tracing_off_span        time:   [316.48 ns 317.72 ns 319.12 ns]
+filtered_span           time:   [27.900 ns 27.959 ns 28.018 ns]
+tracing_off_span_args   time:   [364.92 ns 367.57 ns 370.95 ns]
+filtered_span_args      time:   [27.625 ns 27.919 ns 28.207 ns]
+tracing_on_event        time:   [1.4639 µs 1.4805 µs 1.4954 µs]
+tracing_on_event_args   time:   [2.0088 µs 2.0197 µs 2.0314 µs]
+tracing_on_span         time:   [2.7907 µs 2.7996 µs 2.8103 µs]
+tracing_on_span_args    time:   [3.6846 µs 3.6992 µs 3.7168 µs]
 ```
