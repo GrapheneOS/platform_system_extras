@@ -17,7 +17,7 @@
 use tracing::{debug, error, event, info, span, trace, warn, Level};
 
 use atrace_tracing_subscriber::AtraceSubscriber;
-use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tracing::instrument]
 fn mul_by_100_instrumented(num: i32) -> i32 {
@@ -49,10 +49,10 @@ fn events_and_spans_demo() {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let subscriber = tracing_subscriber::registry()
-        .with(AtraceSubscriber::default())
-        .with(tracing_subscriber::fmt::layer());
-    tracing::subscriber::set_global_default(subscriber)?;
+    tracing_subscriber::registry()
+        .with(AtraceSubscriber::default().with_filter())
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
     events_and_spans_demo();
 
