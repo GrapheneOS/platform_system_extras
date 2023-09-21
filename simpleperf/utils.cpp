@@ -498,4 +498,17 @@ void OverflowSafeAdd(uint64_t& dest, uint64_t add) {
   }
 }
 
+// Convert big numbers to human friendly mode. For example,
+// 1000000 will be converted to 1,000,000.
+std::string ReadableCount(uint64_t count) {
+  std::string s = std::to_string(count);
+  for (size_t i = s.size() - 1, j = 1; i > 0; --i, ++j) {
+    if (j == 3) {
+      s.insert(s.begin() + i, ',');
+      j = 0;
+    }
+  }
+  return s;
+}
+
 }  // namespace simpleperf

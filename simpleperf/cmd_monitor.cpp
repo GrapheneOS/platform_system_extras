@@ -239,7 +239,7 @@ bool MonitorCommand::PrepareMonitoring() {
       system_wide_collection_ ? kSystemWideRecordBufferSize : kRecordBufferSize;
   if (!event_selection_set_.MmapEventFiles(mmap_page_range_.first, mmap_page_range_.second,
                                            0 /* aux_buffer_size */, record_buffer_size,
-                                           false /* allow_cutting_samples */, exclude_perf_)) {
+                                           false /* allow_truncating_samples */, exclude_perf_)) {
     return false;
   }
   auto callback = std::bind(&MonitorCommand::ProcessRecord, this, std::placeholders::_1);

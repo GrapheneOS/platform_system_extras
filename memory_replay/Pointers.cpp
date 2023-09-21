@@ -35,7 +35,7 @@ Pointers::Pointers(size_t max_allocs) {
   void* memory =
       mmap(nullptr, pointers_size_, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
   if (memory == MAP_FAILED) {
-    err(1, "Unable to allocate data for pointer hash: %zu total_allocs\n", max_allocs);
+      err(1, "Unable to allocate data for pointer hash: %zu total_allocs", max_allocs);
   }
   // Set all of the pointers to be empty.
   memset(memory, 0, pointers_size_);
@@ -52,7 +52,7 @@ Pointers::~Pointers() {
 void Pointers::Add(uintptr_t key_pointer, void* pointer) {
   pointer_data* data = FindEmpty(key_pointer);
   if (data == nullptr) {
-    err(1, "No empty entry found for 0x%" PRIxPTR "\n", key_pointer);
+    errx(1, "No empty entry found for 0x%" PRIxPTR, key_pointer);
   }
   atomic_store(&data->key_pointer, key_pointer);
   data->pointer = pointer;
@@ -60,12 +60,12 @@ void Pointers::Add(uintptr_t key_pointer, void* pointer) {
 
 void* Pointers::Remove(uintptr_t key_pointer) {
   if (key_pointer == 0) {
-    err(1, "Illegal zero value passed to Remove\n");
+    errx(1, "Illegal zero value passed to Remove");
   }
 
   pointer_data* data = Find(key_pointer);
   if (data == nullptr) {
-    err(1, "No pointer value found for 0x%" PRIxPTR "\n", key_pointer);
+    errx(1, "No pointer value found for 0x%" PRIxPTR, key_pointer);
   }
 
   void* pointer = data->pointer;

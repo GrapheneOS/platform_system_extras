@@ -105,3 +105,10 @@ TEST(utils, LineReader) {
   ASSERT_EQ(*line, "line2");
   ASSERT_TRUE(reader.ReadLine() == nullptr);
 }
+
+TEST(utils, ReadableCount) {
+  ASSERT_EQ(ReadableCount(0), "0");
+  ASSERT_EQ(ReadableCount(204), "204");
+  ASSERT_EQ(ReadableCount(1000), "1,000");
+  ASSERT_EQ(ReadableCount(123456789), "123,456,789");
+}

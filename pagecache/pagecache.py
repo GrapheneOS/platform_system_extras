@@ -261,8 +261,9 @@ def get_inode_data(datafile, dumpfile, adb_serial):
   else:
     # Build inode maps if we were tracing page cache
     print('Downloading inode data from device')
-    stat_dump = AdbUtils.do_preprocess_adb_cmd('find /system /data /vendor ' +
-                                    '-exec stat -c "%d %i %s %n" {} \;', adb_serial)
+    stat_dump = AdbUtils.do_preprocess_adb_cmd(
+        'find /apex /system /system_ext /product /data /vendor ' +
+        '-exec stat -c "%d %i %s %n" {} \;', adb_serial)
     if stat_dump is None:
       print 'Could not retrieve inode data from device.'
       sys.exit(1)
