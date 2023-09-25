@@ -84,9 +84,9 @@ int perform_probe(const vector<string>& options) {
     }
 
     cout << StringPrintf(
-                    "Finished Probing. resident memory(KB)=%lu. file_size (KB)=%lu. "
+                    "Finished Probing. resident memory(KB)=%llu. file_size (KB)=%llu. "
                     "pin_percentage=%f",
-                    memresult.total_resident_bytes / 1024, memresult.file_size_bytes / 1024,
+                    (unsigned long long) (memresult.total_resident_bytes / 1024), (unsigned long long) (memresult.file_size_bytes / 1024),
                     memresult.total_resident_bytes / (float)memresult.file_size_bytes * 100)
          << endl;
 
