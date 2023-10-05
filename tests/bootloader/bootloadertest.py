@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import adb
+from __future__ import print_function
+
 import argparse
 import os
 import unittest
@@ -85,9 +86,9 @@ class ShellTest(unittest.TestCase):
         except ValueError:
             self.fail("slot-count (%s) is not an integer" % val)
         except subprocess.CalledProcessError:
-            print "Does not appear to be an A/B device."
+            print("Does not appear to be an A/B device.")
         if not slotcount:
-            print "Does not appear to be an A/B device."
+            print("Does not appear to be an A/B device.")
         return slotcount
 
     def test_getvarall(self):
@@ -128,7 +129,7 @@ class ShellTest(unittest.TestCase):
                     self.exists_yes_no("slot-unbootable:"+slot, var_all)
                     self.exists_integer("slot-retry-count:"+slot, var_all)
             else:
-                print "This does not appear to be an A/B device."
+                print("This does not appear to be an A/B device.")
 
     def test_getvar_nonexistent(self):
         """Tests behaviour of nonexistent variables."""
