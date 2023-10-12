@@ -277,10 +277,10 @@ static void BenchmarkTrace(benchmark::State& state, const char* filename, bool e
       ->Repetitions(4)                \
       ->ReportAggregatesOnly(true)
 
-static void BM_angry_birds2(benchmark::State& state) {
+static void BM_angry_birds2_default(benchmark::State& state) {
   BenchmarkTrace(state, "angry_birds2.zip", true);
 }
-BENCHMARK(BM_angry_birds2)->BENCH_OPTIONS;
+BENCHMARK(BM_angry_birds2_default)->BENCH_OPTIONS;
 
 #if defined(__BIONIC__)
 static void BM_angry_birds2_no_decay(benchmark::State& state) {
@@ -289,10 +289,10 @@ static void BM_angry_birds2_no_decay(benchmark::State& state) {
 BENCHMARK(BM_angry_birds2_no_decay)->BENCH_OPTIONS;
 #endif
 
-static void BM_camera(benchmark::State& state) {
+static void BM_camera_default(benchmark::State& state) {
   BenchmarkTrace(state, "camera.zip", true);
 }
-BENCHMARK(BM_camera)->BENCH_OPTIONS;
+BENCHMARK(BM_camera_default)->BENCH_OPTIONS;
 
 #if defined(__BIONIC__)
 static void BM_camera_no_decay(benchmark::State& state) {
@@ -301,10 +301,10 @@ static void BM_camera_no_decay(benchmark::State& state) {
 BENCHMARK(BM_camera_no_decay)->BENCH_OPTIONS;
 #endif
 
-static void BM_candy_crush_saga(benchmark::State& state) {
+static void BM_candy_crush_saga_default(benchmark::State& state) {
   BenchmarkTrace(state, "candy_crush_saga.zip", true);
 }
-BENCHMARK(BM_candy_crush_saga)->BENCH_OPTIONS;
+BENCHMARK(BM_candy_crush_saga_default)->BENCH_OPTIONS;
 
 #if defined(__BIONIC__)
 static void BM_candy_crush_saga_no_decay(benchmark::State& state) {
@@ -313,10 +313,10 @@ static void BM_candy_crush_saga_no_decay(benchmark::State& state) {
 BENCHMARK(BM_candy_crush_saga_no_decay)->BENCH_OPTIONS;
 #endif
 
-void BM_gmail(benchmark::State& state) {
+void BM_gmail_default(benchmark::State& state) {
   BenchmarkTrace(state, "gmail.zip", true);
 }
-BENCHMARK(BM_gmail)->BENCH_OPTIONS;
+BENCHMARK(BM_gmail_default)->BENCH_OPTIONS;
 
 #if defined(__BIONIC__)
 void BM_gmail_no_decay(benchmark::State& state) {
@@ -325,10 +325,10 @@ void BM_gmail_no_decay(benchmark::State& state) {
 BENCHMARK(BM_gmail_no_decay)->BENCH_OPTIONS;
 #endif
 
-void BM_maps(benchmark::State& state) {
+void BM_maps_default(benchmark::State& state) {
   BenchmarkTrace(state, "maps.zip", true);
 }
-BENCHMARK(BM_maps)->BENCH_OPTIONS;
+BENCHMARK(BM_maps_default)->BENCH_OPTIONS;
 
 #if defined(__BIONIC__)
 void BM_maps_no_decay(benchmark::State& state) {
@@ -337,10 +337,10 @@ void BM_maps_no_decay(benchmark::State& state) {
 BENCHMARK(BM_maps_no_decay)->BENCH_OPTIONS;
 #endif
 
-void BM_photos(benchmark::State& state) {
+void BM_photos_default(benchmark::State& state) {
   BenchmarkTrace(state, "photos.zip", true);
 }
-BENCHMARK(BM_photos)->BENCH_OPTIONS;
+BENCHMARK(BM_photos_default)->BENCH_OPTIONS;
 
 #if defined(__BIONIC__)
 void BM_photos_no_decay(benchmark::State& state) {
@@ -349,10 +349,10 @@ void BM_photos_no_decay(benchmark::State& state) {
 BENCHMARK(BM_photos_no_decay)->BENCH_OPTIONS;
 #endif
 
-void BM_pubg(benchmark::State& state) {
+void BM_pubg_default(benchmark::State& state) {
   BenchmarkTrace(state, "pubg.zip", true);
 }
-BENCHMARK(BM_pubg)->BENCH_OPTIONS;
+BENCHMARK(BM_pubg_default)->BENCH_OPTIONS;
 
 #if defined(__BIONIC__)
 void BM_pubg_no_decay(benchmark::State& state) {
@@ -361,10 +361,10 @@ void BM_pubg_no_decay(benchmark::State& state) {
 BENCHMARK(BM_pubg_no_decay)->BENCH_OPTIONS;
 #endif
 
-void BM_surfaceflinger(benchmark::State& state) {
+void BM_surfaceflinger_default(benchmark::State& state) {
   BenchmarkTrace(state, "surfaceflinger.zip", true);
 }
-BENCHMARK(BM_surfaceflinger)->BENCH_OPTIONS;
+BENCHMARK(BM_surfaceflinger_default)->BENCH_OPTIONS;
 
 #if defined(__BIONIC__)
 void BM_surfaceflinger_no_decay(benchmark::State& state) {
@@ -373,10 +373,10 @@ void BM_surfaceflinger_no_decay(benchmark::State& state) {
 BENCHMARK(BM_surfaceflinger_no_decay)->BENCH_OPTIONS;
 #endif
 
-void BM_system_server(benchmark::State& state) {
+void BM_system_server_default(benchmark::State& state) {
   BenchmarkTrace(state, "system_server.zip", true);
 }
-BENCHMARK(BM_system_server)->BENCH_OPTIONS;
+BENCHMARK(BM_system_server_default)->BENCH_OPTIONS;
 
 #if defined(__BIONIC__)
 void BM_system_server_no_decay(benchmark::State& state) {
@@ -385,10 +385,10 @@ void BM_system_server_no_decay(benchmark::State& state) {
 BENCHMARK(BM_system_server_no_decay)->BENCH_OPTIONS;
 #endif
 
-void BM_systemui(benchmark::State& state) {
+void BM_systemui_default(benchmark::State& state) {
   BenchmarkTrace(state, "systemui.zip", true);
 }
-BENCHMARK(BM_systemui)->BENCH_OPTIONS;
+BENCHMARK(BM_systemui_default)->BENCH_OPTIONS;
 
 #if defined(__BIONIC__)
 void BM_systemui_no_decay(benchmark::State& state) {
@@ -397,10 +397,10 @@ void BM_systemui_no_decay(benchmark::State& state) {
 BENCHMARK(BM_systemui_no_decay)->BENCH_OPTIONS;
 #endif
 
-void BM_youtube(benchmark::State& state) {
+void BM_youtube_default(benchmark::State& state) {
   BenchmarkTrace(state, "youtube.zip", true);
 }
-BENCHMARK(BM_youtube)->BENCH_OPTIONS;
+BENCHMARK(BM_youtube_default)->BENCH_OPTIONS;
 
 #if defined(__BIONIC__)
 void BM_youtube_no_decay(benchmark::State& state) {
