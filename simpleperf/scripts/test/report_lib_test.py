@@ -15,10 +15,13 @@
 # limitations under the License.
 
 import os
+from pathlib import Path
+import shutil
 import tempfile
 from typing import Dict, List, Optional, Set
 
 from simpleperf_report_lib import ReportLib
+from simpleperf_utils import ReadElf
 from . test_utils import TestBase, TestHelper
 
 
@@ -332,3 +335,26 @@ class TestReportLib(TestBase):
         self.assertEqual(thread_names['AsyncTask.*'], 19)
         self.assertNotIn('AsyncTask #3', thread_names)
         self.assertNotIn('AsyncTask #4', thread_names)
+
+    def test_use_vmlinux(self):
+        """ Test if we can use vmlinux in symfs_dir. """
+        record_file = TestHelper.testdata_path('perf_test_vmlinux.data')
+        # Create a symfs_dir.
+        symfs_dir = Path('symfs_dir')
+        symfs_dir.mkdir()
+        shutil.copy(TestHelper.testdata_path('vmlinux'), symfs_dir)
+        kernel_build_id = ReadElf(TestHelper.ndk_path).get_build_id(symfs_dir / 'vmlinux')
+        (symfs_dir / 'build_id_list').write_text('%s=vmlinux' % kernel_build_id)
+
+        # Check if vmlinux in symfs_dir is used, when we set record file before setting symfs_dir.
+        self.report_lib.SetRecordFile(record_file)
+        self.report_lib.SetSymfs(str(symfs_dir))
+        sample = self.report_lib.GetNextSample()
+        self.assertIsNotNone(sample)
+        symbol = self.report_lib.GetSymbolOfCurrentSample()
+        self.assertEqual(symbol.dso_name, "[kernel.kallsyms]")
+        # vaddr_in_file and symbol_addr are adjusted after using vmlinux.
+        self.assertEqual(symbol.vaddr_in_file, 0xffffffc008fb3e28)
+        self.assertEqual(symbol.symbol_name, "_raw_spin_unlock_irq")
+        self.assertEqual(symbol.symbol_addr, 0xffffffc008fb3e0c)
+        self.assertEqual(symbol.symbol_len, 0x4c)
