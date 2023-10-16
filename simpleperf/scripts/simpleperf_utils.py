@@ -31,7 +31,7 @@ import shutil
 import subprocess
 import sys
 import time
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union, TextIO
 
 
 NDK_ERROR_MESSAGE = "Please install the Android NDK (https://developer.android.com/studio/projects/install-ndk), then set NDK path with --ndk_path option."
@@ -879,47 +879,53 @@ class Objdump(object):
         args = [objdump_path, '-dlC', '--no-show-raw-insn', real_path]
         if arch == 'arm' and 'llvm-objdump' in objdump_path:
             args += ['--print-imm-hex']
-        current_id = 0
-        in_range = False
-        result = [Disassembly() for _ in sorted_addr_ranges]
         try:
             proc = subprocess.Popen(args, stdout=subprocess.PIPE, text=True)
-            while True:
-                line = proc.stdout.readline()
-                if not line:
-                    break
-                if current_id >= len(sorted_addr_ranges):
-                    continue
-                if line[0] == ' ':
-                    # may be an instruction, like: " 24a469c: stp x29, x30, [sp, #-0x60]!"
-                    items = line.split(':', 1)
-                    try:
-                        addr = int(items[0], 16)
-                    except (ValueError, IndexError):
-                        addr = 0
-                else:
-                    # may be a function start point, like "00000000024a4698 <DoWork()>:"
-                    items = line.split(maxsplit=1)
-                    try:
-                        addr = int(items[0], 16)
-                    except (ValueError, IndexError):
-                        addr = 0
-
-                if addr != 0:
-                    if in_range and not sorted_addr_ranges[current_id].is_in_range(addr):
-                        in_range = False
-                        current_id += 1
-                        if current_id == len(sorted_addr_ranges):
-                            continue
-                    if not in_range and sorted_addr_ranges[current_id].is_in_range(addr):
-                        in_range = True
-
-                if in_range:
-                    result[current_id].lines.append((line, addr))
+            result = self._parse_disassembly_for_functions(proc.stdout, sorted_addr_ranges)
             proc.wait()
         except OSError:
             return None
         return result
+
+    def _parse_disassembly_for_functions(self, fh: TextIO, sorted_addr_ranges: List[AddrRange]) -> Optional[List[Disassembly]]:
+        current_id = 0
+        in_range = False
+        result = [Disassembly() for _ in sorted_addr_ranges]
+        while True:
+            line = fh.readline()
+            if not line:
+                break
+            line = line.rstrip()  # Remove '\r\n'.
+            addr = self._get_addr_from_disassembly_line(line)
+            if current_id >= len(sorted_addr_ranges):
+                continue
+            if addr:
+                if in_range and not sorted_addr_ranges[current_id].is_in_range(addr):
+                    in_range = False
+                if not in_range:
+                    # Skip addr ranges before the current address.
+                    while current_id < len(sorted_addr_ranges) and sorted_addr_ranges[current_id].end <= addr:
+                        current_id += 1
+                    if current_id < len(sorted_addr_ranges) and sorted_addr_ranges[current_id].is_in_range(addr):
+                        in_range = True
+            if in_range:
+                result[current_id].lines.append((line, addr))
+        return result
+
+    def _get_addr_from_disassembly_line(self, line: str) -> int:
+        # line may be an instruction, like: " 24a469c: stp x29, x30, [sp, #-0x60]!" or
+        #  "ffffffc0085d9664:      	paciasp".
+        # line may be a function start point, like "00000000024a4698 <DoWork()>:".
+        items = line.strip().split()
+        if not items:
+            return 0
+        s = items[0]
+        if s.endswith(':'):
+            s = s[:-1]
+        try:
+            return int(s, 16)
+        except ValueError:
+            return 0
 
 
 class ReadElf(object):
