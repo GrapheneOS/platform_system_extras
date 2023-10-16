@@ -664,17 +664,7 @@ class ElfDso : public Dso {
 
 class KernelDso : public Dso {
  public:
-  KernelDso(const std::string& path) : Dso(DSO_KERNEL, path) {
-    debug_file_path_ = FindDebugFilePath();
-    if (!vmlinux_.empty()) {
-      // Use vmlinux as the kernel debug file.
-      BuildId build_id = GetExpectedBuildId();
-      ElfStatus status;
-      if (ElfFile::Open(vmlinux_, &build_id, &status)) {
-        debug_file_path_ = vmlinux_;
-      }
-    }
-  }
+  KernelDso(const std::string& path) : Dso(DSO_KERNEL, path) {}
 
   // IpToVaddrInFile() and LoadSymbols() must be consistent in fixing addresses changed by kernel
   // address space layout randomization.
@@ -697,6 +687,13 @@ class KernelDso : public Dso {
  protected:
   std::string FindDebugFilePath() const override {
     BuildId build_id = GetExpectedBuildId();
+    if (!vmlinux_.empty()) {
+      // Use vmlinux as the kernel debug file.
+      ElfStatus status;
+      if (ElfFile::Open(vmlinux_, &build_id, &status)) {
+        return vmlinux_;
+      }
+    }
     return debug_elf_file_finder_.FindDebugFile(path_, false, build_id);
   }
 
@@ -713,7 +710,7 @@ class KernelDso : public Dso {
     }
 #endif  // defined(__linux__)
     SortAndFixSymbols(symbols);
-    if (!symbols.empty()) {
+    if (!symbols.empty() && symbols.back().len == 0) {
       symbols.back().len = std::numeric_limits<uint64_t>::max() - symbols.back().addr;
     }
     return symbols;
