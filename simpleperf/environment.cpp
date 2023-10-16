@@ -26,6 +26,7 @@
 #include <unistd.h>
 
 #include <limits>
+#include <optional>
 #include <set>
 #include <unordered_map>
 #include <vector>
@@ -212,18 +213,19 @@ bool GetModuleBuildId(const std::string& module_name, BuildId* build_id,
  */
 static const char* perf_event_allow_path = "/proc/sys/kernel/perf_event_paranoid";
 
-static bool ReadPerfEventAllowStatus(int* value) {
+static std::optional<int> ReadPerfEventAllowStatus() {
   std::string s;
   if (!android::base::ReadFileToString(perf_event_allow_path, &s)) {
     PLOG(DEBUG) << "failed to read " << perf_event_allow_path;
-    return false;
+    return std::nullopt;
   }
   s = android::base::Trim(s);
-  if (!android::base::ParseInt(s.c_str(), value)) {
+  int value;
+  if (!android::base::ParseInt(s.c_str(), &value)) {
     PLOG(ERROR) << "failed to parse " << perf_event_allow_path << ": " << s;
-    return false;
+    return std::nullopt;
   }
-  return true;
+  return value;
 }
 
 bool CanRecordRawData() {
@@ -236,8 +238,7 @@ bool CanRecordRawData() {
   // users.
   return false;
 #else
-  int value;
-  return ReadPerfEventAllowStatus(&value) && value == -1;
+  return ReadPerfEventAllowStatus() == -1;
 #endif
 }
 
@@ -269,11 +270,16 @@ static const char* GetLimitLevelDescription(int limit_level) {
 }
 
 bool CheckPerfEventLimit() {
+  std::optional<int> old_level = ReadPerfEventAllowStatus();
+
   // Root is not limited by perf_event_allow_path. However, the monitored threads
   // may create child processes not running as root. To make sure the child processes have
   // enough permission to create inherited tracepoint events, write -1 to perf_event_allow_path.
   // See http://b/62230699.
   if (IsRoot()) {
+    if (old_level == -1) {
+      return true;
+    }
     if (android::base::WriteStringToFile("-1", perf_event_allow_path)) {
       return true;
     }
@@ -283,9 +289,7 @@ bool CheckPerfEventLimit() {
     return false;
 #endif
   }
-  int limit_level;
-  bool can_read_allow_file = ReadPerfEventAllowStatus(&limit_level);
-  if (can_read_allow_file && limit_level <= 1) {
+  if (old_level.has_value() && old_level <= 1) {
     return true;
   }
 #if defined(__ANDROID__)
@@ -301,23 +305,24 @@ bool CheckPerfEventLimit() {
   // Try to enable perf events by setprop security.perf_harden=0.
   if (android::base::SetProperty(prop_name, "0")) {
     sleep(1);
-    if (can_read_allow_file && ReadPerfEventAllowStatus(&limit_level) && limit_level <= 1) {
+    // Check the result of setprop, by reading allow status or the property value.
+    if (auto level = ReadPerfEventAllowStatus(); level.has_value() && level <= 1) {
       return true;
     }
     if (android::base::GetProperty(prop_name, "") == "0") {
       return true;
     }
   }
-  if (can_read_allow_file) {
-    LOG(ERROR) << perf_event_allow_path << " is " << limit_level << ", "
-               << GetLimitLevelDescription(limit_level) << ".";
+  if (old_level.has_value()) {
+    LOG(ERROR) << perf_event_allow_path << " is " << old_level.value() << ", "
+               << GetLimitLevelDescription(old_level.value()) << ".";
   }
   LOG(ERROR) << "Try using `adb shell setprop security.perf_harden 0` to allow profiling.";
   return false;
 #else
-  if (can_read_allow_file) {
-    LOG(ERROR) << perf_event_allow_path << " is " << limit_level << ", "
-               << GetLimitLevelDescription(limit_level) << ". Try using `echo -1 >"
+  if (old_level.has_value()) {
+    LOG(ERROR) << perf_event_allow_path << " is " << old_level.value() << ", "
+               << GetLimitLevelDescription(old_level.value()) << ". Try using `echo -1 >"
                << perf_event_allow_path << "` to enable profiling.";
     return false;
   }
