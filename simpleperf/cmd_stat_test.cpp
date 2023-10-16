@@ -227,7 +227,7 @@ TEST(stat_cmd, stop_when_no_more_targets) {
   ASSERT_TRUE(StatCmd()->Run({"-t", std::to_string(tid), "--in-app"}));
 }
 
-TEST(stat_cmd, sample_speed_should_be_zero) {
+TEST(stat_cmd, sample_rate_should_be_zero) {
   TEST_REQUIRE_HW_COUNTER();
   EventSelectionSet set(true);
   ASSERT_TRUE(set.AddEventType("cpu-cycles"));
