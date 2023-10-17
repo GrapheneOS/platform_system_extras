@@ -52,15 +52,15 @@ struct CountersInfo {
   std::vector<CounterInfo> counters;
 };
 
-struct SampleRate {
-  // There are two ways to set sample rate:
+struct SampleSpeed {
+  // There are two ways to set sample speed:
   // 1. sample_freq: take [sample_freq] samples every second.
   // 2. sample_period: take one sample every [sample_period] events happen.
   uint64_t sample_freq;
   uint64_t sample_period;
-  SampleRate(uint64_t freq = 0, uint64_t period = 0) : sample_freq(freq), sample_period(period) {}
+  SampleSpeed(uint64_t freq = 0, uint64_t period = 0) : sample_freq(freq), sample_period(period) {}
   bool UseFreq() const {
-    // Only use one way to set sample rate.
+    // Only use one way to set sample speed.
     CHECK_NE(sample_freq != 0u, sample_period != 0u);
     return sample_freq != 0u;
   }
@@ -107,8 +107,8 @@ class EventSelectionSet {
 
   bool empty() const { return groups_.empty(); }
 
-  bool AddEventType(const std::string& event_name);
-  bool AddEventGroup(const std::vector<std::string>& event_names);
+  bool AddEventType(const std::string& event_name, size_t* group_id = nullptr);
+  bool AddEventGroup(const std::vector<std::string>& event_names, size_t* group_id = nullptr);
   // For each sample generated for the existing event group, add counters for selected events.
   bool AddCounters(const std::vector<std::string>& event_names);
   std::vector<const EventType*> GetEvents() const;
@@ -121,8 +121,7 @@ class EventSelectionSet {
   void SetEnableOnExec(bool enable);
   bool GetEnableOnExec();
   void SampleIdAll();
-  // Only set sample rate for events that haven't set sample rate.
-  void SetSampleRateForNewEvents(const SampleRate& rate);
+  void SetSampleSpeed(size_t group_id, const SampleSpeed& speed);
   bool SetBranchSampling(uint64_t branch_sample_type);
   void EnableFpCallChainSampling();
   bool EnableDwarfCallChainSampling(uint32_t dump_stack_size);
@@ -189,16 +188,11 @@ class EventSelectionSet {
     std::vector<int> allowed_cpus;
     std::string tracepoint_filter;
   };
-
-  struct EventSelectionGroup {
-    std::vector<EventSelection> selections;
-    bool set_sample_rate = false;
-  };
+  typedef std::vector<EventSelection> EventSelectionGroup;
 
   bool BuildAndCheckEventSelection(const std::string& event_name, bool first_event,
                                    EventSelection* selection);
   void UnionSampleType();
-  void SetSampleRateForGroup(EventSelectionGroup& group, const SampleRate& rate);
   bool OpenEventFilesOnGroup(EventSelectionGroup& group, pid_t tid, int cpu,
                              std::string* failed_event_type);
   bool ApplyFilters();
@@ -222,7 +216,6 @@ class EventSelectionSet {
 
   bool has_aux_trace_ = false;
   std::vector<AddrFilter> addr_filters_;
-  std::optional<SampleRate> sample_rate_;
 
   DISALLOW_COPY_AND_ASSIGN(EventSelectionSet);
 };
