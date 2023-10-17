@@ -264,7 +264,7 @@ bool EventSelectionSet::BuildAndCheckEventSelection(const std::string& event_nam
   selection->event_fds.clear();
 
   for (const auto& group : groups_) {
-    for (const auto& sel : group) {
+    for (const auto& sel : group.selections) {
       if (sel.event_type_modifier.name == selection->event_type_modifier.name) {
         LOG(ERROR) << "Event type '" << sel.event_type_modifier.name << "' appears more than once";
         return false;
@@ -274,12 +274,11 @@ bool EventSelectionSet::BuildAndCheckEventSelection(const std::string& event_nam
   return true;
 }
 
-bool EventSelectionSet::AddEventType(const std::string& event_name, size_t* group_id) {
-  return AddEventGroup(std::vector<std::string>(1, event_name), group_id);
+bool EventSelectionSet::AddEventType(const std::string& event_name) {
+  return AddEventGroup(std::vector<std::string>(1, event_name));
 }
 
-bool EventSelectionSet::AddEventGroup(const std::vector<std::string>& event_names,
-                                      size_t* group_id) {
+bool EventSelectionSet::AddEventGroup(const std::vector<std::string>& event_names) {
   EventSelectionGroup group;
   bool first_event = groups_.empty();
   bool first_in_group = true;
@@ -299,13 +298,13 @@ bool EventSelectionSet::AddEventGroup(const std::vector<std::string>& event_name
     }
     first_event = false;
     first_in_group = false;
-    group.push_back(std::move(selection));
+    group.selections.emplace_back(std::move(selection));
   }
-  groups_.push_back(std::move(group));
+  if (sample_rate_) {
+    SetSampleRateForGroup(group, sample_rate_.value());
+  }
+  groups_.emplace_back(std::move(group));
   UnionSampleType();
-  if (group_id != nullptr) {
-    *group_id = groups_.size() - 1;
-  }
   return true;
 }
 
@@ -324,10 +323,10 @@ bool EventSelectionSet::AddCounters(const std::vector<std::string>& event_names)
     selection.event_attr.freq = 0;
     selection.event_attr.sample_period = INFINITE_SAMPLE_PERIOD;
     selection.event_attr.inherit = 0;
-    groups_[0].emplace_back(std::move(selection));
+    groups_[0].selections.emplace_back(std::move(selection));
   }
   // Add counters in each sample.
-  for (auto& selection : groups_[0]) {
+  for (auto& selection : groups_[0].selections) {
     selection.event_attr.sample_type |= PERF_SAMPLE_READ;
     selection.event_attr.read_format |= PERF_FORMAT_GROUP;
   }
@@ -337,7 +336,7 @@ bool EventSelectionSet::AddCounters(const std::vector<std::string>& event_names)
 std::vector<const EventType*> EventSelectionSet::GetEvents() const {
   std::vector<const EventType*> result;
   for (const auto& group : groups_) {
-    for (const auto& selection : group) {
+    for (const auto& selection : group.selections) {
       result.push_back(&selection.event_type_modifier.event_type);
     }
   }
@@ -347,7 +346,7 @@ std::vector<const EventType*> EventSelectionSet::GetEvents() const {
 std::vector<const EventType*> EventSelectionSet::GetTracepointEvents() const {
   std::vector<const EventType*> result;
   for (const auto& group : groups_) {
-    for (const auto& selection : group) {
+    for (const auto& selection : group.selections) {
       if (selection.event_type_modifier.event_type.type == PERF_TYPE_TRACEPOINT) {
         result.push_back(&selection.event_type_modifier.event_type);
       }
@@ -358,7 +357,7 @@ std::vector<const EventType*> EventSelectionSet::GetTracepointEvents() const {
 
 bool EventSelectionSet::ExcludeKernel() const {
   for (const auto& group : groups_) {
-    for (const auto& selection : group) {
+    for (const auto& selection : group.selections) {
       if (!selection.event_type_modifier.exclude_kernel) {
         return false;
       }
@@ -370,7 +369,7 @@ bool EventSelectionSet::ExcludeKernel() const {
 EventAttrIds EventSelectionSet::GetEventAttrWithId() const {
   EventAttrIds result;
   for (const auto& group : groups_) {
-    for (const auto& selection : group) {
+    for (const auto& selection : group.selections) {
       std::vector<uint64_t> ids;
       for (const auto& fd : selection.event_fds) {
         ids.push_back(fd->Id());
@@ -386,7 +385,7 @@ EventAttrIds EventSelectionSet::GetEventAttrWithId() const {
 std::unordered_map<uint64_t, std::string> EventSelectionSet::GetEventNamesById() const {
   std::unordered_map<uint64_t, std::string> result;
   for (const auto& group : groups_) {
-    for (const auto& selection : group) {
+    for (const auto& selection : group.selections) {
       for (const auto& fd : selection.event_fds) {
         result[fd->Id()] = selection.event_type_modifier.name;
       }
@@ -400,12 +399,12 @@ std::unordered_map<uint64_t, std::string> EventSelectionSet::GetEventNamesById()
 void EventSelectionSet::UnionSampleType() {
   uint64_t sample_type = 0;
   for (const auto& group : groups_) {
-    for (const auto& selection : group) {
+    for (const auto& selection : group.selections) {
       sample_type |= selection.event_attr.sample_type;
     }
   }
   for (auto& group : groups_) {
-    for (auto& selection : group) {
+    for (auto& selection : group.selections) {
       selection.event_attr.sample_type = sample_type;
     }
   }
@@ -413,7 +412,7 @@ void EventSelectionSet::UnionSampleType() {
 
 void EventSelectionSet::SetEnableOnExec(bool enable) {
   for (auto& group : groups_) {
-    for (auto& selection : group) {
+    for (auto& selection : group.selections) {
       // If sampling is enabled on exec, then it is disabled at startup,
       // otherwise it should be enabled at startup. Don't use
       // ioctl(PERF_EVENT_IOC_ENABLE) to enable it after perf_event_open().
@@ -432,7 +431,7 @@ void EventSelectionSet::SetEnableOnExec(bool enable) {
 
 bool EventSelectionSet::GetEnableOnExec() {
   for (const auto& group : groups_) {
-    for (const auto& selection : group) {
+    for (const auto& selection : group.selections) {
       if (selection.event_attr.enable_on_exec == 0) {
         return false;
       }
@@ -443,21 +442,31 @@ bool EventSelectionSet::GetEnableOnExec() {
 
 void EventSelectionSet::SampleIdAll() {
   for (auto& group : groups_) {
-    for (auto& selection : group) {
+    for (auto& selection : group.selections) {
       selection.event_attr.sample_id_all = 1;
     }
   }
 }
 
-void EventSelectionSet::SetSampleSpeed(size_t group_id, const SampleSpeed& speed) {
-  CHECK_LT(group_id, groups_.size());
-  for (auto& selection : groups_[group_id]) {
-    if (speed.UseFreq()) {
+void EventSelectionSet::SetSampleRateForNewEvents(const SampleRate& rate) {
+  sample_rate_ = rate;
+  for (auto& group : groups_) {
+    if (!group.set_sample_rate) {
+      SetSampleRateForGroup(group, rate);
+    }
+  }
+}
+
+void EventSelectionSet::SetSampleRateForGroup(EventSelectionSet::EventSelectionGroup& group,
+                                              const SampleRate& rate) {
+  group.set_sample_rate = true;
+  for (auto& selection : group.selections) {
+    if (rate.UseFreq()) {
       selection.event_attr.freq = 1;
-      selection.event_attr.sample_freq = speed.sample_freq;
+      selection.event_attr.sample_freq = rate.sample_freq;
     } else {
       selection.event_attr.freq = 0;
-      selection.event_attr.sample_period = speed.sample_period;
+      selection.event_attr.sample_period = rate.sample_period;
     }
   }
 }
@@ -474,7 +483,7 @@ bool EventSelectionSet::SetBranchSampling(uint64_t branch_sample_type) {
     return false;
   }
   for (auto& group : groups_) {
-    for (auto& selection : group) {
+    for (auto& selection : group.selections) {
       perf_event_attr& attr = selection.event_attr;
       if (branch_sample_type != 0) {
         attr.sample_type |= PERF_SAMPLE_BRANCH_STACK;
@@ -489,7 +498,7 @@ bool EventSelectionSet::SetBranchSampling(uint64_t branch_sample_type) {
 
 void EventSelectionSet::EnableFpCallChainSampling() {
   for (auto& group : groups_) {
-    for (auto& selection : group) {
+    for (auto& selection : group.selections) {
       selection.event_attr.sample_type |= PERF_SAMPLE_CALLCHAIN;
     }
   }
@@ -501,7 +510,7 @@ bool EventSelectionSet::EnableDwarfCallChainSampling(uint32_t dump_stack_size) {
     return false;
   }
   for (auto& group : groups_) {
-    for (auto& selection : group) {
+    for (auto& selection : group.selections) {
       selection.event_attr.sample_type |=
           PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER;
       selection.event_attr.exclude_callchain_user = 1;
@@ -514,7 +523,7 @@ bool EventSelectionSet::EnableDwarfCallChainSampling(uint32_t dump_stack_size) {
 
 void EventSelectionSet::SetInherit(bool enable) {
   for (auto& group : groups_) {
-    for (auto& selection : group) {
+    for (auto& selection : group.selections) {
       selection.event_attr.inherit = (enable ? 1 : 0);
     }
   }
@@ -522,7 +531,7 @@ void EventSelectionSet::SetInherit(bool enable) {
 
 void EventSelectionSet::SetClockId(int clock_id) {
   for (auto& group : groups_) {
-    for (auto& selection : group) {
+    for (auto& selection : group.selections) {
       selection.event_attr.use_clockid = 1;
       selection.event_attr.clockid = clock_id;
     }
@@ -535,20 +544,20 @@ bool EventSelectionSet::NeedKernelSymbol() const {
 
 void EventSelectionSet::SetRecordNotExecutableMaps(bool record) {
   // We only need to dump non-executable mmap records for the first event type.
-  groups_[0][0].event_attr.mmap_data = record ? 1 : 0;
+  groups_[0].selections[0].event_attr.mmap_data = record ? 1 : 0;
 }
 
 bool EventSelectionSet::RecordNotExecutableMaps() const {
-  return groups_[0][0].event_attr.mmap_data == 1;
+  return groups_[0].selections[0].event_attr.mmap_data == 1;
 }
 
 void EventSelectionSet::EnableSwitchRecord() {
-  groups_[0][0].event_attr.context_switch = 1;
+  groups_[0].selections[0].event_attr.context_switch = 1;
 }
 
 void EventSelectionSet::WakeupPerSample() {
   for (auto& group : groups_) {
-    for (auto& selection : group) {
+    for (auto& selection : group.selections) {
       selection.event_attr.watermark = 0;
       selection.event_attr.wakeup_events = 1;
     }
@@ -560,9 +569,9 @@ bool EventSelectionSet::SetTracepointFilter(const std::string& filter) {
   EventSelection* selection = nullptr;
   if (!groups_.empty()) {
     auto& group = groups_.back();
-    if (group.size() == 1) {
-      if (group[0].event_attr.type == PERF_TYPE_TRACEPOINT) {
-        selection = &group[0];
+    if (group.selections.size() == 1) {
+      if (group.selections[0].event_attr.type == PERF_TYPE_TRACEPOINT) {
+        selection = &group.selections[0];
       }
     }
   }
@@ -621,7 +630,7 @@ bool EventSelectionSet::OpenEventFilesOnGroup(EventSelectionGroup& group, pid_t 
   // Given a tid and cpu, events on the same group should be all opened
   // successfully or all failed to open.
   EventFd* group_fd = nullptr;
-  for (auto& selection : group) {
+  for (auto& selection : group.selections) {
     std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(
         selection.event_attr, tid, cpu, group_fd, selection.event_type_modifier.name, false);
     if (!event_fd) {
@@ -629,13 +638,13 @@ bool EventSelectionSet::OpenEventFilesOnGroup(EventSelectionGroup& group, pid_t 
       return false;
     }
     LOG(VERBOSE) << "OpenEventFile for " << event_fd->Name();
-    event_fds.push_back(std::move(event_fd));
+    event_fds.emplace_back(std::move(event_fd));
     if (group_fd == nullptr) {
       group_fd = event_fds.back().get();
     }
   }
-  for (size_t i = 0; i < group.size(); ++i) {
-    group[i].event_fds.push_back(std::move(event_fds[i]));
+  for (size_t i = 0; i < group.selections.size(); ++i) {
+    group.selections[i].event_fds.emplace_back(std::move(event_fds[i]));
   }
   return true;
 }
@@ -668,10 +677,10 @@ bool EventSelectionSet::OpenEventFiles(const std::vector<int>& cpus) {
     std::string failed_event_type;
     for (const auto tid : threads) {
       const std::vector<int>* pcpus = &monitored_cpus;
-      if (!group[0].allowed_cpus.empty()) {
+      if (!group.selections[0].allowed_cpus.empty()) {
         // override cpu list if event's PMU has a cpumask as those PMUs are
         // agnostic to cpu and it's meaningless to specify cpus for them.
-        pcpus = &group[0].allowed_cpus;
+        pcpus = &group.selections[0].allowed_cpus;
       }
       for (const auto& cpu : *pcpus) {
         if (OpenEventFilesOnGroup(group, tid, cpu, &failed_event_type)) {
@@ -731,7 +740,7 @@ bool EventSelectionSet::ApplyAddrFilters() {
   }
 
   for (auto& group : groups_) {
-    for (auto& selection : group) {
+    for (auto& selection : group.selections) {
       if (IsEtmEventType(selection.event_type_modifier.event_type.type)) {
         for (auto& event_fd : selection.event_fds) {
           if (!event_fd->SetFilter(filter_str)) {
@@ -746,7 +755,7 @@ bool EventSelectionSet::ApplyAddrFilters() {
 
 bool EventSelectionSet::ApplyTracepointFilters() {
   for (auto& group : groups_) {
-    for (auto& selection : group) {
+    for (auto& selection : group.selections) {
       if (!selection.tracepoint_filter.empty()) {
         for (auto& event_fd : selection.event_fds) {
           if (!event_fd->SetFilter(selection.tracepoint_filter)) {
@@ -771,7 +780,7 @@ static bool ReadCounter(EventFd* event_fd, CounterInfo* counter) {
 bool EventSelectionSet::ReadCounters(std::vector<CountersInfo>* counters) {
   counters->clear();
   for (size_t i = 0; i < groups_.size(); ++i) {
-    for (auto& selection : groups_[i]) {
+    for (auto& selection : groups_[i].selections) {
       CountersInfo counters_info;
       counters_info.group_id = i;
       counters_info.event_name = selection.event_type_modifier.event_type.name;
@@ -794,8 +803,8 @@ bool EventSelectionSet::MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pa
                                        size_t aux_buffer_size, size_t record_buffer_size,
                                        bool allow_truncating_samples, bool exclude_perf) {
   record_read_thread_.reset(new simpleperf::RecordReadThread(
-      record_buffer_size, groups_[0][0].event_attr, min_mmap_pages, max_mmap_pages, aux_buffer_size,
-      allow_truncating_samples, exclude_perf));
+      record_buffer_size, groups_[0].selections[0].event_attr, min_mmap_pages, max_mmap_pages,
+      aux_buffer_size, allow_truncating_samples, exclude_perf));
   return true;
 }
 
@@ -808,7 +817,7 @@ bool EventSelectionSet::PrepareToReadMmapEventData(const std::function<bool(Reco
   }
   std::vector<EventFd*> event_fds;
   for (auto& group : groups_) {
-    for (auto& selection : group) {
+    for (auto& selection : group.selections) {
       for (auto& event_fd : selection.event_fds) {
         event_fds.push_back(event_fd.get());
       }
@@ -849,7 +858,7 @@ void EventSelectionSet::CloseEventFiles() {
     record_read_thread_->StopReadThread();
   }
   for (auto& group : groups_) {
-    for (auto& event : group) {
+    for (auto& event : group.selections) {
       event.event_fds.clear();
     }
   }
@@ -879,7 +888,7 @@ bool EventSelectionSet::CheckMonitoredTargets() {
 
 bool EventSelectionSet::HasSampler() {
   for (auto& group : groups_) {
-    for (auto& sel : group) {
+    for (auto& sel : group.selections) {
       if (!sel.event_fds.empty()) {
         return true;
       }
@@ -890,7 +899,7 @@ bool EventSelectionSet::HasSampler() {
 
 bool EventSelectionSet::SetEnableEvents(bool enable) {
   for (auto& group : groups_) {
-    for (auto& sel : group) {
+    for (auto& sel : group.selections) {
       for (auto& fd : sel.event_fds) {
         if (!fd->SetEnableEvent(enable)) {
           return false;
