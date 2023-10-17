@@ -86,8 +86,9 @@ static constexpr size_t kSystemWideRecordBufferSize = 256 * kMegabyte;
 class MonitorCommand : public Command {
  public:
   MonitorCommand()
-      : Command("monitor", "monitor events and print their textual representations to stdout",
-                // clang-format off
+      : Command(
+            "monitor", "monitor events and print their textual representations to stdout",
+            // clang-format off
 "Usage: simpleperf monitor [options]\n"
 "       Gather sampling information and print the events on stdout.\n"
 "       For precise recording, prefer the record command.\n"
@@ -113,7 +114,7 @@ class MonitorCommand : public Command {
 "             samples every second. For non-tracepoint events, the default\n"
 "             option is -f 4000. A -f/-c option affects all event types\n"
 "             following it until meeting another -f/-c option. For example,\n"
-"             for \"-f 1000 cpu-cycles -c 1 -e sched:sched_switch\", cpu-cycles\n"
+"             for \"-f 1000 -e cpu-cycles -c 1 -e sched:sched_switch\", cpu-cycles\n"
 "             has sample freq 1000, sched:sched_switch event has sample period 1.\n"
 "-c count     Set event sample period. It means recording one sample when\n"
 "             [count] events happen. For tracepoint events, the default option\n"
@@ -132,8 +133,8 @@ class MonitorCommand : public Command {
 "--exclude-perf                Exclude samples for simpleperf process.\n"
 RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
 "\n"
-                // clang-format on
-                ),
+            // clang-format on
+            ),
         system_wide_collection_(false),
         fp_callchain_sampling_(false),
         dwarf_callchain_sampling_(false),
@@ -172,7 +173,6 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
   uint64_t max_sample_freq_ = DEFAULT_SAMPLE_FREQ_FOR_NONTRACEPOINT_EVENT;
   size_t cpu_time_max_percent_ = 25;
 
-  std::unique_ptr<SampleSpeed> sample_speed_;
   bool system_wide_collection_;
   bool fp_callchain_sampling_;
   bool dwarf_callchain_sampling_;
@@ -351,8 +351,6 @@ bool MonitorCommand::ParseOptions(const std::vector<std::string>& args) {
   CHECK(options.values.empty());
 
   // Process ordered options.
-  std::vector<size_t> wait_setting_speed_event_groups;
-
   for (const auto& pair : ordered_options) {
     const OptionName& name = pair.first;
     const OptionValue& value = pair.second;
@@ -362,20 +360,17 @@ bool MonitorCommand::ParseOptions(const std::vector<std::string>& args) {
         LOG(ERROR) << "invalid " << name << ": " << value.uint_value;
         return false;
       }
+      SampleRate rate;
       if (name == "-c") {
-        sample_speed_.reset(new SampleSpeed(0, value.uint_value));
+        rate.sample_period = value.uint_value;
       } else {
         if (value.uint_value >= INT_MAX) {
           LOG(ERROR) << "sample freq can't be bigger than INT_MAX: " << value.uint_value;
           return false;
         }
-        sample_speed_.reset(new SampleSpeed(value.uint_value, 0));
+        rate.sample_freq = value.uint_value;
       }
-
-      for (auto groud_id : wait_setting_speed_event_groups) {
-        event_selection_set_.SetSampleSpeed(groud_id, *sample_speed_);
-      }
-      wait_setting_speed_event_groups.clear();
+      event_selection_set_.SetSampleRateForNewEvents(rate);
 
     } else if (name == "--call-graph") {
       std::vector<std::string> strs = android::base::Split(*value.str_value, ",");
@@ -407,14 +402,8 @@ bool MonitorCommand::ParseOptions(const std::vector<std::string>& args) {
     } else if (name == "-e") {
       std::vector<std::string> event_types = android::base::Split(*value.str_value, ",");
       for (auto& event_type : event_types) {
-        size_t group_id;
-        if (!event_selection_set_.AddEventType(event_type, &group_id)) {
+        if (!event_selection_set_.AddEventType(event_type)) {
           return false;
-        }
-        if (sample_speed_) {
-          event_selection_set_.SetSampleSpeed(group_id, *sample_speed_);
-        } else {
-          wait_setting_speed_event_groups.push_back(group_id);
         }
       }
 
