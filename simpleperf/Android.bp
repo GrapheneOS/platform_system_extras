@@ -607,6 +607,7 @@ cc_defaults {
                 "cmd_stat_test.cpp",
                 "cmd_trace_sched_test.cpp",
                 "environment_test.cpp",
+                "event_selection_set_test.cpp",
                 "IOEventLoop_test.cpp",
                 "JITDebugReader_test.cpp",
                 "MapRecordReader_test.cpp",
