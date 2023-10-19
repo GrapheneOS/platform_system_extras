@@ -362,9 +362,9 @@ class StatCommand : public Command {
 "                      On non-rooted devices, the app must be debuggable,\n"
 "                      because we use run-as to switch to the app's context.\n"
 #endif
-"--cpu cpu_item1,cpu_item2,...\n"
-"                 Collect information only on the selected cpus. cpu_item can\n"
-"                 be a cpu number like 1, or a cpu range like 0-3.\n"
+"--cpu cpu_item1,cpu_item2,...  Monitor events on selected cpus. cpu_item can be a number like\n"
+"                               1, or a range like 0-3. A --cpu option affects all event types\n"
+"                               following it until meeting another --cpu option.\n"
 "--csv            Write report in comma separate form.\n"
 "--duration time_in_sec  Monitor for time_in_sec seconds instead of running\n"
 "                        [command]. Here time_in_sec may be any positive\n"
@@ -463,7 +463,6 @@ class StatCommand : public Command {
   double interval_in_ms_;
   bool interval_only_values_;
   std::vector<std::vector<CounterSum>> last_sum_values_;
-  std::vector<int> cpus_;
   EventSelectionSet event_selection_set_;
   std::string output_filename_;
   android::base::unique_fd out_fd_;
@@ -552,7 +551,7 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   }
 
   // 3. Open perf_event_files and output file if defined.
-  if (!event_selection_set_.OpenEventFiles(cpus_)) {
+  if (!event_selection_set_.OpenEventFiles()) {
     return false;
   }
   std::unique_ptr<FILE, decltype(&fclose)> fp_holder(nullptr, fclose);
@@ -659,14 +658,6 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
   if (auto value = options.PullValue("--app"); value) {
     app_package_name_ = *value->str_value;
   }
-  if (auto value = options.PullValue("--cpu"); value) {
-    if (auto cpus = GetCpusFromString(*value->str_value); cpus) {
-      cpus_.assign(cpus->begin(), cpus->end());
-    } else {
-      return false;
-    }
-  }
-
   csv_ = options.PullBoolValue("--csv");
 
   if (!options.PullDoubleValue("--duration", &duration_in_sec_, 1e-9)) {
@@ -676,20 +667,6 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
     return false;
   }
   interval_only_values_ = options.PullBoolValue("--interval-only-values");
-
-  for (const OptionValue& value : options.PullValues("-e")) {
-    for (const auto& event_type : Split(*value.str_value, ",")) {
-      if (!event_selection_set_.AddEventType(event_type)) {
-        return false;
-      }
-    }
-  }
-
-  for (const OptionValue& value : options.PullValues("--group")) {
-    if (!event_selection_set_.AddEventGroup(Split(*value.str_value, ","))) {
-      return false;
-    }
-  }
 
   in_app_context_ = options.PullBoolValue("--in-app");
   child_inherit_ = !options.PullBoolValue("--no-inherit");
@@ -739,7 +716,31 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
   verbose_mode_ = options.PullBoolValue("--verbose");
 
   CHECK(options.values.empty());
-  CHECK(ordered_options.empty());
+
+  // Process ordered options.
+  for (const auto& pair : ordered_options) {
+    const OptionName& name = pair.first;
+    const OptionValue& value = pair.second;
+
+    if (name == "--cpu") {
+      if (auto v = GetCpusFromString(*value.str_value); v) {
+        std::set<int>& cpus = v.value();
+        event_selection_set_.SetCpusForNewEvents(std::vector<int>(cpus.begin(), cpus.end()));
+      } else {
+        return false;
+      }
+    } else if (name == "-e") {
+      for (const auto& event_type : Split(*value.str_value, ",")) {
+        if (!event_selection_set_.AddEventType(event_type)) {
+          return false;
+        }
+      }
+    } else if (name == "--group") {
+      if (!event_selection_set_.AddEventGroup(Split(*value.str_value, ","))) {
+        return false;
+      }
+    }
+  }
 
   if (system_wide_collection_ && event_selection_set_.HasMonitoredTarget()) {
     LOG(ERROR) << "Stat system wide and existing processes/threads can't be "
@@ -761,6 +762,9 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
 }
 
 std::optional<bool> CheckHardwareCountersOnCpu(int cpu, size_t counters) {
+  if (counters == 0) {
+    return true;
+  }
   const EventType* event = FindEventTypeByName("cpu-cycles", true);
   if (event == nullptr) {
     return std::nullopt;
@@ -941,20 +945,7 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters, double
 }
 
 void StatCommand::CheckHardwareCounterMultiplexing() {
-  size_t hardware_events = 0;
-  for (const EventType* event : event_selection_set_.GetEvents()) {
-    if (event->IsHardwareEvent()) {
-      hardware_events++;
-    }
-  }
-  if (hardware_events == 0) {
-    return;
-  }
-  std::vector<int> cpus = cpus_;
-  if (cpus.empty()) {
-    cpus = GetOnlineCpus();
-  }
-  for (int cpu : cpus) {
+  for (const auto& [cpu, hardware_events] : event_selection_set_.GetHardwareCountersForCpus()) {
     std::optional<bool> result = CheckHardwareCountersOnCpu(cpu, hardware_events);
     if (result.has_value() && !result.value()) {
       LOG(WARNING) << "It seems the number of hardware events are more than the number of\n"
