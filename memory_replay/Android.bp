@@ -94,6 +94,33 @@ cc_binary {
     },
 }
 
+cc_binary_host {
+    name: "filter_trace",
+
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+    ],
+
+    shared_libs: [
+        "libziparchive",
+    ],
+
+    static_libs: [
+        "liballoc_parser",
+        "libbase",
+        "liblog",
+    ],
+
+    srcs: [
+        "Alloc.cpp",
+        "File.cpp",
+        "FilterTrace.cpp",
+        "Pointers.cpp",
+    ],
+}
+
 cc_test {
     name: "memory_replay_tests",
     defaults: ["memory_replay_defaults"],
