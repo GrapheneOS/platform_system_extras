@@ -246,6 +246,10 @@ class ThreadScope(object):
         self.call_graph.merge(thread.call_graph)
         self.reverse_call_graph.merge(thread.reverse_call_graph)
 
+    def sort_call_graph_by_function_name(self, get_func_name: Callable[[int], str]) -> None:
+        self.call_graph.sort_by_function_name(get_func_name)
+        self.reverse_call_graph.sort_by_function_name(get_func_name)
+
 
 class LibScope(object):
 
@@ -408,6 +412,17 @@ class CallNode(object):
             else:
                 cur_child.merge(child)
 
+    def sort_by_function_name(self, get_func_name: Callable[[int], str]) -> None:
+        if self.children:
+            child_func_ids = list(self.children.keys())
+            child_func_ids.sort(key=get_func_name)
+            new_children = collections.OrderedDict()
+            for func_id in child_func_ids:
+                new_children[func_id] = self.children[func_id]
+            self.children = new_children
+            for child in self.children.values():
+                child.sort_by_function_name(get_func_name)
+
 
 @dataclass
 class LibInfo:
@@ -466,6 +481,9 @@ class FunctionSet(object):
             self.name_to_func[key] = function
             self.id_to_func[func_id] = function
         return function.func_id
+
+    def get_func_name(self, func_id: int) -> str:
+        return self.id_to_func[func_id].func_name
 
     def trim_functions(self, left_func_ids: Set[int]):
         """ Remove functions excepts those in left_func_ids. """
@@ -703,6 +721,12 @@ class RecordData(object):
             for process in to_del_processes:
                 del event.processes[process]
         self.functions.trim_functions(hit_func_ids)
+
+    def sort_call_graph_by_function_name(self) -> None:
+        for event in self.events.values():
+            for process in event.processes.values():
+                for thread in process.threads.values():
+                    thread.sort_call_graph_by_function_name(self.functions.get_func_name)
 
     def _get_event(self, event_name: str) -> EventScope:
         if event_name not in self.events:
@@ -1029,6 +1053,7 @@ def main():
     if args.aggregate_by_thread_name:
         record_data.aggregate_by_thread_name()
     record_data.limit_percents(args.min_func_percent, args.min_callchain_percent)
+    record_data.sort_call_graph_by_function_name()
 
     def filter_lib(lib_name: str) -> bool:
         if not args.binary_filter:

@@ -276,3 +276,18 @@ class TestReportHtml(TestBase):
         self.assertEqual(thread_names['AsyncTask.*'], 19)
         self.assertNotIn('AsyncTask #3', thread_names)
         self.assertNotIn('AsyncTask #4', thread_names)
+
+    def test_sort_call_graph_by_function_name(self):
+        record_data = self.get_record_data(
+            ['-i', TestHelper.testdata_path('perf_display_bitmaps.data'),
+             '--aggregate-threads', '.*'])
+
+        def get_func_name(func_id: int) -> str:
+            return record_data['functionMap'][str(func_id)]['f']
+
+        # Test if the top functions are sorted by function names.
+        thread = record_data['sampleInfo'][0]['processes'][0]['threads'][0]
+        top_functions = [get_func_name(c['f']) for c in thread['g']['c']]
+        self.assertIn('__libc_init', top_functions)
+        self.assertIn('__start_thread', top_functions)
+        self.assertEqual(top_functions, sorted(top_functions))
