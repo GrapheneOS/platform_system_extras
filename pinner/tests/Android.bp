@@ -18,15 +18,21 @@ package {
 
 cc_test {
     name: "meminspect_tests",
+
+    test_suites: ["device-tests"],
+
+    // Required for reading-writing files which are part of the tests.
+    require_root: true,
+
     shared_libs: [
         "libbase",
+        "libziparchive",
     ],
 
     cppflags: [
         "-g",
         "-Wall",
         "-Werror",
-        "-Wno-missing-field-initializers",
     ],
 
     static_libs: [
@@ -43,7 +49,7 @@ cc_test {
         "-Wall",
         "-Wextra",
         "-Werror",
-        "-O0",
+        "-O0", // as some tests rely on compiler keeping code as is
     ],
 
     compile_multilib: "first",
@@ -52,15 +58,20 @@ cc_test {
 cc_test {
     name: "pintool_tests",
 
+    test_suites: ["device-tests"],
+
+    // Required for reading-writing files which are part of the tests.
+    require_root: true,
+
     shared_libs: [
         "libbase",
+        "libziparchive",
     ],
 
     cppflags: [
         "-g",
         "-Wall",
         "-Werror",
-        "-Wno-missing-field-initializers",
     ],
 
     static_libs: [
@@ -77,7 +88,7 @@ cc_test {
         "-Wall",
         "-Wextra",
         "-Werror",
-        "-O0",
+        "-O0", // as some tests rely on compiler keeping code as is
     ],
 
     compile_multilib: "first",
