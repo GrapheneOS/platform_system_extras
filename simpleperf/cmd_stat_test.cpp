@@ -232,7 +232,8 @@ TEST(stat_cmd, sample_rate_should_be_zero) {
   EventSelectionSet set(true);
   ASSERT_TRUE(set.AddEventType("cpu-cycles"));
   set.AddMonitoredProcesses({getpid()});
-  ASSERT_TRUE(set.OpenEventFiles({-1}));
+  set.SetCpusForNewEvents({-1});
+  ASSERT_TRUE(set.OpenEventFiles());
   const EventAttrIds& attrs = set.GetEventAttrWithId();
   ASSERT_GT(attrs.size(), 0u);
   for (auto& attr : attrs) {
@@ -289,12 +290,14 @@ TEST(stat_cmd, set_comm_in_another_thread) {
       EventSelectionSet set(true);
       ASSERT_TRUE(set.AddEventType("cpu-cycles"));
       set.AddMonitoredThreads({child_tid});
-      ASSERT_TRUE(set.OpenEventFiles({-1}));
+      set.SetCpusForNewEvents({-1});
+      ASSERT_TRUE(set.OpenEventFiles());
 
       EventSelectionSet set2(true);
       ASSERT_TRUE(set2.AddEventType("instructions"));
       set2.AddMonitoredThreads({gettid()});
-      ASSERT_TRUE(set2.OpenEventFiles({-1}));
+      set2.SetCpusForNewEvents({-1});
+      ASSERT_TRUE(set2.OpenEventFiles());
 
       // For kernels with the bug, setting comm will make the monitored events of the child thread
       // on the cpu of the current thread.
@@ -380,6 +383,32 @@ TEST(stat_cmd, counter_sum) {
 
 TEST(stat_cmd, print_hw_counter_option) {
   ASSERT_TRUE(StatCmd()->Run({"--print-hw-counter"}));
+}
+
+TEST(stat_cmd, record_different_counters_for_different_cpus) {
+  std::vector<int> online_cpus = GetOnlineCpus();
+  ASSERT_FALSE(online_cpus.empty());
+  std::string cpu0 = std::to_string(online_cpus[0]);
+  std::string cpu1 = std::to_string(online_cpus.back());
+
+  CaptureStdout capture;
+  ASSERT_TRUE(capture.Start());
+  ASSERT_TRUE(StatCmd()->Run({"--csv", "--cpu", cpu0, "-e", "cpu-clock", "--cpu", cpu1, "-e",
+                              "task-clock", "--verbose", "sleep", SLEEP_SEC}));
+  std::string output = capture.Finish();
+  bool has_cpu_clock = false;
+  bool has_task_clock = false;
+  for (auto& line : android::base::Split(output, "\n")) {
+    if (android::base::StartsWith(line, "cpu-clock,")) {
+      ASSERT_NE(line.find("cpu," + cpu0 + ","), line.npos) << output;
+      has_cpu_clock = true;
+    } else if (android::base::StartsWith(line, "task-clock,")) {
+      ASSERT_NE(line.find("cpu," + cpu1 + ","), line.npos) << output;
+      has_task_clock = true;
+    }
+  }
+  ASSERT_TRUE(has_cpu_clock) << output;
+  ASSERT_TRUE(has_task_clock) << output;
 }
 
 class StatCmdSummaryBuilderTest : public ::testing::Test {
