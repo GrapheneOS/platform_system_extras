@@ -118,12 +118,16 @@ class EventSelectionSet {
   bool HasAuxTrace() const { return has_aux_trace_; }
   EventAttrIds GetEventAttrWithId() const;
   std::unordered_map<uint64_t, std::string> GetEventNamesById() const;
+  std::unordered_map<uint64_t, int> GetCpusById() const;
+  std::map<int, size_t> GetHardwareCountersForCpus() const;
 
   void SetEnableOnExec(bool enable);
   bool GetEnableOnExec();
   void SampleIdAll();
   // Only set sample rate for events that haven't set sample rate.
   void SetSampleRateForNewEvents(const SampleRate& rate);
+  // Set on which cpus to monitor events. Only set cpus for events that haven't set before.
+  void SetCpusForNewEvents(const std::vector<int>& cpus);
   bool SetBranchSampling(uint64_t branch_sample_type);
   void EnableFpCallChainSampling();
   bool EnableDwarfCallChainSampling(uint32_t dump_stack_size);
@@ -160,10 +164,7 @@ class EventSelectionSet {
 
   IOEventLoop* GetIOEventLoop() { return loop_.get(); }
 
-  // If cpus = {}, monitor on all cpus, with a perf event file for each cpu.
-  // If cpus = {-1}, monitor on all cpus, with a perf event file shared by all cpus.
-  // Otherwise, monitor on selected cpus, with a perf event file for each cpu.
-  bool OpenEventFiles(const std::vector<int>& cpus);
+  bool OpenEventFiles();
   bool ReadCounters(std::vector<CountersInfo>* counters);
   bool MmapEventFiles(size_t min_mmap_pages, size_t max_mmap_pages, size_t aux_buffer_size,
                       size_t record_buffer_size, bool allow_truncating_samples, bool exclude_perf);
@@ -194,6 +195,12 @@ class EventSelectionSet {
   struct EventSelectionGroup {
     std::vector<EventSelection> selections;
     bool set_sample_rate = false;
+    // Select on which cpus to monitor this event group:
+    // If cpus = {}, monitor on all cpus, with a perf event file for each cpu. This is the default
+    // option.
+    // If cpus = {-1}, monitor on all cpus, with a perf event file shared by all cpus.
+    // Otherwise, monitor on selected cpus, with a perf event file for each cpu.
+    std::vector<int> cpus;
   };
 
   bool BuildAndCheckEventSelection(const std::string& event_name, bool first_event,
@@ -224,6 +231,7 @@ class EventSelectionSet {
   bool has_aux_trace_ = false;
   std::vector<AddrFilter> addr_filters_;
   std::optional<SampleRate> sample_rate_;
+  std::optional<std::vector<int>> cpus_;
 
   DISALLOW_COPY_AND_ASSIGN(EventSelectionSet);
 };
