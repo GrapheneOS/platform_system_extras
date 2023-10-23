@@ -46,7 +46,7 @@ inline const OptionFormatMap& GetRecordCmdOptionFormats() {
         {"--callchain-joiner-min-matching-nodes",
          {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"--clockid", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
-        {"--cpu", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
+        {"--cpu", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
         {"--cpu-percent", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"--decode-etm", {OptionValueType::NONE, OptionType::SINGLE, AppRunnerType::ALLOWED}},
         {"--duration", {OptionValueType::DOUBLE, OptionType::SINGLE, AppRunnerType::ALLOWED}},

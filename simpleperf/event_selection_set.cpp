@@ -311,6 +311,9 @@ bool EventSelectionSet::AddEventGroup(const std::vector<std::string>& event_name
   if (sample_rate_) {
     SetSampleRateForGroup(group, sample_rate_.value());
   }
+  if (cpus_) {
+    group.cpus = cpus_.value();
+  }
   groups_.emplace_back(std::move(group));
   UnionSampleType();
   return true;
@@ -402,6 +405,37 @@ std::unordered_map<uint64_t, std::string> EventSelectionSet::GetEventNamesById()
   return result;
 }
 
+std::unordered_map<uint64_t, int> EventSelectionSet::GetCpusById() const {
+  std::unordered_map<uint64_t, int> result;
+  for (const auto& group : groups_) {
+    for (const auto& selection : group.selections) {
+      for (const auto& fd : selection.event_fds) {
+        result[fd->Id()] = fd->Cpu();
+      }
+    }
+  }
+  return result;
+}
+
+std::map<int, size_t> EventSelectionSet::GetHardwareCountersForCpus() const {
+  std::map<int, size_t> cpu_map;
+  std::vector<int> online_cpus = GetOnlineCpus();
+
+  for (const auto& group : groups_) {
+    size_t hardware_events = 0;
+    for (const auto& selection : group.selections) {
+      if (selection.event_type_modifier.event_type.IsHardwareEvent()) {
+        hardware_events++;
+      }
+    }
+    const std::vector<int>* pcpus = group.cpus.empty() ? &online_cpus : &group.cpus;
+    for (int cpu : *pcpus) {
+      cpu_map[cpu] += hardware_events;
+    }
+  }
+  return cpu_map;
+}
+
 // Union the sample type of different event attrs can make reading sample
 // records in perf.data easier.
 void EventSelectionSet::UnionSampleType() {
@@ -461,6 +495,15 @@ void EventSelectionSet::SetSampleRateForNewEvents(const SampleRate& rate) {
   for (auto& group : groups_) {
     if (!group.set_sample_rate) {
       SetSampleRateForGroup(group, rate);
+    }
+  }
+}
+
+void EventSelectionSet::SetCpusForNewEvents(const std::vector<int>& cpus) {
+  cpus_ = cpus;
+  for (auto& group : groups_) {
+    if (group.cpus.empty()) {
+      group.cpus = cpus_.value();
     }
   }
 }
@@ -621,17 +664,6 @@ bool EventSelectionSet::SetTracepointFilter(const std::string& filter) {
   return true;
 }
 
-static bool CheckIfCpusOnline(const std::vector<int>& cpus) {
-  std::vector<int> online_cpus = GetOnlineCpus();
-  for (const auto& cpu : cpus) {
-    if (std::find(online_cpus.begin(), online_cpus.end(), cpu) == online_cpus.end()) {
-      LOG(ERROR) << "cpu " << cpu << " is not online.";
-      return false;
-    }
-  }
-  return true;
-}
-
 bool EventSelectionSet::OpenEventFilesOnGroup(EventSelectionGroup& group, pid_t tid, int cpu,
                                               std::string* failed_event_type) {
   std::vector<std::unique_ptr<EventFd>> event_fds;
@@ -667,29 +699,39 @@ static std::set<pid_t> PrepareThreads(const std::set<pid_t>& processes,
   return result;
 }
 
-bool EventSelectionSet::OpenEventFiles(const std::vector<int>& cpus) {
-  std::vector<int> monitored_cpus;
-  if (cpus.empty()) {
-    monitored_cpus = GetOnlineCpus();
-  } else if (cpus.size() == 1 && cpus[0] == -1) {
-    monitored_cpus = {-1};
-  } else {
-    if (!CheckIfCpusOnline(cpus)) {
-      return false;
+bool EventSelectionSet::OpenEventFiles() {
+  std::vector<int> online_cpus = GetOnlineCpus();
+
+  auto check_if_cpus_online = [&](const std::vector<int>& cpus) {
+    if (cpus.size() == 1 && cpus[0] == -1) {
+      return true;
     }
-    monitored_cpus = cpus;
-  }
+    for (int cpu : cpus) {
+      if (std::find(online_cpus.begin(), online_cpus.end(), cpu) == online_cpus.end()) {
+        LOG(ERROR) << "cpu " << cpu << " is not online.";
+        return false;
+      }
+    }
+    return true;
+  };
+
   std::set<pid_t> threads = PrepareThreads(processes_, threads_);
   for (auto& group : groups_) {
+    const std::vector<int>* pcpus = &group.cpus;
+    if (!group.selections[0].allowed_cpus.empty()) {
+      // override cpu list if event's PMU has a cpumask as those PMUs are
+      // agnostic to cpu and it's meaningless to specify cpus for them.
+      pcpus = &group.selections[0].allowed_cpus;
+    }
+    if (pcpus->empty()) {
+      pcpus = &online_cpus;
+    } else if (!check_if_cpus_online(*pcpus)) {
+      return false;
+    }
+
     size_t success_count = 0;
     std::string failed_event_type;
     for (const auto tid : threads) {
-      const std::vector<int>* pcpus = &monitored_cpus;
-      if (!group.selections[0].allowed_cpus.empty()) {
-        // override cpu list if event's PMU has a cpumask as those PMUs are
-        // agnostic to cpu and it's meaningless to specify cpus for them.
-        pcpus = &group.selections[0].allowed_cpus;
-      }
       for (const auto& cpu : *pcpus) {
         if (OpenEventFilesOnGroup(group, tid, cpu, &failed_event_type)) {
           success_count++;
