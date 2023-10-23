@@ -216,9 +216,9 @@ class RecordCommand : public Command {
 "                        Possible values are: realtime, monotonic,\n"
 "                        monotonic_raw, boottime, perf. If supported, default\n"
 "                        is monotonic, otherwise is perf.\n"
-"--cpu cpu_item1,cpu_item2,...\n"
-"             Collect samples only on the selected cpus. cpu_item can be cpu\n"
-"             number like 1, or cpu range like 0-3.\n"
+"--cpu cpu_item1,cpu_item2,...  Monitor events on selected cpus. cpu_item can be a number like\n"
+"                               1, or a range like 0-3. A --cpu option affects all event types\n"
+"                               following it until meeting another --cpu option.\n"
 "--duration time_in_sec  Monitor for time_in_sec seconds instead of running\n"
 "                        [command]. Here time_in_sec may be any positive\n"
 "                        floating point number.\n"
@@ -428,7 +428,6 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
   bool can_dump_kernel_symbols_;
   bool dump_symbols_;
   std::string clockid_;
-  std::vector<int> cpus_;
   EventSelectionSet event_selection_set_;
 
   std::pair<size_t, size_t> mmap_page_range_;
@@ -652,7 +651,7 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   }
 
   // 5. Open perf event files and create mapped buffers.
-  if (!event_selection_set_.OpenEventFiles(cpus_)) {
+  if (!event_selection_set_.OpenEventFiles()) {
     return false;
   }
   size_t record_buffer_size = 0;
@@ -1019,14 +1018,6 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     }
   }
 
-  if (auto value = options.PullValue("--cpu"); value) {
-    if (auto cpus = GetCpusFromString(*value->str_value); cpus) {
-      cpus_.assign(cpus->begin(), cpus->end());
-    } else {
-      return false;
-    }
-  }
-
   if (!options.PullUintValue("--cpu-percent", &cpu_time_max_percent_, 1, 100)) {
     return false;
   }
@@ -1222,6 +1213,13 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         }
       }
 
+    } else if (name == "--cpu") {
+      if (auto cpus = GetCpusFromString(*value.str_value); cpus) {
+        event_selection_set_.SetCpusForNewEvents(
+            std::vector<int>(cpus.value().begin(), cpus.value().end()));
+      } else {
+        return false;
+      }
     } else if (name == "-e") {
       std::vector<std::string> event_types = android::base::Split(*value.str_value, ",");
       for (auto& event_type : event_types) {
@@ -1234,7 +1232,6 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
           return false;
         }
       }
-
     } else if (name == "-g") {
       fp_callchain_sampling_ = false;
       dwarf_callchain_sampling_ = true;
@@ -1250,7 +1247,6 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       if (!event_selection_set_.AddEventGroup(event_types)) {
         return false;
       }
-
     } else if (name == "--tp-filter") {
       if (!event_selection_set_.SetTracepointFilter(*value.str_value)) {
         return false;

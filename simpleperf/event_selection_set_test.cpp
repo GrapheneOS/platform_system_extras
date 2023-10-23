@@ -46,13 +46,49 @@ TEST(EventSelectionSet, set_sample_rate_for_new_events) {
 TEST(EventSelectionSet, add_event_with_sample_rate) {
   EventSelectionSet event_selection_set(false);
   ASSERT_TRUE(event_selection_set.AddEventType("cpu-clock:u"));
-  ASSERT_TRUE(event_selection_set.AddEventType("sched:sched_switch", SampleRate(0, 1)));
+  ASSERT_TRUE(event_selection_set.AddEventType("context-switches", SampleRate(0, 1)));
   EventAttrIds attrs = event_selection_set.GetEventAttrWithId();
   ASSERT_EQ(attrs.size(), 2);
   ASSERT_EQ(GetEventNameByAttr(attrs[0].attr), "cpu-clock:u");
   ASSERT_EQ(attrs[0].attr.freq, 1);
   ASSERT_EQ(attrs[0].attr.sample_freq, 4000);
-  ASSERT_EQ(GetEventNameByAttr(attrs[1].attr), "sched:sched_switch");
+  ASSERT_EQ(GetEventNameByAttr(attrs[1].attr), "context-switches");
   ASSERT_EQ(attrs[1].attr.freq, 0);
   ASSERT_EQ(attrs[1].attr.sample_period, 1);
+}
+
+TEST(EventSelectionSet, set_cpus_for_new_events) {
+  EventSelectionSet event_selection_set(false);
+  std::vector<int> online_cpus = GetOnlineCpus();
+  ASSERT_FALSE(online_cpus.empty());
+  ASSERT_TRUE(event_selection_set.AddEventType("cpu-clock:u"));
+  event_selection_set.SetCpusForNewEvents({online_cpus[0]});
+  ASSERT_TRUE(event_selection_set.AddEventType("page-faults:u"));
+  event_selection_set.SetCpusForNewEvents({online_cpus.back()});
+  ASSERT_TRUE(event_selection_set.AddEventGroup({"context-switches:u", "task-clock:u"}));
+  event_selection_set.AddMonitoredThreads({gettid()});
+  ASSERT_TRUE(event_selection_set.OpenEventFiles());
+
+  std::unordered_map<uint64_t, int> id_to_cpu = event_selection_set.GetCpusById();
+  auto get_cpu = [&](int id) {
+    if (auto it = id_to_cpu.find(id); it != id_to_cpu.end()) {
+      return it->second;
+    }
+    return -2;
+  };
+
+  EventAttrIds attrs = event_selection_set.GetEventAttrWithId();
+  ASSERT_EQ(attrs.size(), 4);
+  ASSERT_EQ(GetEventNameByAttr(attrs[0].attr), "cpu-clock:u");
+  ASSERT_EQ(attrs[0].ids.size(), 1);
+  ASSERT_EQ(get_cpu(attrs[0].ids[0]), online_cpus[0]);
+  ASSERT_EQ(GetEventNameByAttr(attrs[1].attr), "page-faults:u");
+  ASSERT_EQ(attrs[1].ids.size(), 1);
+  ASSERT_EQ(get_cpu(attrs[1].ids[0]), online_cpus[0]);
+  ASSERT_EQ(GetEventNameByAttr(attrs[2].attr), "context-switches:u");
+  ASSERT_EQ(attrs[2].ids.size(), 1);
+  ASSERT_EQ(get_cpu(attrs[2].ids[0]), online_cpus.back());
+  ASSERT_EQ(GetEventNameByAttr(attrs[3].attr), "task-clock:u");
+  ASSERT_EQ(attrs[3].ids.size(), 1);
+  ASSERT_EQ(get_cpu(attrs[3].ids[0]), online_cpus.back());
 }
