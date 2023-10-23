@@ -232,7 +232,7 @@ bool MonitorCommand::PrepareMonitoring() {
   }
 
   // 3. Open perf event files and create mapped buffers.
-  if (!event_selection_set_.OpenEventFiles({})) {
+  if (!event_selection_set_.OpenEventFiles()) {
     return false;
   }
   size_t record_buffer_size =
