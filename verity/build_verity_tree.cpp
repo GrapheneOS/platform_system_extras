@@ -33,11 +33,11 @@ bool generate_verity_tree(const std::string& data_filename,
     return false;
   }
 
-  struct sparse_file* file;
+  std::unique_ptr<sparse_file, decltype(&sparse_file_destroy)> file(nullptr, sparse_file_destroy);
   if (sparse) {
-    file = sparse_file_import(data_fd, false, false);
+    file.reset(sparse_file_import(data_fd, false, false));
   } else {
-    file = sparse_file_import_auto(data_fd, false, verbose);
+    file.reset(sparse_file_import_auto(data_fd, false, verbose));
   }
 
   if (!file) {
@@ -45,7 +45,7 @@ bool generate_verity_tree(const std::string& data_filename,
     return false;
   }
 
-  int64_t len = sparse_file_len(file, false, false);
+  int64_t len = sparse_file_len(file.get(), false, false);
   if (len % block_size != 0) {
     LOG(ERROR) << "file size " << len << " is not a multiple of " << block_size
                << " byte";
@@ -64,8 +64,7 @@ bool generate_verity_tree(const std::string& data_filename,
                ? 0
                : 1;
   };
-  sparse_file_callback(file, false, false, hash_callback, builder);
-  sparse_file_destroy(file);
+  sparse_file_callback(file.get(), false, false, hash_callback, builder);
 
   if (!builder->BuildHashTree()) {
     return false;
