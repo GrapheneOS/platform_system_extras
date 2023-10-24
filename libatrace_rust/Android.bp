@@ -16,6 +16,8 @@ rust_library {
     name: "libatrace_tracing_subscriber",
     crate_name: "atrace_tracing_subscriber",
     defaults: ["libatrace_tracing_subscriber_defaults"],
+    // Host support is for unit tests.
+    host_supported: true,
     product_available: true,
     vendor_available: true,
     apex_available: [
