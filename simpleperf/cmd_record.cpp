@@ -313,6 +313,8 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
 "--decode-etm                     Convert ETM data into branch lists while recording.\n"
 "--binary binary_name             Used with --decode-etm to only generate data for binaries\n"
 "                                 matching binary_name regex.\n"
+"--record-timestamp               Generate timestamp packets in ETM stream.\n"
+"--record-cycles                  Generate cycle count packets in ETM stream.\n"
 "\n"
 "Other options:\n"
 "--exit-with-parent            Stop recording when the thread starting simpleperf dies.\n"
@@ -1024,6 +1026,16 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
 
   if (options.PullBoolValue("--decode-etm")) {
     etm_branch_list_generator_ = ETMBranchListGenerator::Create(system_wide_collection_);
+  }
+
+  if (options.PullBoolValue("--record-timestamp")) {
+    ETMRecorder& recorder = ETMRecorder::GetInstance();
+    recorder.SetRecordTimestamp(true);
+  }
+
+  if (options.PullBoolValue("--record-cycles")) {
+    ETMRecorder& recorder = ETMRecorder::GetInstance();
+    recorder.SetRecordCycles(true);
   }
 
   if (!options.PullDoubleValue("--duration", &duration_in_sec_, 1e-9)) {
