@@ -38,8 +38,6 @@ namespace simpleperf {
 using android::base::expected;
 using android::base::unexpected;
 
-static constexpr bool ETM_RECORD_TIMESTAMP = false;
-
 static const std::string ETM_DIR = "/sys/bus/event_source/devices/cs_etm/";
 
 // from coresight_get_trace_id(int cpu) in include/linux/coresight-pmu.h
@@ -78,6 +76,10 @@ bool ETMPerCpu::IsContextIDSupported() const {
 
 bool ETMPerCpu::IsTimestampSupported() const {
   return GetBits(trcidr0, 24, 28) > 0;
+}
+
+bool ETMPerCpu::IsCycAccSupported() const {
+  return GetBits(trcidr0, 7, 7);
 }
 
 bool ETMPerCpu::IsEnabled() const {
@@ -208,7 +210,7 @@ void ETMRecorder::BuildEtmConfig() {
       etm_config_reg_ |= 1U << ETM4_CFG_BIT_CTXTID;
     }
 
-    if (ETM_RECORD_TIMESTAMP) {
+    if (record_timestamp_) {
       bool ts_supported = true;
       for (auto& p : etm_info_) {
         ts_supported &= p.second.IsTimestampSupported();
@@ -216,6 +218,16 @@ void ETMRecorder::BuildEtmConfig() {
       if (ts_supported) {
         etm_event_config_ |= 1ULL << ETM_OPT_TS;
         etm_config_reg_ |= 1U << ETM4_CFG_BIT_TS;
+      }
+    }
+
+    if (record_cycles_) {
+      bool cycles_supported = true;
+      for (auto& p : etm_info_) {
+        cycles_supported &= p.second.IsCycAccSupported();
+      }
+      if (cycles_supported) {
+        etm_event_config_ |= 1ULL << ETM_OPT_CYCACC;
       }
     }
   }
@@ -262,6 +274,14 @@ size_t ETMRecorder::GetAddrFilterPairs() {
     --min_pairs;  // One pair is used by the kernel to set default addr filter.
   }
   return min_pairs;
+}
+
+void ETMRecorder::SetRecordTimestamp(bool record) {
+  record_timestamp_ = record;
+}
+
+void ETMRecorder::SetRecordCycles(bool record) {
+  record_cycles_ = record;
 }
 
 }  // namespace simpleperf
