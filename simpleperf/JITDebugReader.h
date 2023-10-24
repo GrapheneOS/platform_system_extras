@@ -38,6 +38,7 @@ namespace simpleperf {
 
 inline constexpr const char* kJITAppCacheFile = "jit_app_cache";
 inline constexpr const char* kJITZygoteCacheFile = "jit_zygote_cache";
+inline constexpr const char* kDexFileInMemoryPrefix = "dexfile_in_memory";
 
 // JITDebugInfo represents the debug info of a JITed Java method or a dex file.
 struct JITDebugInfo {
@@ -47,6 +48,7 @@ struct JITDebugInfo {
   } type;
   pid_t pid;           // Process of the debug info
   uint64_t timestamp;  // Monotonic timestamp for the creation of the debug info
+
   union {
     struct {
       uint64_t jit_code_addr;  // The start addr of the JITed code
@@ -59,10 +61,13 @@ struct JITDebugInfo {
   std::string file_path;
   uint64_t file_offset;
 
-  // The map for dex file extracted in memory. On Android Q, ART extracts dex files in apk files
-  // directly into memory, and names it using prctl(). The kernel doesn't generate a new mmap
-  // record for it. So we need to dump it manually.
-  std::shared_ptr<ThreadMmap> extracted_dex_file_map;
+  // dex_file_map may be a dex file extracted in memory. On Android >= Q, ART may extract dex files
+  // in apk files directly into memory, and name it using prctl(). The kernel doesn't generate a
+  // new mmap record for it. So we need to dump it manually.
+  // Or dex_file_map may be a dex file created in memory. In that case, symbols are read from the
+  // dex file.
+  std::shared_ptr<ThreadMmap> dex_file_map;
+  std::vector<Symbol> symbols;
 
   JITDebugInfo(pid_t pid, uint64_t timestamp, uint64_t jit_code_addr, uint64_t jit_code_len,
                const std::string& file_path, uint64_t file_offset)
@@ -75,15 +80,16 @@ struct JITDebugInfo {
         file_offset(file_offset) {}
 
   JITDebugInfo(pid_t pid, uint64_t timestamp, uint64_t dex_file_offset,
-               const std::string& file_path,
-               const std::shared_ptr<ThreadMmap>& extracted_dex_file_map)
+               const std::string& file_path, const std::shared_ptr<ThreadMmap>& dex_file_map,
+               std::vector<Symbol> symbols)
       : type(JIT_DEBUG_DEX_FILE),
         pid(pid),
         timestamp(timestamp),
         dex_file_offset(dex_file_offset),
         file_path(file_path),
         file_offset(0),
-        extracted_dex_file_map(extracted_dex_file_map) {}
+        dex_file_map(dex_file_map),
+        symbols(std::move(symbols)) {}
 
   bool operator>(const JITDebugInfo& other) const { return timestamp > other.timestamp; }
 };
@@ -113,7 +119,7 @@ class JITDebugReader {
 
   bool SyncWithRecords() const { return sync_option_ == SyncOption::kSyncWithRecords; }
 
-  typedef std::function<bool(const std::vector<JITDebugInfo>&, bool)> debug_info_callback_t;
+  typedef std::function<bool(std::vector<JITDebugInfo>, bool)> debug_info_callback_t;
   bool RegisterDebugInfoCallback(IOEventLoop* loop, const debug_info_callback_t& callback);
 
   // There are two ways to select which processes to monitor. One is using MonitorProcess(), the
@@ -210,7 +216,8 @@ class JITDebugReader {
   TempSymFile* GetTempSymFile(Process& process, const CodeEntry& jit_entry);
   void ReadDexFileDebugInfo(Process& process, const std::vector<CodeEntry>& dex_entries,
                             std::vector<JITDebugInfo>* debug_info);
-  bool AddDebugInfo(const std::vector<JITDebugInfo>& debug_info, bool sync_kernel_records);
+  std::vector<Symbol> ReadDexFileSymbolsInMemory(Process& process, uint64_t addr, uint64_t size);
+  bool AddDebugInfo(std::vector<JITDebugInfo> debug_info, bool sync_kernel_records);
 
   const std::string symfile_prefix_;
   SymFileOption symfile_option_;
