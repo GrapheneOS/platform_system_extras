@@ -26,7 +26,9 @@ cc_library_static {
     ],
     shared_libs: [
         "libbase",
+        "libziparchive",
     ],
+    export_shared_lib_headers: ["libziparchive"],
     export_include_dirs: ["include"],
     cppflags: [
         "-g",
@@ -40,6 +42,7 @@ cc_binary {
     srcs: ["pintool.cpp"],
     shared_libs: [
         "libbase",
+        "libziparchive",
     ],
     static_libs: [
         "libmeminspect",

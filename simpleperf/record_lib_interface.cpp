@@ -151,7 +151,7 @@ bool PerfEventSetForCounting::CreateEventSelectionSet() {
     }
     set->AddMonitoredThreads(threads_);
   }
-  if (!set->OpenEventFiles({-1})) {
+  if (!set->OpenEventFiles()) {
     return false;
   }
   event_selection_set_ = std::move(set);
