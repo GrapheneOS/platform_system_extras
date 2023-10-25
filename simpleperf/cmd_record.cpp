@@ -395,7 +395,7 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
   bool SaveRecordForPostUnwinding(Record* record);
   bool SaveRecordAfterUnwinding(Record* record);
   bool SaveRecordWithoutUnwinding(Record* record);
-  bool ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_info, bool sync_kernel_records);
+  bool ProcessJITDebugInfo(std::vector<JITDebugInfo> debug_info, bool sync_kernel_records);
   bool ProcessControlCmd(IOEventLoop* loop);
   void UpdateRecord(Record* record);
   bool UnwindRecord(SampleRecord& r);
@@ -716,8 +716,8 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     }
   }
   if (jit_debug_reader_) {
-    auto callback = [this](const std::vector<JITDebugInfo>& debug_info, bool sync_kernel_records) {
-      return ProcessJITDebugInfo(debug_info, sync_kernel_records);
+    auto callback = [this](std::vector<JITDebugInfo> debug_info, bool sync_kernel_records) {
+      return ProcessJITDebugInfo(std::move(debug_info), sync_kernel_records);
     };
     if (!jit_debug_reader_->RegisterDebugInfoCallback(loop, callback)) {
       return false;
@@ -1636,7 +1636,7 @@ bool RecordCommand::SaveRecordWithoutUnwinding(Record* record) {
   return record_file_writer_->WriteRecord(*record);
 }
 
-bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_info,
+bool RecordCommand::ProcessJITDebugInfo(std::vector<JITDebugInfo> debug_info,
                                         bool sync_kernel_records) {
   for (auto& info : debug_info) {
     if (info.type == JITDebugInfo::JIT_DEBUG_JIT_CODE) {
@@ -1649,8 +1649,12 @@ bool RecordCommand::ProcessJITDebugInfo(const std::vector<JITDebugInfo>& debug_i
         return false;
       }
     } else {
-      if (info.extracted_dex_file_map) {
-        ThreadMmap& map = *info.extracted_dex_file_map;
+      if (!info.symbols.empty()) {
+        Dso* dso = thread_tree_.FindUserDsoOrNew(info.file_path, 0, DSO_DEX_FILE);
+        dso->SetSymbols(&info.symbols);
+      }
+      if (info.dex_file_map) {
+        ThreadMmap& map = *info.dex_file_map;
         uint64_t timestamp =
             jit_debug_reader_->SyncWithRecords() ? info.timestamp : last_record_timestamp_;
         Mmap2Record record(dumping_attr_id_.attr, false, info.pid, info.pid, map.start_addr,

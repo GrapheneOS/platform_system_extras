@@ -501,6 +501,11 @@ class DexFileDso : public Dso {
 
   std::vector<Symbol> LoadSymbolsImpl() override {
     std::vector<Symbol> symbols;
+    if (StartsWith(path_, kDexFileInMemoryPrefix)) {
+      // For dex file in memory, the symbols should already be set via SetSymbols().
+      return symbols;
+    }
+
     const std::string& debug_file_path = GetDebugFilePath();
     auto tuple = SplitUrlInApk(debug_file_path);
     // Symbols of dex files are collected on device. If the dex file doesn't exist, probably
