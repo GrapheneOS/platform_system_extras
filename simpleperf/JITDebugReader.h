@@ -40,6 +40,51 @@ inline constexpr const char* kJITAppCacheFile = "jit_app_cache";
 inline constexpr const char* kJITZygoteCacheFile = "jit_zygote_cache";
 inline constexpr const char* kDexFileInMemoryPrefix = "dexfile_in_memory";
 
+namespace JITDebugReader_impl {
+
+enum class DescriptorType {
+  kDEX,
+  kJIT,
+};
+
+// An arch-independent representation of JIT/dex debug descriptor.
+struct Descriptor {
+  DescriptorType type;
+  int version = 0;
+  uint32_t action_seqlock = 0;    // incremented before and after any modification
+  uint64_t action_timestamp = 0;  // CLOCK_MONOTONIC time of last action
+  uint64_t first_entry_addr = 0;
+};
+
+// An arch-independent representation of JIT/dex code entry.
+struct CodeEntry {
+  uint64_t addr;
+  uint64_t symfile_addr;
+  uint64_t symfile_size;
+  uint64_t timestamp;  // CLOCK_MONOTONIC time of last action
+};
+
+struct Process {
+  pid_t pid = -1;
+  bool initialized = false;
+  bool died = false;
+  bool is_64bit = false;
+  // remote addr of jit descriptor
+  uint64_t jit_descriptor_addr = 0;
+  // remote addr of dex descriptor
+  uint64_t dex_descriptor_addr = 0;
+
+  // The state we know about the remote jit debug descriptor.
+  Descriptor last_jit_descriptor;
+  // The state we know about the remote dex debug descriptor.
+  Descriptor last_dex_descriptor;
+
+  // memory space for /memfd:jit-zygote-cache
+  std::vector<std::pair<uint64_t, uint64_t>> jit_zygote_cache_ranges_;
+};
+
+}  // namespace JITDebugReader_impl
+
 // JITDebugInfo represents the debug info of a JITed Java method or a dex file.
 struct JITDebugInfo {
   enum {
@@ -100,6 +145,10 @@ class TempSymFile;
 // corresponding debug interface in ART is at art/runtime/jit/debugger_interface.cc.
 class JITDebugReader {
  public:
+  using Descriptor = JITDebugReader_impl::Descriptor;
+  using CodeEntry = JITDebugReader_impl::CodeEntry;
+  using Process = JITDebugReader_impl::Process;
+
   enum class SymFileOption {
     kDropSymFiles,  // JIT symfiles are dropped after recording.
     kKeepSymFiles,  // JIT symfiles are kept after recording, usually for debug unwinding.
@@ -140,48 +189,11 @@ class JITDebugReader {
            path.find(std::string("_") + kJITZygoteCacheFile + ":") != path.npos;
   }
 
+  // exported for testing
+  void ReadDexFileDebugInfo(Process& process, const std::vector<CodeEntry>& dex_entries,
+                            std::vector<JITDebugInfo>* debug_info);
+
  private:
-  enum class DescriptorType {
-    kDEX,
-    kJIT,
-  };
-
-  // An arch-independent representation of JIT/dex debug descriptor.
-  struct Descriptor {
-    DescriptorType type;
-    int version = 0;
-    uint32_t action_seqlock = 0;    // incremented before and after any modification
-    uint64_t action_timestamp = 0;  // CLOCK_MONOTONIC time of last action
-    uint64_t first_entry_addr = 0;
-  };
-
-  // An arch-independent representation of JIT/dex code entry.
-  struct CodeEntry {
-    uint64_t addr;
-    uint64_t symfile_addr;
-    uint64_t symfile_size;
-    uint64_t timestamp;  // CLOCK_MONOTONIC time of last action
-  };
-
-  struct Process {
-    pid_t pid = -1;
-    bool initialized = false;
-    bool died = false;
-    bool is_64bit = false;
-    // remote addr of jit descriptor
-    uint64_t jit_descriptor_addr = 0;
-    // remote addr of dex descriptor
-    uint64_t dex_descriptor_addr = 0;
-
-    // The state we know about the remote jit debug descriptor.
-    Descriptor last_jit_descriptor;
-    // The state we know about the remote dex debug descriptor.
-    Descriptor last_dex_descriptor;
-
-    // memory space for /memfd:jit-zygote-cache
-    std::vector<std::pair<uint64_t, uint64_t>> jit_zygote_cache_ranges_;
-  };
-
   // The location of descriptors in libart.so.
   struct DescriptorsLocation {
     bool is_64bit = false;
@@ -214,8 +226,6 @@ class JITDebugReader {
   bool ReadJITCodeDebugInfo(Process& process, const std::vector<CodeEntry>& jit_entries,
                             std::vector<JITDebugInfo>* debug_info);
   TempSymFile* GetTempSymFile(Process& process, const CodeEntry& jit_entry);
-  void ReadDexFileDebugInfo(Process& process, const std::vector<CodeEntry>& dex_entries,
-                            std::vector<JITDebugInfo>* debug_info);
   std::vector<Symbol> ReadDexFileSymbolsInMemory(Process& process, uint64_t addr, uint64_t size);
   bool AddDebugInfo(std::vector<JITDebugInfo> debug_info, bool sync_kernel_records);
 

@@ -43,6 +43,7 @@
 
 namespace simpleperf {
 
+using namespace JITDebugReader_impl;
 using android::base::StartsWith;
 using android::base::StringPrintf;
 
