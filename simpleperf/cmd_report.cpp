@@ -954,7 +954,7 @@ bool ReportCommand::ReadSampleTreeFromRecordFile() {
 bool ReportCommand::ProcessRecord(std::unique_ptr<Record> record) {
   thread_tree_.Update(*record);
   if (record->type() == PERF_RECORD_SAMPLE) {
-    if (!record_filter_.Check(static_cast<SampleRecord*>(record.get()))) {
+    if (!record_filter_.Check(static_cast<SampleRecord&>(*record))) {
       return true;
     }
     size_t attr_id = record_file_reader_->GetAttrIndexOfRecord(record.get());

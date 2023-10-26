@@ -496,7 +496,7 @@ bool MonitorCommand::ProcessRecord(Record* record) {
 
     // Record filter check should go after DumpMapsForRecord(). Otherwise, process/thread name
     // filters don't work in system wide collection.
-    if (!record_filter_.Check(&r)) {
+    if (!record_filter_.Check(r)) {
       return true;
     }
 

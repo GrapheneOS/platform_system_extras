@@ -18,6 +18,10 @@
 
 #include <gtest/gtest.h>
 
+#if defined(__linux__)
+#include <unistd.h>
+#endif  // defined(__linux__)
+
 #include <memory>
 
 #include "event_attr.h"
@@ -37,10 +41,10 @@ class RecordFilterTest : public ::testing::Test {
     record.reset(new SampleRecord(attr, 0, 0, 0, 0, 0, 0, 0, {}, {}, {}, 0));
   }
 
-  SampleRecord* GetRecord(uint32_t pid, uint32_t tid) {
+  SampleRecord& GetRecord(uint32_t pid, uint32_t tid) {
     record->tid_data.pid = pid;
     record->tid_data.tid = tid;
-    return record.get();
+    return *record;
   }
 
   bool SetFilterData(const std::string& data) {
@@ -86,15 +90,18 @@ TEST_F(RecordFilterTest, exclude_thread_name_regex) {
   ASSERT_TRUE(filter.Check(GetRecord(1, 2)));
 }
 
+#if defined(__linux__)
 TEST_F(RecordFilterTest, exclude_uid) {
   pid_t pid = getpid();
   std::optional<uint32_t> uid = GetProcessUid(pid);
   ASSERT_TRUE(uid.has_value());
   filter.AddUids({uid.value()}, true);
   ASSERT_FALSE(filter.Check(GetRecord(pid, pid)));
+  // The check fails if a process can't find its corresponding uid.
   uint32_t pid_not_exist = UINT32_MAX;
-  ASSERT_TRUE(filter.Check(GetRecord(pid_not_exist, pid_not_exist)));
+  ASSERT_FALSE(filter.Check(GetRecord(pid_not_exist, pid_not_exist)));
 }
+#endif  // defined(__linux__)
 
 TEST_F(RecordFilterTest, include_pid) {
   filter.AddPids({1}, false);
@@ -124,6 +131,7 @@ TEST_F(RecordFilterTest, include_thread_name_regex) {
   ASSERT_FALSE(filter.Check(GetRecord(1, 2)));
 }
 
+#if defined(__linux__)
 TEST_F(RecordFilterTest, include_uid) {
   pid_t pid = getpid();
   std::optional<uint32_t> uid = GetProcessUid(pid);
@@ -133,6 +141,7 @@ TEST_F(RecordFilterTest, include_uid) {
   uint32_t pid_not_exist = UINT32_MAX;
   ASSERT_FALSE(filter.Check(GetRecord(pid_not_exist, pid_not_exist)));
 }
+#endif  // defined(__linux__)
 
 TEST_F(RecordFilterTest, global_time_filter) {
   ASSERT_TRUE(
@@ -140,24 +149,24 @@ TEST_F(RecordFilterTest, global_time_filter) {
                     "GLOBAL_END 2000\n"
                     "GLOBAL_BEGIN 3000\n"
                     "GLOBAL_END 4000"));
-  SampleRecord* r = GetRecord(1, 1);
-  r->time_data.time = 0;
+  SampleRecord& r = GetRecord(1, 1);
+  r.time_data.time = 0;
   ASSERT_FALSE(filter.Check(r));
-  r->time_data.time = 999;
+  r.time_data.time = 999;
   ASSERT_FALSE(filter.Check(r));
-  r->time_data.time = 1000;
+  r.time_data.time = 1000;
   ASSERT_TRUE(filter.Check(r));
-  r->time_data.time = 1001;
+  r.time_data.time = 1001;
   ASSERT_TRUE(filter.Check(r));
-  r->time_data.time = 1999;
+  r.time_data.time = 1999;
   ASSERT_TRUE(filter.Check(r));
-  r->time_data.time = 2000;
+  r.time_data.time = 2000;
   ASSERT_FALSE(filter.Check(r));
-  r->time_data.time = 2001;
+  r.time_data.time = 2001;
   ASSERT_FALSE(filter.Check(r));
-  r->time_data.time = 3000;
+  r.time_data.time = 3000;
   ASSERT_TRUE(filter.Check(r));
-  r->time_data.time = 4000;
+  r.time_data.time = 4000;
   ASSERT_FALSE(filter.Check(r));
 }
 
@@ -165,22 +174,22 @@ TEST_F(RecordFilterTest, process_time_filter) {
   ASSERT_TRUE(
       SetFilterData("PROCESS_BEGIN 1 1000\n"
                     "PROCESS_END 1 2000"));
-  SampleRecord* r = GetRecord(1, 1);
-  r->time_data.time = 0;
+  SampleRecord& r = GetRecord(1, 1);
+  r.time_data.time = 0;
   ASSERT_FALSE(filter.Check(r));
-  r->time_data.time = 999;
+  r.time_data.time = 999;
   ASSERT_FALSE(filter.Check(r));
-  r->time_data.time = 1000;
+  r.time_data.time = 1000;
   ASSERT_TRUE(filter.Check(r));
-  r->time_data.time = 1001;
+  r.time_data.time = 1001;
   ASSERT_TRUE(filter.Check(r));
-  r->time_data.time = 1999;
+  r.time_data.time = 1999;
   ASSERT_TRUE(filter.Check(r));
-  r->time_data.time = 2000;
+  r.time_data.time = 2000;
   ASSERT_FALSE(filter.Check(r));
   // When process time filters are used, not mentioned processes should be filtered.
-  r->tid_data.pid = 2;
-  r->time_data.time = 1000;
+  r.tid_data.pid = 2;
+  r.time_data.time = 1000;
   ASSERT_FALSE(filter.Check(r));
 }
 
@@ -188,22 +197,22 @@ TEST_F(RecordFilterTest, thread_time_filter) {
   ASSERT_TRUE(
       SetFilterData("THREAD_BEGIN 1 1000\n"
                     "THREAD_END 1 2000"));
-  SampleRecord* r = GetRecord(1, 1);
-  r->time_data.time = 0;
+  SampleRecord& r = GetRecord(1, 1);
+  r.time_data.time = 0;
   ASSERT_FALSE(filter.Check(r));
-  r->time_data.time = 999;
+  r.time_data.time = 999;
   ASSERT_FALSE(filter.Check(r));
-  r->time_data.time = 1000;
+  r.time_data.time = 1000;
   ASSERT_TRUE(filter.Check(r));
-  r->time_data.time = 1001;
+  r.time_data.time = 1001;
   ASSERT_TRUE(filter.Check(r));
-  r->time_data.time = 1999;
+  r.time_data.time = 1999;
   ASSERT_TRUE(filter.Check(r));
-  r->time_data.time = 2000;
+  r.time_data.time = 2000;
   ASSERT_FALSE(filter.Check(r));
   // When thread time filters are used, not mentioned threads should be filtered.
-  r->tid_data.tid = 2;
-  r->time_data.time = 1000;
+  r.tid_data.tid = 2;
+  r.time_data.time = 1000;
   ASSERT_FALSE(filter.Check(r));
 }
 
@@ -277,25 +286,35 @@ TEST_F(RecordFilterTest, parse_options) {
     std::string prefix = exclude ? "--exclude-" : "--include-";
 
     ASSERT_TRUE(filter_cmd.Run({prefix + "pid", "1,2", prefix + "pid", "3"}));
-    ASSERT_EQ(filter.GetCondition(exclude).pids, std::set<pid_t>({1, 2, 3}));
+    ASSERT_EQ(filter.Check(GetRecord(1, 1)), !exclude);
+    ASSERT_EQ(filter.Check(GetRecord(2, 2)), !exclude);
+    ASSERT_EQ(filter.Check(GetRecord(3, 3)), !exclude);
+
     ASSERT_TRUE(filter_cmd.Run({prefix + "tid", "1,2", prefix + "tid", "3"}));
-    ASSERT_EQ(filter.GetCondition(exclude).tids, std::set<pid_t>({1, 2, 3}));
+    ASSERT_EQ(filter.Check(GetRecord(1, 1)), !exclude);
+    ASSERT_EQ(filter.Check(GetRecord(1, 2)), !exclude);
+    ASSERT_EQ(filter.Check(GetRecord(1, 3)), !exclude);
 
     ASSERT_TRUE(
         filter_cmd.Run({prefix + "process-name", "processA", prefix + "process-name", "processB"}));
-    auto& process_regs = filter.GetCondition(exclude).process_name_regs;
-    ASSERT_EQ(process_regs.size(), 2);
-    ASSERT_TRUE(process_regs[0]->Match("processA"));
-    ASSERT_TRUE(process_regs[1]->Match("processB"));
+    thread_tree.SetThreadName(1, 1, "processA");
+    thread_tree.SetThreadName(2, 2, "processB");
+    ASSERT_EQ(filter.Check(GetRecord(1, 1)), !exclude);
+    ASSERT_EQ(filter.Check(GetRecord(2, 2)), !exclude);
 
     ASSERT_TRUE(
         filter_cmd.Run({prefix + "thread-name", "threadA", prefix + "thread-name", "threadB"}));
-    auto& thread_regs = filter.GetCondition(exclude).thread_name_regs;
-    ASSERT_EQ(thread_regs.size(), 2);
-    ASSERT_TRUE(thread_regs[0]->Match("threadA"));
-    ASSERT_TRUE(thread_regs[1]->Match("threadB"));
+    thread_tree.SetThreadName(1, 11, "threadA");
+    thread_tree.SetThreadName(1, 12, "threadB");
+    ASSERT_EQ(filter.Check(GetRecord(1, 11)), !exclude);
+    ASSERT_EQ(filter.Check(GetRecord(2, 12)), !exclude);
 
     ASSERT_TRUE(filter_cmd.Run({prefix + "uid", "1,2", prefix + "uid", "3"}));
-    ASSERT_EQ(filter.GetCondition(exclude).uids, std::set<uint32_t>({1, 2, 3}));
+#if defined(__linux__)
+    pid_t pid = getpid();
+    uid_t uid = getuid();
+    ASSERT_TRUE(filter_cmd.Run({prefix + "uid", std::to_string(uid)}));
+    ASSERT_EQ(filter.Check(GetRecord(pid, pid)), !exclude);
+#endif  // defined(__linux__)
   }
 }
