@@ -37,11 +37,13 @@
 #include "dso.h"
 #include "environment.h"
 #include "read_apk.h"
+#include "read_dex_file.h"
 #include "read_elf.h"
 #include "utils.h"
 
 namespace simpleperf {
 
+using namespace JITDebugReader_impl;
 using android::base::StartsWith;
 using android::base::StringPrintf;
 
@@ -298,7 +300,7 @@ bool JITDebugReader::ReadAllProcesses() {
       ++it;
     }
   }
-  if (!AddDebugInfo(debug_info, true)) {
+  if (!AddDebugInfo(std::move(debug_info), true)) {
     return false;
   }
   if (!processes_.empty()) {
@@ -311,7 +313,7 @@ bool JITDebugReader::ReadProcess(pid_t pid) {
   auto it = processes_.find(pid);
   if (it != processes_.end()) {
     std::vector<JITDebugInfo> debug_info;
-    return ReadProcess(it->second, &debug_info) && AddDebugInfo(debug_info, false);
+    return ReadProcess(it->second, &debug_info) && AddDebugInfo(std::move(debug_info), false);
   }
   return true;
 }
@@ -719,36 +721,65 @@ void JITDebugReader::ReadDexFileDebugInfo(Process& process,
     std::string file_path;
     std::string zip_path;
     std::string entry_path;
-    std::shared_ptr<ThreadMmap> extracted_dex_file_map;
-    if (ParseExtractedInMemoryPath(it->name, &zip_path, &entry_path)) {
-      file_path = GetUrlInApk(zip_path, entry_path);
-      extracted_dex_file_map = std::make_shared<ThreadMmap>(*it);
-    } else {
-      if (!IsRegularFile(it->name)) {
-        // TODO: read dex file only exist in memory?
-        continue;
-      }
-      file_path = it->name;
-    }
+    std::shared_ptr<ThreadMmap> dex_file_map;
+    std::vector<Symbol> symbols;
     // Offset of dex file in .vdex file or .apk file.
     uint64_t dex_file_offset = dex_entry.symfile_addr - it->start_addr + it->pgoff;
+    if (ParseExtractedInMemoryPath(it->name, &zip_path, &entry_path)) {
+      file_path = GetUrlInApk(zip_path, entry_path);
+      dex_file_map = std::make_shared<ThreadMmap>(*it);
+    } else if (IsRegularFile(it->name)) {
+      file_path = it->name;
+    } else {
+      // Read a dex file only existing in memory.
+      file_path = StringPrintf("%s_pid_%d_addr_0x%" PRIx64 "-0x%" PRIx64 "", kDexFileInMemoryPrefix,
+                               process.pid, dex_entry.symfile_addr,
+                               dex_entry.symfile_addr + dex_entry.symfile_size);
+      dex_file_map.reset(new ThreadMmap(dex_entry.symfile_addr, dex_entry.symfile_size, 0,
+                                        file_path.c_str(), PROT_READ));
+      symbols = ReadDexFileSymbolsInMemory(process, dex_entry.symfile_addr, dex_entry.symfile_size);
+      dex_file_offset = 0;
+    }
+
     debug_info->emplace_back(process.pid, dex_entry.timestamp, dex_file_offset, file_path,
-                             extracted_dex_file_map);
+                             dex_file_map, std::move(symbols));
     LOG(VERBOSE) << "DexFile " << file_path << "+" << std::hex << dex_file_offset << " in map ["
                  << it->start_addr << " - " << (it->start_addr + it->len) << "] with size "
                  << dex_entry.symfile_size;
   }
 }
 
-bool JITDebugReader::AddDebugInfo(const std::vector<JITDebugInfo>& debug_info,
-                                  bool sync_kernel_records) {
+std::vector<Symbol> JITDebugReader::ReadDexFileSymbolsInMemory(Process& process, uint64_t addr,
+                                                               uint64_t size) {
+  std::vector<Symbol> symbols;
+  std::vector<uint8_t> data(size, 0);
+  if (!ReadRemoteMem(process, addr, size, data.data())) {
+    LOG(DEBUG) << "failed to read dex file in memory for process " << process.pid << ", addr "
+               << std::hex << addr << "-" << (addr + size);
+    return symbols;
+  }
+
+  auto process_symbol = [&](DexFileSymbol* symbol) {
+    symbols.emplace_back(symbol->name, symbol->addr, symbol->size);
+  };
+  if (!ReadSymbolsFromDexFileInMemory(data.data(), data.size(), "dex_file_in_memory", {0},
+                                      process_symbol)) {
+    LOG(DEBUG) << "failed to parse dex file in memory for process " << process.pid << ", addr "
+               << std::hex << addr << "-" << (addr + size);
+    return symbols;
+  }
+  std::sort(symbols.begin(), symbols.end(), Symbol::CompareValueByAddr);
+  return symbols;
+}
+
+bool JITDebugReader::AddDebugInfo(std::vector<JITDebugInfo> debug_info, bool sync_kernel_records) {
   if (!debug_info.empty()) {
     if (sync_option_ == SyncOption::kSyncWithRecords) {
       for (auto& info : debug_info) {
         debug_info_q_.push(std::move(info));
       }
     } else {
-      return debug_info_callback_(debug_info, sync_kernel_records);
+      return debug_info_callback_(std::move(debug_info), sync_kernel_records);
     }
   }
   return true;
