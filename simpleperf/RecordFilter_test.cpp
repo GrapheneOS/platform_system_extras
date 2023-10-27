@@ -62,6 +62,15 @@ TEST_F(RecordFilterTest, no_filter) {
   ASSERT_TRUE(filter.Check(GetRecord(0, 0)));
 }
 
+TEST_F(RecordFilterTest, cpu) {
+  filter.AddCpus({1});
+  SampleRecord& r = GetRecord(0, 0);
+  r.cpu_data.cpu = 1;
+  ASSERT_TRUE(filter.Check(r));
+  r.cpu_data.cpu = 2;
+  ASSERT_FALSE(filter.Check(r));
+}
+
 TEST_F(RecordFilterTest, exclude_pid) {
   filter.AddPids({1}, true);
   ASSERT_FALSE(filter.Check(GetRecord(1, 1)));
@@ -262,7 +271,7 @@ class ParseRecordFilterCommand : public Command {
   ParseRecordFilterCommand(RecordFilter& filter) : Command("", "", ""), filter_(filter) {}
 
   bool Run(const std::vector<std::string>& args) override {
-    const auto option_formats = GetRecordFilterOptionFormats(true);
+    const auto option_formats = GetRecordFilterOptionFormats(for_recording);
     OptionValueMap options;
     std::vector<std::pair<OptionName, OptionValue>> ordered_options;
 
@@ -272,6 +281,8 @@ class ParseRecordFilterCommand : public Command {
     filter_.Clear();
     return filter_.ParseOptions(options);
   }
+
+  bool for_recording = true;
 
  private:
   RecordFilter& filter_;
@@ -317,4 +328,14 @@ TEST_F(RecordFilterTest, parse_options) {
     ASSERT_EQ(filter.Check(GetRecord(pid, pid)), !exclude);
 #endif  // defined(__linux__)
   }
+
+  filter_cmd.for_recording = false;
+  ASSERT_TRUE(filter_cmd.Run({"--cpu", "0", "--cpu", "1-3"}));
+  SampleRecord& r = GetRecord(0, 0);
+  r.cpu_data.cpu = 0;
+  ASSERT_TRUE(filter.Check(r));
+  r.cpu_data.cpu = 2;
+  ASSERT_TRUE(filter.Check(r));
+  r.cpu_data.cpu = 4;
+  ASSERT_FALSE(filter.Check(r));
 }

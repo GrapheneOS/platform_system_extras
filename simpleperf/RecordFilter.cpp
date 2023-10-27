@@ -26,6 +26,19 @@ namespace simpleperf {
 
 namespace {
 
+class CpuFilter : public RecordFilterCondition {
+ public:
+  void AddCpus(const std::set<int>& cpus) { cpus_.insert(cpus.begin(), cpus.end()); }
+
+  bool Check(const SampleRecord& sample) override {
+    int cpu = static_cast<int>(sample.cpu_data.cpu);
+    return cpus_.empty() || cpus_.count(cpu) == 1;
+  }
+
+ private:
+  std::set<int> cpus_;
+};
+
 class PidFilter : public RecordFilterCondition {
  public:
   void AddPids(const std::set<pid_t>& pids, bool exclude) {
@@ -422,12 +435,27 @@ bool RecordFilter::ParseOptions(OptionValueMap& options) {
       }
     }
   }
+  for (const OptionValue& value : options.PullValues("--cpu")) {
+    if (auto cpus = GetCpusFromString(*value.str_value); cpus) {
+      AddCpus(cpus.value());
+    } else {
+      return false;
+    }
+  }
   if (auto value = options.PullValue("--filter-file"); value) {
     if (!SetFilterFile(*value->str_value)) {
       return false;
     }
   }
   return true;
+}
+
+void RecordFilter::AddCpus(const std::set<int>& cpus) {
+  std::unique_ptr<RecordFilterCondition>& cpu_filter = conditions_["cpu"];
+  if (!cpu_filter) {
+    cpu_filter.reset(new CpuFilter);
+  }
+  static_cast<CpuFilter&>(*cpu_filter).AddCpus(cpus);
 }
 
 void RecordFilter::AddPids(const std::set<pid_t>& pids, bool exclude) {

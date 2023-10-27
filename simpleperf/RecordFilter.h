@@ -49,6 +49,8 @@ namespace simpleperf {
   "--include-uid uid1,uid2,...   Only include samples for processes belonging to selected uids.\n"
 
 #define RECORD_FILTER_OPTION_HELP_MSG_FOR_REPORTING                                                \
+  "--cpu cpu_item1,cpu_item2,... Only include samples for the selected cpus. cpu_item can be a\n"  \
+  "                              number like 1, or a range like 0-3.\n"                            \
   "--exclude-pid pid1,pid2,...   Exclude samples for selected processes.\n"                        \
   "--exclude-tid tid1,tid2,...   Exclude samples for selected threads.\n"                          \
   "--exclude-process-name process_name_regex   Exclude samples for processes with name\n"          \
@@ -87,6 +89,8 @@ inline OptionFormatMap GetRecordFilterOptionFormats(bool for_recording) {
         "--include-uid",
         OptionFormat({OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}));
   } else {
+    option_formats.emplace("--cpu", OptionFormat({OptionValueType::STRING, OptionType::MULTIPLE,
+                                                  AppRunnerType::ALLOWED}));
     option_formats.emplace(
         "--filter-file",
         OptionFormat({OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}));
@@ -112,6 +116,7 @@ class RecordFilter {
   RecordFilter(const ThreadTree& thread_tree);
   ~RecordFilter();
   bool ParseOptions(OptionValueMap& options);
+  void AddCpus(const std::set<int>& cpus);
   void AddPids(const std::set<pid_t>& pids, bool exclude);
   void AddTids(const std::set<pid_t>& tids, bool exclude);
   bool AddProcessNameRegex(const std::string& process_name, bool exclude);
