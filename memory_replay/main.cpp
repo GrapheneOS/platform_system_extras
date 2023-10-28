@@ -34,6 +34,9 @@
 #include "Thread.h"
 #include "Threads.h"
 
+#include <log/log.h>
+#include <log/log_read.h>
+
 constexpr size_t kDefaultMaxThreads = 512;
 
 static size_t GetMaxAllocs(const AllocEntry* entries, size_t num_entries) {
@@ -68,6 +71,42 @@ static size_t GetMaxAllocs(const AllocEntry* entries, size_t num_entries) {
     }
   }
   return max_allocs;
+}
+
+static void PrintLogStats(const char* log_name) {
+  logger_list* list =
+      android_logger_list_open(android_name_to_log_id(log_name), ANDROID_LOG_NONBLOCK, 0, getpid());
+  if (list == nullptr) {
+    printf("Failed to open log for %s\n", log_name);
+    return;
+  }
+  while (true) {
+    log_msg entry;
+    ssize_t retval = android_logger_list_read(list, &entry);
+    if (retval == 0) {
+      break;
+    }
+    if (retval < 0) {
+      if (retval == -EINTR) {
+        continue;
+      }
+      // EAGAIN means there is nothing left to read when ANDROID_LOG_NONBLOCK is set.
+      if (retval != -EAGAIN) {
+        printf("Failed to read log entry: %s\n", strerrordesc_np(retval));
+      }
+      break;
+    }
+    if (entry.msg() == nullptr) {
+      continue;
+    }
+    // Only print allocator tagged log entries.
+    std::string_view tag(entry.msg() + 1);
+    if (tag != "scudo" && tag != "jemalloc") {
+      continue;
+    }
+    printf("%s\n", &tag.back() + 2);
+  }
+  android_logger_list_close(list);
 }
 
 static void ProcessDump(const AllocEntry* entries, size_t num_entries, size_t max_threads) {
@@ -140,6 +179,14 @@ static void ProcessDump(const AllocEntry* entries, size_t num_entries, size_t ma
   uint64_t total_nsecs = threads.total_time_nsecs();
   NativeFormatFloat(buffer, sizeof(buffer), total_nsecs, 1000000000);
   dprintf(STDOUT_FILENO, "Total Allocation/Free Time: %" PRIu64 "ns %ss\n", total_nsecs, buffer);
+
+  // Send native allocator stats to the log
+  mallopt(M_LOG_STATS, 0);
+
+  // No need to avoid allocations at this point since all stats have been sent to the log.
+  printf("Native Allocator Stats:\n");
+  PrintLogStats("system");
+  PrintLogStats("main");
 }
 
 int main(int argc, char** argv) {

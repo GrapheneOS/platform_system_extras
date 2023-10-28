@@ -84,6 +84,8 @@ cc_binary {
 
     srcs: ["main.cpp"],
 
+    static_libs: ["liblog"],
+
     multilib: {
         lib32: {
             suffix: "32",
