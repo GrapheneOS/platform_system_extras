@@ -453,8 +453,6 @@ class ReportCommand : public Command {
 "\n"
 "Sample filter options:\n"
 "--comms comm1,comm2,...          Report only for threads with selected names.\n"
-"--cpu   cpu_item1,cpu_item2,...  Report samples on the selected cpus. cpu_item can be cpu\n"
-"                                 number like 1, or cpu range like 0-3.\n"
 "--dsos dso1,dso2,...             Report only for selected dsos.\n"
 "--pids pid1,pid2,...             Same as '--include-pid'.\n"
 "--symbols symbol1;symbol2;...    Report only for selected symbols.\n"
@@ -954,7 +952,7 @@ bool ReportCommand::ReadSampleTreeFromRecordFile() {
 bool ReportCommand::ProcessRecord(std::unique_ptr<Record> record) {
   thread_tree_.Update(*record);
   if (record->type() == PERF_RECORD_SAMPLE) {
-    if (!record_filter_.Check(static_cast<SampleRecord*>(record.get()))) {
+    if (!record_filter_.Check(static_cast<SampleRecord&>(*record))) {
       return true;
     }
     size_t attr_id = record_file_reader_->GetAttrIndexOfRecord(record.get());
