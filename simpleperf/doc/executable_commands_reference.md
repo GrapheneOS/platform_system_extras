@@ -333,6 +333,27 @@ $ su 0 simpleperf stat --per-core -a --duration 1
 $ su 0 simpleperf stat -e cpu-cycles -a --per-thread --per-core --duration 1
 ```
 
+### Monitor different events on different cores
+
+Android devices usually have big and little cores. Different cores may support different events.
+Therefore, we may want to monitor different events on different cores. We can do this using
+the `--cpu` option. The `--cpu` option selects the cores on which to monitor events. A `--cpu`
+option affects all the following events until meeting another `--cpu` option. The first `--cpu`
+option also affects all events before it. Following are some examples:
+
+```sh
+# By default, cpu-cycles and instructions are monitored on all cpus.
+$ su 0 simpleperf stat -e cpu-cycles,instructions -a --duration 1 --per-core
+
+# Use one `--cpu` option to monitor cpu-cycles and instructions only on cpu 0-3,8.
+$ su 0 simpleperf stat -e cpu-cycles --cpu 0-3,8 -e instructions -a --duration 1 --per-core
+
+# Use two `--cpu` options to monitor raw-l3d-cache-refill-rd on cpu 0-3, and raw-l3d-cache-refill on
+# cpu 4-8.
+$ su 0 simpleperf stat --cpu 0-3 -e raw-l3d-cache-refill-rd --cpu 4-8 -e raw-l3d-cache-refill \
+  -a --duration 1 --per-core
+```
+
 ## The record command
 
 The record command is used to dump samples of the profiled processes. Each sample can contain
