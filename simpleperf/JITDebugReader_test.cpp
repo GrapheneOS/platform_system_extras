@@ -17,10 +17,15 @@
 #include "JITDebugReader.h"
 #include "JITDebugReader_impl.h"
 
+#include <sys/mman.h>
+
 #include <android-base/file.h>
+#include <android-base/scopeguard.h>
 #include <android-base/strings.h>
 #include <android-base/test_utils.h>
+#include <android-base/unique_fd.h>
 #include "get_test_data.h"
+#include "utils.h"
 
 #include <gtest/gtest.h>
 
@@ -46,11 +51,21 @@ TEST(TempSymFile, smoke) {
   ASSERT_EQ(strncmp(test_data.c_str(), buf, test_data.size()), 0);
 }
 
-TEST(JITDebugReader, ReadDexFileDebugInfo) {
-  // 1. Create dex file in memory.
-  std::string dex_file_data;
-  ASSERT_TRUE(android::base::ReadFileToString(GetTestData("base.vdex"), &dex_file_data));
-  const int dex_file_offset = 0x28;
+TEST(JITDebugReader, read_dex_file_in_memory) {
+  // 1. Create dex file in memory. Use mmap instead of malloc, to avoid the pointer from
+  // being modified by memory tag (or pointer authentication?) on ARM64.
+  std::string dex_file = GetTestData("base.vdex");
+  uint64_t file_size = GetFileSize(dex_file);
+  const uint64_t dex_file_offset = 0x28;
+  ASSERT_GT(file_size, dex_file_offset);
+  uint64_t symfile_size = file_size - dex_file_offset;
+  void* symfile_addr =
+      mmap(nullptr, symfile_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  ASSERT_NE(symfile_addr, nullptr);
+  android::base::ScopeGuard g([&]() { munmap(symfile_addr, symfile_size); });
+  android::base::unique_fd fd(open(dex_file.c_str(), O_RDONLY | O_CLOEXEC));
+  ASSERT_TRUE(fd.ok());
+  ASSERT_TRUE(android::base::ReadFullyAtOffset(fd, symfile_addr, symfile_size, dex_file_offset));
 
   // 2. Create CodeEntry pointing to the dex file in memory.
   Process process;
@@ -58,8 +73,8 @@ TEST(JITDebugReader, ReadDexFileDebugInfo) {
   process.initialized = true;
   std::vector<CodeEntry> code_entries(1);
   code_entries[0].addr = reinterpret_cast<uintptr_t>(&code_entries[0]);
-  code_entries[0].symfile_addr = reinterpret_cast<uintptr_t>(&dex_file_data[dex_file_offset]);
-  code_entries[0].symfile_size = dex_file_data.size() - dex_file_offset;
+  code_entries[0].symfile_addr = reinterpret_cast<uintptr_t>(symfile_addr);
+  code_entries[0].symfile_size = symfile_size;
   code_entries[0].timestamp = 0;
 
   // 3. Test reading symbols from dex file in memory.
@@ -70,9 +85,8 @@ TEST(JITDebugReader, ReadDexFileDebugInfo) {
   ASSERT_EQ(debug_info.size(), 1);
   const JITDebugInfo& info = debug_info[0];
   ASSERT_TRUE(info.dex_file_map);
-  ASSERT_EQ(info.dex_file_map->start_addr,
-            reinterpret_cast<uintptr_t>(&dex_file_data[dex_file_offset]));
-  ASSERT_EQ(info.dex_file_map->len, dex_file_data.size() - dex_file_offset);
+  ASSERT_EQ(info.dex_file_map->start_addr, reinterpret_cast<uintptr_t>(symfile_addr));
+  ASSERT_EQ(info.dex_file_map->len, symfile_size);
   ASSERT_TRUE(android::base::StartsWith(info.dex_file_map->name, kDexFileInMemoryPrefix));
   ASSERT_EQ(info.symbols.size(), 12435);
   // 4. Test if the symbols are sorted.
