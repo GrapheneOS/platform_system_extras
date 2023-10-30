@@ -1129,6 +1129,8 @@ class BaseArgumentParser(argparse.ArgumentParser):
             self, group: Optional[Any] = None, with_pid_shortcut: bool = True):
         if not group:
             group = self.add_argument_group('Sample filter options')
+        group.add_argument('--cpu', nargs='+', help="""only include samples for the selected cpus.
+                            cpu can be a number like 1, or a range like 0-3""")
         group.add_argument('--exclude-pid', metavar='pid', nargs='+', type=int,
                            help='exclude samples for selected processes')
         group.add_argument('--exclude-tid', metavar='tid', nargs='+', type=int,
@@ -1166,6 +1168,8 @@ class BaseArgumentParser(argparse.ArgumentParser):
     def _build_sample_filter(self, args: argparse.Namespace) -> List[str]:
         """ Build sample filters, which can be passed to ReportLib.SetSampleFilter(). """
         filters = []
+        if args.cpu:
+            filters.extend(['--cpu', ','.join(args.cpu)])
         if args.exclude_pid:
             filters.extend(['--exclude-pid', ','.join(str(pid) for pid in args.exclude_pid)])
         if args.exclude_tid:
