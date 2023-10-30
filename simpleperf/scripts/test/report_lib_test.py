@@ -315,6 +315,25 @@ class TestReportLib(TestBase):
             self.assertNotIn(31850, threads)
         os.unlink(filter_file.name)
 
+    def test_set_sample_filter_for_cpu(self):
+        """ Test --cpu in ReportLib.SetSampleFilter(). """
+        def get_cpus_for_filter(filters: List[str]) -> Set[int]:
+            self.report_lib.Close()
+            self.report_lib = ReportLib()
+            self.report_lib.SetRecordFile(TestHelper.testdata_path('perf_display_bitmaps.data'))
+            self.report_lib.SetSampleFilter(filters)
+            cpus = set()
+            while self.report_lib.GetNextSample():
+                sample = self.report_lib.GetCurrentSample()
+                cpus.add(sample.cpu)
+            return cpus
+
+        cpus = get_cpus_for_filter(['--cpu', '0,1-2'])
+        self.assertIn(0, cpus)
+        self.assertIn(1, cpus)
+        self.assertIn(2, cpus)
+        self.assertNotIn(3, cpus)
+
     def test_aggregate_threads(self):
         """ Test using ReportLib.AggregateThreads(). """
         def get_thread_names(aggregate_regex_list: Optional[List[str]]) -> Dict[str, int]:
