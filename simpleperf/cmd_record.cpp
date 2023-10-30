@@ -1524,7 +1524,7 @@ bool RecordCommand::ProcessRecord(Record* record) {
   // Record filter check should go after DumpMapsForRecord(). Otherwise, process/thread name
   // filters don't work in system wide collection.
   if (record->type() == PERF_RECORD_SAMPLE) {
-    if (!record_filter_.Check(static_cast<SampleRecord*>(record))) {
+    if (!record_filter_.Check(static_cast<SampleRecord&>(*record))) {
       return true;
     }
   }
