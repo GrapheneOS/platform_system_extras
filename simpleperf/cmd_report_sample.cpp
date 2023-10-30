@@ -683,7 +683,7 @@ static bool IsThreadStartPoint(CallChainReportEntry& entry) {
 }
 
 bool ReportSampleCommand::ProcessSampleRecord(const SampleRecord& r) {
-  if (!record_filter_.Check(&r)) {
+  if (!record_filter_.Check(r)) {
     return true;
   }
   size_t kernel_ip_count;

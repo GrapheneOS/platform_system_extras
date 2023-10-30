@@ -26,6 +26,161 @@ namespace simpleperf {
 
 namespace {
 
+class CpuFilter : public RecordFilterCondition {
+ public:
+  void AddCpus(const std::set<int>& cpus) { cpus_.insert(cpus.begin(), cpus.end()); }
+
+  bool Check(const SampleRecord& sample) override {
+    int cpu = static_cast<int>(sample.cpu_data.cpu);
+    return cpus_.empty() || cpus_.count(cpu) == 1;
+  }
+
+ private:
+  std::set<int> cpus_;
+};
+
+class PidFilter : public RecordFilterCondition {
+ public:
+  void AddPids(const std::set<pid_t>& pids, bool exclude) {
+    auto& dest = exclude ? exclude_pids_ : include_pids_;
+    dest.insert(pids.begin(), pids.end());
+  }
+
+  bool Check(const SampleRecord& sample) override {
+    uint32_t pid = sample.tid_data.pid;
+    if (!include_pids_.empty() && include_pids_.count(pid) == 0) {
+      return false;
+    }
+    return exclude_pids_.count(pid) == 0;
+  }
+
+ private:
+  std::set<pid_t> include_pids_;
+  std::set<pid_t> exclude_pids_;
+};
+
+class TidFilter : public RecordFilterCondition {
+ public:
+  void AddTids(const std::set<pid_t>& tids, bool exclude) {
+    auto& dest = exclude ? exclude_tids_ : include_tids_;
+    dest.insert(tids.begin(), tids.end());
+  }
+
+  bool Check(const SampleRecord& sample) override {
+    uint32_t tid = sample.tid_data.tid;
+    if (!include_tids_.empty() && include_tids_.count(tid) == 0) {
+      return false;
+    }
+    return exclude_tids_.count(tid) == 0;
+  }
+
+ private:
+  std::set<pid_t> include_tids_;
+  std::set<pid_t> exclude_tids_;
+};
+
+static bool SearchInRegs(std::string_view s, const std::vector<std::unique_ptr<RegEx>>& regs) {
+  for (auto& reg : regs) {
+    if (reg->Search(s)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+class ProcessNameFilter : public RecordFilterCondition {
+ public:
+  ProcessNameFilter(const ThreadTree& thread_tree) : thread_tree_(thread_tree) {}
+
+  bool AddProcessNameRegex(const std::string& process_name, bool exclude) {
+    if (auto regex = RegEx::Create(process_name); regex != nullptr) {
+      auto& dest = exclude ? exclude_names_ : include_names_;
+      dest.emplace_back(std::move(regex));
+      return true;
+    }
+    return false;
+  }
+
+  bool Check(const SampleRecord& sample) override {
+    ThreadEntry* process = thread_tree_.FindThread(sample.tid_data.pid);
+    if (process == nullptr) {
+      return false;
+    }
+    std::string_view process_name = process->comm;
+    if (!include_names_.empty() && !SearchInRegs(process_name, include_names_)) {
+      return false;
+    }
+    return !SearchInRegs(process_name, exclude_names_);
+  }
+
+ private:
+  const ThreadTree& thread_tree_;
+  std::vector<std::unique_ptr<RegEx>> include_names_;
+  std::vector<std::unique_ptr<RegEx>> exclude_names_;
+};
+
+class ThreadNameFilter : public RecordFilterCondition {
+ public:
+  ThreadNameFilter(const ThreadTree& thread_tree) : thread_tree_(thread_tree) {}
+
+  bool AddThreadNameRegex(const std::string& thread_name, bool exclude) {
+    if (auto regex = RegEx::Create(thread_name); regex != nullptr) {
+      auto& dest = exclude ? exclude_names_ : include_names_;
+      dest.emplace_back(std::move(regex));
+      return true;
+    }
+    return false;
+  }
+
+  bool Check(const SampleRecord& sample) override {
+    ThreadEntry* thread = thread_tree_.FindThread(sample.tid_data.tid);
+    if (thread == nullptr) {
+      return false;
+    }
+    std::string_view thread_name = thread->comm;
+    if (!include_names_.empty() && !SearchInRegs(thread_name, include_names_)) {
+      return false;
+    }
+    return !SearchInRegs(thread_name, exclude_names_);
+  }
+
+ private:
+  const ThreadTree& thread_tree_;
+  std::vector<std::unique_ptr<RegEx>> include_names_;
+  std::vector<std::unique_ptr<RegEx>> exclude_names_;
+};
+
+class UidFilter : public RecordFilterCondition {
+ public:
+  void AddUids(const std::set<uint32_t>& uids, bool exclude) {
+    auto& dest = exclude ? exclude_uids_ : include_uids_;
+    dest.insert(uids.begin(), uids.end());
+  }
+
+  bool Check(const SampleRecord& sample) override {
+    uint32_t pid = sample.tid_data.pid;
+    std::optional<uint32_t> uid;
+    if (auto it = pid_to_uid_map_.find(pid); it != pid_to_uid_map_.end()) {
+      uid = it->second;
+    } else {
+      uid = GetProcessUid(pid);
+      pid_to_uid_map_[pid] = uid;
+    }
+    if (!uid) {
+      return false;
+    }
+    if (!include_uids_.empty() && include_uids_.count(uid.value()) == 0) {
+      return false;
+    }
+    return exclude_uids_.count(uid.value()) == 0;
+  }
+
+ private:
+  std::set<uint32_t> include_uids_;
+  std::set<uint32_t> exclude_uids_;
+  std::unordered_map<uint32_t, std::optional<uint32_t>> pid_to_uid_map_;
+};
+
 using TimeRange = std::pair<uint64_t, uint64_t>;
 
 class TimeRanges {
@@ -80,7 +235,7 @@ class TimeRanges {
 
 }  // namespace
 
-class TimeFilter {
+class TimeFilter : public RecordFilterCondition {
  public:
   const std::string& GetClock() const { return clock_; }
   void SetClock(const std::string& clock) { clock_ = clock; }
@@ -111,7 +266,7 @@ class TimeFilter {
     return global_ranges_.Empty() && process_ranges_.empty() && thread_ranges_.empty();
   }
 
-  bool Check(const SampleRecord& sample) const {
+  bool Check(const SampleRecord& sample) override {
     uint64_t timestamp = sample.Timestamp();
     if (!global_ranges_.Empty() && !global_ranges_.InRange(timestamp)) {
       return false;
@@ -280,6 +435,13 @@ bool RecordFilter::ParseOptions(OptionValueMap& options) {
       }
     }
   }
+  for (const OptionValue& value : options.PullValues("--cpu")) {
+    if (auto cpus = GetCpusFromString(*value.str_value); cpus) {
+      AddCpus(cpus.value());
+    } else {
+      return false;
+    }
+  }
   if (auto value = options.PullValue("--filter-file"); value) {
     if (!SetFilterFile(*value->str_value)) {
       return false;
@@ -288,42 +450,54 @@ bool RecordFilter::ParseOptions(OptionValueMap& options) {
   return true;
 }
 
+void RecordFilter::AddCpus(const std::set<int>& cpus) {
+  std::unique_ptr<RecordFilterCondition>& cpu_filter = conditions_["cpu"];
+  if (!cpu_filter) {
+    cpu_filter.reset(new CpuFilter);
+  }
+  static_cast<CpuFilter&>(*cpu_filter).AddCpus(cpus);
+}
+
 void RecordFilter::AddPids(const std::set<pid_t>& pids, bool exclude) {
-  RecordFilterCondition& cond = GetCondition(exclude);
-  cond.used = true;
-  cond.pids.insert(pids.begin(), pids.end());
+  std::unique_ptr<RecordFilterCondition>& pid_filter = conditions_["pid"];
+  if (!pid_filter) {
+    pid_filter.reset(new PidFilter);
+  }
+  static_cast<PidFilter&>(*pid_filter).AddPids(pids, exclude);
 }
 
 void RecordFilter::AddTids(const std::set<pid_t>& tids, bool exclude) {
-  RecordFilterCondition& cond = GetCondition(exclude);
-  cond.used = true;
-  cond.tids.insert(tids.begin(), tids.end());
+  std::unique_ptr<RecordFilterCondition>& tid_filter = conditions_["tid"];
+  if (!tid_filter) {
+    tid_filter.reset(new TidFilter);
+  }
+  static_cast<TidFilter&>(*tid_filter).AddTids(tids, exclude);
 }
 
 bool RecordFilter::AddProcessNameRegex(const std::string& process_name, bool exclude) {
-  RecordFilterCondition& cond = GetCondition(exclude);
-  cond.used = true;
-  if (auto regex = RegEx::Create(process_name); regex != nullptr) {
-    cond.process_name_regs.emplace_back(std::move(regex));
-    return true;
+  std::unique_ptr<RecordFilterCondition>& process_name_filter = conditions_["process_name"];
+  if (!process_name_filter) {
+    process_name_filter.reset(new ProcessNameFilter(thread_tree_));
   }
-  return false;
+  return static_cast<ProcessNameFilter&>(*process_name_filter)
+      .AddProcessNameRegex(process_name, exclude);
 }
 
 bool RecordFilter::AddThreadNameRegex(const std::string& thread_name, bool exclude) {
-  RecordFilterCondition& cond = GetCondition(exclude);
-  cond.used = true;
-  if (auto regex = RegEx::Create(thread_name); regex != nullptr) {
-    cond.thread_name_regs.emplace_back(std::move(regex));
-    return true;
+  std::unique_ptr<RecordFilterCondition>& thread_name_filter = conditions_["thread_name"];
+  if (!thread_name_filter) {
+    thread_name_filter.reset(new ThreadNameFilter(thread_tree_));
   }
-  return false;
+  return static_cast<ThreadNameFilter&>(*thread_name_filter)
+      .AddThreadNameRegex(thread_name, exclude);
 }
 
 void RecordFilter::AddUids(const std::set<uint32_t>& uids, bool exclude) {
-  RecordFilterCondition& cond = GetCondition(exclude);
-  cond.used = true;
-  cond.uids.insert(uids.begin(), uids.end());
+  std::unique_ptr<RecordFilterCondition>& uid_filter = conditions_["uid"];
+  if (!uid_filter) {
+    uid_filter.reset(new UidFilter);
+  }
+  return static_cast<UidFilter&>(*uid_filter).AddUids(uids, exclude);
 }
 
 bool RecordFilter::SetFilterFile(const std::string& filename) {
@@ -331,86 +505,33 @@ bool RecordFilter::SetFilterFile(const std::string& filename) {
   if (!reader.Read()) {
     return false;
   }
-  time_filter_ = std::move(reader.GetTimeFilter());
+  conditions_["time"] = std::move(reader.GetTimeFilter());
   return true;
 }
 
-bool RecordFilter::Check(const SampleRecord* r) {
-  if (exclude_condition_.used && CheckCondition(r, exclude_condition_)) {
-    return false;
-  }
-  if (include_condition_.used && !CheckCondition(r, include_condition_)) {
-    return false;
-  }
-  if (time_filter_ && !time_filter_->Check(*r)) {
-    return false;
+bool RecordFilter::Check(const SampleRecord& r) {
+  for (auto& p : conditions_) {
+    if (!p.second->Check(r)) {
+      return false;
+    }
   }
   return true;
 }
 
 bool RecordFilter::CheckClock(const std::string& clock) {
-  if (time_filter_ && time_filter_->GetClock() != clock) {
-    LOG(ERROR) << "clock generating sample timestamps is " << clock
-               << ", which doesn't match clock used in time filter " << time_filter_->GetClock();
-    return false;
+  if (auto it = conditions_.find("time"); it != conditions_.end()) {
+    TimeFilter& time_filter = static_cast<TimeFilter&>(*it->second);
+    if (time_filter.GetClock() != clock) {
+      LOG(ERROR) << "clock generating sample timestamps is " << clock
+                 << ", which doesn't match clock used in time filter " << time_filter.GetClock();
+      return false;
+    }
   }
   return true;
 }
 
 void RecordFilter::Clear() {
-  exclude_condition_ = RecordFilterCondition();
-  include_condition_ = RecordFilterCondition();
-  pid_to_uid_map_.clear();
-}
-
-bool RecordFilter::CheckCondition(const SampleRecord* r, const RecordFilterCondition& condition) {
-  if (condition.pids.count(r->tid_data.pid) == 1) {
-    return true;
-  }
-  if (condition.tids.count(r->tid_data.tid) == 1) {
-    return true;
-  }
-  if (!condition.process_name_regs.empty()) {
-    if (ThreadEntry* process = thread_tree_.FindThread(r->tid_data.pid); process != nullptr) {
-      if (SearchInRegs(process->comm, condition.process_name_regs)) {
-        return true;
-      }
-    }
-  }
-  if (!condition.thread_name_regs.empty()) {
-    if (ThreadEntry* thread = thread_tree_.FindThread(r->tid_data.tid); thread != nullptr) {
-      if (SearchInRegs(thread->comm, condition.thread_name_regs)) {
-        return true;
-      }
-    }
-  }
-  if (!condition.uids.empty()) {
-    if (auto uid_value = GetUidForProcess(r->tid_data.pid); uid_value) {
-      if (condition.uids.count(uid_value.value()) == 1) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-bool RecordFilter::SearchInRegs(std::string_view s,
-                                const std::vector<std::unique_ptr<RegEx>>& regs) {
-  for (auto& reg : regs) {
-    if (reg->Search(s)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-std::optional<uint32_t> RecordFilter::GetUidForProcess(pid_t pid) {
-  if (auto it = pid_to_uid_map_.find(pid); it != pid_to_uid_map_.end()) {
-    return it->second;
-  }
-  auto uid = GetProcessUid(pid);
-  pid_to_uid_map_[pid] = uid;
-  return uid;
+  conditions_.clear();
 }
 
 }  // namespace simpleperf

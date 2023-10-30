@@ -448,7 +448,7 @@ void ReportLib::ProcessSwitchRecord(std::unique_ptr<Record> r) {
 }
 
 void ReportLib::AddSampleRecordToQueue(SampleRecord* r) {
-  if (record_filter_.Check(r)) {
+  if (record_filter_.Check(*r)) {
     sample_record_queue_.emplace(r);
   }
 }
