@@ -182,6 +182,9 @@ cc_binary_host {
         "liblp",
         "libsparse",
     ],
+    static_libs: [
+        "libc++fs",
+    ],
     srcs: [
         "lpunpack.cc",
     ],
