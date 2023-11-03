@@ -33,7 +33,6 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/parseint.h>
-#include <android-base/scopeguard.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
@@ -190,8 +189,8 @@ class RecordCommand : public Command {
 "--kprobe kprobe_event1,kprobe_event2,...\n"
 "             Add kprobe events during recording. The kprobe_event format is in\n"
 "             Documentation/trace/kprobetrace.rst in the kernel. Examples:\n"
-"               'p:myprobe do_sys_open $arg2:string'   - add event kprobes:myprobe\n"
-"               'r:myretprobe do_sys_open $retval:s64' - add event kprobes:myretprobe\n"
+"               'p:myprobe do_sys_openat2 $arg2:string'   - add event kprobes:myprobe\n"
+"               'r:myretprobe do_sys_openat2 $retval:s64' - add event kprobes:myretprobe\n"
 "--add-counter event1,event2,...     Add additional event counts in record samples. For example,\n"
 "                                    we can use `-e cpu-cycles --add-counter instructions` to\n"
 "                                    get samples for cpu-cycles event, while having instructions\n"
@@ -372,7 +371,7 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
 
  private:
   bool ParseOptions(const std::vector<std::string>& args, std::vector<std::string>* non_option_args,
-                    ProbeEvents* probe_events);
+                    ProbeEvents& probe_events);
   bool AdjustPerfEventLimit();
   bool PrepareRecording(Workload* workload);
   bool DoRecording(Workload* workload);
@@ -512,15 +511,8 @@ void RecordCommand::Run(const std::vector<std::string>& args, int* exit_code) {
   AllowMoreOpenedFiles();
 
   std::vector<std::string> workload_args;
-  ProbeEvents probe_events;
-  auto clear_probe_events_guard = android::base::make_scope_guard([this, &probe_events] {
-    if (!probe_events.IsEmpty()) {
-      // probe events can be deleted only when no perf event file is using them.
-      event_selection_set_.CloseEventFiles();
-      probe_events.Clear();
-    }
-  });
-  if (!ParseOptions(args, &workload_args, &probe_events)) {
+  ProbeEvents probe_events(event_selection_set_);
+  if (!ParseOptions(args, &workload_args, probe_events)) {
     return;
   }
   if (!AdjustPerfEventLimit()) {
@@ -943,7 +935,7 @@ bool RecordCommand::PostProcessRecording(const std::vector<std::string>& args) {
 
 bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
                                  std::vector<std::string>* non_option_args,
-                                 ProbeEvents* probe_events) {
+                                 ProbeEvents& probe_events) {
   OptionValueMap options;
   std::vector<std::pair<OptionName, OptionValue>> ordered_options;
 
@@ -1073,7 +1065,7 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   for (const OptionValue& value : options.PullValues("--kprobe")) {
     std::vector<std::string> cmds = android::base::Split(*value.str_value, ",");
     for (const auto& cmd : cmds) {
-      if (!probe_events->AddKprobe(cmd)) {
+      if (!probe_events.AddKprobe(cmd)) {
         return false;
       }
     }
@@ -1235,10 +1227,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     } else if (name == "-e") {
       std::vector<std::string> event_types = android::base::Split(*value.str_value, ",");
       for (auto& event_type : event_types) {
-        if (probe_events->IsProbeEvent(event_type)) {
-          if (!probe_events->CreateProbeEventIfNotExist(event_type)) {
-            return false;
-          }
+        if (!probe_events.CreateProbeEventIfNotExist(event_type)) {
+          return false;
         }
         if (!event_selection_set_.AddEventType(event_type)) {
           return false;
@@ -1250,10 +1240,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
     } else if (name == "--group") {
       std::vector<std::string> event_types = android::base::Split(*value.str_value, ",");
       for (const auto& event_type : event_types) {
-        if (probe_events->IsProbeEvent(event_type)) {
-          if (!probe_events->CreateProbeEventIfNotExist(event_type)) {
-            return false;
-          }
+        if (!probe_events.CreateProbeEventIfNotExist(event_type)) {
+          return false;
         }
       }
       if (!event_selection_set_.AddEventGroup(event_types)) {

@@ -30,6 +30,7 @@
 
 #include "RegEx.h"
 #include "environment.h"
+#include "event_selection_set.h"
 #include "event_type.h"
 #include "utils.h"
 
@@ -92,6 +93,14 @@ bool ProbeEvents::ParseKprobeEventName(const std::string& kprobe_cmd, ProbeEvent
   return true;
 }
 
+ProbeEvents::~ProbeEvents() {
+  if (!IsEmpty()) {
+    // Probe events can be deleted only when no perf event file is using them.
+    event_selection_set_.CloseEventFiles();
+    Clear();
+  }
+}
+
 bool ProbeEvents::IsKprobeSupported() {
   if (!kprobe_control_path_.has_value()) {
     kprobe_control_path_ = "";
@@ -123,7 +132,8 @@ bool ProbeEvents::IsProbeEvent(const std::string& event_name) {
 }
 
 bool ProbeEvents::CreateProbeEventIfNotExist(const std::string& event_name) {
-  if (EventTypeManager::Instance().FindType(event_name) != nullptr) {
+  if (!IsProbeEvent(event_name) || (EventTypeManager::Instance().FindType(event_name) != nullptr)) {
+    // No need to create a probe event.
     return true;
   }
   std::string function_name = event_name.substr(kKprobeEventPrefix.size());
