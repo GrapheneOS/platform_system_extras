@@ -21,6 +21,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <filesystem>
 #include <iostream>
 #include <limits>
 #include <string>
@@ -203,6 +204,7 @@ ImageExtractor::ImageExtractor(std::vector<unique_fd>&& image_fds, std::unique_p
       output_dir_(output_dir) {}
 
 bool ImageExtractor::Extract() {
+    std::filesystem::create_directories(output_dir_);
     if (!BuildPartitionList()) {
         return false;
     }
