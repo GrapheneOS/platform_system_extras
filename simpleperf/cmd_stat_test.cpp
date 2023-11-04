@@ -427,6 +427,13 @@ TEST(stat_cmd, kprobe_option) {
   ASSERT_TRUE(StatCmd()->Run({"--group", "kprobes:do_sys_openat2", "-a", "--duration", SLEEP_SEC}));
 }
 
+TEST(stat_cmd, tp_filter_option) {
+  TEST_REQUIRE_HOST_ROOT();
+  TEST_REQUIRE_TRACEPOINT_EVENTS();
+  ASSERT_TRUE(StatCmd()->Run(
+      {"-e", "sched:sched_switch", "--tp-filter", "prev_comm != sleep", "sleep", SLEEP_SEC}));
+}
+
 class StatCmdSummaryBuilderTest : public ::testing::Test {
  protected:
   struct CounterArg {
