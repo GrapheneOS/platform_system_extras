@@ -327,6 +327,7 @@ inline const OptionFormatMap& GetStatCmdOptionFormats() {
       {"--sort", {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::ALLOWED}},
       {"--stop-signal-fd", {OptionValueType::UINT, OptionType::SINGLE, AppRunnerType::CHECK_FD}},
       {"-t", {OptionValueType::STRING, OptionType::MULTIPLE, AppRunnerType::ALLOWED}},
+      {"--tp-filter", {OptionValueType::STRING, OptionType::ORDERED, AppRunnerType::ALLOWED}},
       {"--tracepoint-events",
        {OptionValueType::STRING, OptionType::SINGLE, AppRunnerType::CHECK_PATH}},
       {"--use-devfreq-counters",

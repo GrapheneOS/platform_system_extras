@@ -402,6 +402,9 @@ class StatCommand : public Command {
 "                      Stat events on existing processes. Processes are searched either by pid\n"
 "                      or process name regex. Mutually exclusive with -a.\n"
 "-t tid1,tid2,...      Stat events on existing threads. Mutually exclusive with -a.\n"
+"--tp-filter filter_string    Set filter_string for the previous tracepoint event.\n"
+"                             Format is in Documentation/trace/events.rst in the kernel.\n"
+"                             An example: 'prev_comm != \"simpleperf\" && (prev_pid > 1)'.\n"
 "--print-hw-counter    Test and print CPU PMU hardware counters available on the device.\n"
 "--sort key1,key2,...  Select keys used to sort the report, used when --per-thread\n"
 "                      or --per-core appears. The appearance order of keys decides\n"
@@ -763,6 +766,13 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
       if (!event_selection_set_.AddEventGroup(event_types)) {
         return false;
       }
+    } else if (name == "--tp-filter") {
+      if (!event_selection_set_.SetTracepointFilter(*value.str_value)) {
+        return false;
+      }
+    } else {
+      LOG(ERROR) << "unprocessed option: " << name;
+      return false;
     }
   }
 
