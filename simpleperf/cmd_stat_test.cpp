@@ -22,6 +22,7 @@
 
 #include <thread>
 
+#include "ProbeEvents.h"
 #include "cmd_stat_impl.h"
 #include "command.h"
 #include "environment.h"
@@ -409,6 +410,21 @@ TEST(stat_cmd, record_different_counters_for_different_cpus) {
   }
   ASSERT_TRUE(has_cpu_clock) << output;
   ASSERT_TRUE(has_task_clock) << output;
+}
+
+TEST(stat_cmd, kprobe_option) {
+  TEST_REQUIRE_ROOT();
+  EventSelectionSet event_selection_set(false);
+  ProbeEvents probe_events(event_selection_set);
+  if (!probe_events.IsKprobeSupported()) {
+    GTEST_LOG_(INFO) << "Skip this test as kprobe isn't supported by the kernel.";
+    return;
+  }
+  ASSERT_TRUE(StatCmd()->Run({"-e", "kprobes:myprobe", "--kprobe", "p:myprobe do_sys_openat2", "-a",
+                              "--duration", SLEEP_SEC}));
+  // A default kprobe event is created if not given an explicit --kprobe option.
+  ASSERT_TRUE(StatCmd()->Run({"-e", "kprobes:do_sys_openat2", "-a", "--duration", SLEEP_SEC}));
+  ASSERT_TRUE(StatCmd()->Run({"--group", "kprobes:do_sys_openat2", "-a", "--duration", SLEEP_SEC}));
 }
 
 class StatCmdSummaryBuilderTest : public ::testing::Test {

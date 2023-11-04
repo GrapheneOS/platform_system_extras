@@ -22,6 +22,8 @@
 
 namespace simpleperf {
 
+class EventSelectionSet;
+
 struct ProbeEvent {
   std::string group_name;
   std::string event_name;
@@ -31,22 +33,24 @@ struct ProbeEvent {
 // delete them in ProbeEvents::clear().
 class ProbeEvents {
  public:
-  ~ProbeEvents() { Clear(); }
+  ProbeEvents(EventSelectionSet& event_selection_set) : event_selection_set_(event_selection_set) {}
+  ~ProbeEvents();
 
   static bool ParseKprobeEventName(const std::string& kprobe_cmd, ProbeEvent* event);
   bool IsKprobeSupported();
 
   // Accept kprobe cmd as in <linux_kernel>/Documentation/trace/kprobetrace.rst.
   bool AddKprobe(const std::string& kprobe_cmd);
-  bool IsProbeEvent(const std::string& event_name);
   // If not exist, add a kprobe tracepoint at the function entry.
   bool CreateProbeEventIfNotExist(const std::string& event_name);
-  bool IsEmpty() const { return kprobe_events_.empty(); }
-  void Clear();
 
  private:
+  bool IsProbeEvent(const std::string& event_name);
+  bool IsEmpty() const { return kprobe_events_.empty(); }
+  void Clear();
   bool WriteKprobeCmd(const std::string& kprobe_cmd);
 
+  EventSelectionSet& event_selection_set_;
   std::vector<ProbeEvent> kprobe_events_;
   std::optional<std::string> kprobe_control_path_;
 };
