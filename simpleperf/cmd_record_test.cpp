@@ -1186,15 +1186,16 @@ TEST(record_cmd, ParseAddrFilterOption) {
 
 TEST(record_cmd, kprobe_option) {
   TEST_REQUIRE_ROOT();
-  ProbeEvents probe_events;
+  EventSelectionSet event_selection_set(false);
+  ProbeEvents probe_events(event_selection_set);
   if (!probe_events.IsKprobeSupported()) {
     GTEST_LOG_(INFO) << "Skip this test as kprobe isn't supported by the kernel.";
     return;
   }
-  ASSERT_TRUE(RunRecordCmd({"-e", "kprobes:myprobe", "--kprobe", "p:myprobe do_sys_open"}));
+  ASSERT_TRUE(RunRecordCmd({"-e", "kprobes:myprobe", "--kprobe", "p:myprobe do_sys_openat2"}));
   // A default kprobe event is created if not given an explicit --kprobe option.
-  ASSERT_TRUE(RunRecordCmd({"-e", "kprobes:do_sys_open"}));
-  ASSERT_TRUE(RunRecordCmd({"--group", "kprobes:do_sys_open"}));
+  ASSERT_TRUE(RunRecordCmd({"-e", "kprobes:do_sys_openat2"}));
+  ASSERT_TRUE(RunRecordCmd({"--group", "kprobes:do_sys_openat2"}));
 }
 
 TEST(record_cmd, record_filter_options) {
