@@ -1252,7 +1252,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
     } else {
-      CHECK(false) << "unprocessed option: " << name;
+      LOG(ERROR) << "unprocessed option: " << name;
+      return false;
     }
   }
 
