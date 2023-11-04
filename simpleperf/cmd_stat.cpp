@@ -34,6 +34,7 @@
 #include <android-base/unique_fd.h>
 
 #include "IOEventLoop.h"
+#include "ProbeEvents.h"
 #include "cmd_stat_impl.h"
 #include "command.h"
 #include "environment.h"
@@ -388,6 +389,11 @@ class StatCommand : public Command {
 "             Similar to -e option. But events specified in the same --group\n"
 "             option are monitored as a group, and scheduled in and out at the\n"
 "             same time.\n"
+"--kprobe kprobe_event1,kprobe_event2,...\n"
+"             Add kprobe events during stating. The kprobe_event format is in\n"
+"             Documentation/trace/kprobetrace.rst in the kernel. Examples:\n"
+"               'p:myprobe do_sys_openat2 $arg2:string'   - add event kprobes:myprobe\n"
+"               'r:myretprobe do_sys_openat2 $retval:s64' - add event kprobes:myretprobe\n"
 "--no-inherit     Don't stat created child threads/processes.\n"
 "-o output_filename  Write report to output_filename instead of standard output.\n"
 "--per-core       Print counters for each cpu core.\n"
@@ -445,8 +451,8 @@ class StatCommand : public Command {
   bool Run(const std::vector<std::string>& args);
 
  private:
-  bool ParseOptions(const std::vector<std::string>& args,
-                    std::vector<std::string>* non_option_args);
+  bool ParseOptions(const std::vector<std::string>& args, std::vector<std::string>* non_option_args,
+                    ProbeEvents& probe_events);
   void PrintHardwareCounters();
   bool AddDefaultMeasuredEventTypes();
   void SetEventSelectionFlags();
@@ -490,7 +496,8 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
 
   // 1. Parse options, and use default measured event types if not given.
   std::vector<std::string> workload_args;
-  if (!ParseOptions(args, &workload_args)) {
+  ProbeEvents probe_events(event_selection_set_);
+  if (!ParseOptions(args, &workload_args, probe_events)) {
     return false;
   }
   if (print_hw_counter_) {
@@ -643,7 +650,8 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
 }
 
 bool StatCommand::ParseOptions(const std::vector<std::string>& args,
-                               std::vector<std::string>* non_option_args) {
+                               std::vector<std::string>* non_option_args,
+                               ProbeEvents& probe_events) {
   OptionValueMap options;
   std::vector<std::pair<OptionName, OptionValue>> ordered_options;
 
@@ -669,6 +677,13 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
   interval_only_values_ = options.PullBoolValue("--interval-only-values");
 
   in_app_context_ = options.PullBoolValue("--in-app");
+  for (const OptionValue& value : options.PullValues("--kprobe")) {
+    for (const auto& cmd : Split(*value.str_value, ",")) {
+      if (!probe_events.AddKprobe(cmd)) {
+        return false;
+      }
+    }
+  }
   child_inherit_ = !options.PullBoolValue("--no-inherit");
 
   if (auto value = options.PullValue("-o"); value) {
@@ -731,12 +746,21 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
       }
     } else if (name == "-e") {
       for (const auto& event_type : Split(*value.str_value, ",")) {
+        if (!probe_events.CreateProbeEventIfNotExist(event_type)) {
+          return false;
+        }
         if (!event_selection_set_.AddEventType(event_type)) {
           return false;
         }
       }
     } else if (name == "--group") {
-      if (!event_selection_set_.AddEventGroup(Split(*value.str_value, ","))) {
+      std::vector<std::string> event_types = Split(*value.str_value, ",");
+      for (const auto& event_type : event_types) {
+        if (!probe_events.CreateProbeEventIfNotExist(event_type)) {
+          return false;
+        }
+      }
+      if (!event_selection_set_.AddEventGroup(event_types)) {
         return false;
       }
     }
