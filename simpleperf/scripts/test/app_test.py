@@ -23,6 +23,7 @@ import subprocess
 import time
 from typing import List, Tuple
 
+from simpleperf_report_lib import ReportLib
 from simpleperf_utils import remove
 from . test_utils import TestBase, TestHelper, AdbHelper, INFERNO_SCRIPT
 
@@ -272,3 +273,9 @@ class TestRecordingRealApps(TestBase):
                        'android.intent.action.MAIN -c android.intent.category.LAUNCHER')
         self.record_data('com.google.sample.tunnel', '-e cpu-clock -g --duration 10')
         self.check_symbol_in_record_file('PlayScene::DoFrame')
+
+        # Check app versioncode.
+        report = ReportLib()
+        meta_info = report.MetaInfo()
+        self.assertEqual(meta_info.get('app_versioncode'), '1')
+        report.Close()

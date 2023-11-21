@@ -28,6 +28,7 @@ import re
 import subprocess
 import sys
 import time
+from typing import Optional
 
 from simpleperf_utils import (
     AdbHelper, BaseArgumentParser, bytes_to_str, extant_dir, get_script_dir, get_target_binary_path,
@@ -295,8 +296,22 @@ class AppProfiler(ProfilerBase):
 
     def prepare(self):
         super(AppProfiler, self).prepare()
+        self.app_versioncode = self.get_app_versioncode()
         if self.args.compile_java_code:
             self.compile_java_code()
+
+    def get_app_versioncode(self) -> Optional[str]:
+        result, output = self.adb.run_and_return_output(
+            ['shell', 'pm', 'list', 'packages', '--show-versioncode'])
+        if not result:
+            return None
+        prefix = f'package:{self.args.app} '
+        for line in output.splitlines():
+            if line.startswith(prefix):
+                pos = line.find('versionCode:')
+                if pos != -1:
+                    return line[pos + len('versionCode:'):].strip()
+        return None
 
     def compile_java_code(self):
         self.kill_app_process()
@@ -353,7 +368,10 @@ class AppProfiler(ProfilerBase):
     def start(self):
         if self.args.activity or self.args.test:
             self.kill_app_process()
-        self.start_profiling(['--app', self.args.app])
+        args = ['--app', self.args.app]
+        if self.app_versioncode:
+            args += ['--add-meta-info', f'app_versioncode={self.app_versioncode}']
+        self.start_profiling(args)
         if self.args.activity:
             self.start_activity()
         elif self.args.test:
