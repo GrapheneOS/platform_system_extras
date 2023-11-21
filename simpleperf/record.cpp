@@ -72,6 +72,7 @@ static std::string RecordTypeToString(int record_type) {
       {SIMPLE_PERF_RECORD_CALLCHAIN, "callchain"},
       {SIMPLE_PERF_RECORD_UNWINDING_RESULT, "unwinding_result"},
       {SIMPLE_PERF_RECORD_TRACING_DATA, "tracing_data"},
+      {SIMPLE_PERF_RECORD_DEBUG, "debug"},
   };
 
   auto it = record_type_names.find(record_type);
@@ -1603,6 +1604,38 @@ void UnwindingResultRecord::DumpData(size_t indent) const {
   }
 }
 
+DebugRecord::DebugRecord(uint64_t time, const std::string& s) {
+  SetTypeAndMisc(SIMPLE_PERF_RECORD_DEBUG, 0);
+  uint32_t size = header_size() + sizeof(uint64_t) + Align(strlen(s.c_str()) + 1, sizeof(uint64_t));
+  SetSize(size);
+  char* new_binary = new char[size];
+  char* p = new_binary;
+  MoveToBinaryFormat(header, p);
+  MoveToBinaryFormat(time, p);
+  this->time = time;
+  this->s = p;
+  MoveToBinaryFormat(s.c_str(), strlen(s.c_str()) + 1, p);
+  CHECK_LE(p, new_binary + size);
+  UpdateBinary(new_binary);
+}
+
+bool DebugRecord::Parse(const perf_event_attr&, char* p, char* end) {
+  if (!ParseHeader(p, end)) {
+    return false;
+  }
+  CHECK_SIZE_U64(p, end, 1);
+  MoveFromBinaryFormat(time, p);
+  if (memchr(p, '\0', end - p) == nullptr) {
+    return false;
+  }
+  s = p;
+  return true;
+}
+
+void DebugRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "s %s\n", s);
+}
+
 bool UnknownRecord::Parse(const perf_event_attr&, char* p, char* end) {
   if (!ParseHeader(p, end)) {
     return false;
@@ -1676,6 +1709,9 @@ std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr, uint32
       break;
     case SIMPLE_PERF_RECORD_TRACING_DATA:
       r.reset(new TracingDataRecord);
+      break;
+    case SIMPLE_PERF_RECORD_DEBUG:
+      r.reset(new DebugRecord);
       break;
     default:
       r.reset(new UnknownRecord);
