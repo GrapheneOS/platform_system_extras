@@ -16,23 +16,28 @@
 
 namespace simpleperf {
 
-static void CheckMmapRecordDataEqual(const MmapRecord& r1, const MmapRecord& r2) {
+static void CheckRecordDataEqual(const MmapRecord& r1, const MmapRecord& r2) {
   ASSERT_EQ(0, memcmp(r1.data, r2.data, sizeof(*r1.data)));
   ASSERT_STREQ(r1.filename, r2.filename);
 }
 
-static void CheckCommRecordDataEqual(const CommRecord& r1, const CommRecord& r2) {
+static void CheckRecordDataEqual(const CommRecord& r1, const CommRecord& r2) {
   ASSERT_EQ(0, memcmp(r1.data, r2.data, sizeof(*r1.data)));
   ASSERT_STREQ(r1.comm, r2.comm);
 }
 
-static void CheckBuildIdRecordDataEqual(const BuildIdRecord& r1, const BuildIdRecord& r2) {
+static void CheckRecordDataEqual(const BuildIdRecord& r1, const BuildIdRecord& r2) {
   ASSERT_EQ(r1.pid, r2.pid);
   ASSERT_EQ(r1.build_id, r2.build_id);
   ASSERT_STREQ(r1.filename, r2.filename);
 }
 
-static void CheckSampleRecordDataEqual(const SampleRecord& r1, const SampleRecord& r2) {
+static void CheckRecordDataEqual(const DebugRecord& r1, const DebugRecord& r2) {
+  ASSERT_EQ(r1.time, r2.time);
+  ASSERT_STREQ(r1.s, r2.s);
+}
+
+static void CheckRecordDataEqual(const SampleRecord& r1, const SampleRecord& r2) {
   ASSERT_EQ(r1.sample_type, r2.sample_type);
   ASSERT_EQ(r1.read_format, r2.read_format);
   if (r1.sample_type & PERF_SAMPLE_IP) {
@@ -95,20 +100,20 @@ static void CheckRecordEqual(const Record& r1, const Record& r2) {
   ASSERT_EQ(r1.misc(), r2.misc());
   ASSERT_EQ(r1.size(), r2.size());
   if (r1.type() == PERF_RECORD_SAMPLE) {
-    CheckSampleRecordDataEqual(static_cast<const SampleRecord&>(r1),
-                               static_cast<const SampleRecord&>(r2));
+    CheckRecordDataEqual(static_cast<const SampleRecord&>(r1),
+                         static_cast<const SampleRecord&>(r2));
     return;
   }
   ASSERT_EQ(0, memcmp(&r1.sample_id, &r2.sample_id, sizeof(r1.sample_id)));
   if (r1.type() == PERF_RECORD_MMAP) {
-    CheckMmapRecordDataEqual(static_cast<const MmapRecord&>(r1),
-                             static_cast<const MmapRecord&>(r2));
+    CheckRecordDataEqual(static_cast<const MmapRecord&>(r1), static_cast<const MmapRecord&>(r2));
   } else if (r1.type() == PERF_RECORD_COMM) {
-    CheckCommRecordDataEqual(static_cast<const CommRecord&>(r1),
-                             static_cast<const CommRecord&>(r2));
+    CheckRecordDataEqual(static_cast<const CommRecord&>(r1), static_cast<const CommRecord&>(r2));
   } else if (r1.type() == PERF_RECORD_BUILD_ID) {
-    CheckBuildIdRecordDataEqual(static_cast<const BuildIdRecord&>(r1),
-                                static_cast<const BuildIdRecord&>(r2));
+    CheckRecordDataEqual(static_cast<const BuildIdRecord&>(r1),
+                         static_cast<const BuildIdRecord&>(r2));
+  } else if (r1.type() == SIMPLE_PERF_RECORD_DEBUG) {
+    CheckRecordDataEqual(static_cast<const DebugRecord&>(r1), static_cast<const DebugRecord&>(r2));
   }
 }
 
