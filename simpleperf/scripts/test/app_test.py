@@ -269,9 +269,9 @@ class TestRecordingRealApps(TestBase):
     def test_recording_endless_tunnel(self):
         self.install_apk(TestHelper.testdata_path(
             'EndlessTunnel.apk'), 'com.google.sample.tunnel')
-        self.start_app('shell am start -n com.google.sample.tunnel/android.app.NativeActivity -a ' +
-                       'android.intent.action.MAIN -c android.intent.category.LAUNCHER')
-        self.record_data('com.google.sample.tunnel', '-e cpu-clock -g --duration 10')
+        # Test using --launch to start the app.
+        self.run_cmd(['app_profiler.py', '--app', 'com.google.sample.tunnel',
+                     '--launch', '-r', '-e cpu-clock -g --duration 10'])
         self.check_symbol_in_record_file('PlayScene::DoFrame')
 
         # Check app versioncode.
