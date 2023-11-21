@@ -193,3 +193,11 @@ TEST_F(RecordTest, CommRecord) {
   ASSERT_EQ(r.sample_id.time_data.time, 4u);
   CheckRecordMatchBinary(r);
 }
+
+TEST_F(RecordTest, DebugRecord) {
+  DebugRecord r(1234, "hello");
+  ASSERT_EQ(r.size() % sizeof(uint64_t), 0);
+  ASSERT_EQ(r.Timestamp(), 1234);
+  ASSERT_STREQ(r.s, "hello");
+  CheckRecordMatchBinary(r);
+}
