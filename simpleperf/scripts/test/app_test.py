@@ -23,6 +23,7 @@ import subprocess
 import time
 from typing import List, Tuple
 
+from simpleperf_report_lib import ReportLib
 from simpleperf_utils import remove
 from . test_utils import TestBase, TestHelper, AdbHelper, INFERNO_SCRIPT
 
@@ -268,7 +269,13 @@ class TestRecordingRealApps(TestBase):
     def test_recording_endless_tunnel(self):
         self.install_apk(TestHelper.testdata_path(
             'EndlessTunnel.apk'), 'com.google.sample.tunnel')
-        self.start_app('shell am start -n com.google.sample.tunnel/android.app.NativeActivity -a ' +
-                       'android.intent.action.MAIN -c android.intent.category.LAUNCHER')
-        self.record_data('com.google.sample.tunnel', '-e cpu-clock -g --duration 10')
+        # Test using --launch to start the app.
+        self.run_cmd(['app_profiler.py', '--app', 'com.google.sample.tunnel',
+                     '--launch', '-r', '-e cpu-clock -g --duration 10'])
         self.check_symbol_in_record_file('PlayScene::DoFrame')
+
+        # Check app versioncode.
+        report = ReportLib()
+        meta_info = report.MetaInfo()
+        self.assertEqual(meta_info.get('app_versioncode'), '1')
+        report.Close()
