@@ -123,15 +123,12 @@ TEST(IOEventLoop, signal) {
   ASSERT_EQ(100, count);
 }
 
-void TestPeriodicEvents(int period_in_us, int iterations, bool precise) {
+void TestPeriodicEvents(int period_in_us, int iterations) {
   timeval tv;
   tv.tv_sec = period_in_us / 1000000;
   tv.tv_usec = period_in_us % 1000000;
   int count = 0;
   IOEventLoop loop;
-  if (precise) {
-    ASSERT_TRUE(loop.UsePreciseTimer());
-  }
   ASSERT_TRUE(loop.AddPeriodicEvent(tv, [&]() {
     if (++count == iterations) {
       loop.ExitLoop();
@@ -145,17 +142,41 @@ void TestPeriodicEvents(int period_in_us, int iterations, bool precise) {
   double time_used =
       std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time).count();
   double min_time_in_sec = period_in_us / 1e6 * iterations;
-  double max_time_in_sec = min_time_in_sec + (precise ? 0.3 : 1);
+  double max_time_in_sec = min_time_in_sec + 0.3;
   ASSERT_GE(time_used, min_time_in_sec);
   ASSERT_LT(time_used, max_time_in_sec);
 }
 
 TEST(IOEventLoop, periodic) {
-  TestPeriodicEvents(1000000, 1, false);
+  TestPeriodicEvents(1000, 100);
 }
 
-TEST(IOEventLoop, periodic_precise) {
-  TestPeriodicEvents(1000, 100, true);
+TEST(IOEventLoop, one_time_event) {
+  int duration_in_us = 1000;
+  timeval tv = {};
+  tv.tv_usec = duration_in_us;
+  int count = 0;
+  auto callback_time = std::chrono::steady_clock::now();
+  IOEventLoop loop;
+  // Add a one time event to test callback count and time.
+  ASSERT_TRUE(loop.AddOneTimeEvent(tv, [&]() {
+    ++count;
+    callback_time = std::chrono::steady_clock::now();
+    return true;
+  }));
+  // Add another one time event to exit loop.
+  tv.tv_usec = duration_in_us * 3;
+  ASSERT_TRUE(loop.AddOneTimeEvent(tv, [&]() { return loop.ExitLoop(); }));
+
+  auto start_time = std::chrono::steady_clock::now();
+  ASSERT_TRUE(loop.RunLoop());
+  ASSERT_EQ(1, count);
+  double time_used =
+      std::chrono::duration_cast<std::chrono::duration<double>>(callback_time - start_time).count();
+  double min_time_in_sec = duration_in_us / 1e6;
+  double max_time_in_sec = min_time_in_sec + 0.3;
+  ASSERT_GE(time_used, min_time_in_sec);
+  ASSERT_LT(time_used, max_time_in_sec);
 }
 
 TEST(IOEventLoop, read_and_del_event) {
