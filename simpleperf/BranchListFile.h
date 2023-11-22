@@ -27,7 +27,7 @@ namespace simpleperf {
 // But this isn't sufficient when merging binary info from multiple input files. Because
 // binaries for the same path may be changed between generating input files. So after processing
 // each input file, we create BinaryKeys to identify binaries, which consider path, build_id and
-// kernel_start_addr (for vmlinux). kernel_start_addr affects how addresses in BranchListBinaryInfo
+// kernel_start_addr (for vmlinux). kernel_start_addr affects how addresses in ETMBinary
 // are interpreted for vmlinux.
 struct BinaryKey {
   std::string path;
@@ -63,48 +63,6 @@ struct BinaryKeyHash {
   }
 };
 
-using UnorderedBranchMap =
-    std::unordered_map<uint64_t, std::unordered_map<std::vector<bool>, uint64_t>>;
-
-struct BranchListBinaryInfo {
-  DsoType dso_type;
-  UnorderedBranchMap branch_map;
-
-  void Merge(const BranchListBinaryInfo& other) {
-    for (auto& other_p : other.branch_map) {
-      auto it = branch_map.find(other_p.first);
-      if (it == branch_map.end()) {
-        branch_map[other_p.first] = std::move(other_p.second);
-      } else {
-        auto& map2 = it->second;
-        for (auto& other_p2 : other_p.second) {
-          auto it2 = map2.find(other_p2.first);
-          if (it2 == map2.end()) {
-            map2[other_p2.first] = other_p2.second;
-          } else {
-            OverflowSafeAdd(it2->second, other_p2.second);
-          }
-        }
-      }
-    }
-  }
-
-  BranchMap GetOrderedBranchMap() const {
-    BranchMap result;
-    for (const auto& p : branch_map) {
-      uint64_t addr = p.first;
-      const auto& b_map = p.second;
-      result[addr] = std::map<std::vector<bool>, uint64_t>(b_map.begin(), b_map.end());
-    }
-    return result;
-  }
-};
-
-using BranchListBinaryMap = std::unordered_map<BinaryKey, BranchListBinaryInfo, BinaryKeyHash>;
-
-bool BranchListBinaryMapToString(const BranchListBinaryMap& binary_map, std::string& s);
-bool StringToBranchListBinaryMap(const std::string& s, BranchListBinaryMap& binary_map);
-
 class BinaryFilter {
  public:
   BinaryFilter(const RegEx* binary_name_regex) : binary_name_regex_(binary_name_regex) {}
@@ -133,6 +91,48 @@ class BinaryFilter {
   std::unordered_map<Dso*, bool> dso_filter_cache_;
 };
 
+using UnorderedETMBranchMap =
+    std::unordered_map<uint64_t, std::unordered_map<std::vector<bool>, uint64_t>>;
+
+struct ETMBinary {
+  DsoType dso_type;
+  UnorderedETMBranchMap branch_map;
+
+  void Merge(const ETMBinary& other) {
+    for (auto& other_p : other.branch_map) {
+      auto it = branch_map.find(other_p.first);
+      if (it == branch_map.end()) {
+        branch_map[other_p.first] = std::move(other_p.second);
+      } else {
+        auto& map2 = it->second;
+        for (auto& other_p2 : other_p.second) {
+          auto it2 = map2.find(other_p2.first);
+          if (it2 == map2.end()) {
+            map2[other_p2.first] = other_p2.second;
+          } else {
+            OverflowSafeAdd(it2->second, other_p2.second);
+          }
+        }
+      }
+    }
+  }
+
+  ETMBranchMap GetOrderedBranchMap() const {
+    ETMBranchMap result;
+    for (const auto& p : branch_map) {
+      uint64_t addr = p.first;
+      const auto& b_map = p.second;
+      result[addr] = std::map<std::vector<bool>, uint64_t>(b_map.begin(), b_map.end());
+    }
+    return result;
+  }
+};
+
+using ETMBinaryMap = std::unordered_map<BinaryKey, ETMBinary, BinaryKeyHash>;
+
+bool ETMBinaryMapToString(const ETMBinaryMap& binary_map, std::string& s);
+bool StringToETMBinaryMap(const std::string& s, ETMBinaryMap& binary_map);
+
 // Convert ETM data into branch lists while recording.
 class ETMBranchListGenerator {
  public:
@@ -142,11 +142,11 @@ class ETMBranchListGenerator {
   virtual void SetExcludePid(pid_t pid) = 0;
   virtual void SetBinaryFilter(const RegEx* binary_name_regex) = 0;
   virtual bool ProcessRecord(const Record& r, bool& consumed) = 0;
-  virtual BranchListBinaryMap GetBranchListBinaryMap() = 0;
+  virtual ETMBinaryMap GetETMBinaryMap() = 0;
 };
 
 // for testing
-std::string BranchToProtoString(const std::vector<bool>& branch);
-std::vector<bool> ProtoStringToBranch(const std::string& s, size_t bit_size);
+std::string ETMBranchToProtoString(const std::vector<bool>& branch);
+std::vector<bool> ProtoStringToETMBranch(const std::string& s, size_t bit_size);
 
 }  // namespace simpleperf

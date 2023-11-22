@@ -25,12 +25,12 @@
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
 
-#include "ETMBranchListFile.h"
+#include "BranchListFile.h"
 #include "ETMDecoder.h"
 #include "RegEx.h"
 #include "command.h"
 #include "record_file.h"
-#include "system/extras/simpleperf/etm_branch_list.pb.h"
+#include "system/extras/simpleperf/branch_list.pb.h"
 #include "thread_tree.h"
 #include "utils.h"
 
@@ -87,7 +87,7 @@ struct AutoFDOBinaryInfo {
 };
 
 using AutoFDOBinaryCallback = std::function<void(const BinaryKey&, AutoFDOBinaryInfo&)>;
-using BranchListBinaryCallback = std::function<void(const BinaryKey&, BranchListBinaryInfo&)>;
+using ETMBinaryCallback = std::function<void(const BinaryKey&, ETMBinary&)>;
 
 class ETMThreadTreeWithFilter : public ETMThreadTree {
  public:
@@ -110,29 +110,6 @@ class ETMThreadTreeWithFilter : public ETMThreadTree {
   std::optional<pid_t> exclude_pid_;
 };
 
-class BinaryFilter {
- public:
-  BinaryFilter(const RegEx* binary_name_regex) : binary_name_regex_(binary_name_regex) {}
-
-  bool Filter(Dso* dso) {
-    auto lookup = dso_filter_cache_.find(dso);
-    if (lookup != dso_filter_cache_.end()) {
-      return lookup->second;
-    }
-    bool match = Filter(dso->Path());
-    dso_filter_cache_.insert({dso, match});
-    return match;
-  }
-
-  bool Filter(const std::string& path) {
-    return binary_name_regex_ == nullptr || binary_name_regex_->Search(path);
-  }
-
- private:
-  const RegEx* binary_name_regex_;
-  std::unordered_map<Dso*, bool> dso_filter_cache_;
-};
-
 static uint64_t GetFirstLoadSegmentVaddr(Dso* dso) {
   ElfStatus status;
   if (auto elf = ElfFile::Open(dso->GetDebugFilePath(), &status); elf) {
@@ -145,19 +122,19 @@ static uint64_t GetFirstLoadSegmentVaddr(Dso* dso) {
   return 0;
 }
 
-// Read perf.data, and generate AutoFDOBinaryInfo or BranchListBinaryInfo.
+// Read perf.data, and generate AutoFDOBinaryInfo or ETMBinary.
 // To avoid resetting data, it only processes one input file per instance.
-class PerfDataReader {
+class ETMPerfDataReader {
  public:
-  PerfDataReader(const std::string& filename, bool exclude_perf, ETMDumpOption etm_dump_option,
-                 const RegEx* binary_name_regex)
+  ETMPerfDataReader(const std::string& filename, bool exclude_perf, ETMDumpOption etm_dump_option,
+                    const RegEx* binary_name_regex)
       : filename_(filename),
         exclude_perf_(exclude_perf),
         etm_dump_option_(etm_dump_option),
         binary_filter_(binary_name_regex) {}
 
   void SetCallback(const AutoFDOBinaryCallback& callback) { autofdo_callback_ = callback; }
-  void SetCallback(const BranchListBinaryCallback& callback) { branch_list_callback_ = callback; }
+  void SetCallback(const ETMBinaryCallback& callback) { etm_binary_callback_ = callback; }
 
   bool Read() {
     record_file_reader_ = RecordFileReader::CreateInstance(filename_);
@@ -192,8 +169,8 @@ class PerfDataReader {
     }
     if (autofdo_callback_) {
       ProcessAutoFDOBinaryInfo();
-    } else if (branch_list_callback_) {
-      ProcessBranchListBinaryInfo();
+    } else if (etm_binary_callback_) {
+      ProcessETMBinary();
     }
     return true;
   }
@@ -207,20 +184,20 @@ class PerfDataReader {
       LOG(ERROR) << "convert to autofdo format isn't support on perf.data with etm branch list";
       return false;
     }
-    CHECK(branch_list_callback_);
+    CHECK(etm_binary_callback_);
     std::string s;
     if (!record_file_reader_->ReadFeatureSection(PerfFileFormat::FEAT_ETM_BRANCH_LIST, &s)) {
       return false;
     }
-    BranchListBinaryMap binary_map;
-    if (!StringToBranchListBinaryMap(s, binary_map)) {
+    ETMBinaryMap binary_map;
+    if (!StringToETMBinaryMap(s, binary_map)) {
       return false;
     }
     for (auto& [key, binary] : binary_map) {
       if (!binary_filter_.Filter(key.path)) {
         continue;
       }
-      branch_list_callback_(key, binary);
+      etm_binary_callback_(key, binary);
     }
     return true;
   }
@@ -236,9 +213,9 @@ class PerfDataReader {
       if (autofdo_callback_) {
         etm_decoder_->RegisterCallback(
             [this](const ETMInstrRange& range) { ProcessInstrRange(range); });
-      } else if (branch_list_callback_) {
+      } else if (etm_binary_callback_) {
         etm_decoder_->RegisterCallback(
-            [this](const ETMBranchList& branch) { ProcessBranchList(branch); });
+            [this](const ETMBranchList& branch) { ProcessETMBranchList(branch); });
       }
     } else if (r->type() == PERF_RECORD_AUX) {
       AuxRecord* aux = static_cast<AuxRecord*>(r);
@@ -277,12 +254,12 @@ class PerfDataReader {
     autofdo_binary_map_[instr_range.dso].AddInstrRange(instr_range);
   }
 
-  void ProcessBranchList(const ETMBranchList& branch_list) {
+  void ProcessETMBranchList(const ETMBranchList& branch_list) {
     if (!binary_filter_.Filter(branch_list.dso)) {
       return;
     }
 
-    auto& branch_map = branch_list_binary_map_[branch_list.dso].branch_map;
+    auto& branch_map = etm_binary_map_[branch_list.dso].branch_map;
     ++branch_map[branch_list.addr][branch_list.branch];
   }
 
@@ -295,10 +272,10 @@ class PerfDataReader {
     }
   }
 
-  void ProcessBranchListBinaryInfo() {
-    for (auto& p : branch_list_binary_map_) {
+  void ProcessETMBinary() {
+    for (auto& p : etm_binary_map_) {
       Dso* dso = p.first;
-      BranchListBinaryInfo& binary = p.second;
+      ETMBinary& binary = p.second;
       binary.dso_type = dso->type();
       BinaryKey key(dso, 0);
       if (binary.dso_type == DSO_KERNEL) {
@@ -313,7 +290,7 @@ class PerfDataReader {
           key.kernel_start_addr = kernel_map_start_addr_;
         }
       }
-      branch_list_callback_(key, binary);
+      etm_binary_callback_(key, binary);
     }
   }
 
@@ -322,7 +299,7 @@ class PerfDataReader {
   ETMDumpOption etm_dump_option_;
   BinaryFilter binary_filter_;
   AutoFDOBinaryCallback autofdo_callback_;
-  BranchListBinaryCallback branch_list_callback_;
+  ETMBinaryCallback etm_binary_callback_;
 
   std::vector<uint8_t> aux_data_buffer_;
   std::unique_ptr<ETMDecoder> etm_decoder_;
@@ -332,16 +309,16 @@ class PerfDataReader {
   // Store results for AutoFDO.
   std::unordered_map<Dso*, AutoFDOBinaryInfo> autofdo_binary_map_;
   // Store results for BranchList.
-  std::unordered_map<Dso*, BranchListBinaryInfo> branch_list_binary_map_;
+  std::unordered_map<Dso*, ETMBinary> etm_binary_map_;
 };
 
-// Read a protobuf file specified by etm_branch_list.proto, and generate BranchListBinaryInfo.
-class BranchListReader {
+// Read a protobuf file specified by etm_branch_list.proto, and generate ETMBinary.
+class ETMBranchListReader {
  public:
-  BranchListReader(const std::string& filename, const RegEx* binary_name_regex)
+  ETMBranchListReader(const std::string& filename, const RegEx* binary_name_regex)
       : filename_(filename), binary_filter_(binary_name_regex) {}
 
-  void SetCallback(const BranchListBinaryCallback& callback) { callback_ = callback; }
+  void SetCallback(const ETMBinaryCallback& callback) { callback_ = callback; }
 
   bool Read() {
     std::string s;
@@ -349,8 +326,8 @@ class BranchListReader {
       PLOG(ERROR) << "failed to read " << filename_;
       return false;
     }
-    BranchListBinaryMap binary_map;
-    if (!StringToBranchListBinaryMap(s, binary_map)) {
+    ETMBinaryMap binary_map;
+    if (!StringToETMBinaryMap(s, binary_map)) {
       PLOG(ERROR) << "file is in wrong format: " << filename_;
       return false;
     }
@@ -366,13 +343,13 @@ class BranchListReader {
  private:
   const std::string filename_;
   BinaryFilter binary_filter_;
-  BranchListBinaryCallback callback_;
+  ETMBinaryCallback callback_;
 };
 
-// Convert BranchListBinaryInfo into AutoFDOBinaryInfo.
-class BranchListToAutoFDOConverter {
+// Convert ETMBinary into AutoFDOBinaryInfo.
+class ETMBranchListToAutoFDOConverter {
  public:
-  std::unique_ptr<AutoFDOBinaryInfo> Convert(const BinaryKey& key, BranchListBinaryInfo& binary) {
+  std::unique_ptr<AutoFDOBinaryInfo> Convert(const BinaryKey& key, ETMBinary& binary) {
     BuildId build_id = key.build_id;
     std::unique_ptr<Dso> dso = Dso::CreateDsoWithBuildId(binary.dso_type, key.path, build_id);
     if (!dso || !CheckBuildId(dso.get(), key.build_id)) {
@@ -390,8 +367,8 @@ class BranchListToAutoFDOConverter {
       autofdo_binary->AddInstrRange(range);
     };
 
-    auto result =
-        ConvertBranchMapToInstrRanges(dso.get(), binary.GetOrderedBranchMap(), process_instr_range);
+    auto result = ConvertETMBranchMapToInstrRanges(dso.get(), binary.GetOrderedBranchMap(),
+                                                   process_instr_range);
     if (!result.ok()) {
       LOG(WARNING) << "failed to build instr ranges for binary " << dso->Path() << ": "
                    << result.error();
@@ -410,15 +387,14 @@ class BranchListToAutoFDOConverter {
            build_id == expected_build_id;
   }
 
-  void ModifyBranchMapForKernel(Dso* dso, uint64_t kernel_start_addr,
-                                BranchListBinaryInfo& binary) {
+  void ModifyBranchMapForKernel(Dso* dso, uint64_t kernel_start_addr, ETMBinary& binary) {
     if (kernel_start_addr == 0) {
       // vmlinux has been provided when generating branch lists. Addresses in branch lists are
       // already vaddrs in vmlinux.
       return;
     }
     // Addresses are still kernel ip addrs in memory. Need to convert them to vaddrs in vmlinux.
-    UnorderedBranchMap new_branch_map;
+    UnorderedETMBranchMap new_branch_map;
     for (auto& p : binary.branch_map) {
       uint64_t vaddr_in_file = dso->IpToVaddrInFile(p.first, kernel_start_addr, 0);
       new_branch_map[vaddr_in_file] = std::move(p.second);
@@ -511,9 +487,9 @@ class AutoFDOWriter {
   std::unordered_map<BinaryKey, AutoFDOBinaryInfo, BinaryKeyHash> binary_map_;
 };
 
-// Merge BranchListBinaryInfo.
-struct BranchListMerger {
-  void AddBranchListBinary(const BinaryKey& key, BranchListBinaryInfo& binary) {
+// Merge ETMBinary.
+struct ETMBranchListMerger {
+  void AddETMBinary(const BinaryKey& key, ETMBinary& binary) {
     auto it = binary_map.find(key);
     if (it == binary_map.end()) {
       binary_map[key] = std::move(binary);
@@ -522,13 +498,13 @@ struct BranchListMerger {
     }
   }
 
-  BranchListBinaryMap binary_map;
+  ETMBinaryMap binary_map;
 };
 
 // Write branch lists to a protobuf file specified by etm_branch_list.proto.
-class BranchListWriter {
+class ETMBranchListWriter {
  public:
-  bool Write(const std::string& output_filename, const BranchListBinaryMap& binary_map) {
+  bool Write(const std::string& output_filename, const ETMBinaryMap& binary_map) {
     // Don't produce empty output file.
     if (binary_map.empty()) {
       LOG(INFO) << "Skip empty output file.";
@@ -536,8 +512,8 @@ class BranchListWriter {
       return true;
     }
     std::string s;
-    if (!BranchListBinaryMapToString(binary_map, s)) {
-      LOG(ERROR) << "invalid BranchListBinaryMap";
+    if (!ETMBinaryMapToString(binary_map, s)) {
+      LOG(ERROR) << "invalid ETMBinaryMap";
       return false;
     }
     if (!android::base::WriteStringToFile(s, output_filename)) {
@@ -690,8 +666,8 @@ class InjectCommand : public Command {
       autofdo_writer.AddAutoFDOBinary(key, binary);
     };
     for (const auto& input_filename : input_filenames_) {
-      PerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_,
-                            binary_name_regex_.get());
+      ETMPerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_,
+                               binary_name_regex_.get());
       reader.SetCallback(callback);
       if (!reader.Read()) {
         return false;
@@ -701,42 +677,42 @@ class InjectCommand : public Command {
   }
 
   bool ConvertPerfDataToBranchList() {
-    BranchListMerger branch_list_merger;
-    auto callback = [&](const BinaryKey& key, BranchListBinaryInfo& binary) {
-      branch_list_merger.AddBranchListBinary(key, binary);
+    ETMBranchListMerger branch_list_merger;
+    auto callback = [&](const BinaryKey& key, ETMBinary& binary) {
+      branch_list_merger.AddETMBinary(key, binary);
     };
     for (const auto& input_filename : input_filenames_) {
-      PerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_,
-                            binary_name_regex_.get());
+      ETMPerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_,
+                               binary_name_regex_.get());
       reader.SetCallback(callback);
       if (!reader.Read()) {
         return false;
       }
     }
-    BranchListWriter branch_list_writer;
+    ETMBranchListWriter branch_list_writer;
     return branch_list_writer.Write(output_filename_, branch_list_merger.binary_map);
   }
 
   bool ConvertBranchListToAutoFDO() {
     // Step1 : Merge branch lists from all input files.
-    BranchListMerger branch_list_merger;
-    auto callback = [&](const BinaryKey& key, BranchListBinaryInfo& binary) {
-      branch_list_merger.AddBranchListBinary(key, binary);
+    ETMBranchListMerger branch_list_merger;
+    auto callback = [&](const BinaryKey& key, ETMBinary& binary) {
+      branch_list_merger.AddETMBinary(key, binary);
     };
     for (const auto& input_filename : input_filenames_) {
-      BranchListReader reader(input_filename, binary_name_regex_.get());
+      ETMBranchListReader reader(input_filename, binary_name_regex_.get());
       reader.SetCallback(callback);
       if (!reader.Read()) {
         return false;
       }
     }
 
-    // Step2: Convert BranchListBinaryInfo to AutoFDOBinaryInfo.
+    // Step2: Convert ETMBinary to AutoFDOBinaryInfo.
     AutoFDOWriter autofdo_writer;
-    BranchListToAutoFDOConverter converter;
+    ETMBranchListToAutoFDOConverter converter;
     for (auto& p : branch_list_merger.binary_map) {
       const BinaryKey& key = p.first;
-      BranchListBinaryInfo& binary = p.second;
+      ETMBinary& binary = p.second;
       std::unique_ptr<AutoFDOBinaryInfo> autofdo_binary = converter.Convert(key, binary);
       if (autofdo_binary) {
         // Create new BinaryKey with kernel_start_addr = 0. Because AutoFDO output doesn't care
@@ -751,19 +727,19 @@ class InjectCommand : public Command {
 
   bool ConvertBranchListToBranchList() {
     // Step1 : Merge branch lists from all input files.
-    BranchListMerger branch_list_merger;
-    auto callback = [&](const BinaryKey& key, BranchListBinaryInfo& binary) {
-      branch_list_merger.AddBranchListBinary(key, binary);
+    ETMBranchListMerger branch_list_merger;
+    auto callback = [&](const BinaryKey& key, ETMBinary& binary) {
+      branch_list_merger.AddETMBinary(key, binary);
     };
     for (const auto& input_filename : input_filenames_) {
-      BranchListReader reader(input_filename, binary_name_regex_.get());
+      ETMBranchListReader reader(input_filename, binary_name_regex_.get());
       reader.SetCallback(callback);
       if (!reader.Read()) {
         return false;
       }
     }
-    // Step2: Write BranchListBinaryInfo.
-    BranchListWriter branch_list_writer;
+    // Step2: Write ETMBinary.
+    ETMBranchListWriter branch_list_writer;
     return branch_list_writer.Write(output_filename_, branch_list_merger.binary_map);
   }
 

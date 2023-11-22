@@ -90,9 +90,9 @@ class ETMDecoder {
 // Map from addrs to a map of (branch_list, count).
 // Use maps instead of unordered_maps. Because it helps locality by decoding instructions for sorted
 // addresses.
-using BranchMap = std::map<uint64_t, std::map<std::vector<bool>, uint64_t>>;
+using ETMBranchMap = std::map<uint64_t, std::map<std::vector<bool>, uint64_t>>;
 
-android::base::expected<void, std::string> ConvertBranchMapToInstrRanges(
-    Dso* dso, const BranchMap& branch_map, const ETMDecoder::InstrRangeCallbackFn& callback);
+android::base::expected<void, std::string> ConvertETMBranchMapToInstrRanges(
+    Dso* dso, const ETMBranchMap& branch_map, const ETMDecoder::InstrRangeCallbackFn& callback);
 
 }  // namespace simpleperf

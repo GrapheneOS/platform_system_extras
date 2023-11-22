@@ -26,7 +26,7 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
-#include "ETMBranchListFile.h"
+#include "BranchListFile.h"
 #include "ETMDecoder.h"
 #include "command.h"
 #include "dso.h"
@@ -550,8 +550,8 @@ bool DumpRecordCommand::DumpFeatureSection() {
       if (!record_file_reader_->ReadFeatureSection(FEAT_ETM_BRANCH_LIST, &data)) {
         return false;
       }
-      BranchListBinaryMap binary_map;
-      if (!StringToBranchListBinaryMap(data, binary_map)) {
+      ETMBinaryMap binary_map;
+      if (!StringToETMBinaryMap(data, binary_map)) {
         return false;
       }
       PrintIndented(1, "etm_branch_list:\n");
