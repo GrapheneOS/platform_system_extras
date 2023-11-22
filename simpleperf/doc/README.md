@@ -315,7 +315,7 @@ If you want to compile simpleperf C++ source code, follow below steps:
 2. Build simpleperf.
 ```sh
 $ . build/envsetup.sh
-$ lunch aosp_arm64-userdebug
+$ lunch aosp_arm64-trunk_staging-userdebug
 $ mmma system/extras/simpleperf -j30
 ```
 
