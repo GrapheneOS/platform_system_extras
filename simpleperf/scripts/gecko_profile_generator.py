@@ -475,6 +475,7 @@ def _gecko_profile(
         "markerSchema": [],
         "abi": arch,
         "oscpu": meta_info.get("android_build_fingerprint"),
+        "appBuildID": meta_info.get("app_versioncode"),
     }
 
     # Schema:
