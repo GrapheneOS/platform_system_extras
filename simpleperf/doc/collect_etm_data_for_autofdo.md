@@ -111,7 +111,7 @@ Step 1: Build `etm_test_loop` binary.
 
 ```sh
 (host) <AOSP>$ . build/envsetup.sh
-(host) <AOSP>$ lunch aosp_arm64-userdebug
+(host) <AOSP>$ lunch aosp_arm64-trunk_staging-userdebug
 (host) <AOSP>$ make etm_test_loop
 ```
 
