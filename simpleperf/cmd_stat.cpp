@@ -544,7 +544,7 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   } else if (!event_selection_set_.HasMonitoredTarget()) {
     if (workload != nullptr) {
       event_selection_set_.AddMonitoredProcesses({workload->GetPid()});
-      event_selection_set_.SetEnableOnExec(true);
+      event_selection_set_.SetEnableCondition(false, true);
     } else if (!app_package_name_.empty()) {
       std::set<pid_t> pids = WaitForAppProcesses(app_package_name_);
       event_selection_set_.AddMonitoredProcesses(pids);
@@ -582,11 +582,6 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
 
   // 4. Add signal/periodic Events.
   IOEventLoop* loop = event_selection_set_.GetIOEventLoop();
-  if (interval_in_ms_ != 0) {
-    if (!loop->UsePreciseTimer()) {
-      return false;
-    }
-  }
   std::chrono::time_point<std::chrono::steady_clock> start_time;
   std::vector<CountersInfo> counters;
   if (need_to_check_targets && !event_selection_set_.StopWhenNoMoreTargets()) {

@@ -40,8 +40,7 @@ struct IOEvent {
   }
 };
 
-IOEventLoop::IOEventLoop()
-    : ebase_(nullptr), has_error_(false), use_precise_timer_(false), in_loop_(false) {}
+IOEventLoop::IOEventLoop() : ebase_(nullptr), has_error_(false), in_loop_(false) {}
 
 IOEventLoop::~IOEventLoop() {
   events_.clear();
@@ -50,21 +49,11 @@ IOEventLoop::~IOEventLoop() {
   }
 }
 
-bool IOEventLoop::UsePreciseTimer() {
-  if (ebase_ != nullptr) {
-    return false;  // Too late to set the flag.
-  }
-  use_precise_timer_ = true;
-  return true;
-}
-
 bool IOEventLoop::EnsureInit() {
   if (ebase_ == nullptr) {
     event_config* cfg = event_config_new();
     if (cfg != nullptr) {
-      if (use_precise_timer_) {
-        event_config_set_flag(cfg, EVENT_BASE_FLAG_PRECISE_TIMER);
-      }
+      event_config_set_flag(cfg, EVENT_BASE_FLAG_PRECISE_TIMER);
       if (event_config_avoid_method(cfg, "epoll") != 0) {
         LOG(ERROR) << "event_config_avoid_method";
         return false;
@@ -148,6 +137,11 @@ bool IOEventLoop::AddSignalEvents(std::vector<int> sigs, const std::function<boo
 IOEventRef IOEventLoop::AddPeriodicEvent(timeval duration, const std::function<bool()>& callback,
                                          IOEventPriority priority) {
   return AddEvent(-1, EV_PERSIST, &duration, callback, priority);
+}
+
+IOEventRef IOEventLoop::AddOneTimeEvent(timeval duration, const std::function<bool()>& callback,
+                                        IOEventPriority priority) {
+  return AddEvent(-1, 0, &duration, callback, priority);
 }
 
 IOEventRef IOEventLoop::AddEvent(int fd_or_sig, int16_t events, timeval* timeout,

@@ -218,6 +218,7 @@ class RecordCommand : public Command {
 "--cpu cpu_item1,cpu_item2,...  Monitor events on selected cpus. cpu_item can be a number like\n"
 "                               1, or a range like 0-3. A --cpu option affects all event types\n"
 "                               following it until meeting another --cpu option.\n"
+"--delay    time_in_ms   Wait time_in_ms milliseconds before recording samples.\n"
 "--duration time_in_sec  Monitor for time_in_sec seconds instead of running\n"
 "                        [command]. Here time_in_sec may be any positive\n"
 "                        floating point number.\n"
@@ -425,6 +426,7 @@ RECORD_FILTER_OPTION_HELP_MSG_FOR_RECORDING
   bool keep_failed_unwinding_debug_info_ = false;
   std::unique_ptr<OfflineUnwinder> offline_unwinder_;
   bool child_inherit_;
+  uint64_t delay_in_ms_ = 0;
   double duration_in_sec_;
   bool can_dump_kernel_symbols_;
   bool dump_symbols_;
@@ -614,7 +616,7 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   } else if (!event_selection_set_.HasMonitoredTarget()) {
     if (workload != nullptr) {
       event_selection_set_.AddMonitoredProcesses({workload->GetPid()});
-      event_selection_set_.SetEnableOnExec(true);
+      event_selection_set_.SetEnableCondition(false, true);
     } else if (!app_package_name_.empty()) {
       // If app process is not created, wait for it. This allows simpleperf starts before
       // app process. In this way, we can have a better support of app start-up time profiling.
@@ -628,6 +630,10 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
   } else {
     need_to_check_targets = true;
   }
+  if (delay_in_ms_ != 0) {
+    event_selection_set_.SetEnableCondition(false, false);
+  }
+
   // Profiling JITed/interpreted Java code is supported starting from Android P.
   // Also support profiling art interpreter on host.
   if (GetAndroidVersion() >= kAndroidVersionP || GetAndroidVersion() == 0) {
@@ -695,6 +701,21 @@ bool RecordCommand::PrepareRecording(Workload* workload) {
     }
   }
 
+  if (delay_in_ms_ != 0) {
+    auto delay_callback = [this]() {
+      if (!event_selection_set_.SetEnableEvents(true)) {
+        return false;
+      }
+      if (!system_wide_collection_) {
+        // Dump maps in case there are new maps created while delaying.
+        return DumpMaps();
+      }
+      return true;
+    };
+    if (!loop->AddOneTimeEvent(SecondToTimeval(delay_in_ms_ / 1000), delay_callback)) {
+      return false;
+    }
+  }
   if (duration_in_sec_ != 0) {
     if (!loop->AddPeriodicEvent(
             SecondToTimeval(duration_in_sec_), [loop]() { return loop->ExitLoop(); },
@@ -1028,6 +1049,10 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   if (options.PullBoolValue("--record-cycles")) {
     ETMRecorder& recorder = ETMRecorder::GetInstance();
     recorder.SetRecordCycles(true);
+  }
+
+  if (!options.PullUintValue("--delay", &delay_in_ms_)) {
+    return false;
   }
 
   if (!options.PullDoubleValue("--duration", &duration_in_sec_, 1e-9)) {
