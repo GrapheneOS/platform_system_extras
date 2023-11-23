@@ -1336,3 +1336,9 @@ TEST(record_cmd, record_process_name) {
   }));
   ASSERT_TRUE(has_comm);
 }
+
+TEST(record_cmd, delay_option) {
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run(
+      {"-o", tmpfile.path, "-e", GetDefaultEvent(), "--delay", "100", "sleep", "1"}));
+}

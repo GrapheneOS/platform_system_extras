@@ -452,34 +452,13 @@ void EventSelectionSet::UnionSampleType() {
   }
 }
 
-void EventSelectionSet::SetEnableOnExec(bool enable) {
+void EventSelectionSet::SetEnableCondition(bool enable_on_open, bool enable_on_exec) {
   for (auto& group : groups_) {
     for (auto& selection : group.selections) {
-      // If sampling is enabled on exec, then it is disabled at startup,
-      // otherwise it should be enabled at startup. Don't use
-      // ioctl(PERF_EVENT_IOC_ENABLE) to enable it after perf_event_open().
-      // Because some android kernels can't handle ioctl() well when cpu-hotplug
-      // happens. See http://b/25193162.
-      if (enable) {
-        selection.event_attr.enable_on_exec = 1;
-        selection.event_attr.disabled = 1;
-      } else {
-        selection.event_attr.enable_on_exec = 0;
-        selection.event_attr.disabled = 0;
-      }
+      selection.event_attr.disabled = !enable_on_open;
+      selection.event_attr.enable_on_exec = enable_on_exec;
     }
   }
-}
-
-bool EventSelectionSet::GetEnableOnExec() {
-  for (const auto& group : groups_) {
-    for (const auto& selection : group.selections) {
-      if (selection.event_attr.enable_on_exec == 0) {
-        return false;
-      }
-    }
-  }
-  return true;
 }
 
 void EventSelectionSet::SampleIdAll() {
