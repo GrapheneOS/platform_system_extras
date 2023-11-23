@@ -310,6 +310,9 @@ class PprofProfileGenerator(object):
             "Converted to pprof with:\n" + " ".join(sys.argv),
             "Architecture:\n" + self.lib.GetArch(),
         ]
+        meta_info = self.lib.MetaInfo()
+        if "app_versioncode" in meta_info:
+          comments.append("App Version Code:\n" + meta_info["app_versioncode"])
         for comment in comments:
             self.profile.comment.append(self.get_string_id(comment))
 
