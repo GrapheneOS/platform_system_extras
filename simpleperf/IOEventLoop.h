@@ -46,9 +46,6 @@ class IOEventLoop {
   IOEventLoop();
   ~IOEventLoop();
 
-  // Use precise timer for periodic events which want precision in ms.
-  bool UsePreciseTimer();
-
   // Register a read Event, so [callback] is called when [fd] can be read
   // without blocking. If registered successfully, return the reference
   // to control the Event, otherwise return nullptr.
@@ -73,6 +70,10 @@ class IOEventLoop {
   // [duration].
   IOEventRef AddPeriodicEvent(timeval duration, const std::function<bool()>& callback,
                               IOEventPriority priority = IOEventLowPriority);
+
+  // Register a one time Event, so [callback] is called once after [duration].
+  IOEventRef AddOneTimeEvent(timeval duration, const std::function<bool()>& callback,
+                             IOEventPriority priority = IOEventLowPriority);
 
   // Run a loop polling for Events. It only exits when ExitLoop() is called
   // in a callback function of registered Events.

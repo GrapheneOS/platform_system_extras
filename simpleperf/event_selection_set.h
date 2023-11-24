@@ -121,8 +121,7 @@ class EventSelectionSet {
   std::unordered_map<uint64_t, int> GetCpusById() const;
   std::map<int, size_t> GetHardwareCountersForCpus() const;
 
-  void SetEnableOnExec(bool enable);
-  bool GetEnableOnExec();
+  void SetEnableCondition(bool enable_on_open, bool enable_on_exec);
   void SampleIdAll();
   // Only set sample rate for events that haven't set sample rate.
   void SetSampleRateForNewEvents(const SampleRate& rate);
