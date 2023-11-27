@@ -315,6 +315,8 @@ class PprofProfileGenerator(object):
           comments.append("App Version Code:\n" + meta_info["app_versioncode"])
         for comment in comments:
             self.profile.comment.append(self.get_string_id(comment))
+        if "timestamp" in meta_info:
+            self.profile.time_nanos = int(meta_info["timestamp"]) * 1000 * 1000 * 1000
 
         numbers_re = re.compile(r"\d+")
 
