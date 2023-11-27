@@ -96,6 +96,10 @@ class TestPprofProtoGenerator(TestBase):
         """ Test the build ids generated are not padded with zeros. """
         self.assertIn('build_id: e3e938cc9e40de2cfe1a5ac7595897de(', self.run_generator())
 
+    def test_time_nanos(self):
+        """ Test the timestamp is adjusted to be nanoseconds. """
+        self.assertIn('time_nanos: 1516268753000000000\n', self.run_generator())
+
     def test_build_id_with_binary_cache(self):
         """ Test the build ids for elf files in binary_cache are not padded with zero. """
         # Test with binary_cache.
