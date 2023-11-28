@@ -360,6 +360,8 @@ class AdbHelper(object):
             return 'x86_64'
         if '86' in output:
             return 'x86'
+        if 'riscv64' in output:
+            return 'riscv64'
         log_fatal('unsupported architecture: %s' % output.strip())
         return ''
 
@@ -957,6 +959,8 @@ class ReadElf(object):
                     return 'x86_64'
                 if output.find('80386') != -1:
                     return 'x86'
+                if output.find('RISC-V') != -1:
+                    return 'riscv64'
             except subprocess.CalledProcessError:
                 pass
         return 'unknown'
