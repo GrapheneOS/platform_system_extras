@@ -100,7 +100,6 @@ class IOEventLoop {
   event_base* ebase_;
   std::vector<std::unique_ptr<IOEvent>> events_;
   bool has_error_;
-  bool use_precise_timer_;
   bool in_loop_;
 };
 
