@@ -88,27 +88,7 @@ struct AutoFDOBinaryInfo {
 
 using AutoFDOBinaryCallback = std::function<void(const BinaryKey&, AutoFDOBinaryInfo&)>;
 using ETMBinaryCallback = std::function<void(const BinaryKey&, ETMBinary&)>;
-
-class ETMThreadTreeWithFilter : public ETMThreadTree {
- public:
-  void ExcludePid(pid_t pid) { exclude_pid_ = pid; }
-  ThreadTree& GetThreadTree() { return thread_tree_; }
-  void DisableThreadExitRecords() override { thread_tree_.DisableThreadExitRecords(); }
-
-  const ThreadEntry* FindThread(int tid) override {
-    const ThreadEntry* thread = thread_tree_.FindThread(tid);
-    if (thread != nullptr && exclude_pid_ && thread->pid == exclude_pid_) {
-      return nullptr;
-    }
-    return thread;
-  }
-
-  const MapSet& GetKernelMaps() override { return thread_tree_.GetKernelMaps(); }
-
- private:
-  ThreadTree thread_tree_;
-  std::optional<pid_t> exclude_pid_;
-};
+using LBRDataCallback = std::function<void(LBRData&)>;
 
 static uint64_t GetFirstLoadSegmentVaddr(Dso* dso) {
   ElfStatus status;
@@ -122,90 +102,123 @@ static uint64_t GetFirstLoadSegmentVaddr(Dso* dso) {
   return 0;
 }
 
-// Read perf.data, and generate AutoFDOBinaryInfo or ETMBinary.
-// To avoid resetting data, it only processes one input file per instance.
-class ETMPerfDataReader {
+// Base class for reading perf.data and generating AutoFDO or branch list data.
+class PerfDataReader {
  public:
-  ETMPerfDataReader(const std::string& filename, bool exclude_perf, ETMDumpOption etm_dump_option,
-                    const RegEx* binary_name_regex)
-      : filename_(filename),
+  static std::string GetDataType(RecordFileReader& reader) {
+    const EventAttrIds& attrs = reader.AttrSection();
+    if (attrs.size() != 1) {
+      return "unknown";
+    }
+    const perf_event_attr& attr = attrs[0].attr;
+    if (IsEtmEventType(attr.type)) {
+      return "etm";
+    }
+    if (attr.sample_type & PERF_SAMPLE_BRANCH_STACK) {
+      return "lbr";
+    }
+    return "unknown";
+  }
+
+  PerfDataReader(std::unique_ptr<RecordFileReader> reader, bool exclude_perf,
+                 const RegEx* binary_name_regex)
+      : reader_(std::move(reader)),
         exclude_perf_(exclude_perf),
-        etm_dump_option_(etm_dump_option),
         binary_filter_(binary_name_regex) {}
+  virtual ~PerfDataReader() {}
+
+  std::string GetDataType() const { return GetDataType(*reader_); }
 
   void SetCallback(const AutoFDOBinaryCallback& callback) { autofdo_callback_ = callback; }
-  void SetCallback(const ETMBinaryCallback& callback) { etm_binary_callback_ = callback; }
+  virtual void SetCallback(const ETMBinaryCallback&) {}
+  virtual void SetCallback(const LBRDataCallback&) {}
 
-  bool Read() {
-    record_file_reader_ = RecordFileReader::CreateInstance(filename_);
-    if (!record_file_reader_) {
-      return false;
-    }
-    if (record_file_reader_->HasFeature(PerfFileFormat::FEAT_ETM_BRANCH_LIST)) {
-      return ProcessETMBranchListFeature();
-    }
+  virtual bool Read() {
     if (exclude_perf_) {
-      const auto& info_map = record_file_reader_->GetMetaInfoFeature();
+      const auto& info_map = reader_->GetMetaInfoFeature();
       if (auto it = info_map.find("recording_process"); it == info_map.end()) {
-        LOG(ERROR) << filename_ << " doesn't support --exclude-perf";
+        LOG(ERROR) << reader_->FileName() << " doesn't support --exclude-perf";
         return false;
       } else {
         int pid;
         if (!android::base::ParseInt(it->second, &pid, 0)) {
-          LOG(ERROR) << "invalid recording_process " << it->second << " in " << filename_;
+          LOG(ERROR) << "invalid recording_process " << it->second << " in " << reader_->FileName();
           return false;
         }
-        thread_tree_.ExcludePid(pid);
+        exclude_pid_ = pid;
       }
     }
-    if (!record_file_reader_->LoadBuildIdAndFileFeatures(thread_tree_.GetThreadTree())) {
+
+    if (!reader_->LoadBuildIdAndFileFeatures(thread_tree_)) {
       return false;
     }
-    if (!record_file_reader_->ReadDataSection([this](auto r) { return ProcessRecord(r.get()); })) {
+    if (!reader_->ReadDataSection([this](auto r) { return ProcessRecord(*r); })) {
       return false;
     }
-    if (etm_decoder_ && !etm_decoder_->FinishData()) {
-      return false;
+    return PostProcess();
+  }
+
+ protected:
+  virtual bool ProcessRecord(Record& r) = 0;
+  virtual bool PostProcess() = 0;
+
+  const std::string data_type_;
+  std::unique_ptr<RecordFileReader> reader_;
+  bool exclude_perf_;
+  BinaryFilter binary_filter_;
+
+  std::optional<int> exclude_pid_;
+  ThreadTree thread_tree_;
+  AutoFDOBinaryCallback autofdo_callback_;
+  // Store results for AutoFDO.
+  std::unordered_map<Dso*, AutoFDOBinaryInfo> autofdo_binary_map_;
+};
+
+class ETMThreadTreeWithFilter : public ETMThreadTree {
+ public:
+  ETMThreadTreeWithFilter(ThreadTree& thread_tree, std::optional<int>& exclude_pid)
+      : thread_tree_(thread_tree), exclude_pid_(exclude_pid) {}
+
+  void DisableThreadExitRecords() override { thread_tree_.DisableThreadExitRecords(); }
+
+  const ThreadEntry* FindThread(int tid) override {
+    const ThreadEntry* thread = thread_tree_.FindThread(tid);
+    if (thread != nullptr && exclude_pid_ && thread->pid == exclude_pid_) {
+      return nullptr;
     }
-    if (autofdo_callback_) {
-      ProcessAutoFDOBinaryInfo();
-    } else if (etm_binary_callback_) {
-      ProcessETMBinary();
+    return thread;
+  }
+
+  const MapSet& GetKernelMaps() override { return thread_tree_.GetKernelMaps(); }
+
+ private:
+  ThreadTree& thread_tree_;
+  std::optional<int>& exclude_pid_;
+};
+
+// Read perf.data with ETM data and generate AutoFDO or branch list data.
+class ETMPerfDataReader : public PerfDataReader {
+ public:
+  ETMPerfDataReader(std::unique_ptr<RecordFileReader> reader, bool exclude_perf,
+                    const RegEx* binary_name_regex, ETMDumpOption etm_dump_option)
+      : PerfDataReader(std::move(reader), exclude_perf, binary_name_regex),
+        etm_dump_option_(etm_dump_option),
+        etm_thread_tree_(thread_tree_, exclude_pid_) {}
+
+  void SetCallback(const ETMBinaryCallback& callback) override { etm_binary_callback_ = callback; }
+
+  bool Read() override {
+    if (reader_->HasFeature(PerfFileFormat::FEAT_ETM_BRANCH_LIST)) {
+      return ProcessETMBranchListFeature();
     }
-    return true;
+    return PerfDataReader::Read();
   }
 
  private:
-  bool ProcessETMBranchListFeature() {
-    if (exclude_perf_) {
-      LOG(WARNING) << "--exclude-perf has no effect on perf.data with etm branch list";
-    }
-    if (autofdo_callback_) {
-      LOG(ERROR) << "convert to autofdo format isn't support on perf.data with etm branch list";
-      return false;
-    }
-    CHECK(etm_binary_callback_);
-    std::string s;
-    if (!record_file_reader_->ReadFeatureSection(PerfFileFormat::FEAT_ETM_BRANCH_LIST, &s)) {
-      return false;
-    }
-    ETMBinaryMap binary_map;
-    if (!StringToETMBinaryMap(s, binary_map)) {
-      return false;
-    }
-    for (auto& [key, binary] : binary_map) {
-      if (!binary_filter_.Filter(key.path)) {
-        continue;
-      }
-      etm_binary_callback_(key, binary);
-    }
-    return true;
-  }
-
-  bool ProcessRecord(Record* r) {
-    thread_tree_.GetThreadTree().Update(*r);
-    if (r->type() == PERF_RECORD_AUXTRACE_INFO) {
-      etm_decoder_ = ETMDecoder::Create(*static_cast<AuxTraceInfoRecord*>(r), thread_tree_);
+  bool ProcessRecord(Record& r) override {
+    thread_tree_.Update(r);
+    if (r.type() == PERF_RECORD_AUXTRACE_INFO) {
+      etm_decoder_ = ETMDecoder::Create(static_cast<AuxTraceInfoRecord&>(r), etm_thread_tree_);
       if (!etm_decoder_) {
         return false;
       }
@@ -217,31 +230,69 @@ class ETMPerfDataReader {
         etm_decoder_->RegisterCallback(
             [this](const ETMBranchList& branch) { ProcessETMBranchList(branch); });
       }
-    } else if (r->type() == PERF_RECORD_AUX) {
-      AuxRecord* aux = static_cast<AuxRecord*>(r);
-      if (aux->data->aux_size > SIZE_MAX) {
+    } else if (r.type() == PERF_RECORD_AUX) {
+      AuxRecord& aux = static_cast<AuxRecord&>(r);
+      if (aux.data->aux_size > SIZE_MAX) {
         LOG(ERROR) << "invalid aux size";
         return false;
       }
-      size_t aux_size = aux->data->aux_size;
+      size_t aux_size = aux.data->aux_size;
       if (aux_size > 0) {
         bool error = false;
-        if (!record_file_reader_->ReadAuxData(aux->Cpu(), aux->data->aux_offset, aux_size,
-                                              aux_data_buffer_, error)) {
+        if (!reader_->ReadAuxData(aux.Cpu(), aux.data->aux_offset, aux_size, aux_data_buffer_,
+                                  error)) {
           return !error;
         }
         if (!etm_decoder_) {
           LOG(ERROR) << "ETMDecoder isn't created";
           return false;
         }
-        return etm_decoder_->ProcessData(aux_data_buffer_.data(), aux_size, !aux->Unformatted(),
-                                         aux->Cpu());
+        return etm_decoder_->ProcessData(aux_data_buffer_.data(), aux_size, !aux.Unformatted(),
+                                         aux.Cpu());
       }
-    } else if (r->type() == PERF_RECORD_MMAP && r->InKernel()) {
-      auto& mmap_r = *static_cast<MmapRecord*>(r);
+    } else if (r.type() == PERF_RECORD_MMAP && r.InKernel()) {
+      auto& mmap_r = static_cast<MmapRecord&>(r);
       if (android::base::StartsWith(mmap_r.filename, DEFAULT_KERNEL_MMAP_NAME)) {
         kernel_map_start_addr_ = mmap_r.data->addr;
       }
+    }
+    return true;
+  }
+
+  bool PostProcess() override {
+    if (etm_decoder_ && !etm_decoder_->FinishData()) {
+      return false;
+    }
+    if (autofdo_callback_) {
+      ProcessAutoFDOBinaryInfo();
+    } else if (etm_binary_callback_) {
+      ProcessETMBinary();
+    }
+    return true;
+  }
+
+  bool ProcessETMBranchListFeature() {
+    if (exclude_perf_) {
+      LOG(WARNING) << "--exclude-perf has no effect on perf.data with etm branch list";
+    }
+    if (autofdo_callback_) {
+      LOG(ERROR) << "convert to autofdo format isn't support on perf.data with etm branch list";
+      return false;
+    }
+    CHECK(etm_binary_callback_);
+    std::string s;
+    if (!reader_->ReadFeatureSection(PerfFileFormat::FEAT_ETM_BRANCH_LIST, &s)) {
+      return false;
+    }
+    ETMBinaryMap binary_map;
+    if (!StringToETMBinaryMap(s, binary_map)) {
+      return false;
+    }
+    for (auto& [key, binary] : binary_map) {
+      if (!binary_filter_.Filter(key.path)) {
+        continue;
+      }
+      etm_binary_callback_(key, binary);
     }
     return true;
   }
@@ -294,22 +345,80 @@ class ETMPerfDataReader {
     }
   }
 
-  const std::string filename_;
-  bool exclude_perf_;
   ETMDumpOption etm_dump_option_;
-  BinaryFilter binary_filter_;
-  AutoFDOBinaryCallback autofdo_callback_;
   ETMBinaryCallback etm_binary_callback_;
-
+  ETMThreadTreeWithFilter etm_thread_tree_;
   std::vector<uint8_t> aux_data_buffer_;
   std::unique_ptr<ETMDecoder> etm_decoder_;
-  std::unique_ptr<RecordFileReader> record_file_reader_;
-  ETMThreadTreeWithFilter thread_tree_;
   uint64_t kernel_map_start_addr_ = 0;
-  // Store results for AutoFDO.
-  std::unordered_map<Dso*, AutoFDOBinaryInfo> autofdo_binary_map_;
-  // Store results for BranchList.
+  // Store etm branch list data.
   std::unordered_map<Dso*, ETMBinary> etm_binary_map_;
+};
+
+class LBRPerfDataReader : public PerfDataReader {
+ public:
+  LBRPerfDataReader(std::unique_ptr<RecordFileReader> reader, bool exclude_perf,
+                    const RegEx* binary_name_regex)
+      : PerfDataReader(std::move(reader), exclude_perf, binary_name_regex) {}
+  void SetCallback(const LBRDataCallback& callback) override { lbr_data_callback_ = callback; }
+
+ private:
+  bool ProcessRecord(Record& r) override {
+    thread_tree_.Update(r);
+    if (r.type() == PERF_RECORD_SAMPLE) {
+      auto& sr = static_cast<SampleRecord&>(r);
+      ThreadEntry* thread = thread_tree_.FindThread(sr.tid_data.tid);
+      if (thread == nullptr) {
+        return true;
+      }
+      auto& stack = sr.branch_stack_data;
+      lbr_data_.samples.resize(lbr_data_.samples.size() + 1);
+      LBRSample& sample = lbr_data_.samples.back();
+      std::pair<uint32_t, uint64_t> binary_addr = IpToBinaryAddr(*thread, sr.ip_data.ip);
+      sample.binary_id = binary_addr.first;
+      sample.vaddr_in_file = binary_addr.second;
+      sample.branches.resize(stack.stack_nr);
+      for (size_t i = 0; i < stack.stack_nr; ++i) {
+        uint64_t from_ip = stack.stack[i].from;
+        uint64_t to_ip = stack.stack[i].to;
+        LBRBranch& branch = sample.branches[i];
+        binary_addr = IpToBinaryAddr(*thread, from_ip);
+        branch.from_binary_id = binary_addr.first;
+        branch.from_vaddr_in_file = binary_addr.second;
+        binary_addr = IpToBinaryAddr(*thread, to_ip);
+        branch.to_binary_id = binary_addr.first;
+        branch.to_vaddr_in_file = binary_addr.second;
+      }
+    }
+    return true;
+  }
+
+  bool PostProcess() override { return true; }
+
+  std::pair<uint32_t, uint64_t> IpToBinaryAddr(ThreadEntry& thread, uint64_t ip) {
+    const MapEntry* map = thread_tree_.FindMap(&thread, ip);
+    Dso* dso = map->dso;
+    if (thread_tree_.IsUnknownDso(dso) || !binary_filter_.Filter(dso)) {
+      return std::make_pair(0, 0);
+    }
+    uint32_t binary_id = GetBinaryId(dso);
+    uint64_t vaddr_in_file = dso->IpToVaddrInFile(ip, map->start_addr, map->pgoff);
+    return std::make_pair(binary_id, vaddr_in_file);
+  }
+
+  uint32_t GetBinaryId(const Dso* dso) {
+    if (auto it = dso_map_.find(dso); it != dso_map_.end()) {
+      return it->second;
+    }
+    uint32_t binary_id = static_cast<uint32_t>(lbr_data_.binaries.size() + 1);
+    dso_map_[dso] = binary_id;
+    return binary_id;
+  }
+
+  LBRDataCallback lbr_data_callback_;
+  LBRData lbr_data_;
+  // Map from dso to binary_id in lbr_data_.
+  std::unordered_map<const Dso*, uint32_t> dso_map_;
 };
 
 // Read a protobuf file specified by etm_branch_list.proto, and generate ETMBinary.
@@ -660,34 +769,63 @@ class InjectCommand : public Command {
     return true;
   }
 
-  bool ConvertPerfDataToAutoFDO() {
-    AutoFDOWriter autofdo_writer;
-    auto callback = [&](const BinaryKey& key, AutoFDOBinaryInfo& binary) {
-      autofdo_writer.AddAutoFDOBinary(key, binary);
-    };
-    for (const auto& input_filename : input_filenames_) {
-      ETMPerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_,
-                               binary_name_regex_.get());
-      reader.SetCallback(callback);
-      if (!reader.Read()) {
+  bool ReadPerfDataFiles(const std::function<void(PerfDataReader&)> reader_callback) {
+    if (input_filenames_.empty()) {
+      return true;
+    }
+
+    std::string expected_data_type;
+    for (const auto& filename : input_filenames_) {
+      std::unique_ptr<RecordFileReader> file_reader = RecordFileReader::CreateInstance(filename);
+      if (!file_reader) {
         return false;
       }
+      std::string data_type = PerfDataReader::GetDataType(*file_reader);
+      if (expected_data_type.empty()) {
+        expected_data_type = data_type;
+      } else if (expected_data_type != data_type) {
+        LOG(ERROR) << "files have different data type: " << input_filenames_[0] << ", " << filename;
+        return false;
+      }
+      std::unique_ptr<PerfDataReader> reader;
+      if (data_type == "etm") {
+        reader.reset(new ETMPerfDataReader(std::move(file_reader), exclude_perf_,
+                                           binary_name_regex_.get(), etm_dump_option_));
+      } else if (data_type == "lbr") {
+        reader.reset(
+            new LBRPerfDataReader(std::move(file_reader), exclude_perf_, binary_name_regex_.get()));
+      } else {
+        LOG(ERROR) << "unsupported data type " << data_type << " in " << filename;
+        return false;
+      }
+      reader_callback(*reader);
+      if (!reader->Read()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool ConvertPerfDataToAutoFDO() {
+    AutoFDOWriter autofdo_writer;
+    auto afdo_callback = [&](const BinaryKey& key, AutoFDOBinaryInfo& binary) {
+      autofdo_writer.AddAutoFDOBinary(key, binary);
+    };
+    auto reader_callback = [&](PerfDataReader& reader) { reader.SetCallback(afdo_callback); };
+    if (!ReadPerfDataFiles(reader_callback)) {
+      return false;
     }
     return autofdo_writer.Write(output_filename_);
   }
 
   bool ConvertPerfDataToBranchList() {
     ETMBranchListMerger branch_list_merger;
-    auto callback = [&](const BinaryKey& key, ETMBinary& binary) {
+    auto etm_callback = [&](const BinaryKey& key, ETMBinary& binary) {
       branch_list_merger.AddETMBinary(key, binary);
     };
-    for (const auto& input_filename : input_filenames_) {
-      ETMPerfDataReader reader(input_filename, exclude_perf_, etm_dump_option_,
-                               binary_name_regex_.get());
-      reader.SetCallback(callback);
-      if (!reader.Read()) {
-        return false;
-      }
+    auto reader_callback = [&](PerfDataReader& reader) { reader.SetCallback(etm_callback); };
+    if (!ReadPerfDataFiles(reader_callback)) {
+      return false;
     }
     ETMBranchListWriter branch_list_writer;
     return branch_list_writer.Write(output_filename_, branch_list_merger.binary_map);

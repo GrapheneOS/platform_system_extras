@@ -72,7 +72,7 @@ class BinaryFilter {
     dso_filter_cache_.clear();
   }
 
-  bool Filter(Dso* dso) {
+  bool Filter(const Dso* dso) {
     auto lookup = dso_filter_cache_.find(dso);
     if (lookup != dso_filter_cache_.end()) {
       return lookup->second;
@@ -88,7 +88,7 @@ class BinaryFilter {
 
  private:
   const RegEx* binary_name_regex_;
-  std::unordered_map<Dso*, bool> dso_filter_cache_;
+  std::unordered_map<const Dso*, bool> dso_filter_cache_;
 };
 
 using UnorderedETMBranchMap =
@@ -143,6 +143,28 @@ class ETMBranchListGenerator {
   virtual void SetBinaryFilter(const RegEx* binary_name_regex) = 0;
   virtual bool ProcessRecord(const Record& r, bool& consumed) = 0;
   virtual ETMBinaryMap GetETMBinaryMap() = 0;
+};
+
+struct LBRBranch {
+  // If from_binary_id >= 1, it refers to LBRData.binaries[from_binary_id - 1]. Otherwise, it's
+  // invalid.
+  uint32_t from_binary_id = 0;
+  // If to_binary_id >= 1, it refers to LBRData.binaries[to_binary_id - 1]. Otherwise, it's invalid.
+  uint32_t to_binary_id = 0;
+  uint64_t from_vaddr_in_file = 0;
+  uint64_t to_vaddr_in_file = 0;
+};
+
+struct LBRSample {
+  // If binary_id >= 1, it refers to LBRData.binaries[binary_id - 1]. Otherwise, it's invalid.
+  uint32_t binary_id = 0;
+  uint64_t vaddr_in_file = 0;
+  std::vector<LBRBranch> branches;
+};
+
+struct LBRData {
+  std::vector<LBRSample> samples;
+  std::vector<BinaryKey> binaries;
 };
 
 // for testing

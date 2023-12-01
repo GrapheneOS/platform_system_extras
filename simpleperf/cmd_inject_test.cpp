@@ -224,3 +224,10 @@ TEST(cmd_inject, accept_missing_aux_data) {
   close(tmpfile.release());
   ASSERT_TRUE(RunInjectCmd({"--output", "branch-list", "-i", perf_data, "-o", tmpfile.path}));
 }
+
+TEST(cmd_inject, read_lbr_data) {
+  std::string perf_data = GetTestData("perf_lbr.data");
+  TemporaryFile tmpfile;
+  close(tmpfile.release());
+  ASSERT_TRUE(RunInjectCmd({"-i", perf_data, "-o", tmpfile.path}));
+}
