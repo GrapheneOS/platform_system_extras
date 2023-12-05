@@ -56,8 +56,19 @@ enum class OutputFormat {
 
 struct AutoFDOBinaryInfo {
   uint64_t first_load_segment_addr = 0;
+  std::unordered_map<uint64_t, uint64_t> address_count_map;
   std::unordered_map<AddrPair, uint64_t, AddrPairHash> range_count_map;
   std::unordered_map<AddrPair, uint64_t, AddrPairHash> branch_count_map;
+
+  void AddAddress(uint64_t addr) { OverflowSafeAdd(address_count_map[addr], 1); }
+
+  void AddRange(uint64_t begin, uint64_t end) {
+    OverflowSafeAdd(range_count_map[std::make_pair(begin, end)], 1);
+  }
+
+  void AddBranch(uint64_t from, uint64_t to) {
+    OverflowSafeAdd(branch_count_map[std::make_pair(from, to)], 1);
+  }
 
   void AddInstrRange(const ETMInstrRange& instr_range) {
     uint64_t total_count = instr_range.branch_taken_count;
@@ -71,6 +82,12 @@ struct AutoFDOBinaryInfo {
   }
 
   void Merge(const AutoFDOBinaryInfo& other) {
+    for (const auto& p : other.address_count_map) {
+      auto res = address_count_map.emplace(p.first, p.second);
+      if (!res.second) {
+        OverflowSafeAdd(res.first->second, p.second);
+      }
+    }
     for (const auto& p : other.range_count_map) {
       auto res = range_count_map.emplace(p.first, p.second);
       if (!res.second) {
@@ -90,7 +107,7 @@ using AutoFDOBinaryCallback = std::function<void(const BinaryKey&, AutoFDOBinary
 using ETMBinaryCallback = std::function<void(const BinaryKey&, ETMBinary&)>;
 using LBRDataCallback = std::function<void(LBRData&)>;
 
-static uint64_t GetFirstLoadSegmentVaddr(Dso* dso) {
+static uint64_t GetFirstLoadSegmentVaddr(const Dso* dso) {
   ElfStatus status;
   if (auto elf = ElfFile::Open(dso->GetDebugFilePath(), &status); elf) {
     for (const auto& segment : elf->GetProgramHeader()) {
@@ -162,6 +179,15 @@ class PerfDataReader {
   virtual bool ProcessRecord(Record& r) = 0;
   virtual bool PostProcess() = 0;
 
+  void ProcessAutoFDOBinaryInfo() {
+    for (auto& p : autofdo_binary_map_) {
+      const Dso* dso = p.first;
+      AutoFDOBinaryInfo& binary = p.second;
+      binary.first_load_segment_addr = GetFirstLoadSegmentVaddr(dso);
+      autofdo_callback_(BinaryKey(dso, 0), binary);
+    }
+  }
+
   const std::string data_type_;
   std::unique_ptr<RecordFileReader> reader_;
   bool exclude_perf_;
@@ -171,7 +197,7 @@ class PerfDataReader {
   ThreadTree thread_tree_;
   AutoFDOBinaryCallback autofdo_callback_;
   // Store results for AutoFDO.
-  std::unordered_map<Dso*, AutoFDOBinaryInfo> autofdo_binary_map_;
+  std::unordered_map<const Dso*, AutoFDOBinaryInfo> autofdo_binary_map_;
 };
 
 class ETMThreadTreeWithFilter : public ETMThreadTree {
@@ -314,15 +340,6 @@ class ETMPerfDataReader : public PerfDataReader {
     ++branch_map[branch_list.addr][branch_list.branch];
   }
 
-  void ProcessAutoFDOBinaryInfo() {
-    for (auto& p : autofdo_binary_map_) {
-      Dso* dso = p.first;
-      AutoFDOBinaryInfo& binary = p.second;
-      binary.first_load_segment_addr = GetFirstLoadSegmentVaddr(dso);
-      autofdo_callback_(BinaryKey(dso, 0), binary);
-    }
-  }
-
   void ProcessETMBinary() {
     for (auto& p : etm_binary_map_) {
       Dso* dso = p.first;
@@ -376,6 +393,7 @@ class LBRPerfDataReader : public PerfDataReader {
       LBRSample& sample = lbr_data_.samples.back();
       std::pair<uint32_t, uint64_t> binary_addr = IpToBinaryAddr(*thread, sr.ip_data.ip);
       sample.binary_id = binary_addr.first;
+      bool has_valid_binary_id = sample.binary_id != 0;
       sample.vaddr_in_file = binary_addr.second;
       sample.branches.resize(stack.stack_nr);
       for (size_t i = 0; i < stack.stack_nr; ++i) {
@@ -388,12 +406,24 @@ class LBRPerfDataReader : public PerfDataReader {
         binary_addr = IpToBinaryAddr(*thread, to_ip);
         branch.to_binary_id = binary_addr.first;
         branch.to_vaddr_in_file = binary_addr.second;
+        if (branch.from_binary_id != 0 || branch.to_binary_id != 0) {
+          has_valid_binary_id = true;
+        }
+      }
+      if (!has_valid_binary_id) {
+        lbr_data_.samples.pop_back();
       }
     }
     return true;
   }
 
-  bool PostProcess() override { return true; }
+  bool PostProcess() override {
+    if (autofdo_callback_) {
+      ConvertLBRDataToAutoFDO();
+      ProcessAutoFDOBinaryInfo();
+    }
+    return true;
+  }
 
   std::pair<uint32_t, uint64_t> IpToBinaryAddr(ThreadEntry& thread, uint64_t ip) {
     const MapEntry* map = thread_tree_.FindMap(&thread, ip);
@@ -413,6 +443,37 @@ class LBRPerfDataReader : public PerfDataReader {
     uint32_t binary_id = static_cast<uint32_t>(lbr_data_.binaries.size() + 1);
     dso_map_[dso] = binary_id;
     return binary_id;
+  }
+
+  void ConvertLBRDataToAutoFDO() {
+    std::vector<AutoFDOBinaryInfo> binaries(dso_map_.size());
+    for (const LBRSample& sample : lbr_data_.samples) {
+      if (sample.binary_id != 0) {
+        binaries[sample.binary_id - 1].AddAddress(sample.vaddr_in_file);
+      }
+      for (size_t i = 0; i < sample.branches.size(); ++i) {
+        const LBRBranch& branch = sample.branches[i];
+        if (branch.from_binary_id == 0) {
+          continue;
+        }
+        if (branch.from_binary_id == branch.to_binary_id) {
+          binaries[branch.from_binary_id - 1].AddBranch(branch.from_vaddr_in_file,
+                                                        branch.to_vaddr_in_file);
+        }
+        if (i > 0 && branch.from_binary_id == sample.branches[i - 1].to_binary_id) {
+          uint64_t begin = sample.branches[i - 1].to_vaddr_in_file;
+          uint64_t end = branch.from_vaddr_in_file;
+          // Use the same logic to skip bogus LBR data as AutoFDO.
+          if (end < begin || end - begin > (1 << 20)) {
+            continue;
+          }
+          binaries[branch.from_binary_id - 1].AddRange(begin, end);
+        }
+      }
+    }
+    for (const auto& [dso, binary_id] : dso_map_) {
+      autofdo_binary_map_[dso] = std::move(binaries[binary_id - 1]);
+    }
   }
 
   LBRDataCallback lbr_data_callback_;
@@ -571,7 +632,12 @@ class AutoFDOWriter {
       }
 
       // Write addr_count_map.
-      fprintf(output_fp.get(), "0\n");
+      std::map<uint64_t, uint64_t> address_count_map(binary.address_count_map.begin(),
+                                                     binary.address_count_map.end());
+      fprintf(output_fp.get(), "%zu\n", address_count_map.size());
+      for (const auto& [addr, count] : address_count_map) {
+        fprintf(output_fp.get(), "%" PRIx64 ":%" PRIu64 "\n", to_offset(addr), count);
+      }
 
       // Write branch_count_map.
       std::map<AddrPair, uint64_t> branch_count_map(binary.branch_count_map.begin(),

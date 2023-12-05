@@ -38,7 +38,7 @@ struct BinaryKey {
 
   BinaryKey(const std::string& path, BuildId build_id) : path(path), build_id(build_id) {}
 
-  BinaryKey(Dso* dso, uint64_t kernel_start_addr) : path(dso->Path()) {
+  BinaryKey(const Dso* dso, uint64_t kernel_start_addr) : path(dso->Path()) {
     build_id = Dso::FindExpectedBuildIdForPath(dso->Path());
     if (dso->type() == DSO_KERNEL) {
       this->kernel_start_addr = kernel_start_addr;
