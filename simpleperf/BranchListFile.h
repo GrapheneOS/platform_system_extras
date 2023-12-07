@@ -129,7 +129,6 @@ struct ETMBinary {
 };
 
 using ETMBinaryMap = std::unordered_map<BinaryKey, ETMBinary, BinaryKeyHash>;
-
 bool ETMBinaryMapToString(const ETMBinaryMap& binary_map, std::string& s);
 bool StringToETMBinaryMap(const std::string& s, ETMBinaryMap& binary_map);
 
@@ -166,6 +165,9 @@ struct LBRData {
   std::vector<LBRSample> samples;
   std::vector<BinaryKey> binaries;
 };
+
+bool LBRDataToString(const LBRData& data, std::string& s);
+bool ParseBranchListData(const std::string& s, ETMBinaryMap& etm_data, LBRData& lbr_data);
 
 // for testing
 std::string ETMBranchToProtoString(const std::vector<bool>& branch);
