@@ -16,20 +16,20 @@
 
 #include <gtest/gtest.h>
 
-#include "ETMBranchListFile.h"
+#include "BranchListFile.h"
 
 using namespace simpleperf;
 
-TEST(ETMBranchListFile, branch_to_proto_string) {
+TEST(BranchListFile, etm_branch_to_proto_string) {
   std::vector<bool> branch;
   for (size_t i = 0; i < 100; i++) {
     branch.push_back(i % 2 == 0);
-    std::string s = BranchToProtoString(branch);
+    std::string s = ETMBranchToProtoString(branch);
     for (size_t j = 0; j <= i; j++) {
       bool b = s[j >> 3] & (1 << (j & 7));
       ASSERT_EQ(b, branch[j]);
     }
-    std::vector<bool> branch2 = ProtoStringToBranch(s, branch.size());
+    std::vector<bool> branch2 = ProtoStringToETMBranch(s, branch.size());
     ASSERT_EQ(branch, branch2);
   }
 }

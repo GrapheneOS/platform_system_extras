@@ -27,7 +27,7 @@ namespace simpleperf {
 // But this isn't sufficient when merging binary info from multiple input files. Because
 // binaries for the same path may be changed between generating input files. So after processing
 // each input file, we create BinaryKeys to identify binaries, which consider path, build_id and
-// kernel_start_addr (for vmlinux). kernel_start_addr affects how addresses in BranchListBinaryInfo
+// kernel_start_addr (for vmlinux). kernel_start_addr affects how addresses in ETMBinary
 // are interpreted for vmlinux.
 struct BinaryKey {
   std::string path;
@@ -38,7 +38,7 @@ struct BinaryKey {
 
   BinaryKey(const std::string& path, BuildId build_id) : path(path), build_id(build_id) {}
 
-  BinaryKey(Dso* dso, uint64_t kernel_start_addr) : path(dso->Path()) {
+  BinaryKey(const Dso* dso, uint64_t kernel_start_addr) : path(dso->Path()) {
     build_id = Dso::FindExpectedBuildIdForPath(dso->Path());
     if (dso->type() == DSO_KERNEL) {
       this->kernel_start_addr = kernel_start_addr;
@@ -63,14 +63,42 @@ struct BinaryKeyHash {
   }
 };
 
-using UnorderedBranchMap =
+class BinaryFilter {
+ public:
+  BinaryFilter(const RegEx* binary_name_regex) : binary_name_regex_(binary_name_regex) {}
+
+  void SetRegex(const RegEx* binary_name_regex) {
+    binary_name_regex_ = binary_name_regex;
+    dso_filter_cache_.clear();
+  }
+
+  bool Filter(const Dso* dso) {
+    auto lookup = dso_filter_cache_.find(dso);
+    if (lookup != dso_filter_cache_.end()) {
+      return lookup->second;
+    }
+    bool match = Filter(dso->Path());
+    dso_filter_cache_.insert({dso, match});
+    return match;
+  }
+
+  bool Filter(const std::string& path) {
+    return binary_name_regex_ == nullptr || binary_name_regex_->Search(path);
+  }
+
+ private:
+  const RegEx* binary_name_regex_;
+  std::unordered_map<const Dso*, bool> dso_filter_cache_;
+};
+
+using UnorderedETMBranchMap =
     std::unordered_map<uint64_t, std::unordered_map<std::vector<bool>, uint64_t>>;
 
-struct BranchListBinaryInfo {
+struct ETMBinary {
   DsoType dso_type;
-  UnorderedBranchMap branch_map;
+  UnorderedETMBranchMap branch_map;
 
-  void Merge(const BranchListBinaryInfo& other) {
+  void Merge(const ETMBinary& other) {
     for (auto& other_p : other.branch_map) {
       auto it = branch_map.find(other_p.first);
       if (it == branch_map.end()) {
@@ -89,8 +117,8 @@ struct BranchListBinaryInfo {
     }
   }
 
-  BranchMap GetOrderedBranchMap() const {
-    BranchMap result;
+  ETMBranchMap GetOrderedBranchMap() const {
+    ETMBranchMap result;
     for (const auto& p : branch_map) {
       uint64_t addr = p.first;
       const auto& b_map = p.second;
@@ -100,38 +128,10 @@ struct BranchListBinaryInfo {
   }
 };
 
-using BranchListBinaryMap = std::unordered_map<BinaryKey, BranchListBinaryInfo, BinaryKeyHash>;
+using ETMBinaryMap = std::unordered_map<BinaryKey, ETMBinary, BinaryKeyHash>;
 
-bool BranchListBinaryMapToString(const BranchListBinaryMap& binary_map, std::string& s);
-bool StringToBranchListBinaryMap(const std::string& s, BranchListBinaryMap& binary_map);
-
-class BinaryFilter {
- public:
-  BinaryFilter(const RegEx* binary_name_regex) : binary_name_regex_(binary_name_regex) {}
-
-  void SetRegex(const RegEx* binary_name_regex) {
-    binary_name_regex_ = binary_name_regex;
-    dso_filter_cache_.clear();
-  }
-
-  bool Filter(Dso* dso) {
-    auto lookup = dso_filter_cache_.find(dso);
-    if (lookup != dso_filter_cache_.end()) {
-      return lookup->second;
-    }
-    bool match = Filter(dso->Path());
-    dso_filter_cache_.insert({dso, match});
-    return match;
-  }
-
-  bool Filter(const std::string& path) {
-    return binary_name_regex_ == nullptr || binary_name_regex_->Search(path);
-  }
-
- private:
-  const RegEx* binary_name_regex_;
-  std::unordered_map<Dso*, bool> dso_filter_cache_;
-};
+bool ETMBinaryMapToString(const ETMBinaryMap& binary_map, std::string& s);
+bool StringToETMBinaryMap(const std::string& s, ETMBinaryMap& binary_map);
 
 // Convert ETM data into branch lists while recording.
 class ETMBranchListGenerator {
@@ -142,11 +142,33 @@ class ETMBranchListGenerator {
   virtual void SetExcludePid(pid_t pid) = 0;
   virtual void SetBinaryFilter(const RegEx* binary_name_regex) = 0;
   virtual bool ProcessRecord(const Record& r, bool& consumed) = 0;
-  virtual BranchListBinaryMap GetBranchListBinaryMap() = 0;
+  virtual ETMBinaryMap GetETMBinaryMap() = 0;
+};
+
+struct LBRBranch {
+  // If from_binary_id >= 1, it refers to LBRData.binaries[from_binary_id - 1]. Otherwise, it's
+  // invalid.
+  uint32_t from_binary_id = 0;
+  // If to_binary_id >= 1, it refers to LBRData.binaries[to_binary_id - 1]. Otherwise, it's invalid.
+  uint32_t to_binary_id = 0;
+  uint64_t from_vaddr_in_file = 0;
+  uint64_t to_vaddr_in_file = 0;
+};
+
+struct LBRSample {
+  // If binary_id >= 1, it refers to LBRData.binaries[binary_id - 1]. Otherwise, it's invalid.
+  uint32_t binary_id = 0;
+  uint64_t vaddr_in_file = 0;
+  std::vector<LBRBranch> branches;
+};
+
+struct LBRData {
+  std::vector<LBRSample> samples;
+  std::vector<BinaryKey> binaries;
 };
 
 // for testing
-std::string BranchToProtoString(const std::vector<bool>& branch);
-std::vector<bool> ProtoStringToBranch(const std::string& s, size_t bit_size);
+std::string ETMBranchToProtoString(const std::vector<bool>& branch);
+std::vector<bool> ProtoStringToETMBranch(const std::string& s, size_t bit_size);
 
 }  // namespace simpleperf

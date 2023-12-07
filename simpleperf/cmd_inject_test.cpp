@@ -224,3 +224,14 @@ TEST(cmd_inject, accept_missing_aux_data) {
   close(tmpfile.release());
   ASSERT_TRUE(RunInjectCmd({"--output", "branch-list", "-i", perf_data, "-o", tmpfile.path}));
 }
+
+TEST(cmd_inject, read_lbr_data) {
+  std::string data;
+  ASSERT_TRUE(RunInjectCmd({"-i", GetTestData("lbr/perf_lbr.data")}, &data));
+  data.erase(std::remove(data.begin(), data.end(), '\r'), data.end());
+
+  std::string expected_data;
+  ASSERT_TRUE(android::base::ReadFileToString(
+      GetTestData(std::string("lbr") + OS_PATH_SEPARATOR + "inject_lbr.data"), &expected_data));
+  ASSERT_NE(data.find(expected_data), data.npos);
+}
