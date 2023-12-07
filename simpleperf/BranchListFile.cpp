@@ -14,16 +14,16 @@
  * limitations under the License.
  */
 
-#include "ETMBranchListFile.h"
+#include "BranchListFile.h"
 
 #include "ETMDecoder.h"
-#include "system/extras/simpleperf/etm_branch_list.pb.h"
+#include "system/extras/simpleperf/branch_list.pb.h"
 
 namespace simpleperf {
 
 static constexpr const char* ETM_BRANCH_LIST_PROTO_MAGIC = "simpleperf:EtmBranchList";
 
-std::string BranchToProtoString(const std::vector<bool>& branch) {
+std::string ETMBranchToProtoString(const std::vector<bool>& branch) {
   size_t bytes = (branch.size() + 7) / 8;
   std::string res(bytes, '\0');
   for (size_t i = 0; i < branch.size(); i++) {
@@ -34,7 +34,7 @@ std::string BranchToProtoString(const std::vector<bool>& branch) {
   return res;
 }
 
-std::vector<bool> ProtoStringToBranch(const std::string& s, size_t bit_size) {
+std::vector<bool> ProtoStringToETMBranch(const std::string& s, size_t bit_size) {
   std::vector<bool> branch(bit_size, false);
   for (size_t i = 0; i < bit_size; i++) {
     if (s[i >> 3] & (1 << (i & 7))) {
@@ -44,28 +44,28 @@ std::vector<bool> ProtoStringToBranch(const std::string& s, size_t bit_size) {
   return branch;
 }
 
-static std::optional<proto::ETMBranchList_Binary::BinaryType> ToProtoBinaryType(DsoType dso_type) {
+static std::optional<proto::ETMBinary::BinaryType> ToProtoBinaryType(DsoType dso_type) {
   switch (dso_type) {
     case DSO_ELF_FILE:
-      return proto::ETMBranchList_Binary::ELF_FILE;
+      return proto::ETMBinary::ELF_FILE;
     case DSO_KERNEL:
-      return proto::ETMBranchList_Binary::KERNEL;
+      return proto::ETMBinary::KERNEL;
     case DSO_KERNEL_MODULE:
-      return proto::ETMBranchList_Binary::KERNEL_MODULE;
+      return proto::ETMBinary::KERNEL_MODULE;
     default:
       LOG(ERROR) << "unexpected dso type " << dso_type;
       return std::nullopt;
   }
 }
 
-bool BranchListBinaryMapToString(const BranchListBinaryMap& binary_map, std::string& s) {
-  proto::ETMBranchList branch_list_proto;
+bool ETMBinaryMapToString(const ETMBinaryMap& binary_map, std::string& s) {
+  proto::BranchList branch_list_proto;
   branch_list_proto.set_magic(ETM_BRANCH_LIST_PROTO_MAGIC);
   std::vector<char> branch_buf;
   for (const auto& p : binary_map) {
     const BinaryKey& key = p.first;
-    const BranchListBinaryInfo& binary = p.second;
-    auto binary_proto = branch_list_proto.add_binaries();
+    const ETMBinary& binary = p.second;
+    auto binary_proto = branch_list_proto.add_etm_data();
 
     binary_proto->set_path(key.path);
     if (!key.build_id.IsEmpty()) {
@@ -85,7 +85,7 @@ bool BranchListBinaryMapToString(const BranchListBinaryMap& binary_map, std::str
         const std::vector<bool>& branch = branch_p.first;
         auto branch_proto = addr_proto->add_branches();
 
-        branch_proto->set_branch(BranchToProtoString(branch));
+        branch_proto->set_branch(ETMBranchToProtoString(branch));
         branch_proto->set_branch_size(branch.size());
         branch_proto->set_count(branch_p.second);
       }
@@ -102,13 +102,13 @@ bool BranchListBinaryMapToString(const BranchListBinaryMap& binary_map, std::str
   return true;
 }
 
-static std::optional<DsoType> ToDsoType(proto::ETMBranchList_Binary::BinaryType binary_type) {
+static std::optional<DsoType> ToDsoType(proto::ETMBinary::BinaryType binary_type) {
   switch (binary_type) {
-    case proto::ETMBranchList_Binary::ELF_FILE:
+    case proto::ETMBinary::ELF_FILE:
       return DSO_ELF_FILE;
-    case proto::ETMBranchList_Binary::KERNEL:
+    case proto::ETMBinary::KERNEL:
       return DSO_KERNEL;
-    case proto::ETMBranchList_Binary::KERNEL_MODULE:
+    case proto::ETMBinary::KERNEL_MODULE:
       return DSO_KERNEL_MODULE;
     default:
       LOG(ERROR) << "unexpected binary type " << binary_type;
@@ -116,46 +116,46 @@ static std::optional<DsoType> ToDsoType(proto::ETMBranchList_Binary::BinaryType 
   }
 }
 
-static UnorderedBranchMap BuildUnorderedBranchMap(const proto::ETMBranchList_Binary& binary_proto) {
-  UnorderedBranchMap branch_map;
+static UnorderedETMBranchMap BuildUnorderedETMBranchMap(const proto::ETMBinary& binary_proto) {
+  UnorderedETMBranchMap branch_map;
   for (size_t i = 0; i < binary_proto.addrs_size(); i++) {
     const auto& addr_proto = binary_proto.addrs(i);
     auto& b_map = branch_map[addr_proto.addr()];
     for (size_t j = 0; j < addr_proto.branches_size(); j++) {
       const auto& branch_proto = addr_proto.branches(j);
       std::vector<bool> branch =
-          ProtoStringToBranch(branch_proto.branch(), branch_proto.branch_size());
+          ProtoStringToETMBranch(branch_proto.branch(), branch_proto.branch_size());
       b_map[branch] = branch_proto.count();
     }
   }
   return branch_map;
 }
 
-bool StringToBranchListBinaryMap(const std::string& s, BranchListBinaryMap& binary_map) {
-  proto::ETMBranchList branch_list_proto;
+bool StringToETMBinaryMap(const std::string& s, ETMBinaryMap& binary_map) {
+  proto::BranchList branch_list_proto;
   if (!branch_list_proto.ParseFromString(s)) {
     PLOG(ERROR) << "failed to read ETMBranchList msg";
     return false;
   }
   if (branch_list_proto.magic() != ETM_BRANCH_LIST_PROTO_MAGIC) {
-    PLOG(ERROR) << "not in format etm_branch_list.proto";
+    PLOG(ERROR) << "not in etm branch list format in branch_list.proto";
     return false;
   }
 
-  for (size_t i = 0; i < branch_list_proto.binaries_size(); i++) {
-    const auto& binary_proto = branch_list_proto.binaries(i);
+  for (size_t i = 0; i < branch_list_proto.etm_data_size(); i++) {
+    const auto& binary_proto = branch_list_proto.etm_data(i);
     BinaryKey key(binary_proto.path(), BuildId(binary_proto.build_id()));
     if (binary_proto.has_kernel_info()) {
       key.kernel_start_addr = binary_proto.kernel_info().kernel_start_addr();
     }
-    BranchListBinaryInfo& binary = binary_map[key];
+    ETMBinary& binary = binary_map[key];
     auto dso_type = ToDsoType(binary_proto.type());
     if (!dso_type) {
       LOG(ERROR) << "invalid binary type " << binary_proto.type();
       return false;
     }
     binary.dso_type = dso_type.value();
-    binary.branch_map = BuildUnorderedBranchMap(binary_proto);
+    binary.branch_map = BuildUnorderedETMBranchMap(binary_proto);
   }
   return true;
 }
@@ -231,7 +231,7 @@ class ETMBranchListGeneratorImpl : public ETMBranchListGenerator {
   }
 
   bool ProcessRecord(const Record& r, bool& consumed) override;
-  BranchListBinaryMap GetBranchListBinaryMap() override;
+  ETMBinaryMap GetETMBinaryMap() override;
 
  private:
   struct AuxRecordData {
@@ -257,7 +257,7 @@ class ETMBranchListGeneratorImpl : public ETMBranchListGenerator {
   BinaryFilter binary_filter_;
   std::map<uint32_t, PerCpuData> cpu_map_;
   std::unique_ptr<ETMDecoder> etm_decoder_;
-  std::unordered_map<Dso*, BranchListBinaryInfo> branch_list_binary_map_;
+  std::unordered_map<Dso*, ETMBinary> branch_list_binary_map_;
 };
 
 bool ETMBranchListGeneratorImpl::ProcessRecord(const Record& r, bool& consumed) {
@@ -353,11 +353,11 @@ void ETMBranchListGeneratorImpl::ProcessBranchList(const ETMBranchList& branch_l
   ++branch_map[branch_list.addr][branch_list.branch];
 }
 
-BranchListBinaryMap ETMBranchListGeneratorImpl::GetBranchListBinaryMap() {
-  BranchListBinaryMap binary_map;
+ETMBinaryMap ETMBranchListGeneratorImpl::GetETMBinaryMap() {
+  ETMBinaryMap binary_map;
   for (auto& p : branch_list_binary_map_) {
     Dso* dso = p.first;
-    BranchListBinaryInfo& binary = p.second;
+    ETMBinary& binary = p.second;
     binary.dso_type = dso->type();
     BuildId build_id;
     GetBuildId(*dso, build_id);

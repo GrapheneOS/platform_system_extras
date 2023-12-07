@@ -26,7 +26,7 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
-#include "ETMBranchListFile.h"
+#include "BranchListFile.h"
 #include "ETMDecoder.h"
 #include "command.h"
 #include "dso.h"
@@ -214,7 +214,8 @@ class DumpRecordCommand : public Command {
   bool ProcessRecord(Record* r);
   void ProcessSampleRecord(const SampleRecord& r);
   void ProcessCallChainRecord(const CallChainRecord& r);
-  SymbolInfo GetSymbolInfo(uint32_t pid, uint32_t tid, uint64_t ip, bool in_kernel);
+  SymbolInfo GetSymbolInfo(uint32_t pid, uint32_t tid, uint64_t ip,
+                           std::optional<bool> in_kernel = std::nullopt);
   bool ProcessTracingData(const TracingDataRecord& r);
   bool DumpAuxData(const AuxRecord& aux);
   bool DumpFeatureSection();
@@ -397,6 +398,19 @@ void DumpRecordCommand::ProcessSampleRecord(const SampleRecord& sr) {
                     s.vaddr_in_file);
     }
   }
+  if (sr.sample_type & PERF_SAMPLE_BRANCH_STACK) {
+    PrintIndented(1, "branch_stack:\n");
+    for (size_t i = 0; i < sr.branch_stack_data.stack_nr; ++i) {
+      uint64_t from_ip = sr.branch_stack_data.stack[i].from;
+      uint64_t to_ip = sr.branch_stack_data.stack[i].to;
+      SymbolInfo from_symbol = GetSymbolInfo(sr.tid_data.pid, sr.tid_data.tid, from_ip);
+      SymbolInfo to_symbol = GetSymbolInfo(sr.tid_data.pid, sr.tid_data.tid, to_ip);
+      PrintIndented(2, "%s (%s[+%" PRIx64 "]) -> %s (%s[+%" PRIx64 "])\n",
+                    from_symbol.symbol->DemangledName(), from_symbol.dso->Path().c_str(),
+                    from_symbol.vaddr_in_file, to_symbol.symbol->DemangledName(),
+                    to_symbol.dso->Path().c_str(), to_symbol.vaddr_in_file);
+    }
+  }
   // Dump tracepoint fields.
   if (!events_.empty()) {
     size_t attr_index = record_file_reader_->GetAttrIndexOfRecord(&sr);
@@ -422,9 +436,14 @@ void DumpRecordCommand::ProcessCallChainRecord(const CallChainRecord& cr) {
 }
 
 SymbolInfo DumpRecordCommand::GetSymbolInfo(uint32_t pid, uint32_t tid, uint64_t ip,
-                                            bool in_kernel) {
+                                            std::optional<bool> in_kernel) {
   ThreadEntry* thread = thread_tree_.FindThreadOrNew(pid, tid);
-  const MapEntry* map = thread_tree_.FindMap(thread, ip, in_kernel);
+  const MapEntry* map;
+  if (in_kernel.has_value()) {
+    map = thread_tree_.FindMap(thread, ip, in_kernel.value());
+  } else {
+    map = thread_tree_.FindMap(thread, ip);
+  }
   SymbolInfo info;
   info.symbol = thread_tree_.FindSymbol(map, ip, &info.vaddr_in_file, &info.dso);
   return info;
@@ -550,8 +569,8 @@ bool DumpRecordCommand::DumpFeatureSection() {
       if (!record_file_reader_->ReadFeatureSection(FEAT_ETM_BRANCH_LIST, &data)) {
         return false;
       }
-      BranchListBinaryMap binary_map;
-      if (!StringToBranchListBinaryMap(data, binary_map)) {
+      ETMBinaryMap binary_map;
+      if (!StringToETMBinaryMap(data, binary_map)) {
         return false;
       }
       PrintIndented(1, "etm_branch_list:\n");
