@@ -226,12 +226,40 @@ TEST(cmd_inject, accept_missing_aux_data) {
 }
 
 TEST(cmd_inject, read_lbr_data) {
+  // Convert perf.data to AutoFDO text format.
+  std::string perf_data_path = GetTestData("lbr/perf_lbr.data");
   std::string data;
-  ASSERT_TRUE(RunInjectCmd({"-i", GetTestData("lbr/perf_lbr.data")}, &data));
+  ASSERT_TRUE(RunInjectCmd({"-i", perf_data_path}, &data));
   data.erase(std::remove(data.begin(), data.end(), '\r'), data.end());
 
   std::string expected_data;
   ASSERT_TRUE(android::base::ReadFileToString(
       GetTestData(std::string("lbr") + OS_PATH_SEPARATOR + "inject_lbr.data"), &expected_data));
-  ASSERT_NE(data.find(expected_data), data.npos);
+  ASSERT_EQ(data, expected_data);
+
+  // Convert perf.data to branch_list.proto format.
+  // Then convert branch_list.proto format to AutoFDO text format.
+  TemporaryFile branch_list_file;
+  close(branch_list_file.release());
+  ASSERT_TRUE(
+      RunInjectCmd({"-i", perf_data_path, "--output", "branch-list", "-o", branch_list_file.path}));
+  ASSERT_TRUE(RunInjectCmd({"-i", branch_list_file.path}, &data));
+  ASSERT_EQ(data, expected_data);
+
+  // Test binary filter on LBR data.
+  ASSERT_TRUE(RunInjectCmd({"-i", perf_data_path, "--binary", "no_lbr_test_loop"}, &data));
+  ASSERT_EQ(data.find("lbr_test_loop"), data.npos);
+
+  // Test binary filter on branch list file.
+  ASSERT_TRUE(RunInjectCmd({"-i", branch_list_file.path, "--binary", "no_lbr_test_loop"}, &data));
+  ASSERT_EQ(data.find("lbr_test_loop"), data.npos);
+
+  // Test multiple input files.
+  ASSERT_TRUE(RunInjectCmd(
+      {
+          "-i",
+          std::string(branch_list_file.path) + "," + branch_list_file.path,
+      },
+      &data));
+  ASSERT_NE(data.find("194d->1940:706"), data.npos);
 }
