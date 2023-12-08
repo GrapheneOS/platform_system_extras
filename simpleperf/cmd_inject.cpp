@@ -146,9 +146,9 @@ class PerfDataReader {
 
   std::string GetDataType() const { return GetDataType(*reader_); }
 
-  void SetCallback(const AutoFDOBinaryCallback& callback) { autofdo_callback_ = callback; }
-  virtual void SetCallback(const ETMBinaryCallback&) {}
-  virtual void SetCallback(const LBRDataCallback&) {}
+  void AddCallback(const AutoFDOBinaryCallback& callback) { autofdo_callback_ = callback; }
+  void AddCallback(const ETMBinaryCallback& callback) { etm_binary_callback_ = callback; }
+  void AddCallback(const LBRDataCallback& callback) { lbr_data_callback_ = callback; }
 
   virtual bool Read() {
     if (exclude_perf_) {
@@ -196,6 +196,8 @@ class PerfDataReader {
   std::optional<int> exclude_pid_;
   ThreadTree thread_tree_;
   AutoFDOBinaryCallback autofdo_callback_;
+  ETMBinaryCallback etm_binary_callback_;
+  LBRDataCallback lbr_data_callback_;
   // Store results for AutoFDO.
   std::unordered_map<const Dso*, AutoFDOBinaryInfo> autofdo_binary_map_;
 };
@@ -230,8 +232,6 @@ class ETMPerfDataReader : public PerfDataReader {
       : PerfDataReader(std::move(reader), exclude_perf, binary_name_regex),
         etm_dump_option_(etm_dump_option),
         etm_thread_tree_(thread_tree_, exclude_pid_) {}
-
-  void SetCallback(const ETMBinaryCallback& callback) override { etm_binary_callback_ = callback; }
 
   bool Read() override {
     if (reader_->HasFeature(PerfFileFormat::FEAT_ETM_BRANCH_LIST)) {
@@ -363,7 +363,6 @@ class ETMPerfDataReader : public PerfDataReader {
   }
 
   ETMDumpOption etm_dump_option_;
-  ETMBinaryCallback etm_binary_callback_;
   ETMThreadTreeWithFilter etm_thread_tree_;
   std::vector<uint8_t> aux_data_buffer_;
   std::unique_ptr<ETMDecoder> etm_decoder_;
@@ -372,12 +371,49 @@ class ETMPerfDataReader : public PerfDataReader {
   std::unordered_map<Dso*, ETMBinary> etm_binary_map_;
 };
 
+static std::optional<std::vector<AutoFDOBinaryInfo>> ConvertLBRDataToAutoFDO(
+    const LBRData& lbr_data) {
+  std::vector<AutoFDOBinaryInfo> binaries(lbr_data.binaries.size());
+  for (const LBRSample& sample : lbr_data.samples) {
+    if (sample.binary_id != 0) {
+      if (sample.binary_id > binaries.size()) {
+        LOG(ERROR) << "binary_id out of range";
+        return std::nullopt;
+      }
+      binaries[sample.binary_id - 1].AddAddress(sample.vaddr_in_file);
+    }
+    for (size_t i = 0; i < sample.branches.size(); ++i) {
+      const LBRBranch& branch = sample.branches[i];
+      if (branch.from_binary_id == 0) {
+        continue;
+      }
+      if (branch.from_binary_id > binaries.size()) {
+        LOG(ERROR) << "binary_id out of range";
+        return std::nullopt;
+      }
+      if (branch.from_binary_id == branch.to_binary_id) {
+        binaries[branch.from_binary_id - 1].AddBranch(branch.from_vaddr_in_file,
+                                                      branch.to_vaddr_in_file);
+      }
+      if (i > 0 && branch.from_binary_id == sample.branches[i - 1].to_binary_id) {
+        uint64_t begin = sample.branches[i - 1].to_vaddr_in_file;
+        uint64_t end = branch.from_vaddr_in_file;
+        // Use the same logic to skip bogus LBR data as AutoFDO.
+        if (end < begin || end - begin > (1 << 20)) {
+          continue;
+        }
+        binaries[branch.from_binary_id - 1].AddRange(begin, end);
+      }
+    }
+  }
+  return binaries;
+}
+
 class LBRPerfDataReader : public PerfDataReader {
  public:
   LBRPerfDataReader(std::unique_ptr<RecordFileReader> reader, bool exclude_perf,
                     const RegEx* binary_name_regex)
       : PerfDataReader(std::move(reader), exclude_perf, binary_name_regex) {}
-  void SetCallback(const LBRDataCallback& callback) override { lbr_data_callback_ = callback; }
 
  private:
   bool ProcessRecord(Record& r) override {
@@ -419,8 +455,16 @@ class LBRPerfDataReader : public PerfDataReader {
 
   bool PostProcess() override {
     if (autofdo_callback_) {
-      ConvertLBRDataToAutoFDO();
+      std::optional<std::vector<AutoFDOBinaryInfo>> binaries = ConvertLBRDataToAutoFDO(lbr_data_);
+      if (!binaries) {
+        return false;
+      }
+      for (const auto& [dso, binary_id] : dso_map_) {
+        autofdo_binary_map_[dso] = std::move(binaries.value()[binary_id - 1]);
+      }
       ProcessAutoFDOBinaryInfo();
+    } else if (lbr_data_callback_) {
+      lbr_data_callback_(lbr_data_);
     }
     return true;
   }
@@ -440,55 +484,25 @@ class LBRPerfDataReader : public PerfDataReader {
     if (auto it = dso_map_.find(dso); it != dso_map_.end()) {
       return it->second;
     }
-    uint32_t binary_id = static_cast<uint32_t>(lbr_data_.binaries.size() + 1);
+    lbr_data_.binaries.emplace_back(dso, 0);
+    uint32_t binary_id = static_cast<uint32_t>(lbr_data_.binaries.size());
     dso_map_[dso] = binary_id;
     return binary_id;
   }
 
-  void ConvertLBRDataToAutoFDO() {
-    std::vector<AutoFDOBinaryInfo> binaries(dso_map_.size());
-    for (const LBRSample& sample : lbr_data_.samples) {
-      if (sample.binary_id != 0) {
-        binaries[sample.binary_id - 1].AddAddress(sample.vaddr_in_file);
-      }
-      for (size_t i = 0; i < sample.branches.size(); ++i) {
-        const LBRBranch& branch = sample.branches[i];
-        if (branch.from_binary_id == 0) {
-          continue;
-        }
-        if (branch.from_binary_id == branch.to_binary_id) {
-          binaries[branch.from_binary_id - 1].AddBranch(branch.from_vaddr_in_file,
-                                                        branch.to_vaddr_in_file);
-        }
-        if (i > 0 && branch.from_binary_id == sample.branches[i - 1].to_binary_id) {
-          uint64_t begin = sample.branches[i - 1].to_vaddr_in_file;
-          uint64_t end = branch.from_vaddr_in_file;
-          // Use the same logic to skip bogus LBR data as AutoFDO.
-          if (end < begin || end - begin > (1 << 20)) {
-            continue;
-          }
-          binaries[branch.from_binary_id - 1].AddRange(begin, end);
-        }
-      }
-    }
-    for (const auto& [dso, binary_id] : dso_map_) {
-      autofdo_binary_map_[dso] = std::move(binaries[binary_id - 1]);
-    }
-  }
-
-  LBRDataCallback lbr_data_callback_;
   LBRData lbr_data_;
   // Map from dso to binary_id in lbr_data_.
   std::unordered_map<const Dso*, uint32_t> dso_map_;
 };
 
-// Read a protobuf file specified by etm_branch_list.proto, and generate ETMBinary.
-class ETMBranchListReader {
+// Read a protobuf file specified by branch_list.proto.
+class BranchListReader {
  public:
-  ETMBranchListReader(const std::string& filename, const RegEx* binary_name_regex)
+  BranchListReader(const std::string& filename, const RegEx* binary_name_regex)
       : filename_(filename), binary_filter_(binary_name_regex) {}
 
-  void SetCallback(const ETMBinaryCallback& callback) { callback_ = callback; }
+  void AddCallback(const ETMBinaryCallback& callback) { etm_binary_callback_ = callback; }
+  void AddCallback(const LBRDataCallback& callback) { lbr_data_callback_ = callback; }
 
   bool Read() {
     std::string s;
@@ -496,24 +510,84 @@ class ETMBranchListReader {
       PLOG(ERROR) << "failed to read " << filename_;
       return false;
     }
-    ETMBinaryMap binary_map;
-    if (!StringToETMBinaryMap(s, binary_map)) {
+    ETMBinaryMap etm_data;
+    LBRData lbr_data;
+    if (!ParseBranchListData(s, etm_data, lbr_data)) {
       PLOG(ERROR) << "file is in wrong format: " << filename_;
       return false;
     }
-    for (auto& [key, binary] : binary_map) {
-      if (!binary_filter_.Filter(key.path)) {
-        continue;
-      }
-      callback_(key, binary);
+    if (etm_binary_callback_ && !etm_data.empty()) {
+      ProcessETMData(etm_data);
+    }
+    if (lbr_data_callback_ && !lbr_data.samples.empty()) {
+      ProcessLBRData(lbr_data);
     }
     return true;
   }
 
  private:
+  void ProcessETMData(ETMBinaryMap& etm_data) {
+    for (auto& [key, binary] : etm_data) {
+      if (!binary_filter_.Filter(key.path)) {
+        continue;
+      }
+      etm_binary_callback_(key, binary);
+    }
+  }
+
+  void ProcessLBRData(LBRData& lbr_data) {
+    // 1. Check if we need to remove binaries.
+    std::vector<uint32_t> new_ids(lbr_data.binaries.size());
+    uint32_t next_id = 1;
+
+    for (size_t i = 0; i < lbr_data.binaries.size(); ++i) {
+      if (!binary_filter_.Filter(lbr_data.binaries[i].path)) {
+        new_ids[i] = 0;
+      } else {
+        new_ids[i] = next_id++;
+      }
+    }
+
+    if (next_id <= lbr_data.binaries.size()) {
+      // 2. Modify lbr_data.binaries.
+      for (size_t i = 0; i < lbr_data.binaries.size(); ++i) {
+        if (new_ids[i] != 0) {
+          size_t new_pos = new_ids[i] - 1;
+          lbr_data.binaries[new_pos] = lbr_data.binaries[i];
+        }
+      }
+      lbr_data.binaries.resize(next_id - 1);
+
+      // 3. Modify lbr_data.samples.
+      auto convert_id = [&](uint32_t& binary_id) {
+        if (binary_id != 0) {
+          binary_id = (binary_id <= new_ids.size()) ? new_ids[binary_id - 1] : 0;
+        }
+      };
+      std::vector<LBRSample> new_samples;
+      for (LBRSample& sample : lbr_data.samples) {
+        convert_id(sample.binary_id);
+        bool has_valid_binary_id = sample.binary_id != 0;
+        for (LBRBranch& branch : sample.branches) {
+          convert_id(branch.from_binary_id);
+          convert_id(branch.to_binary_id);
+          if (branch.from_binary_id != 0 || branch.to_binary_id != 0) {
+            has_valid_binary_id = true;
+          }
+        }
+        if (has_valid_binary_id) {
+          new_samples.emplace_back(std::move(sample));
+        }
+      }
+      lbr_data.samples = std::move(new_samples);
+    }
+    lbr_data_callback_(lbr_data);
+  }
+
   const std::string filename_;
   BinaryFilter binary_filter_;
-  ETMBinaryCallback callback_;
+  ETMBinaryCallback etm_binary_callback_;
+  LBRDataCallback lbr_data_callback_;
 };
 
 // Convert ETMBinary into AutoFDOBinaryInfo.
@@ -662,42 +736,82 @@ class AutoFDOWriter {
   std::unordered_map<BinaryKey, AutoFDOBinaryInfo, BinaryKeyHash> binary_map_;
 };
 
-// Merge ETMBinary.
-struct ETMBranchListMerger {
+// Merge branch list data.
+struct BranchListMerger {
   void AddETMBinary(const BinaryKey& key, ETMBinary& binary) {
-    auto it = binary_map.find(key);
-    if (it == binary_map.end()) {
-      binary_map[key] = std::move(binary);
-    } else {
+    if (auto it = etm_data_.find(key); it != etm_data_.end()) {
       it->second.Merge(binary);
+    } else {
+      etm_data_[key] = std::move(binary);
     }
   }
 
-  ETMBinaryMap binary_map;
+  void AddLBRData(LBRData& lbr_data) {
+    // 1. Merge binaries.
+    std::vector<uint32_t> new_ids(lbr_data.binaries.size());
+    for (size_t i = 0; i < lbr_data.binaries.size(); i++) {
+      const BinaryKey& key = lbr_data.binaries[i];
+      if (auto it = lbr_binary_id_map_.find(key); it != lbr_binary_id_map_.end()) {
+        new_ids[i] = it->second;
+      } else {
+        uint32_t next_id = static_cast<uint32_t>(lbr_binary_id_map_.size()) + 1;
+        new_ids[i] = next_id;
+        lbr_binary_id_map_[key] = next_id;
+        lbr_data_.binaries.emplace_back(key);
+      }
+    }
+
+    // 2. Merge samples.
+    auto convert_id = [&](uint32_t& binary_id) {
+      if (binary_id != 0) {
+        binary_id = (binary_id <= new_ids.size()) ? new_ids[binary_id - 1] : 0;
+      }
+    };
+
+    for (LBRSample& sample : lbr_data.samples) {
+      convert_id(sample.binary_id);
+      for (LBRBranch& branch : sample.branches) {
+        convert_id(branch.from_binary_id);
+        convert_id(branch.to_binary_id);
+      }
+      lbr_data_.samples.emplace_back(std::move(sample));
+    }
+  }
+
+  ETMBinaryMap& GetETMData() { return etm_data_; }
+
+  LBRData& GetLBRData() { return lbr_data_; }
+
+ private:
+  ETMBinaryMap etm_data_;
+  LBRData lbr_data_;
+  std::unordered_map<BinaryKey, uint32_t, BinaryKeyHash> lbr_binary_id_map_;
 };
 
-// Write branch lists to a protobuf file specified by etm_branch_list.proto.
-class ETMBranchListWriter {
- public:
-  bool Write(const std::string& output_filename, const ETMBinaryMap& binary_map) {
+// Write branch lists to a protobuf file specified by branch_list.proto.
+static bool WriteBranchListFile(const std::string& output_filename, const ETMBinaryMap& etm_data,
+                                const LBRData& lbr_data) {
+  std::string s;
+  if (!etm_data.empty()) {
+    if (!ETMBinaryMapToString(etm_data, s)) {
+      return false;
+    }
+  } else if (!lbr_data.samples.empty()) {
+    if (!LBRDataToString(lbr_data, s)) {
+      return false;
+    }
+  } else {
     // Don't produce empty output file.
-    if (binary_map.empty()) {
-      LOG(INFO) << "Skip empty output file.";
-      unlink(output_filename.c_str());
-      return true;
-    }
-    std::string s;
-    if (!ETMBinaryMapToString(binary_map, s)) {
-      LOG(ERROR) << "invalid ETMBinaryMap";
-      return false;
-    }
-    if (!android::base::WriteStringToFile(s, output_filename)) {
-      PLOG(ERROR) << "failed to write to " << output_filename;
-      return false;
-    }
+    LOG(INFO) << "Skip empty output file.";
+    unlink(output_filename.c_str());
     return true;
   }
-};
+  if (!android::base::WriteStringToFile(s, output_filename)) {
+    PLOG(ERROR) << "failed to write to " << output_filename;
+    return false;
+  }
+  return true;
+}
 
 class InjectCommand : public Command {
  public:
@@ -877,7 +991,7 @@ class InjectCommand : public Command {
     auto afdo_callback = [&](const BinaryKey& key, AutoFDOBinaryInfo& binary) {
       autofdo_writer.AddAutoFDOBinary(key, binary);
     };
-    auto reader_callback = [&](PerfDataReader& reader) { reader.SetCallback(afdo_callback); };
+    auto reader_callback = [&](PerfDataReader& reader) { reader.AddCallback(afdo_callback); };
     if (!ReadPerfDataFiles(reader_callback)) {
       return false;
     }
@@ -885,36 +999,42 @@ class InjectCommand : public Command {
   }
 
   bool ConvertPerfDataToBranchList() {
-    ETMBranchListMerger branch_list_merger;
+    BranchListMerger merger;
     auto etm_callback = [&](const BinaryKey& key, ETMBinary& binary) {
-      branch_list_merger.AddETMBinary(key, binary);
+      merger.AddETMBinary(key, binary);
     };
-    auto reader_callback = [&](PerfDataReader& reader) { reader.SetCallback(etm_callback); };
+    auto lbr_callback = [&](LBRData& lbr_data) { merger.AddLBRData(lbr_data); };
+
+    auto reader_callback = [&](PerfDataReader& reader) {
+      reader.AddCallback(etm_callback);
+      reader.AddCallback(lbr_callback);
+    };
     if (!ReadPerfDataFiles(reader_callback)) {
       return false;
     }
-    ETMBranchListWriter branch_list_writer;
-    return branch_list_writer.Write(output_filename_, branch_list_merger.binary_map);
+    return WriteBranchListFile(output_filename_, merger.GetETMData(), merger.GetLBRData());
   }
 
   bool ConvertBranchListToAutoFDO() {
     // Step1 : Merge branch lists from all input files.
-    ETMBranchListMerger branch_list_merger;
-    auto callback = [&](const BinaryKey& key, ETMBinary& binary) {
-      branch_list_merger.AddETMBinary(key, binary);
+    BranchListMerger merger;
+    auto etm_callback = [&](const BinaryKey& key, ETMBinary& binary) {
+      merger.AddETMBinary(key, binary);
     };
+    auto lbr_callback = [&](LBRData& lbr_data) { merger.AddLBRData(lbr_data); };
     for (const auto& input_filename : input_filenames_) {
-      ETMBranchListReader reader(input_filename, binary_name_regex_.get());
-      reader.SetCallback(callback);
+      BranchListReader reader(input_filename, binary_name_regex_.get());
+      reader.AddCallback(etm_callback);
+      reader.AddCallback(lbr_callback);
       if (!reader.Read()) {
         return false;
       }
     }
 
-    // Step2: Convert ETMBinary to AutoFDOBinaryInfo.
+    // Step2: Convert ETMBinary and LBRData to AutoFDOBinaryInfo.
     AutoFDOWriter autofdo_writer;
     ETMBranchListToAutoFDOConverter converter;
-    for (auto& p : branch_list_merger.binary_map) {
+    for (auto& p : merger.GetETMData()) {
       const BinaryKey& key = p.first;
       ETMBinary& binary = p.second;
       std::unique_ptr<AutoFDOBinaryInfo> autofdo_binary = converter.Convert(key, binary);
@@ -924,6 +1044,16 @@ class InjectCommand : public Command {
         autofdo_writer.AddAutoFDOBinary(BinaryKey(key.path, key.build_id), *autofdo_binary);
       }
     }
+    if (!merger.GetLBRData().samples.empty()) {
+      LBRData& lbr_data = merger.GetLBRData();
+      std::optional<std::vector<AutoFDOBinaryInfo>> binaries = ConvertLBRDataToAutoFDO(lbr_data);
+      if (!binaries) {
+        return false;
+      }
+      for (size_t i = 0; i < binaries.value().size(); ++i) {
+        autofdo_writer.AddAutoFDOBinary(lbr_data.binaries[i], binaries.value()[i]);
+      }
+    }
 
     // Step3: Write AutoFDOBinaryInfo.
     return autofdo_writer.Write(output_filename_);
@@ -931,20 +1061,21 @@ class InjectCommand : public Command {
 
   bool ConvertBranchListToBranchList() {
     // Step1 : Merge branch lists from all input files.
-    ETMBranchListMerger branch_list_merger;
-    auto callback = [&](const BinaryKey& key, ETMBinary& binary) {
-      branch_list_merger.AddETMBinary(key, binary);
+    BranchListMerger merger;
+    auto etm_callback = [&](const BinaryKey& key, ETMBinary& binary) {
+      merger.AddETMBinary(key, binary);
     };
+    auto lbr_callback = [&](LBRData& lbr_data) { merger.AddLBRData(lbr_data); };
     for (const auto& input_filename : input_filenames_) {
-      ETMBranchListReader reader(input_filename, binary_name_regex_.get());
-      reader.SetCallback(callback);
+      BranchListReader reader(input_filename, binary_name_regex_.get());
+      reader.AddCallback(etm_callback);
+      reader.AddCallback(lbr_callback);
       if (!reader.Read()) {
         return false;
       }
     }
     // Step2: Write ETMBinary.
-    ETMBranchListWriter branch_list_writer;
-    return branch_list_writer.Write(output_filename_, branch_list_merger.binary_map);
+    return WriteBranchListFile(output_filename_, merger.GetETMData(), merger.GetLBRData());
   }
 
   std::unique_ptr<RegEx> binary_name_regex_;
