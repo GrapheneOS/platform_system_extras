@@ -930,8 +930,8 @@ class BranchDecoder {
   InstructionDecoder instruction_decoder_;
 };
 
-android::base::expected<void, std::string> ConvertBranchMapToInstrRanges(
-    Dso* dso, const BranchMap& branch_map, const ETMDecoder::InstrRangeCallbackFn& callback) {
+android::base::expected<void, std::string> ConvertETMBranchMapToInstrRanges(
+    Dso* dso, const ETMBranchMap& branch_map, const ETMDecoder::InstrRangeCallbackFn& callback) {
   ETMInstrRange instr_range;
   instr_range.dso = dso;
 

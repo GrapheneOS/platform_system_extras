@@ -220,8 +220,8 @@ cc_defaults {
         "cmd_report_sample.proto",
         "command.cpp",
         "dso.cpp",
-        "etm_branch_list.proto",
-        "ETMBranchListFile.cpp",
+        "branch_list.proto",
+        "BranchListFile.cpp",
         "event_attr.cpp",
         "event_type.cpp",
         "kallsyms.cpp",
@@ -561,6 +561,7 @@ cc_defaults {
         "cmd_report_test.cpp",
     ],
     srcs: [
+        "BranchListFile_test.cpp",
         "cmd_inject_test.cpp",
         "cmd_kmem_test.cpp",
         "cmd_merge_test.cpp",

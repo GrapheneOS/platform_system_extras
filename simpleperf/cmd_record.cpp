@@ -47,8 +47,8 @@
 #endif
 #include <unwindstack/Error.h>
 
+#include "BranchListFile.h"
 #include "CallChainJoiner.h"
-#include "ETMBranchListFile.h"
 #include "ETMRecorder.h"
 #include "IOEventLoop.h"
 #include "JITDebugReader.h"
@@ -2214,9 +2214,9 @@ void RecordCommand::CollectHitFileInfo(const SampleRecord& r, std::unordered_set
 }
 
 bool RecordCommand::DumpETMBranchListFeature() {
-  BranchListBinaryMap binary_map = etm_branch_list_generator_->GetBranchListBinaryMap();
+  ETMBinaryMap binary_map = etm_branch_list_generator_->GetETMBinaryMap();
   std::string s;
-  if (!BranchListBinaryMapToString(binary_map, s)) {
+  if (!ETMBinaryMapToString(binary_map, s)) {
     return false;
   }
   return record_file_writer_->WriteFeature(PerfFileFormat::FEAT_ETM_BRANCH_LIST, s.data(),

@@ -139,6 +139,7 @@ class RecordFileReader {
 
   ~RecordFileReader();
 
+  const std::string FileName() const { return filename_; }
   const PerfFileFormat::FileHeader& FileHeader() const { return header_; }
 
   const EventAttrIds& AttrSection() const { return event_attrs_; }
