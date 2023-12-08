@@ -132,32 +132,8 @@ static UnorderedETMBranchMap BuildUnorderedETMBranchMap(const proto::ETMBinary& 
 }
 
 bool StringToETMBinaryMap(const std::string& s, ETMBinaryMap& binary_map) {
-  proto::BranchList branch_list_proto;
-  if (!branch_list_proto.ParseFromString(s)) {
-    PLOG(ERROR) << "failed to read ETMBranchList msg";
-    return false;
-  }
-  if (branch_list_proto.magic() != ETM_BRANCH_LIST_PROTO_MAGIC) {
-    PLOG(ERROR) << "not in etm branch list format in branch_list.proto";
-    return false;
-  }
-
-  for (size_t i = 0; i < branch_list_proto.etm_data_size(); i++) {
-    const auto& binary_proto = branch_list_proto.etm_data(i);
-    BinaryKey key(binary_proto.path(), BuildId(binary_proto.build_id()));
-    if (binary_proto.has_kernel_info()) {
-      key.kernel_start_addr = binary_proto.kernel_info().kernel_start_addr();
-    }
-    ETMBinary& binary = binary_map[key];
-    auto dso_type = ToDsoType(binary_proto.type());
-    if (!dso_type) {
-      LOG(ERROR) << "invalid binary type " << binary_proto.type();
-      return false;
-    }
-    binary.dso_type = dso_type.value();
-    binary.branch_map = BuildUnorderedETMBranchMap(binary_proto);
-  }
-  return true;
+  LBRData lbr_data;
+  return ParseBranchListData(s, binary_map, lbr_data);
 }
 
 class ETMThreadTreeWhenRecording : public ETMThreadTree {
@@ -381,5 +357,84 @@ std::unique_ptr<ETMBranchListGenerator> ETMBranchListGenerator::Create(bool dump
 }
 
 ETMBranchListGenerator::~ETMBranchListGenerator() {}
+
+bool LBRDataToString(const LBRData& data, std::string& s) {
+  proto::BranchList branch_list_proto;
+  branch_list_proto.set_magic(ETM_BRANCH_LIST_PROTO_MAGIC);
+  auto lbr_proto = branch_list_proto.mutable_lbr_data();
+  for (const LBRSample& sample : data.samples) {
+    auto sample_proto = lbr_proto->add_samples();
+    sample_proto->set_binary_id(sample.binary_id);
+    sample_proto->set_vaddr_in_file(sample.vaddr_in_file);
+    for (const LBRBranch& branch : sample.branches) {
+      auto branch_proto = sample_proto->add_branches();
+      branch_proto->set_from_binary_id(branch.from_binary_id);
+      branch_proto->set_to_binary_id(branch.to_binary_id);
+      branch_proto->set_from_vaddr_in_file(branch.from_vaddr_in_file);
+      branch_proto->set_to_vaddr_in_file(branch.to_vaddr_in_file);
+    }
+  }
+  for (const BinaryKey& binary : data.binaries) {
+    auto binary_proto = lbr_proto->add_binaries();
+    binary_proto->set_path(binary.path);
+    binary_proto->set_build_id(binary.build_id.ToString().substr(2));
+  }
+  if (!branch_list_proto.SerializeToString(&s)) {
+    LOG(ERROR) << "failed to serialize lbr data";
+    return false;
+  }
+  return true;
+}
+
+bool ParseBranchListData(const std::string& s, ETMBinaryMap& etm_data, LBRData& lbr_data) {
+  proto::BranchList branch_list_proto;
+  if (!branch_list_proto.ParseFromString(s)) {
+    PLOG(ERROR) << "failed to read ETMBranchList msg";
+    return false;
+  }
+  if (branch_list_proto.magic() != ETM_BRANCH_LIST_PROTO_MAGIC) {
+    PLOG(ERROR) << "not in etm branch list format in branch_list.proto";
+    return false;
+  }
+  for (size_t i = 0; i < branch_list_proto.etm_data_size(); i++) {
+    const auto& binary_proto = branch_list_proto.etm_data(i);
+    BinaryKey key(binary_proto.path(), BuildId(binary_proto.build_id()));
+    if (binary_proto.has_kernel_info()) {
+      key.kernel_start_addr = binary_proto.kernel_info().kernel_start_addr();
+    }
+    ETMBinary& binary = etm_data[key];
+    auto dso_type = ToDsoType(binary_proto.type());
+    if (!dso_type) {
+      LOG(ERROR) << "invalid binary type " << binary_proto.type();
+      return false;
+    }
+    binary.dso_type = dso_type.value();
+    binary.branch_map = BuildUnorderedETMBranchMap(binary_proto);
+  }
+  if (branch_list_proto.has_lbr_data()) {
+    const auto& lbr_data_proto = branch_list_proto.lbr_data();
+    lbr_data.samples.resize(lbr_data_proto.samples_size());
+    for (size_t i = 0; i < lbr_data_proto.samples_size(); ++i) {
+      const auto& sample_proto = lbr_data_proto.samples(i);
+      LBRSample& sample = lbr_data.samples[i];
+      sample.binary_id = sample_proto.binary_id();
+      sample.vaddr_in_file = sample_proto.vaddr_in_file();
+      sample.branches.resize(sample_proto.branches_size());
+      for (size_t j = 0; j < sample_proto.branches_size(); ++j) {
+        const auto& branch_proto = sample_proto.branches(j);
+        LBRBranch& branch = sample.branches[j];
+        branch.from_binary_id = branch_proto.from_binary_id();
+        branch.to_binary_id = branch_proto.to_binary_id();
+        branch.from_vaddr_in_file = branch_proto.from_vaddr_in_file();
+        branch.to_vaddr_in_file = branch_proto.to_vaddr_in_file();
+      }
+    }
+    for (size_t i = 0; i < lbr_data_proto.binaries_size(); ++i) {
+      const auto& binary_proto = lbr_data_proto.binaries(i);
+      lbr_data.binaries.emplace_back(binary_proto.path(), BuildId(binary_proto.build_id()));
+    }
+  }
+  return true;
+}
 
 }  // namespace simpleperf
