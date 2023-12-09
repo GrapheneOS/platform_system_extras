@@ -28,3 +28,6 @@ on early-boot && property:ro.arm64.memtag.bootctl_supported=1
 on shutdown && property:ro.arm64.memtag.bootctl_supported=1
   # This doesn't use wait_for_prop to not stall the shutdown.
   exec -- /system/bin/mtectrl ${arm64.memtag.bootctl:-none} ${persist.device_config.runtime_native_boot.bootloader_override:-default}
+
+on property:persist.device_config.runtime_native_boot.bootloader_override=force_on
+  setprop persist.sys.mte.permissive 1
