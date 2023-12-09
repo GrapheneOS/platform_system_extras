@@ -26,6 +26,7 @@ message BranchList {
   // Should always be "simpleperf:EtmBranchList".
   string magic = 1;
   repeated ETMBinary etm_data = 2;
+  LBRData lbr_data = 3;
 }
 
 message ETMBinary {
@@ -64,4 +65,32 @@ message ETMBinary {
   }
 
   KernelBinaryInfo kernel_info = 5;
+}
+
+message LBRData {
+  repeated Sample samples = 1;
+  repeated Binary binaries = 2;
+
+  message Sample {
+    // If binary_id >= 1, it refers to LBRData.binaries[binary_id - 1]. Otherwise, it's invalid.
+    uint32 binary_id = 1;
+    uint64 vaddr_in_file = 2;
+    repeated Branch branches = 3;
+
+    message Branch {
+      // If from_binary_id >= 1, it refers to LBRData.binaries[from_binary_id - 1]. Otherwise, it's
+      // invalid.
+      uint32 from_binary_id = 1;
+      // If to_binary_id >= 1, it refers to LBRData.binaries[to_binary_id - 1]. Otherwise, it's
+      // invalid.
+      uint32 to_binary_id = 2;
+      uint64 from_vaddr_in_file = 3;
+      uint64 to_vaddr_in_file = 4;
+    }
+  }
+
+  message Binary {
+    string path = 1;
+    string build_id = 2;
+  }
 }
