@@ -207,6 +207,18 @@ cc_defaults {
     use_version_lib: true,
 }
 
+python_binary_host {
+    name: "event_table_generator",
+    srcs: ["event_table_generator.py"],
+}
+
+genrule {
+    name: "simpleperf_event_table",
+    out: ["event_table.cpp"],
+    tools: ["event_table_generator"],
+    cmd: "$(location event_table_generator) $(out)",
+}
+
 cc_defaults {
     name: "libsimpleperf_srcs",
     srcs: [
@@ -238,6 +250,7 @@ cc_defaults {
         "thread_tree.cpp",
         "tracing.cpp",
         "utils.cpp",
+        ":simpleperf_event_table",
     ],
     target: {
         android: {
