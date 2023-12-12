@@ -44,12 +44,7 @@ struct EventFormat {
   int shift;
 };
 
-#define EVENT_TYPE_TABLE_ENTRY(name, type, config, description, limited_arch) \
-  {name, type, config, description, limited_arch},
-
-static const std::set<EventType> builtin_event_types = {
-#include "event_type_table.h"
-};
+extern std::set<EventType> builtin_event_types;
 
 enum class EventFinderType {
   BUILTIN,
