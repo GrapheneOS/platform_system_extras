@@ -320,3 +320,23 @@ Then we can read all samples through GetNextSample(). For each sample, we can re
 
 Examples of using `simpleperf_report_lib.py` are in `report_sample.py`, `report_html.py`,
 `pprof_proto_generator.py` and `inferno/inferno.py`.
+
+## ipc.py
+`ipc.py`captures the instructions per cycle (IPC) of the system during a specified duration.
+
+Example:
+```sh
+./ipc.py
+./ipc.py 2 20          # Set interval to 2 secs and total duration to 20 secs
+./ipc.py -p 284 -C 4   # Only profile the PID 284 while running on core 4
+./ipc.py -c 'sleep 5'  # Only profile the command to run
+```
+
+The results look like:
+```
+K_CYCLES   K_INSTR      IPC
+36840      14138       0.38
+70701      27743       0.39
+104562     41350       0.40
+138264     54916       0.40
+```
