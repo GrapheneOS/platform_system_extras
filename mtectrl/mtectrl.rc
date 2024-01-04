@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-on property:arm64.memtag.bootctl=*
+on property:arm64.memtag.bootctl=* && property:ro.arm64.memtag.bootctl_supported=1
   wait_for_prop arm64.memtag.bootctl_loaded 1
   exec -- /system/bin/mtectrl ${arm64.memtag.bootctl:-none} ${persist.device_config.runtime_native_boot.bootloader_override:-default}
 
-on property:persist.device_config.runtime_native_boot.bootloader_override=*
+on property:persist.device_config.runtime_native_boot.bootloader_override=* && property:ro.arm64.memtag.bootctl_supported=1
   wait_for_prop arm64.memtag.bootctl_loaded 1
   exec -- /system/bin/mtectrl ${arm64.memtag.bootctl:-none} ${persist.device_config.runtime_native_boot.bootloader_override:-default}
 
